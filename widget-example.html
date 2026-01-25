@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot Widget - Integration Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        .code-block {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Chatbot Widget Integration Example</h1>
+    
+    <p>This page demonstrates how to integrate the AI Chatbot widget into your website.</p>
+    
+    <h2>Integration Code</h2>
+    <div class="code-block">
+        <code>
+&lt;!-- Add this script before closing &lt;/body&gt; tag --&gt;<br>
+&lt;script&gt;<br>
+&nbsp;&nbsp;(function() {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;window.AIChatbot = {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;widgetId: 'demo-widget',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;apiUrl: 'http://localhost:8000',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;name: 'AI Assistant',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;welcomeMessage: 'Hi! How can I help you today?',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;primaryColor: '#007bff',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;position: 'bottom-right'<br>
+&nbsp;&nbsp;&nbsp;&nbsp;};<br>
+&nbsp;&nbsp;&nbsp;&nbsp;var script = document.createElement('script');<br>
+&nbsp;&nbsp;&nbsp;&nbsp;script.src = 'http://localhost:5174/chatbot-widget.iife.js';<br>
+&nbsp;&nbsp;&nbsp;&nbsp;script.async = true;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;document.head.appendChild(script);<br>
+&nbsp;&nbsp;})();<br>
+&lt;/script&gt;
+        </code>
+    </div>
+
+    <h2>Configuration Options</h2>
+    <ul>
+        <li><strong>widgetId</strong>: Unique identifier for your widget</li>
+        <li><strong>apiUrl</strong>: Backend API URL</li>
+        <li><strong>name</strong>: Display name of the chatbot</li>
+        <li><strong>welcomeMessage</strong>: First message shown to users</li>
+        <li><strong>primaryColor</strong>: Main color of the widget (hex code)</li>
+        <li><strong>position</strong>: 'bottom-right' or 'bottom-left'</li>
+    </ul>
+
+    <h2>Try It Out</h2>
+    <p>The chatbot widget should appear in the bottom-right corner of this page. Click the chat icon to start a conversation!</p>
+
+    <!-- Widget Integration Script -->
+    <script>
+        (function() {
+            window.AIChatbot = {
+                widgetId: 'demo-widget',
+                apiUrl: 'http://localhost:8000',
+                name: 'AI Assistant',
+                welcomeMessage: 'Hi! How can I help you today?',
+                primaryColor: '#007bff',
+                position: 'bottom-right'
+            };
+            
+            // For development, load from the widget dev server
+            var script = document.createElement('script');
+            script.src = 'http://localhost:5174/@vite/client';
+            script.type = 'module';
+            document.head.appendChild(script);
+            
+            var mainScript = document.createElement('script');
+            mainScript.src = 'http://localhost:5174/src/index.tsx';
+            mainScript.type = 'module';
+            document.head.appendChild(mainScript);
+        })();
+    </script>
+</body>
+</html>
