@@ -27,4 +27,9 @@ export const knowledgeService = {
   async deleteSource(sourceId: number): Promise<void> {
     await api.delete(`/api/admin/knowledge/sources/${sourceId}`);
   },
+
+  async getVectorizedData(): Promise<any> {
+    const response = await api.get('/api/admin/knowledge/vectorized-data');
+    return response.data;
+  },
 };

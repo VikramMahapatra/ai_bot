@@ -17,6 +17,7 @@ import { knowledgeService } from '../../services/knowledgeService';
 import { KnowledgeSource } from '../../types';
 import WebCrawler from './WebCrawler';
 import DocumentUpload from './DocumentUpload';
+import VectorizedDataViewer from './VectorizedDataViewer';
 
 const KnowledgeManager: React.FC = () => {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
@@ -67,7 +68,7 @@ const KnowledgeManager: React.FC = () => {
         <DocumentUpload />
       </Box>
 
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Knowledge Sources
         </Typography>
@@ -112,6 +113,10 @@ const KnowledgeManager: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      <Box sx={{ mb: 3 }}>
+        <VectorizedDataViewer />
+      </Box>
     </Box>
   );
 };
