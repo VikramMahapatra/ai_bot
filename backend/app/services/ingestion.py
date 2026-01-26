@@ -13,7 +13,7 @@ from typing import List, Dict
 logger = logging.getLogger(__name__)
 
 
-def ingest_web_content(url: str, max_pages: int, max_depth: int, db: Session) -> KnowledgeSource:
+def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, db: Session) -> KnowledgeSource:
     """Crawl website and ingest content into knowledge base"""
     try:
         # Crawl website
@@ -25,6 +25,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, db: Session) ->
         
         # Create knowledge source
         source = KnowledgeSource(
+            user_id=user_id,
             source_type=SourceType.WEB,
             name=f"Web: {url}",
             url=url,
@@ -45,9 +46,10 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, db: Session) ->
             chunks = chunk_text(page['content'])
             
             for chunk_idx, chunk in enumerate(chunks):
-                doc_id = f"source_{source.id}_page_{idx}_chunk_{chunk_idx}"
+                doc_id = f"user_{user_id}_source_{source.id}_page_{idx}_chunk_{chunk_idx}"
                 documents.append(chunk)
                 metadatas.append({
+                    "user_id": str(user_id),
                     "source_id": str(source.id),
                     "source_type": "WEB",
                     "url": page['url'],
@@ -61,7 +63,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, db: Session) ->
         if documents:
             chroma_client.add_documents(documents, metadatas, ids)
         
-        logger.info(f"Ingested {len(documents)} chunks from {len(pages)} pages")
+        logger.info(f"Ingested {len(documents)} chunks from {len(pages)} pages for user {user_id}")
         return source
         
     except Exception as e:
@@ -69,7 +71,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, db: Session) ->
         raise
 
 
-def ingest_document(file_content: bytes, filename: str, source_type: SourceType, db: Session) -> KnowledgeSource:
+def ingest_document(file_content: bytes, filename: str, source_type: SourceType, user_id: int, db: Session) -> KnowledgeSource:
     """Parse and ingest document into knowledge base"""
     try:
         # Parse document based on type
@@ -95,6 +97,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         
         # Create knowledge source
         source = KnowledgeSource(
+            user_id=user_id,
             source_type=source_type,
             name=filename,
             file_path=file_path,
@@ -114,9 +117,10 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         ids = []
         
         for idx, chunk in enumerate(chunks):
-            doc_id = f"source_{source.id}_chunk_{idx}"
+            doc_id = f"user_{user_id}_source_{source.id}_chunk_{idx}"
             documents.append(chunk)
             metadatas.append({
+                "user_id": str(user_id),
                 "source_id": str(source.id),
                 "source_type": source_type.value,
                 "filename": filename,
@@ -129,7 +133,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         if documents:
             chroma_client.add_documents(documents, metadatas, ids)
         
-        logger.info(f"Ingested {len(chunks)} chunks from document {filename}")
+        logger.info(f"Ingested {len(chunks)} chunks from document {filename} for user {user_id}")
         return source
         
     except Exception as e:

@@ -60,17 +60,24 @@ class ChromaDBClient:
             logger.error(f"Error adding documents to ChromaDB: {str(e)}")
             raise
     
-    def query(self, query_text: str, n_results: int = 5) -> Dict:
-        """Query ChromaDB for relevant documents"""
+    def query(self, query_text: str, n_results: int = 5, user_id: int = None) -> Dict:
+        """Query ChromaDB for relevant documents, optionally filtered by user_id"""
         try:
             # Generate query embedding
             query_embedding = generate_embedding(query_text)
             
+            # Build query parameters
+            query_params = {
+                "query_embeddings": [query_embedding],
+                "n_results": n_results
+            }
+            
+            # Add user_id filter if provided
+            if user_id is not None:
+                query_params["where"] = {"user_id": str(user_id)}
+            
             # Query collection
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results
-            )
+            results = self.collection.query(**query_params)
             
             return results
         except Exception as e:
@@ -90,6 +97,17 @@ class ChromaDBClient:
                 logger.info(f"Deleted {len(results['ids'])} documents for source {source_id}")
         except Exception as e:
             logger.error(f"Error deleting documents from ChromaDB: {str(e)}")
+            raise
+    
+    def get_user_documents(self, user_id: int) -> Dict:
+        """Get all documents for a specific user"""
+        try:
+            results = self.collection.get(
+                where={"user_id": str(user_id)}
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Error getting user documents from ChromaDB: {str(e)}")
             raise
 
 
