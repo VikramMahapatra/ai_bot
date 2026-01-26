@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
-def generate_chat_response(message: str, session_id: str, widget_id: str, db: Session) -> str:
-    """Generate AI response using RAG"""
+def generate_chat_response(message: str, session_id: str, widget_id: str, user_id: int, db: Session) -> str:
+    """Generate AI response using RAG with user-specific knowledge base"""
     try:
-        # Query ChromaDB for relevant context
-        results = chroma_client.query(message, n_results=5)
+        # Query ChromaDB for relevant context filtered by user_id
+        results = chroma_client.query(message, n_results=5, user_id=user_id)
         
         # Build context from retrieved documents
         context_parts = []
@@ -33,7 +33,7 @@ def generate_chat_response(message: str, session_id: str, widget_id: str, db: Se
         messages = [
             {
                 "role": "system",
-                "content": f"""You are a helpful AI assistant. Answer questions based on the following context.
+                "content": f"""You are a helpful AI assistant. Answer questions based on the following context from the user's knowledge base.
 If the answer is not in the context, say you don't know and try to be helpful anyway.
 
 Context:
