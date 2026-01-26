@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot Widget Demo</title>
+  </head>
+  <body>
+    <h1>Chatbot Widget Demo</h1>
+    <p>This is a demo page showing the embeddable chatbot widget.</p>
+
+    <!-- Widget initialization script -->
+    <script>
+      (function() {
+        window.AIChatbot = {
+          widgetId: 'demo-widget',
+          apiUrl: 'http://localhost:8000',
+          name: 'AI Assistant',
+          welcomeMessage: 'Hi! How can I help you today?',
+          primaryColor: '#007bff',
+          position: 'bottom-right'
+        };
+      })();
+    </script>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
