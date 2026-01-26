@@ -5,6 +5,14 @@ Quick reference for all API endpoints.
 ## Base URL
 Development: `http://localhost:8000`
 
+## Multi-Tenant Architecture ⚡ NEW
+
+**User Isolation**: All knowledge sources, embeddings, and widget configurations are now user-specific:
+- Each user has their own separate knowledge base
+- Vector queries are automatically filtered by user_id
+- Chat responses use only the authenticated user's knowledge (via widget_id lookup)
+- All admin endpoints operate on the current user's data only
+
 ## Authentication
 
 All admin endpoints require a Bearer token in the Authorization header:
@@ -153,6 +161,43 @@ Response:
   "message": "Knowledge source deleted successfully"
 }
 ```
+
+#### Get Vectorized Data (View Embeddings) ⚡ NEW
+```http
+GET /api/admin/knowledge/vectorized-data
+Authorization: Bearer <token>
+
+Response:
+{
+  "user_id": 1,
+  "total_chunks": 150,
+  "documents": [
+    {
+      "id": "user_1_source_5_chunk_0",
+      "source_id": "5",
+      "source_type": "PDF",
+      "filename": "product_guide.pdf",
+      "url": null,
+      "title": null,
+      "chunk_index": 0,
+      "created_at": "2024-01-25T10:30:00",
+      "preview": "This is the first 200 characters of the embedded text chunk..."
+    },
+    {
+      "id": "user_1_source_3_page_0_chunk_1",
+      "source_id": "3",
+      "source_type": "WEB",
+      "filename": null,
+      "url": "https://example.com/page1",
+      "title": "Example Page Title",
+      "chunk_index": 1,
+      "created_at": "2024-01-25T09:15:00",
+      "preview": "This is the first 200 characters of the embedded web content..."
+    }
+  ]
+}
+```
+**Note**: This endpoint shows all vectorized/embedded chunks stored in ChromaDB for the authenticated user. Each chunk represents a piece of text that has been embedded and can be searched during RAG queries. This is user-specific - you only see your own data.
 
 ### Lead Management
 

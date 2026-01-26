@@ -1,22 +1,25 @@
 # AI Chatbot Platform
 
-A complete AI-powered chatbot platform with RAG (Retrieval Augmented Generation) capabilities, admin portal, and embeddable widget.
+A complete AI-powered chatbot platform with RAG (Retrieval Augmented Generation) capabilities, admin portal, and embeddable widget. **Now with multi-tenant user isolation!**
 
 ## Features
 
 ### Backend (FastAPI)
 - **Knowledge Management**: Crawl websites and upload documents (PDF, DOCX, XLSX)
-- **RAG-Based Chat**: AI responses powered by OpenAI with context from your knowledge base
-- **Vector Storage**: ChromaDB for efficient semantic search
+- **User-Isolated Knowledge Bases**: Each user has their own separate vector database ⚡ NEW
+- **RAG-Based Chat**: AI responses powered by OpenAI with context from user-specific knowledge
+- **Vector Storage**: ChromaDB for efficient semantic search with user filtering
 - **Lead Capture**: Automatic lead capture based on conversation triggers
-- **JWT Authentication**: Secure admin access
+- **JWT Authentication**: Secure admin access with role-based permissions
 - **RESTful API**: Well-documented endpoints
+- **Vectorized Data Viewer**: See all embedded chunks for your account ⚡ NEW
 
 ### Frontend (React + TypeScript)
 - **Admin Portal**: 
-  - Knowledge source management (web crawling, document upload)
+  - User-specific knowledge source management (web crawling, document upload) ⚡ NEW
   - Lead management with CSV export
-  - Widget configuration
+  - Widget configuration (per user) ⚡ NEW
+  - Vectorized data viewer ⚡ NEW
 - **Chat Interface**: Clean, modern chat UI with session management
 - **Responsive Design**: Works on desktop and mobile
 
@@ -24,6 +27,16 @@ A complete AI-powered chatbot platform with RAG (Retrieval Augmented Generation)
 - **Easy Integration**: Single script tag to add chatbot to any website
 - **Customizable**: Configure colors, position, welcome message
 - **Lightweight**: Minimal impact on host website performance
+- **User-Specific**: Widget uses owner's knowledge base automatically ⚡ NEW
+
+## Multi-Tenant Architecture
+
+**User Isolation**: The platform now supports multiple users with complete data isolation:
+- Each user's documents and crawled content are stored separately
+- Vector embeddings include user_id metadata for filtering
+- Chat queries only search the relevant user's knowledge base
+- Widget configurations are user-specific
+- Complete privacy between different users
 
 ## Tech Stack
 
@@ -31,7 +44,7 @@ A complete AI-powered chatbot platform with RAG (Retrieval Augmented Generation)
 - Python 3.9+
 - FastAPI
 - SQLAlchemy + SQLite
-- ChromaDB
+- ChromaDB (with user filtering)
 - OpenAI API
 - BeautifulSoup4 (web scraping)
 - PyPDF2, python-docx, openpyxl (document parsing)
