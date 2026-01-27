@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from app.config import settings
-from app.services.embeddings import generate_embedding
+from app.services.embeddings import get_embedding_function
 from typing import List, Dict
 import logging
 import os
@@ -31,27 +31,23 @@ class ChromaDBClient:
             settings=ChromaSettings(anonymized_telemetry=False)
         )
         
+        # Prepare embedding function (OpenAI or local)
+        self.embedding_function = get_embedding_function()
+
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
             name="knowledge_base",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
+            embedding_function=self.embedding_function
         )
         
         self._initialized = True
     
     def add_documents(self, documents: List[str], metadatas: List[Dict], ids: List[str]):
-        """Add documents to ChromaDB with embeddings"""
+        """Add documents to ChromaDB; embeddings computed via embedding_function"""
         try:
-            # Generate embeddings
-            embeddings = []
-            for doc in documents:
-                embedding = generate_embedding(doc)
-                embeddings.append(embedding)
-            
-            # Add to collection
             self.collection.add(
                 documents=documents,
-                embeddings=embeddings,
                 metadatas=metadatas,
                 ids=ids
             )
@@ -63,22 +59,15 @@ class ChromaDBClient:
     def query(self, query_text: str, n_results: int = 5, user_id: int = None) -> Dict:
         """Query ChromaDB for relevant documents, optionally filtered by user_id"""
         try:
-            # Generate query embedding
-            query_embedding = generate_embedding(query_text)
-            
-            # Build query parameters
             query_params = {
-                "query_embeddings": [query_embedding],
+                "query_texts": [query_text],
                 "n_results": n_results
             }
-            
-            # Add user_id filter if provided
+
             if user_id is not None:
                 query_params["where"] = {"user_id": str(user_id)}
-            
-            # Query collection
+
             results = self.collection.query(**query_params)
-            
             return results
         except Exception as e:
             logger.error(f"Error querying ChromaDB: {str(e)}")

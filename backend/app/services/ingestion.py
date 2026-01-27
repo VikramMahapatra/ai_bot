@@ -29,7 +29,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
             source_type=SourceType.WEB,
             name=f"Web: {url}",
             url=url,
-            metadata=json.dumps({"pages_crawled": len(pages)}),
+            source_metadata=json.dumps({"pages_crawled": len(pages)}),
             status="active"
         )
         db.add(source)
@@ -101,7 +101,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
             source_type=source_type,
             name=filename,
             file_path=file_path,
-            metadata=json.dumps({"original_filename": filename}),
+            source_metadata=json.dumps({"original_filename": filename}),
             status="active"
         )
         db.add(source)

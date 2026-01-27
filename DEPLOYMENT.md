@@ -160,7 +160,7 @@ Update `.env` files with production values:
 
 ### Backend
 ```env
-OPENAI_API_KEY=your-production-api-key
+OPENAPI_KEY2=your-production-api-key
 DATABASE_URL=sqlite:///./chatbot.db
 CHROMA_PERSIST_DIR=./data/chroma
 UPLOAD_DIR=./data/uploads

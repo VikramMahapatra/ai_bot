@@ -20,7 +20,7 @@ class KnowledgeSource(Base):
     name = Column(String, nullable=False)
     url = Column(String, nullable=True)  # For web sources
     file_path = Column(String, nullable=True)  # For uploaded files
-    metadata = Column(Text, nullable=True)  # JSON string for additional metadata
+    source_metadata = Column(Text, nullable=True)  # JSON string for additional metadata
     status = Column(String, default="active")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
