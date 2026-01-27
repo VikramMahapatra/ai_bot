@@ -226,7 +226,7 @@ ai_bot/
 
 ### Backend (.env)
 ```
-OPENAI_API_KEY=your-openai-api-key
+OPENAPI_KEY2=your-openai-api-key
 DATABASE_URL=sqlite:///./chatbot.db
 CHROMA_PERSIST_DIR=./data/chroma
 UPLOAD_DIR=./data/uploads
@@ -314,3 +314,22 @@ MIT License
 ## Support
 
 For issues and questions, please open an issue on GitHub.
+
+# Terminal 1 - Backend
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env and add OpenAI API key (already included in repo)
+uvicorn app.main:app --reload
+
+# Terminal 2 - Frontend
+cd frontend
+npm install
+npm run dev
+
+# Terminal 3 - Widget (optional)
+cd widget
+npm install
+npm run dev

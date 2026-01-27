@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+client = OpenAI(api_key=settings.OPENAPI_KEY2)
 
 
 def generate_chat_response(message: str, session_id: str, widget_id: str, user_id: int, db: Session) -> str:
@@ -51,7 +51,7 @@ Context:
         
         # Generate response
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=messages,
             max_tokens=500,
             temperature=0.7

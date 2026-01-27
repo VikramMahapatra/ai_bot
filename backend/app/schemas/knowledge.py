@@ -7,7 +7,7 @@ class KnowledgeSourceBase(BaseModel):
     name: str
     source_type: str
     url: Optional[str] = None
-    metadata: Optional[str] = None
+    source_metadata: Optional[str] = None
 
 
 class KnowledgeSourceCreate(KnowledgeSourceBase):
