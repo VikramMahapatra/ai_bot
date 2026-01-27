@@ -4,7 +4,10 @@ from typing import List
 
 class Settings(BaseSettings):
     # OpenAI Configuration
-    OPENAI_API_KEY: str
+    OPENAPI_KEY2: str
+    EMBEDDING_MODEL: str = "text-embedding-ada-002"
+    USE_LOCAL_EMBEDDINGS: bool = True
+    LOCAL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
     # Database Configuration
     DATABASE_URL: str = "sqlite:///./chatbot.db"

@@ -9,8 +9,8 @@ from app.config import settings
 from app.database import get_db
 from app.models import User, UserRole
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing (robust, no 72-byte limit, pure Python)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # HTTP Bearer for token authentication
 security = HTTPBearer()

@@ -22,6 +22,9 @@ const ChatInterface: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random()}`);
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -82,13 +85,18 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const handleLeadSubmit = async (data: any) => {
+  const handleLeadSubmit = async () => {
     try {
       await leadService.createLead({
         session_id: sessionId,
-        ...data,
+        name: leadName,
+        email: leadEmail,
+        phone: leadPhone,
       });
       setShowLeadForm(false);
+      setLeadName('');
+      setLeadEmail('');
+      setLeadPhone('');
     } catch (err) {
       console.error('Failed to submit lead', err);
     }
@@ -142,12 +150,28 @@ const ChatInterface: React.FC = () => {
             Get in touch
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField label="Name" size="small" />
-            <TextField label="Email" size="small" type="email" />
-            <TextField label="Phone" size="small" />
+            <TextField
+              label="Name"
+              size="small"
+              value={leadName}
+              onChange={(e) => setLeadName(e.target.value)}
+            />
+            <TextField
+              label="Email"
+              size="small"
+              type="email"
+              value={leadEmail}
+              onChange={(e) => setLeadEmail(e.target.value)}
+            />
+            <TextField
+              label="Phone"
+              size="small"
+              value={leadPhone}
+              onChange={(e) => setLeadPhone(e.target.value)}
+            />
             <Button
               variant="contained"
-              onClick={() => handleLeadSubmit({ name: '', email: '', phone: '' })}
+              onClick={handleLeadSubmit}
             >
               Submit
             </Button>

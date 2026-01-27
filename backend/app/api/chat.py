@@ -16,11 +16,12 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 @router.post("", response_model=ChatResponse)
 async def chat(
     message: ChatMessage,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
     try:
-        # Get user_id from widget_id or use a default (for testing without widget)
+        # Get user_id from widget_id or authenticated user
         user_id = None
         if message.widget_id:
             widget_config = db.query(WidgetConfig).filter(
@@ -28,12 +29,15 @@ async def chat(
             ).first()
             if widget_config:
                 user_id = widget_config.user_id
+        elif current_user:
+            # If authenticated admin user, use their ID
+            user_id = current_user.id
         
         # If no user_id found, return error
         if user_id is None:
             raise HTTPException(
                 status_code=400, 
-                detail="Invalid widget_id or user not found. Please provide a valid widget_id."
+                detail="Invalid widget_id or user not found. Please provide a valid widget_id or authenticate."
             )
         
         # Generate response with user-specific knowledge base
