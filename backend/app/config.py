@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     # CORS Configuration
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     
+    # Email Configuration
+    SMTP_HOST: str = "smtp.office365.com"
+    SMTP_PORT: int = 25
+    SMTP_USERNAME: str = "smtp@sales-arm.com"
+    SMTP_PASSWORD: str = "Salesarm@1"
+    SMTP_USE_SSL: bool = False
+    EMAIL_SENDER: str = "noreply@sales-arm.com"
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]

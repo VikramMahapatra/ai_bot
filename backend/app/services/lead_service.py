@@ -5,17 +5,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def should_capture_lead(session_id: str, db: Session) -> bool:
-    """Determine if lead should be captured based on conversation"""
+def should_capture_lead(session_id: str, organization_id: int, db: Session) -> bool:
+    """Determine if lead should be captured based on conversation (org-scoped)"""
     try:
-        # Check if lead already captured for this session
-        existing_lead = db.query(Lead).filter(Lead.session_id == session_id).first()
+        # Check if lead already captured for this session in this org
+        existing_lead = db.query(Lead).filter(
+            Lead.session_id == session_id,
+            Lead.organization_id == organization_id
+        ).first()
         if existing_lead:
             return False
         
-        # Check conversation turn count
+        # Check conversation turn count for this org
         conversation_count = db.query(Conversation).filter(
-            Conversation.session_id == session_id
+            Conversation.session_id == session_id,
+            Conversation.organization_id == organization_id
         ).count()
         
         # Trigger after 3 messages

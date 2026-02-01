@@ -17,6 +17,8 @@ class LeadResponse(BaseModel):
     id: int
     session_id: str
     widget_id: Optional[str]
+    organization_id: Optional[int]
+    user_id: Optional[int]
     name: Optional[str]
     email: Optional[str]
     phone: Optional[str]

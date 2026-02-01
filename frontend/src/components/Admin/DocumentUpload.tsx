@@ -13,7 +13,12 @@ import {
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { knowledgeService } from '../../services/knowledgeService';
 
-const DocumentUpload: React.FC = () => {
+interface DocumentUploadProps {
+  onStarted?: () => void;
+  onCompleted?: () => void;
+}
+
+const DocumentUpload: React.FC<DocumentUploadProps> = ({ onStarted, onCompleted }) => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -24,6 +29,7 @@ const DocumentUpload: React.FC = () => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
+    onStarted && onStarted();
     setError('');
     setSuccess('');
 
@@ -36,6 +42,7 @@ const DocumentUpload: React.FC = () => {
       
       setSuccess(`Successfully uploaded ${files.length} file(s)`);
       setUploadedFiles(Array.from(files).map((f) => f.name));
+      onCompleted && onCompleted();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to upload documents');
     } finally {

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models import KnowledgeSource, SourceType
+from app.models import KnowledgeSource, SourceType, User
 from app.services.web_crawler import WebCrawler
 from app.services.rag import chroma_client
 from app.utils.parsers import parse_pdf, parse_docx, parse_xlsx, chunk_text
@@ -13,9 +13,19 @@ from typing import List, Dict
 logger = logging.getLogger(__name__)
 
 
+def _get_org_id(user_id: int, db: Session) -> int:
+    """Resolve the user's organization id or raise if not found."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise Exception(f"User {user_id} not found")
+    return user.organization_id
+
+
 def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, db: Session) -> KnowledgeSource:
     """Crawl website and ingest content into knowledge base"""
     try:
+        organization_id = _get_org_id(user_id, db)
+
         # Crawl website
         crawler = WebCrawler(url, max_pages, max_depth)
         pages = crawler.crawl()
@@ -26,6 +36,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
         # Create knowledge source
         source = KnowledgeSource(
             user_id=user_id,
+            organization_id=organization_id,
             source_type=SourceType.WEB,
             name=f"Web: {url}",
             url=url,
@@ -46,9 +57,10 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
             chunks = chunk_text(page['content'])
             
             for chunk_idx, chunk in enumerate(chunks):
-                doc_id = f"user_{user_id}_source_{source.id}_page_{idx}_chunk_{chunk_idx}"
+                doc_id = f"org_{organization_id}_user_{user_id}_source_{source.id}_page_{idx}_chunk_{chunk_idx}"
                 documents.append(chunk)
                 metadatas.append({
+                    "organization_id": str(organization_id),
                     "user_id": str(user_id),
                     "source_id": str(source.id),
                     "source_type": "WEB",
@@ -63,7 +75,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
         if documents:
             chroma_client.add_documents(documents, metadatas, ids)
         
-        logger.info(f"Ingested {len(documents)} chunks from {len(pages)} pages for user {user_id}")
+        logger.info(f"Ingested {len(documents)} chunks from {len(pages)} pages for user {user_id} (org {organization_id})")
         return source
         
     except Exception as e:
@@ -74,6 +86,8 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
 def ingest_document(file_content: bytes, filename: str, source_type: SourceType, user_id: int, db: Session) -> KnowledgeSource:
     """Parse and ingest document into knowledge base"""
     try:
+        organization_id = _get_org_id(user_id, db)
+
         # Parse document based on type
         if source_type == SourceType.PDF:
             text = parse_pdf(file_content)
@@ -98,6 +112,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         # Create knowledge source
         source = KnowledgeSource(
             user_id=user_id,
+            organization_id=organization_id,
             source_type=source_type,
             name=filename,
             file_path=file_path,
@@ -117,9 +132,10 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         ids = []
         
         for idx, chunk in enumerate(chunks):
-            doc_id = f"user_{user_id}_source_{source.id}_chunk_{idx}"
+            doc_id = f"org_{organization_id}_user_{user_id}_source_{source.id}_chunk_{idx}"
             documents.append(chunk)
             metadatas.append({
+                "organization_id": str(organization_id),
                 "user_id": str(user_id),
                 "source_id": str(source.id),
                 "source_type": source_type.value,
@@ -133,7 +149,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         if documents:
             chroma_client.add_documents(documents, metadatas, ids)
         
-        logger.info(f"Ingested {len(chunks)} chunks from document {filename} for user {user_id}")
+        logger.info(f"Ingested {len(chunks)} chunks from document {filename} for user {user_id} (org {organization_id})")
         return source
         
     except Exception as e:

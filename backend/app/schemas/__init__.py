@@ -16,6 +16,16 @@ from app.schemas.lead import (
     WidgetConfigUpdate,
     WidgetConfigResponse,
 )
+from app.schemas.organization import (
+    OrganizationCreate,
+    OrganizationUpdate,
+    OrganizationResponse,
+    UserCreate,
+    UserUpdate,
+    UserResponse,
+    UserDetailResponse,
+    UserListResponse,
+)
 
 __all__ = [
     "KnowledgeSourceCreate",
@@ -30,4 +40,12 @@ __all__ = [
     "WidgetConfigCreate",
     "WidgetConfigUpdate",
     "WidgetConfigResponse",
+    "OrganizationCreate",
+    "OrganizationUpdate",
+    "OrganizationResponse",
+    "UserCreate",
+    "UserUpdate",
+    "UserResponse",
+    "UserDetailResponse",
+    "UserListResponse",
 ]

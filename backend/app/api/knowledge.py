@@ -77,8 +77,10 @@ async def list_sources(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """List all knowledge sources for the current user"""
-    sources = db.query(KnowledgeSource).filter(KnowledgeSource.user_id == current_user.id).all()
+    """List all knowledge sources for the current organization"""
+    sources = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
+        User.organization_id == current_user.organization_id
+    ).all()
     return sources
 
 
@@ -91,9 +93,9 @@ async def delete_source(
     """Delete knowledge source"""
     try:
         # Verify the source belongs to the current user
-        source = db.query(KnowledgeSource).filter(
+        source = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
             KnowledgeSource.id == source_id,
-            KnowledgeSource.user_id == current_user.id
+            User.organization_id == current_user.organization_id
         ).first()
         
         if not source:
@@ -113,10 +115,10 @@ async def get_vectorized_data(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ) -> Dict:
-    """Get vectorized data (embeddings metadata) for the current user"""
+    """Get vectorized data (embeddings metadata) for the current organization"""
     try:
         # Get all vectorized documents for this user from ChromaDB
-        results = chroma_client.get_user_documents(current_user.id)
+        results = chroma_client.get_documents(organization_id=current_user.organization_id)
         
         # Format the response
         documents_info = []
@@ -136,6 +138,7 @@ async def get_vectorized_data(
                 })
         
         return {
+            "organization_id": current_user.organization_id,
             "user_id": current_user.id,
             "total_chunks": len(documents_info),
             "documents": documents_info

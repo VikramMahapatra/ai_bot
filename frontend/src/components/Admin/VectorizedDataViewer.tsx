@@ -38,7 +38,13 @@ interface VectorizedData {
   documents: VectorizedDocument[];
 }
 
-const VectorizedDataViewer: React.FC = () => {
+interface VectorizedDataViewerProps {
+  refreshToken?: number;
+  externalLoading?: boolean;
+  onLoaded?: (data: VectorizedData) => void;
+}
+
+const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ refreshToken, externalLoading = false, onLoaded }) => {
   const [data, setData] = useState<VectorizedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -49,6 +55,7 @@ const VectorizedDataViewer: React.FC = () => {
       const result = await knowledgeService.getVectorizedData();
       setData(result);
       setError('');
+      onLoaded && onLoaded(result);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load vectorized data');
     } finally {
@@ -59,6 +66,13 @@ const VectorizedDataViewer: React.FC = () => {
   useEffect(() => {
     loadVectorizedData();
   }, []);
+
+  useEffect(() => {
+    if (typeof refreshToken !== 'undefined') {
+      loadVectorizedData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
 
   const getSourceTypeColor = (type: string) => {
     const colors: { [key: string]: 'primary' | 'secondary' | 'success' | 'info' } = {
@@ -78,6 +92,12 @@ const VectorizedDataViewer: React.FC = () => {
           Vectorized Data (Embeddings)
         </Typography>
       </Box>
+
+      {(externalLoading && !loading) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Processing new embeddings... <CircularProgress size={16} sx={{ ml: 1 }} />
+        </Alert>
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -113,7 +133,7 @@ const VectorizedDataViewer: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data.documents.map((doc, index) => (
+                  {data.documents.map((doc) => (
                     <TableRow key={doc.id} hover>
                       <TableCell>
                         <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>

@@ -6,6 +6,13 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ChatPage from './pages/ChatPage';
+import KnowledgePage from './pages/KnowledgePage';
+import LeadsPage from './pages/LeadsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import SettingsPage from './pages/SettingsPage';
+import UserManagementPage from './pages/UserManagementPage';
+import WidgetManagementPage from './pages/WidgetManagementPage';
+import ReportsPage from './pages/ReportsPage';
 
 // New modern theme based on wastewise-tracker design
 const theme = createTheme({
@@ -158,9 +165,22 @@ const theme = createTheme({
   },
 });
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'ALL' }> = ({ 
+  children, 
+  requiredRole = 'ALL' 
+}) => {
+  const { isAuthenticated, userRole } = useAuth();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // If admin-only route, check role
+  if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
+    return <Navigate to="/chat" replace />;
+  }
+  
+  return <>{children}</>;
 };
 
 function AppRoutes() {
@@ -170,7 +190,7 @@ function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="ADMIN">
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -183,7 +203,63 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/login" />} />
+      <Route
+        path="/knowledge"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <KnowledgePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/leads"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <LeadsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <AnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/widgets"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <WidgetManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <UserManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/" element={<Navigate to="/admin" />} />
     </Routes>
   );
 }

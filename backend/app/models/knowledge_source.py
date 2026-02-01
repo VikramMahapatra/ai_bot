@@ -16,6 +16,7 @@ class KnowledgeSource(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     source_type = Column(SQLEnum(SourceType), nullable=False)
     name = Column(String, nullable=False)
     url = Column(String, nullable=True)  # For web sources
