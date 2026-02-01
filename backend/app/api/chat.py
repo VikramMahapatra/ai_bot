@@ -1,16 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel, EmailStr
 from app.database import get_db
-from app.models import Conversation, WidgetConfig
+from app.models import Conversation, WidgetConfig, User
 from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem
 from app.services import generate_chat_response, should_capture_lead
+from app.services.email_service import send_conversation_email
 from app.auth import get_current_user
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+class EmailConversationRequest(BaseModel):
+    session_id: str
+    email: EmailStr
 
 
 @router.post("", response_model=ChatResponse)
@@ -40,18 +47,25 @@ async def chat(
                 detail="Invalid widget_id or user not found. Please provide a valid widget_id or authenticate."
             )
         
-        # Generate response with user-specific knowledge base
-        response = generate_chat_response(
+        # Resolve organization for scoping
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found for chat context")
+
+        # Generate response with organization-scoped knowledge base
+        response_text, sources = generate_chat_response(
             message.message,
             message.session_id,
             message.widget_id,
             user_id,
+            user.organization_id,
             db
         )
         
         return ChatResponse(
-            response=response,
-            session_id=message.session_id
+            response=response_text,
+            session_id=message.session_id,
+            sources=sources
         )
     except HTTPException:
         raise
@@ -63,11 +77,13 @@ async def chat(
 @router.get("/history/{session_id}", response_model=List[ConversationHistoryItem])
 async def get_history(
     session_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Get conversation history"""
+    """Get conversation history (scoped to user's organization)"""
     conversations = db.query(Conversation).filter(
-        Conversation.session_id == session_id
+        Conversation.session_id == session_id,
+        Conversation.organization_id == current_user.organization_id
     ).order_by(Conversation.created_at).all()
     
     return conversations
@@ -76,8 +92,47 @@ async def get_history(
 @router.get("/should-capture-lead/{session_id}")
 async def check_lead_capture(
     session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Check if lead should be captured (scoped to user's organization)"""
+    should_capture = should_capture_lead(session_id, current_user.organization_id, db)
+    return {"should_capture": should_capture}
+
+
+@router.post("/email-conversation")
+async def email_conversation(
+    request: EmailConversationRequest,
     db: Session = Depends(get_db)
 ):
-    """Check if lead should be captured"""
-    should_capture = should_capture_lead(session_id, db)
-    return {"should_capture": should_capture}
+    """Send conversation transcript via email"""
+    try:
+        # Get conversation history
+        conversations = db.query(Conversation).filter(
+            Conversation.session_id == request.session_id
+        ).order_by(Conversation.created_at).all()
+        
+        if not conversations:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Format conversation data
+        conversation_data = []
+        for conv in conversations:
+            conversation_data.append({
+                "role": conv.role,
+                "content": conv.message if conv.role == "user" else conv.response
+            })
+        
+        # Send email
+        success = send_conversation_email(request.email, conversation_data)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send email")
+        
+        return {"message": "Email sent successfully", "email": request.email}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending conversation email: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

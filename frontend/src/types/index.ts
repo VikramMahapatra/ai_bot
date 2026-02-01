@@ -2,6 +2,8 @@ export interface User {
   username: string;
   email: string;
   role: 'ADMIN' | 'USER';
+  organization_id?: number;
+  user_id?: number;
 }
 
 export interface KnowledgeSource {
@@ -26,9 +28,17 @@ export interface ChatMessage {
   widget_id?: string;
 }
 
+export interface SourceInfo {
+  id: number;
+  name: string;
+  type: string;
+  url?: string;
+}
+
 export interface ChatResponse {
   response: string;
   session_id: string;
+  sources?: SourceInfo[];
 }
 
 export interface ConversationHistoryItem {
@@ -47,6 +57,12 @@ export interface Lead {
   phone?: string;
   company?: string;
   created_at: string;
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  description?: string;
 }
 
 export interface LeadCreate {
@@ -75,9 +91,14 @@ export interface WidgetConfig {
 export interface LoginRequest {
   username: string;
   password: string;
+  organization_id: number;
 }
 
 export interface LoginResponse {
   access_token: string;
   token_type: string;
+  user_id: number;
+  organization_id: number;
+  role: 'ADMIN' | 'USER';
+  organization_name: string;
 }

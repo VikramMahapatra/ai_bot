@@ -18,4 +18,12 @@ export const chatService = {
     );
     return response.data.should_capture;
   },
+
+  async emailConversation(sessionId: string, email: string): Promise<{ message: string; email: string }> {
+    const response = await api.post<{ message: string; email: string }>(
+      '/api/chat/email-conversation',
+      { session_id: sessionId, email }
+    );
+    return response.data;
+  },
 };

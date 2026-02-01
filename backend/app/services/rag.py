@@ -56,16 +56,22 @@ class ChromaDBClient:
             logger.error(f"Error adding documents to ChromaDB: {str(e)}")
             raise
     
-    def query(self, query_text: str, n_results: int = 5, user_id: int = None) -> Dict:
-        """Query ChromaDB for relevant documents, optionally filtered by user_id"""
+    def query(self, query_text: str, n_results: int = 5, user_id: int = None, organization_id: int = None) -> Dict:
+        """Query ChromaDB for relevant documents, optionally filtered by organization and user."""
         try:
             query_params = {
                 "query_texts": [query_text],
                 "n_results": n_results
             }
 
+            where_clause = {}
+            if organization_id is not None:
+                where_clause["organization_id"] = str(organization_id)
             if user_id is not None:
-                query_params["where"] = {"user_id": str(user_id)}
+                where_clause["user_id"] = str(user_id)
+
+            if where_clause:
+                query_params["where"] = where_clause
 
             results = self.collection.query(**query_params)
             return results
@@ -88,15 +94,19 @@ class ChromaDBClient:
             logger.error(f"Error deleting documents from ChromaDB: {str(e)}")
             raise
     
-    def get_user_documents(self, user_id: int) -> Dict:
-        """Get all documents for a specific user"""
+    def get_documents(self, organization_id: int = None, user_id: int = None) -> Dict:
+        """Get documents filtered by organization and/or user."""
         try:
-            results = self.collection.get(
-                where={"user_id": str(user_id)}
-            )
+            where_clause = {}
+            if organization_id is not None:
+                where_clause["organization_id"] = str(organization_id)
+            if user_id is not None:
+                where_clause["user_id"] = str(user_id)
+
+            results = self.collection.get(where=where_clause or None)
             return results
         except Exception as e:
-            logger.error(f"Error getting user documents from ChromaDB: {str(e)}")
+            logger.error(f"Error getting documents from ChromaDB: {str(e)}")
             raise
 
 
