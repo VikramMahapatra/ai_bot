@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -29,6 +29,11 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
+    
+    # Ensure 'sub' is a string (JWT spec requires it)
+    if 'sub' in to_encode and not isinstance(to_encode['sub'], str):
+        to_encode['sub'] = str(to_encode['sub'])
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -60,21 +65,63 @@ def get_current_user(
     token = credentials.credentials
     payload = decode_access_token(token)
     
-    username: str = payload.get("sub")
-    if username is None:
+    user_id_str: str = payload.get("sub")
+    if user_id_str is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
     
-    user = db.query(User).filter(User.username == username).first()
-    if user is None:
+    # Convert string back to int
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail="Invalid user ID in token",
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
         )
     
     return user
+
+
+def get_current_user_optional(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Get current authenticated user (optional - returns None if not authenticated)"""
+    auth_header = request.headers.get("authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    
+    try:
+        token = auth_header.split(" ")[1]
+        payload = decode_access_token(token)
+        
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
+            return None
+        
+        # Convert string back to int
+        try:
+            user_id = int(user_id_str)
+        except (ValueError, TypeError):
+            return None
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None or not user.is_active:
+            return None
+        
+        return user
+    except Exception as e:
+        # If token is invalid, return None (optional auth)
+        return None
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:

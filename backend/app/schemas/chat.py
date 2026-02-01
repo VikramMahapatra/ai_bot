@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 
 
@@ -9,9 +9,17 @@ class ChatMessage(BaseModel):
     widget_id: Optional[str] = None
 
 
+class SourceInfo(BaseModel):
+    id: int
+    name: str
+    type: str
+    url: Optional[str] = None
+
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
+    sources: List[SourceInfo] = []
 
 
 class ConversationHistoryItem(BaseModel):

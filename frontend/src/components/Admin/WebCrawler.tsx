@@ -10,7 +10,12 @@ import {
 } from '@mui/material';
 import { knowledgeService } from '../../services/knowledgeService';
 
-const WebCrawler: React.FC = () => {
+interface WebCrawlerProps {
+  onStarted?: () => void;
+  onCompleted?: () => void;
+}
+
+const WebCrawler: React.FC<WebCrawlerProps> = ({ onStarted, onCompleted }) => {
   const [url, setUrl] = useState('');
   const [maxPages, setMaxPages] = useState(10);
   const [maxDepth, setMaxDepth] = useState(3);
@@ -25,6 +30,7 @@ const WebCrawler: React.FC = () => {
     }
 
     setLoading(true);
+    onStarted && onStarted();
     setError('');
     setSuccess('');
 
@@ -32,6 +38,7 @@ const WebCrawler: React.FC = () => {
       await knowledgeService.crawlWebsite({ url, max_pages: maxPages, max_depth: maxDepth });
       setSuccess('Website crawled successfully!');
       setUrl('');
+      onCompleted && onCompleted();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to crawl website');
     } finally {
