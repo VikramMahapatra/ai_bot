@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from typing import List, Dict
 from app.database import get_db
@@ -27,7 +27,14 @@ async def crawl_website(
 ):
     """Crawl website and ingest content for the current user"""
     try:
-        source = ingest_web_content(request.url, request.max_pages, request.max_depth, current_user.id, db)
+        source = ingest_web_content(
+            request.url,
+            request.max_pages,
+            request.max_depth,
+            current_user.id,
+            request.widget_id,
+            db,
+        )
         return source
     except Exception as e:
         logger.error(f"Error crawling website: {str(e)}")
@@ -37,6 +44,7 @@ async def crawl_website(
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
+    widget_id: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -57,13 +65,14 @@ async def upload_document(
         content = await file.read()
         
         # Ingest document
-        source = ingest_document(content, file.filename, source_type, current_user.id, db)
+        source = ingest_document(content, file.filename, source_type, current_user.id, widget_id, db)
         
         return DocumentUploadResponse(
             id=source.id,
             name=source.name,
             source_type=source.source_type.value,
-            status=source.status
+            status=source.status,
+            widget_id=source.widget_id or widget_id,
         )
     except HTTPException:
         raise
@@ -75,12 +84,18 @@ async def upload_document(
 @router.get("/sources", response_model=List[KnowledgeSourceResponse])
 async def list_sources(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    widget_id: str = None,
 ):
     """List all knowledge sources for the current organization"""
-    sources = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
+    if not widget_id:
+        raise HTTPException(status_code=400, detail="widget_id is required")
+    query = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
         User.organization_id == current_user.organization_id
-    ).all()
+    )
+    if widget_id:
+        query = query.filter(KnowledgeSource.widget_id == widget_id)
+    sources = query.all()
     return sources
 
 
@@ -113,12 +128,18 @@ async def delete_source(
 @router.get("/vectorized-data")
 async def get_vectorized_data(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    widget_id: str = None,
 ) -> Dict:
     """Get vectorized data (embeddings metadata) for the current organization"""
     try:
+        if not widget_id:
+            raise HTTPException(status_code=400, detail="widget_id is required")
         # Get all vectorized documents for this user from ChromaDB
-        results = chroma_client.get_documents(organization_id=current_user.organization_id)
+        results = chroma_client.get_documents(
+            organization_id=current_user.organization_id,
+            widget_id=widget_id,
+        )
         
         # Format the response
         documents_info = []

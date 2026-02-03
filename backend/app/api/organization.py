@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import get_current_user, require_admin, get_password_hash, create_access_token
-from app.models import User, Organization, UserRole
+from app.models import User, Organization, UserRole, WidgetConfig
 from app.schemas import (
     OrganizationCreate,
     OrganizationResponse,
@@ -56,6 +56,33 @@ def get_current_organization(
             detail="Organization not found",
         )
     return org
+
+
+@router.get("/me/widgets")
+def get_current_org_widgets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all widgets for the current user's organization.
+    Available to all authenticated users (not just admins).
+    """
+    org_id = current_user.organization_id
+
+    widgets = db.query(WidgetConfig).filter(
+        WidgetConfig.organization_id == org_id
+    ).all()
+
+    return {
+        "widgets": [
+            {
+                "widget_id": w.widget_id,
+                "name": w.name,
+                "created_at": w.created_at.isoformat() if w.created_at else None,
+            }
+            for w in widgets
+        ]
+    }
 
 
 # ======================== User Management ========================
@@ -453,3 +480,30 @@ def delete_organization_user(
     
     db.delete(user)
     db.commit()
+
+
+@router.get("/widgets")
+def get_organization_widgets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all widgets for the current user's organization.
+    Available to all authenticated users (not just admins).
+    """
+    org_id = current_user.organization_id
+    
+    widgets = db.query(WidgetConfig).filter(
+        WidgetConfig.organization_id == org_id
+    ).all()
+    
+    return {
+        "widgets": [
+            {
+                "widget_id": w.widget_id,
+                "name": w.name,
+                "created_at": w.created_at.isoformat() if w.created_at else None,
+            }
+            for w in widgets
+        ]
+    }

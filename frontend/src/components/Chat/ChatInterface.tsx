@@ -15,7 +15,11 @@ import {
   Alert,
   Divider,
   Collapse,
-  Chip
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
@@ -29,6 +33,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import InfoIcon from '@mui/icons-material/Info';
 import { chatService } from '../../services/chatService';
 import { leadService } from '../../services/leadService';
+import { dashboardService } from '../../services/dashboardService';
 import MarkdownRenderer from './MarkdownRenderer';
 import MessageFeedback from './MessageFeedback';
 
@@ -50,6 +55,9 @@ const ChatInterface: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random()}`);
+  const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
+  const [selectedWidgetId, setSelectedWidgetId] = useState('');
+  const [widgetError, setWidgetError] = useState('');
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [leadName, setLeadName] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
@@ -72,9 +80,26 @@ const ChatInterface: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    const loadWidgets = async () => {
+      try {
+        const data = await dashboardService.getWidgets();
+        const widgetItems = data?.widgets || [];
+        setWidgets(widgetItems.map((w: any) => ({ widget_id: w.widget_id, name: w.name })));
+        if (!selectedWidgetId && widgetItems.length > 0) {
+          setSelectedWidgetId(widgetItems[0].widget_id);
+        }
+      } catch (err) {
+        setWidgetError('Failed to load widgets');
+      }
+    };
+
+    loadWidgets();
+  }, []);
+
   const checkLeadCapture = async () => {
     try {
-      const shouldCapture = await chatService.shouldCaptureLead(sessionId);
+      const shouldCapture = await chatService.shouldCaptureLead(sessionId, selectedWidgetId);
       if (shouldCapture && !showLeadForm) {
         setShowLeadForm(true);
       }
@@ -85,6 +110,11 @@ const ChatInterface: React.FC = () => {
 
   const handleSend = async () => {
     if (!input.trim()) return;
+    if (!selectedWidgetId) {
+      setWidgetError('Please select a widget before starting a chat.');
+      return;
+    }
+    setWidgetError('');
 
     const userMessage = input;
     setInput('');
@@ -95,6 +125,7 @@ const ChatInterface: React.FC = () => {
       const response = await chatService.sendMessage({
         message: userMessage,
         session_id: sessionId,
+        widget_id: selectedWidgetId,
       });
 
       setMessages((prev) => [
@@ -131,6 +162,7 @@ const ChatInterface: React.FC = () => {
       setSubmittingLead(true);
       await leadService.createLead({
         session_id: sessionId,
+        widget_id: selectedWidgetId,
         name: leadName,
         email: leadEmail,
         phone: leadPhone,
@@ -184,6 +216,11 @@ const ChatInterface: React.FC = () => {
 
   return (
     <Box sx={{ height: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', minHeight: '500px', maxHeight: '700px' }}>
+      {widgetError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {widgetError}
+        </Alert>
+      )}
       <Paper sx={{ flexGrow: 1, overflow: 'auto', p: 2, mb: 2, background: 'linear-gradient(135deg, #e0f2f7 0%, #f8fafb 100%)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -195,6 +232,21 @@ const ChatInterface: React.FC = () => {
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>Ask anything, get instant answers.</Typography>
             </Box>
           </Box>
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel id="chat-widget-select-label">Widget</InputLabel>
+            <Select
+              labelId="chat-widget-select-label"
+              value={selectedWidgetId}
+              label="Widget"
+              onChange={(e) => setSelectedWidgetId(e.target.value)}
+            >
+              {widgets.map((widget) => (
+                <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                  {widget.name} ({widget.widget_id})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {messages.length > 0 && (
             <Tooltip title="Email this conversation" placement="left">
               <Button

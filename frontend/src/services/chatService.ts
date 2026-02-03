@@ -7,14 +7,17 @@ export const chatService = {
     return response.data;
   },
 
-  async getHistory(sessionId: string): Promise<ConversationHistoryItem[]> {
-    const response = await api.get<ConversationHistoryItem[]>(`/api/chat/history/${sessionId}`);
+  async getHistory(sessionId: string, widgetId?: string): Promise<ConversationHistoryItem[]> {
+    const response = await api.get<ConversationHistoryItem[]>(`/api/chat/history/${sessionId}`, {
+      params: widgetId ? { widget_id: widgetId } : undefined,
+    });
     return response.data;
   },
 
-  async shouldCaptureLead(sessionId: string): Promise<boolean> {
+  async shouldCaptureLead(sessionId: string, widgetId?: string): Promise<boolean> {
     const response = await api.get<{ should_capture: boolean }>(
-      `/api/chat/should-capture-lead/${sessionId}`
+      `/api/chat/should-capture-lead/${sessionId}`,
+      { params: widgetId ? { widget_id: widgetId } : undefined }
     );
     return response.data.should_capture;
   },

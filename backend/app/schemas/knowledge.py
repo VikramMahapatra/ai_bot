@@ -4,6 +4,7 @@ from datetime import datetime
 
 
 class KnowledgeSourceBase(BaseModel):
+    widget_id: str
     name: str
     source_type: str
     url: Optional[str] = None
@@ -24,6 +25,7 @@ class KnowledgeSourceResponse(KnowledgeSourceBase):
 
 
 class WebCrawlRequest(BaseModel):
+    widget_id: str
     url: str
     max_pages: int = 10
     max_depth: int = 3
@@ -34,3 +36,4 @@ class DocumentUploadResponse(BaseModel):
     name: str
     source_type: str
     status: str
+    widget_id: str
