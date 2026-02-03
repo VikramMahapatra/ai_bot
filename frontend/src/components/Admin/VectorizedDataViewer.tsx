@@ -39,12 +39,13 @@ interface VectorizedData {
 }
 
 interface VectorizedDataViewerProps {
+  widgetId: string;
   refreshToken?: number;
   externalLoading?: boolean;
   onLoaded?: (data: VectorizedData) => void;
 }
 
-const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ refreshToken, externalLoading = false, onLoaded }) => {
+const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, refreshToken, externalLoading = false, onLoaded }) => {
   const [data, setData] = useState<VectorizedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,7 +53,7 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ refreshToke
   const loadVectorizedData = async () => {
     try {
       setLoading(true);
-      const result = await knowledgeService.getVectorizedData();
+      const result = await knowledgeService.getVectorizedData(widgetId);
       setData(result);
       setError('');
       onLoaded && onLoaded(result);
@@ -64,11 +65,12 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ refreshToke
   };
 
   useEffect(() => {
+    if (!widgetId) return;
     loadVectorizedData();
-  }, []);
+  }, [widgetId]);
 
   useEffect(() => {
-    if (typeof refreshToken !== 'undefined') {
+    if (typeof refreshToken !== 'undefined' && widgetId) {
       loadVectorizedData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

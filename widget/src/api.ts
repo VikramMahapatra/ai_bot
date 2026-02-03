@@ -1,8 +1,3 @@
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 interface ChatResponse {
   response: string;
   session_id: string;
@@ -39,10 +34,13 @@ export class ChatAPI {
     return response.json();
   }
 
-  async shouldCaptureLead(sessionId: string): Promise<boolean> {
-    const response = await fetch(
-      `${this.baseURL}/api/chat/should-capture-lead/${sessionId}`
-    );
+  async shouldCaptureLead(sessionId: string, widgetId?: string): Promise<boolean> {
+    const url = new URL(`${this.baseURL}/api/chat/should-capture-lead/${sessionId}`);
+    if (widgetId) {
+      url.searchParams.set('widget_id', widgetId);
+    }
+
+    const response = await fetch(url.toString());
 
     if (!response.ok) {
       return false;

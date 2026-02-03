@@ -14,11 +14,12 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { knowledgeService } from '../../services/knowledgeService';
 
 interface DocumentUploadProps {
+  widgetId: string;
   onStarted?: () => void;
   onCompleted?: () => void;
 }
 
-const DocumentUpload: React.FC<DocumentUploadProps> = ({ onStarted, onCompleted }) => {
+const DocumentUpload: React.FC<DocumentUploadProps> = ({ widgetId, onStarted, onCompleted }) => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -35,7 +36,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onStarted, onCompleted 
 
     try {
       const uploadPromises = Array.from(files).map((file) =>
-        knowledgeService.uploadDocument(file)
+        knowledgeService.uploadDocument(file, widgetId)
       );
       
       await Promise.all(uploadPromises);
@@ -65,7 +66,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onStarted, onCompleted 
           variant="contained"
           component="label"
           startIcon={<CloudUploadIcon />}
-          disabled={uploading}
+          disabled={uploading || !widgetId}
         >
           Upload Documents
           <input

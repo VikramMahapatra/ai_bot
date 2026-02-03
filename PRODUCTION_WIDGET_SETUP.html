@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Production Widget Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 40px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 16px;
+      margin-bottom: 30px;
+    }
+    .code-block {
+      background: #f4f4f4;
+      border-left: 4px solid #007bff;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 20px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+    .section {
+      margin: 30px 0;
+    }
+    .section h2 {
+      color: #222;
+      font-size: 18px;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 10px;
+    }
+    .feature-list {
+      list-style: none;
+      padding: 0;
+    }
+    .feature-list li {
+      padding: 8px 0;
+      padding-left: 24px;
+      position: relative;
+    }
+    .feature-list li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #28a745;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💬 AI Chatbot Widget - Production Setup</h1>
+    <p class="subtitle">Embed this widget on any website to add an AI chat assistant</p>
+
+    <div class="section">
+      <h2>Quick Start</h2>
+      <p>Add this code to your website before the closing <code>&lt;/body&gt;</code> tag:</p>
+      <div class="code-block">
+&lt;script&gt;
+  window.AIChatbot = {
+    widgetId: 'widget_1769582231293',
+    apiUrl: 'https://your-api-domain.com',
+    name: 'AI Assistant',
+    welcomeMessage: 'Hi! How can I help you today?',
+    primaryColor: '#007bff',
+    position: 'bottom-right'
+  };
+&lt;/script&gt;
+&lt;script src="https://cdn.example.com/chatbot-widget.iife.js"&gt;&lt;/script&gt;
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Configuration Options</h2>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr style="background: #f9f9f9;">
+          <th style="text-align: left; padding: 10px; border: 1px solid #ddd;"><strong>Option</strong></th>
+          <th style="text-align: left; padding: 10px; border: 1px solid #ddd;"><strong>Type</strong></th>
+          <th style="text-align: left; padding: 10px; border: 1px solid #ddd;"><strong>Description</strong></th>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>widgetId</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">string</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">Unique identifier for this widget</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>apiUrl</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">string</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">Your backend API URL (e.g., https://api.yourdomain.com)</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>name</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">string</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">Display name in chat header</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>welcomeMessage</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">string</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">First message shown when user opens chat</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>primaryColor</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">hex color</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">Widget theme color (e.g., #007bff)</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd;"><code>position</code></td>
+          <td style="padding: 10px; border: 1px solid #ddd;">string</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">bottom-right or bottom-left</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Deployment Steps</h2>
+      <ol style="line-height: 1.8;">
+        <li><strong>Build the widget</strong>
+          <div class="code-block">cd widget
+npm run build</div>
+        </li>
+        <li><strong>Upload to CDN or web server</strong>
+          <div class="code-block">Upload: widget/dist/chatbot-widget.iife.js</div>
+        </li>
+        <li><strong>Update API URL</strong>
+          <div class="code-block">apiUrl: 'https://your-live-api-domain.com'</div>
+        </li>
+        <li><strong>Add script tag to your website</strong>
+          <p>Copy the Quick Start code above to your website.</p>
+        </li>
+        <li><strong>Test on your domain</strong>
+          <p>Open your website and look for the chat bubble in the bottom-right corner.</p>
+        </li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <h2>Features</h2>
+      <ul class="feature-list">
+        <li>AI-powered responses with knowledge base integration</li>
+        <li>Conversation history (stored locally in browser)</li>
+        <li>Lead capture (optional)</li>
+        <li>Customizable colors and messages</li>
+        <li>Mobile-friendly and responsive</li>
+        <li>No dependencies - single IIFE script</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Popular Hosting Options</h2>
+      <ul style="line-height: 1.8;">
+        <li><strong>GoDaddy</strong> - Upload chatbot-widget.iife.js to File Manager under /public_html/</li>
+        <li><strong>AWS S3 + CloudFront</strong> - Upload to S3 bucket, serve via CloudFront CDN</li>
+        <li><strong>Cloudflare</strong> - Use Cloudflare Pages or Workers</li>
+        <li><strong>Your own server</strong> - Copy to /var/www/cdn/ and serve via your web server</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Example: Full HTML Page</h2>
+      <div class="code-block">
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;My Company&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;Welcome to My Company&lt;/h1&gt;
+  &lt;p&gt;We're here to help. Chat with our AI assistant!&lt;/p&gt;
+
+  &lt;script&gt;
+    window.AIChatbot = {
+      widgetId: 'widget_1769582231293',
+      apiUrl: 'https://api.mycompany.com',
+      name: 'Support Bot',
+      welcomeMessage: 'Need help? Ask me anything!',
+      primaryColor: '#ff6b35',
+      position: 'bottom-right'
+    };
+  &lt;/script&gt;
+  &lt;script src="https://cdn.mycompany.com/chatbot-widget.iife.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+      </div>
+    </div>
+
+    <div class="section" style="background: #f0f7ff; padding: 20px; border-radius: 4px; border-left: 4px solid #007bff;">
+      <h3 style="margin-top: 0;">💡 Pro Tips</h3>
+      <ul style="margin: 10px 0; padding-left: 20px;">
+        <li>Test on localhost first before deploying to production</li>
+        <li>Ensure your backend API allows CORS from your website domain</li>
+        <li>Monitor chat analytics through your dashboard</li>
+        <li>Update knowledge base regularly for better responses</li>
+        <li>Use a CDN for faster widget loading globally</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Live widget example - shows on this page -->
+  <script>
+    window.AIChatbot = {
+      widgetId: 'widget_1769582231293',
+      apiUrl: 'http://localhost:8000',
+      name: 'Production Demo',
+      welcomeMessage: 'This is a live demo widget!',
+      primaryColor: '#007bff',
+      position: 'bottom-right'
+    };
+  </script>
+  <!-- Replace this path with your hosted URL in production -->
+  <script src="../widget/dist/chatbot-widget.iife.js"></script>
+</body>
+</html>

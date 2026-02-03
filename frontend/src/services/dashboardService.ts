@@ -17,7 +17,8 @@ export const dashboardService = {
   },
 
   async getWidgets() {
-    const response = await api.get('/api/admin/dashboard/widgets');
+    // Use organization endpoint instead of admin endpoint for regular users
+    const response = await api.get('/api/organizations/me/widgets');
     return response.data;
   },
 
