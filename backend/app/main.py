@@ -42,6 +42,11 @@ app.include_router(analytics_router)
 app.include_router(feedback_router)
 app.include_router(reports_router)
 
+# Handle OPTIONS requests for CORS preflight
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle CORS preflight requests"""
+    return {"status": "ok"}
 
 @app.on_event("startup")
 async def startup_event():

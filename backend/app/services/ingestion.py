@@ -21,7 +21,7 @@ def _get_org_id(user_id: int, db: Session) -> int:
     return user.organization_id
 
 
-def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, db: Session) -> KnowledgeSource:
+def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, widget_id: str, db: Session) -> KnowledgeSource:
     """Crawl website and ingest content into knowledge base"""
     try:
         organization_id = _get_org_id(user_id, db)
@@ -37,6 +37,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
         source = KnowledgeSource(
             user_id=user_id,
             organization_id=organization_id,
+            widget_id=widget_id,
             source_type=SourceType.WEB,
             name=f"Web: {url}",
             url=url,
@@ -62,6 +63,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
                 metadatas.append({
                     "organization_id": str(organization_id),
                     "user_id": str(user_id),
+                    "widget_id": str(widget_id),
                     "source_id": str(source.id),
                     "source_type": "WEB",
                     "url": page['url'],
@@ -83,7 +85,7 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, d
         raise
 
 
-def ingest_document(file_content: bytes, filename: str, source_type: SourceType, user_id: int, db: Session) -> KnowledgeSource:
+def ingest_document(file_content: bytes, filename: str, source_type: SourceType, user_id: int, widget_id: str, db: Session) -> KnowledgeSource:
     """Parse and ingest document into knowledge base"""
     try:
         organization_id = _get_org_id(user_id, db)
@@ -113,6 +115,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
         source = KnowledgeSource(
             user_id=user_id,
             organization_id=organization_id,
+            widget_id=widget_id,
             source_type=source_type,
             name=filename,
             file_path=file_path,
@@ -137,6 +140,7 @@ def ingest_document(file_content: bytes, filename: str, source_type: SourceType,
             metadatas.append({
                 "organization_id": str(organization_id),
                 "user_id": str(user_id),
+                "widget_id": str(widget_id),
                 "source_id": str(source.id),
                 "source_type": source_type.value,
                 "filename": filename,

@@ -11,11 +11,12 @@ import {
 import { knowledgeService } from '../../services/knowledgeService';
 
 interface WebCrawlerProps {
+  widgetId: string;
   onStarted?: () => void;
   onCompleted?: () => void;
 }
 
-const WebCrawler: React.FC<WebCrawlerProps> = ({ onStarted, onCompleted }) => {
+const WebCrawler: React.FC<WebCrawlerProps> = ({ widgetId, onStarted, onCompleted }) => {
   const [url, setUrl] = useState('');
   const [maxPages, setMaxPages] = useState(10);
   const [maxDepth, setMaxDepth] = useState(3);
@@ -35,7 +36,7 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ onStarted, onCompleted }) => {
     setSuccess('');
 
     try {
-      await knowledgeService.crawlWebsite({ url, max_pages: maxPages, max_depth: maxDepth });
+      await knowledgeService.crawlWebsite({ widget_id: widgetId, url, max_pages: maxPages, max_depth: maxDepth });
       setSuccess('Website crawled successfully!');
       setUrl('');
       onCompleted && onCompleted();
@@ -84,7 +85,7 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ onStarted, onCompleted }) => {
         <Button
           variant="contained"
           onClick={handleCrawl}
-          disabled={loading}
+          disabled={loading || !widgetId}
           startIcon={loading && <CircularProgress size={20} />}
         >
           {loading ? 'Crawling...' : 'Start Crawling'}

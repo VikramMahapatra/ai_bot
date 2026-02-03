@@ -7,13 +7,19 @@ export const leadService = {
     return response.data;
   },
 
-  async listLeads(skip: number = 0, limit: number = 100): Promise<Lead[]> {
-    const response = await api.get<Lead[]>(`/api/admin/leads?skip=${skip}&limit=${limit}`);
+  async listLeads(skip: number = 0, limit: number = 100, widgetId?: string): Promise<Lead[]> {
+    const params = new URLSearchParams({
+      skip: String(skip),
+      limit: String(limit),
+    });
+    if (widgetId) params.append('widget_id', widgetId);
+    const response = await api.get<Lead[]>(`/api/admin/leads?${params.toString()}`);
     return response.data;
   },
 
-  async exportLeads(): Promise<Blob> {
+  async exportLeads(widgetId?: string): Promise<Blob> {
     const response = await api.get('/api/admin/leads/export', {
+      params: widgetId ? { widget_id: widgetId } : undefined,
       responseType: 'blob',
     });
     return response.data;

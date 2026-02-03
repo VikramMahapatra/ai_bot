@@ -48,9 +48,12 @@ function initWidget() {
 
 // Wait for DOM to be ready
 if (document.readyState === 'loading') {
+  console.log('Document loading, attaching DOMContentLoaded listener');
   document.addEventListener('DOMContentLoaded', initWidget);
 } else {
+  console.log('Document already loaded, calling initWidget immediately');
   initWidget();
 }
 
 export { ChatWidget };
+

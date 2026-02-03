@@ -7,7 +7,7 @@ from app.models import Conversation, WidgetConfig, User
 from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem
 from app.services import generate_chat_response, should_capture_lead
 from app.services.email_service import send_conversation_email
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_user_optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class EmailConversationRequest(BaseModel):
 async def chat(
     message: ChatMessage,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user_optional)
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
     try:
@@ -78,13 +78,17 @@ async def chat(
 async def get_history(
     session_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    widget_id: str = None,
 ):
     """Get conversation history (scoped to user's organization)"""
-    conversations = db.query(Conversation).filter(
+    query = db.query(Conversation).filter(
         Conversation.session_id == session_id,
         Conversation.organization_id == current_user.organization_id
-    ).order_by(Conversation.created_at).all()
+    )
+    if widget_id:
+        query = query.filter(Conversation.widget_id == widget_id)
+    conversations = query.order_by(Conversation.created_at).all()
     
     return conversations
 
@@ -93,10 +97,11 @@ async def get_history(
 async def check_lead_capture(
     session_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    widget_id: str = None,
 ):
     """Check if lead should be captured (scoped to user's organization)"""
-    should_capture = should_capture_lead(session_id, current_user.organization_id, db)
+    should_capture = should_capture_lead(session_id, current_user.organization_id, widget_id, db)
     return {"should_capture": should_capture}
 
 

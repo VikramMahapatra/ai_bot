@@ -7,9 +7,10 @@ export const knowledgeService = {
     return response.data;
   },
 
-  async uploadDocument(file: File): Promise<any> {
+  async uploadDocument(file: File, widgetId: string): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('widget_id', widgetId);
 
     const response = await api.post('/api/admin/knowledge/upload', formData, {
       headers: {
@@ -19,8 +20,10 @@ export const knowledgeService = {
     return response.data;
   },
 
-  async listSources(): Promise<KnowledgeSource[]> {
-    const response = await api.get<KnowledgeSource[]>('/api/admin/knowledge/sources');
+  async listSources(widgetId?: string): Promise<KnowledgeSource[]> {
+    const response = await api.get<KnowledgeSource[]>('/api/admin/knowledge/sources', {
+      params: widgetId ? { widget_id: widgetId } : undefined,
+    });
     return response.data;
   },
 
@@ -28,8 +31,10 @@ export const knowledgeService = {
     await api.delete(`/api/admin/knowledge/sources/${sourceId}`);
   },
 
-  async getVectorizedData(): Promise<any> {
-    const response = await api.get('/api/admin/knowledge/vectorized-data');
+  async getVectorizedData(widgetId?: string): Promise<any> {
+    const response = await api.get('/api/admin/knowledge/vectorized-data', {
+      params: widgetId ? { widget_id: widgetId } : undefined,
+    });
     return response.data;
   },
 };

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TechFlow Solutions - AI-Powered Support</title>
+  <!-- Load widget CSS -->
+  <link rel="stylesheet" href="../widget/dist/chatbot-widget.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 1rem 0;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: #555;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    .nav-links a:hover {
+      color: #667eea;
+    }
+
+    .hero {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 20px;
+      text-align: center;
+      color: white;
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .hero p {
+      font-size: 1.3rem;
+      margin-bottom: 2rem;
+      opacity: 0.95;
+    }
+
+    .cta-button {
+      display: inline-block;
+      padding: 15px 40px;
+      background: white;
+      color: #667eea;
+      text-decoration: none;
+      border-radius: 50px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .cta-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    .content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 60px 20px;
+      background: white;
+      border-radius: 20px 20px 0 0;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 60px;
+    }
+
+    .feature-card {
+      padding: 2rem;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+    }
+
+    .feature-card h3 {
+      color: #667eea;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+    }
+
+    .feature-card p {
+      color: #555;
+      line-height: 1.8;
+    }
+
+    .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .about-section {
+      padding: 3rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 12px;
+      margin-bottom: 60px;
+    }
+
+    .about-section h2 {
+      font-size: 2.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .about-section p {
+      font-size: 1.1rem;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+    }
+
+    .chat-demo {
+      background: #f8f9fa;
+      padding: 3rem;
+      border-radius: 12px;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .chat-demo h2 {
+      color: #667eea;
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .chat-demo p {
+      color: #666;
+      font-size: 1.1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .chat-demo .hint {
+      display: inline-block;
+      background: #fff;
+      padding: 1rem 2rem;
+      border-radius: 50px;
+      color: #667eea;
+      font-weight: bold;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+      background: #f8f9fa;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+      
+      .hero p {
+        font-size: 1rem;
+      }
+
+      .nav-links {
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <nav class="nav-container">
+      <a href="#" class="logo">⚡ TechFlow</a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#demo">Demo</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>Transform Your Customer Support with AI</h1>
+    <p>Intelligent chatbot solutions that scale with your business</p>
+    <a href="#demo" class="cta-button">Try Live Demo →</a>
+  </section>
+
+  <main class="content">
+    <section id="features" class="features">
+      <div class="feature-card">
+        <div class="icon">🚀</div>
+        <h3>Lightning Fast</h3>
+        <p>Respond to customer queries instantly, 24/7. Our AI-powered chatbot provides immediate assistance without wait times.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🧠</div>
+        <h3>Smart & Learning</h3>
+        <p>Continuously improves from every interaction. Leverages advanced machine learning to understand context and intent.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔒</div>
+        <h3>Secure & Private</h3>
+        <p>Enterprise-grade security with end-to-end encryption. Your data and customer conversations are always protected.</p>
+      </div>
+    </section>
+
+    <section id="about" class="about-section">
+      <h2>Why Choose TechFlow Solutions?</h2>
+      <p>We're revolutionizing customer support with cutting-edge AI technology. Our chatbot solutions help businesses of all sizes provide exceptional customer experiences while reducing operational costs.</p>
+      <p>With over 10,000+ satisfied customers worldwide, we've processed millions of conversations and maintained a 98% satisfaction rate. Our platform integrates seamlessly with your existing tools and can be deployed in minutes.</p>
+      <p>Join the future of customer engagement today and see why industry leaders trust TechFlow for their AI-powered support needs.</p>
+    </section>
+
+    <section id="demo" class="chat-demo">
+      <h2>🎯 Try Our AI Assistant Now!</h2>
+      <p>Click the chat bubble in the bottom-right corner to start a conversation with our intelligent AI assistant.</p>
+      <div class="hint">👉 Look for the chat icon below 💬</div>
+    </section>
+
+    <footer class="footer">
+      <p>© 2026 TechFlow Solutions. All rights reserved.</p>
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">AI Chatbot Widget Demo • Powered by Advanced ML</p>
+    </footer>
+  </main>
+
+  <!-- Widget Integration Script (Built IIFE) -->
+  <script>
+    // Set config BEFORE loading the widget script
+    window.AIChatbot = {
+      widgetId: 'widget_1769582231293',
+      apiUrl: 'http://localhost:8000',
+      name: 'AI Assistant',
+      welcomeMessage: 'Hi! How can I help you today?',
+      primaryColor: '#00ffb3',
+      position: 'bottom-right'
+    };
+  </script>
+  <script src="../widget/dist/chatbot-widget.iife.js"></script>
+</body>
+</html>

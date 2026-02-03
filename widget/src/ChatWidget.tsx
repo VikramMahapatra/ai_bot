@@ -160,6 +160,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               Send
             </button>
           </div>
+
+          <div className="chatbot-widget-footer">
+            Powered by Zentrixel AI
+          </div>
         </div>
       )}
     </div>

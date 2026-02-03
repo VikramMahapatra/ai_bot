@@ -16,7 +16,12 @@ def generate_chat_response(message: str, session_id: str, widget_id: str, user_i
     """Generate AI response using RAG with organization-scoped knowledge base. Returns (response, sources)."""
     try:
         # Query ChromaDB for relevant context filtered by organization
-        results = chroma_client.query(message, n_results=5, organization_id=organization_id)
+        results = chroma_client.query(
+            message,
+            n_results=5,
+            organization_id=organization_id,
+            widget_id=widget_id,
+        )
         
         # Build context from retrieved documents and extract source info
         context_parts = []
@@ -38,7 +43,8 @@ def generate_chat_response(message: str, session_id: str, widget_id: str, user_i
         if source_ids:
             source_records = db.query(KnowledgeSource).filter(
                 KnowledgeSource.id.in_(source_ids),
-                KnowledgeSource.organization_id == organization_id
+                KnowledgeSource.organization_id == organization_id,
+                KnowledgeSource.widget_id == widget_id,
             ).all()
             
             for source in source_records:
@@ -53,7 +59,8 @@ def generate_chat_response(message: str, session_id: str, widget_id: str, user_i
         
         # Get conversation history
         history = db.query(Conversation).filter(
-            Conversation.session_id == session_id
+            Conversation.session_id == session_id,
+            Conversation.widget_id == widget_id,
         ).order_by(Conversation.created_at.desc()).limit(5).all()
         
         # Build messages for OpenAI

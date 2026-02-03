@@ -6,7 +6,7 @@ from datetime import datetime
 class ChatMessage(BaseModel):
     message: str
     session_id: str
-    widget_id: Optional[str] = None
+    widget_id: str
 
 
 class SourceInfo(BaseModel):

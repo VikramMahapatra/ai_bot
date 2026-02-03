@@ -8,6 +8,7 @@ export interface User {
 
 export interface KnowledgeSource {
   id: number;
+  widget_id?: string;
   source_type: 'WEB' | 'PDF' | 'DOCX' | 'XLSX';
   name: string;
   url?: string;
@@ -17,6 +18,7 @@ export interface KnowledgeSource {
 }
 
 export interface WebCrawlRequest {
+  widget_id: string;
   url: string;
   max_pages: number;
   max_depth: number;
@@ -25,7 +27,7 @@ export interface WebCrawlRequest {
 export interface ChatMessage {
   message: string;
   session_id: string;
-  widget_id?: string;
+  widget_id: string;
 }
 
 export interface SourceInfo {

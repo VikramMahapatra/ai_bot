@@ -16,11 +16,16 @@ import {
   AccordionDetails,
   Chip,
   Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { knowledgeService } from '../../services/knowledgeService';
+import { dashboardService } from '../../services/dashboardService';
 import { KnowledgeSource } from '../../types';
 import WebCrawler from './WebCrawler';
 import DocumentUpload from './DocumentUpload';
@@ -28,15 +33,17 @@ import VectorizedDataViewer from './VectorizedDataViewer';
 
 const KnowledgeManager: React.FC = () => {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [vectorRefreshToken, setVectorRefreshToken] = useState<number>(0);
   const [vectorLoading, setVectorLoading] = useState<boolean>(false);
   const [lastTotalChunks, setLastTotalChunks] = useState<number>(0);
 
-  const loadSources = async () => {
+  const loadSources = async (widgetId?: string) => {
     try {
-      const data = await knowledgeService.listSources();
+      const data = await knowledgeService.listSources(widgetId);
       setSources(data);
     } catch (err) {
       setError('Failed to load knowledge sources');
@@ -45,11 +52,29 @@ const KnowledgeManager: React.FC = () => {
     }
   };
 
+  const loadWidgets = async () => {
+    try {
+      const data = await dashboardService.getWidgets();
+      const widgetItems = data?.widgets || [];
+      setWidgets(widgetItems.map((w: any) => ({ widget_id: w.widget_id, name: w.name })));
+      if (!selectedWidgetId && widgetItems.length > 0) {
+        setSelectedWidgetId(widgetItems[0].widget_id);
+      }
+    } catch (err) {
+      setError('Failed to load widgets');
+    }
+  };
+
   useEffect(() => {
-    loadSources();
-    const interval = setInterval(loadSources, 5000); // Refresh every 5 seconds
-    return () => clearInterval(interval);
+    loadWidgets();
   }, []);
+
+  useEffect(() => {
+    if (!selectedWidgetId) return;
+    loadSources(selectedWidgetId);
+    const interval = setInterval(() => loadSources(selectedWidgetId), 5000); // Refresh every 5 seconds
+    return () => clearInterval(interval);
+  }, [selectedWidgetId]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this source?')) return;
@@ -66,6 +91,30 @@ const KnowledgeManager: React.FC = () => {
     <Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {widgets.length === 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          No widgets found. Create a widget before adding knowledge sources.
+        </Alert>
+      )}
+
+      <Box sx={{ mb: 3 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel id="knowledge-widget-select-label">Widget</InputLabel>
+          <Select
+            labelId="knowledge-widget-select-label"
+            value={selectedWidgetId}
+            label="Widget"
+            onChange={(e) => setSelectedWidgetId(e.target.value)}
+          >
+            {widgets.map((widget) => (
+              <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                {widget.name} ({widget.widget_id})
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
       <Grid container spacing={3}>
         {/* Add New Source Accordions */}
         <Grid item xs={12} lg={6}>
@@ -78,6 +127,7 @@ const KnowledgeManager: React.FC = () => {
             </AccordionSummary>
             <AccordionDetails>
               <WebCrawler 
+                widgetId={selectedWidgetId}
                 onStarted={() => setVectorLoading(true)}
                 onCompleted={() => {
                   setVectorLoading(true);
@@ -98,6 +148,7 @@ const KnowledgeManager: React.FC = () => {
             </AccordionSummary>
             <AccordionDetails>
               <DocumentUpload 
+                widgetId={selectedWidgetId}
                 onStarted={() => setVectorLoading(true)}
                 onCompleted={() => {
                   setVectorLoading(true);
@@ -180,6 +231,7 @@ const KnowledgeManager: React.FC = () => {
             </AccordionSummary>
             <AccordionDetails>
               <VectorizedDataViewer 
+                widgetId={selectedWidgetId}
                 refreshToken={vectorRefreshToken}
                 externalLoading={vectorLoading}
                 onLoaded={(data) => {

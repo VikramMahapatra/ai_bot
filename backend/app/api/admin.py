@@ -223,9 +223,12 @@ async def update_widget_config(
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
     
-    # Update fields
+    # Define fields that should not be updated
+    readonly_fields = {'id', 'user_id', 'organization_id', 'created_at', 'updated_at', 'widget_id'}
+    
+    # Update only allowed fields
     for key, value in config_data.items():
-        if hasattr(config, key) and key != "user_id":  # Don't allow changing user_id
+        if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
     
     db.commit()

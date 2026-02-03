@@ -89,22 +89,30 @@ async def create_lead(
 async def list_leads(
     skip: int = 0,
     limit: int = 100,
+    widget_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
     """List all leads (paginated)"""
-    leads = db.query(Lead).filter(Lead.organization_id == current_user.organization_id).offset(skip).limit(limit).all()
+    query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
+    if widget_id:
+        query = query.filter(Lead.widget_id == widget_id)
+    leads = query.offset(skip).limit(limit).all()
     return leads
 
 
 @router.get("/export")
 async def export_leads(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    widget_id: Optional[str] = None,
 ):
     """Export leads to CSV"""
     try:
-        leads = db.query(Lead).filter(Lead.organization_id == current_user.organization_id).all()
+        query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
+        if widget_id:
+            query = query.filter(Lead.widget_id == widget_id)
+        leads = query.all()
         
         # Convert to dict
         leads_data = []

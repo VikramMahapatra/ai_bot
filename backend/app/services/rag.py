@@ -56,22 +56,28 @@ class ChromaDBClient:
             logger.error(f"Error adding documents to ChromaDB: {str(e)}")
             raise
     
-    def query(self, query_text: str, n_results: int = 5, user_id: int = None, organization_id: int = None) -> Dict:
-        """Query ChromaDB for relevant documents, optionally filtered by organization and user."""
+    def query(self, query_text: str, n_results: int = 5, user_id: int = None, organization_id: int = None, widget_id: str = None) -> Dict:
+        """Query ChromaDB for relevant documents, optionally filtered by organization, widget, and user."""
         try:
             query_params = {
                 "query_texts": [query_text],
                 "n_results": n_results
             }
 
-            where_clause = {}
+            # Build where clause with proper ChromaDB syntax
+            conditions = []
             if organization_id is not None:
-                where_clause["organization_id"] = str(organization_id)
+                conditions.append({"organization_id": str(organization_id)})
             if user_id is not None:
-                where_clause["user_id"] = str(user_id)
+                conditions.append({"user_id": str(user_id)})
+            if widget_id is not None:
+                conditions.append({"widget_id": str(widget_id)})
 
-            if where_clause:
-                query_params["where"] = where_clause
+            # ChromaDB requires $and operator when multiple conditions
+            if len(conditions) > 1:
+                query_params["where"] = {"$and": conditions}
+            elif len(conditions) == 1:
+                query_params["where"] = conditions[0]
 
             results = self.collection.query(**query_params)
             return results
@@ -94,16 +100,26 @@ class ChromaDBClient:
             logger.error(f"Error deleting documents from ChromaDB: {str(e)}")
             raise
     
-    def get_documents(self, organization_id: int = None, user_id: int = None) -> Dict:
-        """Get documents filtered by organization and/or user."""
+    def get_documents(self, organization_id: int = None, user_id: int = None, widget_id: str = None) -> Dict:
+        """Get documents filtered by organization, widget, and/or user."""
         try:
-            where_clause = {}
+            # Build where clause with proper ChromaDB syntax
+            conditions = []
             if organization_id is not None:
-                where_clause["organization_id"] = str(organization_id)
+                conditions.append({"organization_id": str(organization_id)})
             if user_id is not None:
-                where_clause["user_id"] = str(user_id)
+                conditions.append({"user_id": str(user_id)})
+            if widget_id is not None:
+                conditions.append({"widget_id": str(widget_id)})
 
-            results = self.collection.get(where=where_clause or None)
+            # ChromaDB requires $and operator when multiple conditions
+            where_clause = None
+            if len(conditions) > 1:
+                where_clause = {"$and": conditions}
+            elif len(conditions) == 1:
+                where_clause = conditions[0]
+
+            results = self.collection.get(where=where_clause)
             return results
         except Exception as e:
             logger.error(f"Error getting documents from ChromaDB: {str(e)}")

@@ -150,7 +150,19 @@ const WidgetManagementPage: React.FC = () => {
   };
 
   const handleCopyEmbedCode = (widgetId: string) => {
-    const embedCode = `<script async src="http://localhost:5173/widget.html?widget_id=${widgetId}"></script>`;
+    const embedCode = `<!-- AI Chatbot Widget -->
+<link rel="stylesheet" href="https://your-domain.com/widget/dist/chatbot-widget.css" />
+<script>
+  window.AIChatbot = {
+    widgetId: '${widgetId}',
+    apiUrl: 'https://your-api-domain.com',
+    name: 'AI Assistant',
+    welcomeMessage: 'Hi! How can I help you today?',
+    primaryColor: '#007bff',
+    position: 'bottom-right'
+  };
+</script>
+<script src="https://your-domain.com/widget/dist/chatbot-widget.iife.js"><\/script>`;
     navigator.clipboard.writeText(embedCode);
     setSuccess('Embed code copied to clipboard');
   };
@@ -481,8 +493,20 @@ const WidgetManagementPage: React.FC = () => {
                 fullWidth
                 size="small"
                 multiline
-                rows={2}
-                value={`<script async src="http://localhost:5173/widget.html?widget_id=${formData.widget_id}"></script>`}
+                rows={6}
+                value={`<!-- AI Chatbot Widget -->
+<link rel="stylesheet" href="https://your-domain.com/widget/dist/chatbot-widget.css" />
+<script>
+  window.AIChatbot = {
+    widgetId: '${formData.widget_id}',
+    apiUrl: 'https://your-api-domain.com',
+    name: 'AI Assistant',
+    welcomeMessage: 'Hi! How can I help you today?',
+    primaryColor: '#007bff',
+    position: 'bottom-right'
+  };
+</script>
+<script src="https://your-domain.com/widget/dist/chatbot-widget.iife.js"><\/script>`}
                 InputProps={{ readOnly: true }}
                 sx={{ mt: 0.5 }}
               />
