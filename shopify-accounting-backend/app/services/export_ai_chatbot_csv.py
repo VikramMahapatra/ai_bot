@@ -1,6 +1,7 @@
 import csv
 from io import StringIO
 import os
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.helpers.file_helper import get_timestamped_filename
 from app.models.customer import Customer
@@ -13,105 +14,231 @@ from app.models.product import Product
 from app.models.refund import Refund
 from app.models.shipping_zone import ShippingZone
 from app.models.transaction import OrderTransaction
-
-EXPORT_DIR = "exports"
-
-
-def ensure_dir():
-    os.makedirs(EXPORT_DIR, exist_ok=True)
-
+import json 
 
 
 # ---------------------------------------
 # Build AI context (important)
 # ---------------------------------------
 
-def build_customer_ai_context(customer, orders, fulfillments, refunds):
+def export_ai_knowledge_dataset(db: Session):
 
-    context = []
+    file_path = get_timestamped_filename("ai_knowledge")
 
-    context.append(f"Customer {customer.name} ({customer.email})")
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
 
-    if orders:
-        context.append("\nOrders:")
-
-        for o in orders:
-            context.append(
-                f"Order #{o.order_number} - "
-                f"{o.financial_status} - "
-                f"{o.fulfillment_status} - "
-                f"${o.total_price}"
-            )
-
-        # last order
-        last_order = sorted(orders, key=lambda x: x.order_date)[-1]
-
-        context.append("\nLast Order:")
-        context.append(f"Order #{last_order.order_number}")
-
-        f = next((x for x in fulfillments if x.order_id == last_order.id), None)
-
-        if f:
-            context.append(f"Tracking: {f.tracking_number}")
-            context.append(f"Carrier: {f.tracking_company}")
-        else:
-            context.append("Tracking: Not available")
-
-    if refunds:
-        context.append("\nRefunds:")
-        for r in refunds:
-            context.append(f"Refund ${r.amount} - {r.status}")
-
-    return "\n".join(context)
-
-# ---------------------------------------
-# MAIN EXPORT FUNCTION
-# ---------------------------------------
-
-def create_advanced_chatbot_csv(db):
-
-    output = StringIO()
-    writer = csv.writer(output)
-
-    # header
-    writer.writerow([
-        "customer_id",
-        "customer_name",
-        "email",
-        "ai_context"
-    ])
-
-    customers = db.query(Customer).all()
-    orders = db.query(Order).all()
-    fulfillments = db.query(Fulfillment).all()
-    refunds = db.query(Refund).all()
-
-    for c in customers:
-
-        customer_orders = [o for o in orders if o.customer_id == c.id]
-        customer_refunds = [r for r in refunds if r.customer_id == c.id]
-
-        ai_context = build_customer_ai_context(
-            c,
-            customer_orders,
-            fulfillments,
-            customer_refunds
-        )
+        writer = csv.writer(f)
 
         writer.writerow([
-            str(c.id),
-            c.name,
-            c.email,
-            ai_context
+            "knowledge_type",
+            "entity_id",
+            "shop_id",
+            "context_text",
+            "metadata_json"
         ])
 
-    output.seek(0)
+        # ======================
+        # CUSTOMER KNOWLEDGE
+        # ======================
 
-    return output
+        customers = (
+            db.query(
+                Customer,
+                func.count(Order.id).label("order_count"),
+                func.sum(Order.total_price).label("total_spend")
+            )
+            .outerjoin(Order, Order.customer_id == Customer.id)
+            .group_by(Customer.id)
+            .all()
+        )
+
+        for c, order_count, total_spend in customers:
+
+            name = (
+                c.display_name
+                or f"{c.first_name or ''} {c.last_name or ''}".strip()
+            )
+
+            text = (
+                f"Customer {name} with email {c.email}. "
+                f"Total orders {order_count or 0}. "
+                f"Lifetime spend {float(total_spend or 0)}."
+            )
+
+            metadata = {"type": "customer"}
+
+            writer.writerow([
+                "customer",
+                c.id,
+                c.shop_id,
+                text,
+                json.dumps(metadata)
+            ])
+
+        # ======================
+        # ORDER + SHIPPING
+        # ======================
+
+        data = (
+            db.query(Order, Fulfillment)
+            .outerjoin(Fulfillment, Fulfillment.order_id == Order.id)
+            .all()
+        )
+
+        for o, f_item in data:
+
+            text = (
+                f"Order {o.order_number} is {o.financial_status}. "
+                f"Fulfillment status {o.fulfillment_status}. "
+                f"Total price {o.total_price} {o.currency}."
+            )
+
+            if f_item:
+                text += (
+                    f" Tracking number {f_item.tracking_number} "
+                    f"via {f_item.tracking_company}."
+                )
+
+            writer.writerow([
+                "order",
+                o.id,
+                o.shop_id,
+                text,
+                json.dumps({"type": "order"})
+            ])
+
+        # ======================
+        # INVENTORY KNOWLEDGE
+        # ======================
+
+        inventory = (
+            db.query(Product, InventoryLevel)
+            .join(
+                InventoryLevel,
+                InventoryLevel.shop_id == Product.shop_id
+            )
+            .all()
+        )
+
+        for p, inv in inventory:
+
+            text = (
+                f"Product {p.title} has available stock "
+                f"{inv.available} units."
+            )
+
+            writer.writerow([
+                "inventory",
+                inv.id,
+                p.shop_id,
+                text,
+                json.dumps({"type": "inventory"})
+            ])
+
+        # ======================
+        # LEGAL POLICIES
+        # ======================
+
+        policies = db.query(LegalPolicy).all()
+
+        for policy in policies:
+
+            text = f"{policy.policy_type}: {policy.title}. {policy.body}"
+
+            writer.writerow([
+                "legal_policy",
+                policy.id,
+                policy.shop_id,
+                text,
+                json.dumps({"type": "policy"})
+            ])
+
+    return file_path
+
+
+def export_customers_csv(db: Session):
+
+    file_path = get_timestamped_filename("customers_ai")
+
+    data = (
+        db.query(
+            Customer,
+            func.count(Order.id).label("order_count"),
+            func.sum(Order.total_price).label("lifetime_value"),
+            func.max(Order.order_date).label("last_order_date")
+        )
+        .outerjoin(Order, Order.customer_id == Customer.id)
+        .group_by(Customer.id)
+        .all()
+    )
+
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
+
+        writer = csv.writer(f)
+
+        writer.writerow([
+            "shop_id",
+            "customer_id",
+            "customer_name",
+            "customer_email",
+            "customer_segment",
+            "lifetime_orders",
+            "lifetime_value",
+            "last_order_date",
+            "customer_status",
+            "ai_summary",
+            "sample_questions"
+        ])
+
+        for customer, order_count, lifetime_value, last_order in data:
+
+            name = (
+                customer.display_name
+                or f"{customer.first_name or ''} {customer.last_name or ''}".strip()
+            )
+
+            order_count = order_count or 0
+            lifetime_value = float(lifetime_value or 0)
+
+            # ---------- AI segmentation logic ----------
+            if order_count >= 10:
+                segment = "VIP"
+            elif order_count >= 2:
+                segment = "returning"
+            else:
+                segment = "new"
+
+            status = "active" if order_count > 0 else "no_orders"
+
+            # ---------- AI semantic summary ----------
+            ai_summary = (
+                f"{segment} customer with {order_count} orders "
+                f"and lifetime value {lifetime_value}"
+            )
+
+            # ---------- training prompts ----------
+            sample_questions = (
+                "show my orders | last order | payment status | where is my order"
+            )
+
+            writer.writerow([
+                customer.shop_id,
+                customer.id,
+                name,
+                customer.email,
+                segment,
+                order_count,
+                lifetime_value,
+                last_order,
+                status,
+                ai_summary,
+                sample_questions
+            ])
+
+    return file_path
+
 
 def export_orders_csv(db: Session):
-
-    ensure_dir()
 
     file_path = get_timestamped_filename("orders")
 
@@ -203,6 +330,8 @@ def export_fulfillments_csv(db: Session):
         writer.writerow([
             "order_id",
             "order_number",
+            "customer_id",
+            "customer_name",
             "customer_email",
             "fulfillment_id",
             "tracking_number",
@@ -216,6 +345,8 @@ def export_fulfillments_csv(db: Session):
             writer.writerow([
                 order.id,
                 order.order_number,
+                getattr(customer, "id", None),
+                getattr(customer, "display_name", None),
                 getattr(customer, "email", None),
                 fulfillment.shopify_fulfillment_id,
                 fulfillment.tracking_number,
@@ -228,16 +359,15 @@ def export_fulfillments_csv(db: Session):
 
 def export_refunds_csv(db: Session):
 
-    ensure_dir()
-
     file_path = get_timestamped_filename("refunds")
 
     # -----------------------------------
-    # Fetch refunds with order reference
+    # Fetch refunds with order + customer
     # -----------------------------------
     refunds = (
-        db.query(Refund, Order)
+        db.query(Refund, Order, Customer)
         .outerjoin(Order, Order.id == Refund.order_id)
+        .outerjoin(Customer, Customer.id == Order.customer_id)
         .all()
     )
 
@@ -245,33 +375,41 @@ def export_refunds_csv(db: Session):
     # Write CSV
     # -----------------------------------
     with open(file_path, "w", newline="", encoding="utf-8") as f:
+
         writer = csv.writer(f)
 
         writer.writerow([
             "order_id",
             "refund_id",
+            "customer_id",
+            "customer_name",
+            "customer_email",
             "refund_status",
             "refund_amount",
             "refund_reason",
             "refund_date"
         ])
 
-        for refund, order in refunds:
+        for refund, order, customer in refunds:
 
             raw = refund.raw_data or {}
 
-            # Shopify refunds don't always include explicit status,
-            # but you can infer from transactions if needed
+            # Shopify refund status (may not exist)
             refund_status = raw.get("status")
 
-            # refund reason may be inside refund_line_items
+            # extract reason safely
             refund_reason = None
-            if raw.get("refund_line_items"):
-                refund_reason = raw["refund_line_items"][0].get("reason")
+            refund_items = raw.get("refund_line_items")
+
+            if refund_items and isinstance(refund_items, list):
+                refund_reason = refund_items[0].get("reason")
 
             writer.writerow([
                 refund.order_id,
                 refund.shopify_refund_id,
+                getattr(customer, "id", None),
+                getattr(customer, "display_name", None),
+                getattr(customer, "email", None),
                 refund_status,
                 refund.total_amount,
                 refund_reason,
@@ -411,6 +549,8 @@ def export_transactions_csv(db: Session):
         writer.writerow([
             "order_id",
             "order_number",
+            "customer_id",
+            "customer_name",
             "customer_email",
             "transaction_id",
             "gateway",
@@ -430,6 +570,8 @@ def export_transactions_csv(db: Session):
             writer.writerow([
                 order.id,
                 order.order_number,
+                getattr(customer, "id", None),
+                getattr(customer, "display_name", None),
                 getattr(customer, "email", None),
                 t.shopify_transaction_id,
                 t.gateway,
@@ -495,7 +637,7 @@ def export_legal_policies_csv(db: Session):
                 p.policy_type,
                 p.title,
                 p.body,
-                p.updated_at
+                p.shopify_updated_at   
             ])
 
     return file_path
@@ -505,12 +647,13 @@ def export_shipping_csv(db: Session):
     file_path = get_timestamped_filename("shipping")
 
     data = (
-        db.query(Order, Fulfillment, ShippingZone)
+        db.query(Order, Fulfillment, ShippingZone, Customer)
         .join(Fulfillment, Fulfillment.order_id == Order.id)
         .outerjoin(
             ShippingZone,
             ShippingZone.shop_id == Order.shop_id   # assuming order has shop_id
         )
+        .outerjoin(Customer, Customer.id == Order.customer_id)
         .all()
     )
 
@@ -522,6 +665,9 @@ def export_shipping_csv(db: Session):
             "shop_id",
             "order_id",
             "order_number",
+            "customer_id",
+            "customer_name",
+            "customer_email",
             "shipping_zone",
             "tracking_number",
             "carrier",
@@ -529,12 +675,15 @@ def export_shipping_csv(db: Session):
             "shipped_at"
         ])
 
-        for o, f_item, zone in data:
+        for o, f_item, zone, customer in data:
 
             writer.writerow([
                 o.shop_id,
                 o.id,
                 o.order_number,
+                getattr(customer, "id", None),
+                getattr(customer, "display_name", None),
+                getattr(customer, "email", None),
                 getattr(zone, "name", None),
                 f_item.tracking_number,
                 f_item.tracking_company,

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from requests import Session
 from app.db.session import get_db
+from app.helpers import file_helper
 from app.services import export_ai_chatbot_csv as service
 
 
@@ -10,22 +11,14 @@ router = APIRouter(
 )
 
 
-@router.get("/export/chatbot-ai-csv")
-def export_chatbot_ai_csv(db: Session =Depends(get_db)):
-
-    csv_file = service.create_advanced_chatbot_csv(db)
-
-    return StreamingResponse(
-        csv_file,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=chatbot_ai_training.csv"}
-    )
-
-
 @router.get("/export-chatbot-data")
 async def export_chatbot_data(db: Session = Depends(get_db)):
+    
+    file_helper.clear_export_folder() 
 
     return {
+        "ai_knowledge_": service.export_ai_knowledge_dataset(db),
+        "customers": service.export_customers_csv(db),
         "orders": service.export_orders_csv(db),
         "fulfillments": service.export_fulfillments_csv(db),
         "refunds": service.export_refunds_csv(db),
