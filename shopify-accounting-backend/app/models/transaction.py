@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Numeric, DateTime, ForeignKey, BigInteger
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 class OrderTransaction(Base):
@@ -17,3 +18,5 @@ class OrderTransaction(Base):
 
     processed_at = Column(DateTime(timezone=True))
     raw_data = Column(JSONB)
+    
+    order = relationship("Order")
