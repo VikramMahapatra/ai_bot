@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, DateTime, Numeric, ForeignKey, BigInteger
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from app.db.base import Base
+from sqlalchemy.orm import relationship
 
 class Order(Base):
     __tablename__ = "orders"
@@ -31,3 +32,5 @@ class Order(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    line_items = relationship("OrderLineItem", back_populates="order", cascade="all, delete-orphan")

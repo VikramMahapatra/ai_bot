@@ -11,5 +11,9 @@ class Refund(Base):
     order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
     shopify_refund_id = Column(BigInteger, unique=True)
     total_amount = Column(Numeric)
-    created_at = Column(DateTime)
+    currency = Column(String(10), nullable=True)        # new
+    refund_reason = Column(String(255), nullable=True)  # new
+    processed_at = Column(DateTime, nullable=True)      # optional, for your system
+    created_at = Column(DateTime)                       # Shopify created_at
     raw_data = Column(JSONB)
+

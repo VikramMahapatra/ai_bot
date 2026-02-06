@@ -1,4 +1,5 @@
 from fastapi import Depends
+from requests import Session
 from app.db.session import SessionLocal, get_db
 from app.models.shop import Shop
 from app.models.order import Order
@@ -15,7 +16,9 @@ from app.sync.shipping_zones import sync_shipping_zones
 from app.sync.transactions import sync_transactions
 from app.sync.payouts import sync_payouts
 
-async def run_full_sync(shop_id: int, db = Depends(get_db)):
+async def run_full_sync(shop_id: int):
+    
+    db = SessionLocal()
     
     shop = db.query(Shop).get(shop_id)
     if not shop:

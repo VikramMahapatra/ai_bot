@@ -1,3 +1,0 @@
-order_id,order_number,customer_email,transaction_id,gateway,kind,status,amount,currency,processed_at
-a1506305-3cd0-44ad-b498-70f204f3ea0e,#1002,,7598330675338,manual,sale,success,84.85,USD,2026-02-04 15:09:09+05:30
-c7e9c540-cd31-4761-9bae-ba5fdbbf23eb,#1001,,7598268383370,manual,sale,success,185.00,USD,2026-02-04 13:47:11+05:30

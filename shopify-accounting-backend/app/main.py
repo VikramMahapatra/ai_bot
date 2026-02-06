@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from app.models import shop, customer, product, order, order_tax, transaction, draft_order
+from app.models import *
 from app.api import auth, export, sync
 from app.db.base import Base
 from app.db.session import engine

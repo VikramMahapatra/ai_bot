@@ -4,6 +4,8 @@ from requests import Session
 from app.helpers.sync_state_helper import get_last_sync, update_last_sync
 from app.models.customer import Customer
 from app.models.draft_order import DraftOrder
+from app.models.order_line_item import OrderLineItem
+from app.models.product import Product
 from app.models.shop import Shop
 from app.services.shopify_client import ShopifyClient
 from app.models.order import Order
@@ -50,6 +52,48 @@ async def sync_orders(db: Session, shop: Shop, client : ShopifyClient):
             db.flush()
 
             hydrate_customer_from_order(db, order, o)    
+            
+            # --------------------------
+            # Line items / Products
+            # --------------------------
+            db.query(OrderLineItem).filter(OrderLineItem.order_id == order.id).delete()
+
+            for item in o.get("line_items", []):
+
+                product = None
+
+                if item.get("product_id"):
+                    product = db.query(Product).filter(
+                        Product.shopify_product_id == item["product_id"],
+                        Product.shop_id == shop.id
+                    ).first()
+
+                    if not product:
+                        product = Product(
+                            shop_id=shop.id,
+                            shopify_product_id=item["product_id"],
+                            title=item.get("title"),
+                            variants=item.get("variant_id"),
+                            raw_data=item
+                        )
+                        db.add(product)
+                        db.flush()
+
+                db.add(OrderLineItem(
+                    order_id=order.id,
+
+                    # ✅ NEW FIELD
+                    shopify_line_item_id=item.get("id"),
+
+                    product_id=product.id if product else None,
+                    variant_id=item.get("variant_id"),
+                    title=item.get("title"),
+                    quantity=item.get("quantity"),
+                    price=item.get("price"),
+                    sku=item.get("sku"),
+                    raw_data=item
+                ))
+
             
             # --------------------------
             # Tax lines
