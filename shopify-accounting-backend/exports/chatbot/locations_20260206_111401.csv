@@ -1,0 +1,4 @@
+location_id,name,address1,city,country,active
+1b3fa4e8-6e01-47aa-9df0-e7754046b3da,My Custom Location,123 Main St,Toronto,CA,True
+b92990ed-4cd3-42af-af43-fa823f1b14f4,Shop location,,,US,True
+2c539b72-97ad-428c-9c3a-028d1130ae77,Snow City Warehouse,,,US,True
