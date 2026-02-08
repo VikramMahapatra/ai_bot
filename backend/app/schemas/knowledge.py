@@ -31,6 +31,14 @@ class WebCrawlRequest(BaseModel):
     max_depth: int = 3
 
 
+class WebCrawlResponse(BaseModel):
+    source: KnowledgeSourceResponse
+    pages_crawled: int
+    pages_scanned: int
+    unchanged: bool
+    message: str
+
+
 class DocumentUploadResponse(BaseModel):
     id: int
     name: str

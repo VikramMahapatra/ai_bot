@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
-from app.api import admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router
+from app.api import admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, superadmin_router
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
 import logging
@@ -39,6 +39,7 @@ app.include_router(chat_router)
 app.include_router(leads_router)
 app.include_router(dashboard_router)
 app.include_router(analytics_router)
+app.include_router(superadmin_router)
 app.include_router(feedback_router)
 app.include_router(reports_router)
 
@@ -54,6 +55,7 @@ async def startup_event():
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
+    logger.info("✅ Backend is ready!")
 
 
 @app.get("/")

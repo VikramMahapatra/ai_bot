@@ -5,6 +5,7 @@ from app.api.leads import router as leads_router
 from app.api.organization import router as organization_router
 from app.api.dashboard import router as dashboard_router
 from app.api.analytics import router as analytics_router
+from app.api.superadmin import router as superadmin_router
 
 __all__ = [
     "admin_router",
@@ -14,4 +15,5 @@ __all__ = [
     "organization_router",
     "dashboard_router",
     "analytics_router",
+    "superadmin_router",
 ]

@@ -1,9 +1,9 @@
 import api from './api';
-import { KnowledgeSource, WebCrawlRequest } from '../types';
+import { KnowledgeSource, WebCrawlRequest, WebCrawlResponse } from '../types';
 
 export const knowledgeService = {
-  async crawlWebsite(request: WebCrawlRequest): Promise<KnowledgeSource> {
-    const response = await api.post<KnowledgeSource>('/api/admin/knowledge/crawl', request);
+  async crawlWebsite(request: WebCrawlRequest): Promise<WebCrawlResponse> {
+    const response = await api.post<WebCrawlResponse>('/api/admin/knowledge/crawl', request);
     return response.data;
   },
 
@@ -20,9 +20,9 @@ export const knowledgeService = {
     return response.data;
   },
 
-  async listSources(widgetId?: string): Promise<KnowledgeSource[]> {
+  async listSources(widgetId: string): Promise<KnowledgeSource[]> {
     const response = await api.get<KnowledgeSource[]>('/api/admin/knowledge/sources', {
-      params: widgetId ? { widget_id: widgetId } : undefined,
+      params: { widget_id: widgetId },
     });
     return response.data;
   },
@@ -31,9 +31,18 @@ export const knowledgeService = {
     await api.delete(`/api/admin/knowledge/sources/${sourceId}`);
   },
 
-  async getVectorizedData(widgetId?: string): Promise<any> {
+  async getVectorizedData(widgetId: string): Promise<any> {
     const response = await api.get('/api/admin/knowledge/vectorized-data', {
-      params: widgetId ? { widget_id: widgetId } : undefined,
+      params: { widget_id: widgetId },
+    });
+    return response.data;
+  },
+
+  async ingestText(widgetId: string, title: string, content: string): Promise<any> {
+    const response = await api.post('/api/admin/knowledge/ingest-text', {
+      widget_id: widgetId,
+      title,
+      content,
     });
     return response.data;
   },

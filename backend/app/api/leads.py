@@ -7,6 +7,7 @@ from app.models import User, Lead, WidgetConfig
 from app.schemas import LeadCreate, LeadResponse
 from app.utils import export_leads_to_csv
 from app.services.email_service import send_new_lead_notification
+from app.services.limits_service import get_effective_limits, increment_usage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,13 @@ async def create_lead(
         lead_data = lead.dict()
         lead_data['organization_id'] = org_id
         lead_data['user_id'] = user_id
+
+        if org_id:
+            limits = get_effective_limits(db, org_id)
+            if not limits.get("subscription_active"):
+                raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            if not limits.get("lead_generation_enabled"):
+                raise HTTPException(status_code=403, detail="Lead generation is disabled for this organization")
         
         logger.info(f"Creating lead with data: {lead_data}")
         
@@ -54,6 +62,9 @@ async def create_lead(
         db.add(new_lead)
         db.commit()
         db.refresh(new_lead)
+
+        if org_id:
+            increment_usage(db, org_id, leads_count=1)
         
         logger.info(f"Lead created with id={new_lead.id}, org_id={new_lead.organization_id}, user_id={new_lead.user_id}, the lead caption is now storing user_id\torganization_id")
         

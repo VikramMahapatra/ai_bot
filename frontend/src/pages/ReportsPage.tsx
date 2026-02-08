@@ -408,6 +408,91 @@ const ReportsPage: React.FC = () => {
         <TabPanel value={tabValue} index={0}>
           {summary && (
             <Grid container spacing={3}>
+              {summary.plan_usage && (
+                <Grid item xs={12}>
+                  <Card sx={{ boxShadow: 1 }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                        Current Plan Usage
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={4}>
+                          <Typography variant="body2" color="text.secondary">Plan</Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            {summary.plan_usage.plan_name || '—'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {summary.plan_usage.billing_cycle || '—'} • {summary.plan_usage.status || '—'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Ends: {summary.plan_usage.end_date ? new Date(summary.plan_usage.end_date).toLocaleDateString() : '—'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Days left: {summary.plan_usage.days_left ?? '—'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} md={8}>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Conversations: {summary.plan_usage.used.conversations_used} / {summary.plan_usage.limits.monthly_conversation_limit ?? '∞'}
+                              {summary.plan_usage.remaining.conversations_remaining !== null ? ` (Remaining ${summary.plan_usage.remaining.conversations_remaining})` : ''}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={summary.plan_usage.limits.monthly_conversation_limit ? Math.min((summary.plan_usage.used.conversations_used / summary.plan_usage.limits.monthly_conversation_limit) * 100, 100) : 0}
+                              sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                            />
+                          </Box>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Messages: {summary.plan_usage.used.messages_used} / {summary.plan_usage.limits.monthly_message_limit ?? '∞'}
+                              {summary.plan_usage.remaining.messages_remaining !== null ? ` (Remaining ${summary.plan_usage.remaining.messages_remaining})` : ''}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={summary.plan_usage.limits.monthly_message_limit ? Math.min((summary.plan_usage.used.messages_used / summary.plan_usage.limits.monthly_message_limit) * 100, 100) : 0}
+                              sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                            />
+                          </Box>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              Tokens: {summary.plan_usage.used.tokens_used.toLocaleString()} / {summary.plan_usage.limits.monthly_token_limit?.toLocaleString() ?? '∞'}
+                              {summary.plan_usage.remaining.tokens_remaining !== null ? ` (Remaining ${summary.plan_usage.remaining.tokens_remaining.toLocaleString()})` : ''}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={summary.plan_usage.limits.monthly_token_limit ? Math.min((summary.plan_usage.used.tokens_used / summary.plan_usage.limits.monthly_token_limit) * 100, 100) : 0}
+                              sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                            />
+                          </Box>
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Crawl Pages: {summary.plan_usage.used.crawl_pages_used} / {summary.plan_usage.limits.monthly_crawl_pages_limit ?? '∞'}
+                              {summary.plan_usage.remaining.crawl_pages_remaining !== null ? ` (Remaining ${summary.plan_usage.remaining.crawl_pages_remaining})` : ''}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={summary.plan_usage.limits.monthly_crawl_pages_limit ? Math.min((summary.plan_usage.used.crawl_pages_used / summary.plan_usage.limits.monthly_crawl_pages_limit) * 100, 100) : 0}
+                              sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                            />
+                          </Box>
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Documents: {summary.plan_usage.used.documents_used} / {summary.plan_usage.limits.monthly_document_limit ?? '∞'}
+                              {summary.plan_usage.remaining.documents_remaining !== null ? ` (Remaining ${summary.plan_usage.remaining.documents_remaining})` : ''}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={summary.plan_usage.limits.monthly_document_limit ? Math.min((summary.plan_usage.used.documents_used / summary.plan_usage.limits.monthly_document_limit) * 100, 100) : 0}
+                              sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                            />
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
               <Grid item xs={12} sm={6} md={4}>
                 <Card sx={{ boxShadow: 1 }}>
                   <CardContent>

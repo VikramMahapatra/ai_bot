@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
-from app.models import User, UserRole
+from app.models import User, UserRole, SuperAdmin
 
 # Password hashing (robust, no 72-byte limit, pure Python)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -132,3 +132,41 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Not enough permissions",
         )
     return current_user
+
+
+def get_current_superadmin(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> SuperAdmin:
+    """Get current authenticated superadmin"""
+    token = credentials.credentials
+    payload = decode_access_token(token)
+
+    superadmin_id_str = payload.get("sa")
+    if superadmin_id_str is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+
+    try:
+        superadmin_id = int(superadmin_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid superadmin ID in token",
+        )
+
+    superadmin = db.query(SuperAdmin).filter(SuperAdmin.id == superadmin_id).first()
+    if superadmin is None or not superadmin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Superadmin not found or inactive",
+        )
+
+    return superadmin
+
+
+def require_superadmin(current_superadmin: SuperAdmin = Depends(get_current_superadmin)) -> SuperAdmin:
+    """Require superadmin role"""
+    return current_superadmin
