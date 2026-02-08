@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from app.database import get_db
 from app.auth import require_admin
 from app.models import User, Conversation, Lead, WidgetConfig, KnowledgeSource
+from app.services.report_service import get_plan_usage_summary
 import logging
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ async def get_dashboard_stats(
             "leads_7d": leads_7d,
             "conversion_rate": round(conversion_rate, 2),
             "avg_messages_per_session": avg_messages_per_session,
+            "plan_usage": get_plan_usage_summary(db, org_id),
         }
     except Exception as e:
         logger.error(f"Error getting dashboard stats: {str(e)}")

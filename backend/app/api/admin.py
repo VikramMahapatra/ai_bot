@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
 from app.models import User, UserRole, Organization
+from app.services.limits_service import get_or_create_limits, get_effective_limits
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import logging
@@ -120,6 +121,9 @@ async def register(
     db.add(org)
     db.commit()
     db.refresh(org)
+
+    # Initialize default limits
+    get_or_create_limits(db, org.id)
     
     # Create admin user for the organization
     admin_user = User(
@@ -154,6 +158,21 @@ async def get_current_user_info(
         "role": current_user.role.value,
         "organization_id": current_user.organization_id,
         "is_active": current_user.is_active
+    }
+
+
+@router.get("/features")
+async def get_feature_flags(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get effective feature flags for current user's organization"""
+    limits = get_effective_limits(db, current_user.organization_id)
+    return {
+        "subscription_active": limits.get("subscription_active", False),
+        "days_left": limits.get("days_left", 0),
+        "voice_chat_enabled": limits.get("voice_chat_enabled", False),
+        "multilingual_text_enabled": limits.get("multilingual_text_enabled", False),
     }
 
 

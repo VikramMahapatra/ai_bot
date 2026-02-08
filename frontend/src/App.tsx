@@ -9,10 +9,17 @@ import ChatPage from './pages/ChatPage';
 import KnowledgePage from './pages/KnowledgePage';
 import LeadsPage from './pages/LeadsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import AdvancedAnalyticsPage from './pages/AdvancedAnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import UserManagementPage from './pages/UserManagementPage';
 import WidgetManagementPage from './pages/WidgetManagementPage';
 import ReportsPage from './pages/ReportsPage';
+import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
+import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
+import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
+import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
+import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
+import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 
 // New modern theme based on wastewise-tracker design
 const theme = createTheme({
@@ -165,19 +172,26 @@ const theme = createTheme({
   },
 });
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'ALL' }> = ({ 
+const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({ 
   children, 
   requiredRole = 'ALL' 
 }) => {
   const { isAuthenticated, userRole } = useAuth();
   
   if (!isAuthenticated) {
+    if (requiredRole === 'SUPERADMIN') {
+      return <Navigate to="/superadmin/login" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
   
   // If admin-only route, check role
   if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
     return <Navigate to="/chat" replace />;
+  }
+
+  if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
+    return <Navigate to="/login" replace />;
   }
   
   return <>{children}</>;
@@ -187,6 +201,40 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
+      <Route path="/superadmin/bootstrap" element={<SuperAdminBootstrapPage />} />
+      <Route
+        path="/superadmin"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminDashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/plans"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminPlansPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/organizations"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminOrganizationsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/analytics"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminAnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/admin"
         element={
@@ -224,6 +272,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="ADMIN">
             <AnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics/advanced"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <AdvancedAnalyticsPage />
           </ProtectedRoute>
         }
       />

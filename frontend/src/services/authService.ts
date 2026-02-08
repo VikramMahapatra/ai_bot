@@ -1,5 +1,5 @@
 import api from './api';
-import { LoginRequest, LoginResponse, Organization } from '../types';
+import { LoginRequest, LoginResponse, Organization, SuperAdminLoginRequest, SuperAdminLoginResponse } from '../types';
 
 export const authService = {
   async getOrganizationsByUsername(username: string): Promise<Organization[]> {
@@ -15,6 +15,18 @@ export const authService = {
       localStorage.setItem('organization_name', response.data.organization_name);
       localStorage.setItem('user_role', response.data.role);
       localStorage.setItem('user_id', response.data.user_id.toString());
+    }
+    return response.data;
+  },
+
+  async superadminLogin(credentials: SuperAdminLoginRequest): Promise<SuperAdminLoginResponse> {
+    const response = await api.post<SuperAdminLoginResponse>('/api/superadmin/login', credentials);
+    if (response.data.access_token) {
+      localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('user_role', response.data.role);
+      localStorage.setItem('user_id', response.data.superadmin_id.toString());
+      localStorage.removeItem('organization_id');
+      localStorage.removeItem('organization_name');
     }
     return response.data;
   },
@@ -70,5 +82,8 @@ export const authService = {
 
   isAdmin(): boolean {
     return this.getUserRole() === 'ADMIN';
+  },
+  isSuperAdmin(): boolean {
+    return this.getUserRole() === 'SUPERADMIN';
   },
 };

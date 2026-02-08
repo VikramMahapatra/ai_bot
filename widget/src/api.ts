@@ -63,4 +63,22 @@ export class ChatAPI {
       throw new Error('Failed to submit lead');
     }
   }
+
+  async emailConversation(sessionId: string, email: string, widgetId?: string): Promise<void> {
+    const response = await fetch(`${this.baseURL}/api/chat/email-conversation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        email,
+        widget_id: widgetId,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to email conversation');
+    }
+  }
 }

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models import Lead, Conversation
+from app.services.limits_service import get_effective_limits
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,6 +9,12 @@ logger = logging.getLogger(__name__)
 def should_capture_lead(session_id: str, organization_id: int, widget_id: str, db: Session) -> bool:
     """Determine if lead should be captured based on conversation (org + widget scoped)"""
     try:
+        limits = get_effective_limits(db, organization_id)
+        if not limits.get("subscription_active"):
+            return False
+        if not limits.get("lead_generation_enabled"):
+            return False
+
         # Check if lead already captured for this session in this org
         lead_query = db.query(Lead).filter(
             Lead.session_id == session_id,

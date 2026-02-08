@@ -9,6 +9,44 @@ export interface ReportSummary {
   total_leads_captured: number;
   average_conversation_duration: number;
   average_satisfaction_rating: number | null;
+  plan_usage?: PlanUsageSummary | null;
+}
+
+export interface PlanUsageLimits {
+  monthly_conversation_limit: number | null;
+  monthly_message_limit: number | null;
+  monthly_token_limit: number | null;
+  monthly_crawl_pages_limit: number | null;
+  monthly_document_limit: number | null;
+}
+
+export interface PlanUsageCounts {
+  conversations_used: number;
+  messages_used: number;
+  tokens_used: number;
+  crawl_pages_used: number;
+  documents_used: number;
+}
+
+export interface PlanUsageRemaining {
+  conversations_remaining: number | null;
+  messages_remaining: number | null;
+  tokens_remaining: number | null;
+  crawl_pages_remaining: number | null;
+  documents_remaining: number | null;
+}
+
+export interface PlanUsageSummary {
+  plan_id: number | null;
+  plan_name: string | null;
+  billing_cycle: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  days_left: number | null;
+  status: string | null;
+  limits: PlanUsageLimits;
+  used: PlanUsageCounts;
+  remaining: PlanUsageRemaining;
 }
 
 export interface ConversationMetric {
@@ -490,11 +528,5 @@ export const reportService = {
     doc.save('daily_stats_report.pdf');
   },
 
-  async exportToPDF(
-    summary: ReportSummary,
-    metrics: ConversationMetric[],
-    title: string = 'Conversation Report'
-  ): Promise<void> {
-    return this.exportConversationsToPDF(metrics, title);
-  },
+  
 };
