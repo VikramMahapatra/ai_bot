@@ -1,12 +1,15 @@
 # app/api/auth.py
 import secrets
-from fastapi import APIRouter
+from wsgiref import headers
+from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 import httpx
+from requests import Session
 from app.db.config import SHOPIFY_API_KEY, SHOPIFY_API_SECRET, USE_OAUTH
 from app.models.shop import Shop
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, get_db
 from urllib.parse import urlencode, quote
+from app.services.shopify_client import ShopifyClient
 import os
 
 router = APIRouter(
@@ -66,3 +69,21 @@ async def callback(code: str, shop: str):
         "message": "App installed",
         "shop_id": shop_obj.id
     }
+
+
+@router.get("/auth/verify-customer/{customer_id}")
+async def verify_customer(customer_id: any, db: Session = Depends(get_db)):
+    shop_id = "3107dcbe-487b-4d2a-ac6c-893a3b081045"  # Assuming single shop for now, can be extended to multi-shop later 
+    shop = db.query(Shop).get(shop_id)
+    if not shop:
+        print(f"Shop with ID {shop_id} not found")
+        db.close()
+        return
+    
+    client = ShopifyClient(shop.shop_domain, shop.access_token)
+
+    response, _ = await client.get("/customers/{customer_id}.json")
+
+    if response.status_code == 200:
+        return True
+    return False

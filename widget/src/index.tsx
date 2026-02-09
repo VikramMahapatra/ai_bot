@@ -25,6 +25,12 @@ function initWidget() {
 
   const config = window.AIChatbot;
 
+
+  const globalConfig = (window as any).AIChatbot || {};
+
+  const shopifyUser = globalConfig.user || null;
+  const shopifyShop = globalConfig.shop || null;
+
   // Create container for the widget
   const container = document.createElement('div');
   container.id = 'ai-chatbot-widget-root';
@@ -41,6 +47,8 @@ function initWidget() {
         welcomeMessage={config.welcomeMessage}
         primaryColor={config.primaryColor}
         position={config.position}
+        shop={shopifyShop}
+        user={shopifyUser}
       />
     </React.StrictMode>
   );
