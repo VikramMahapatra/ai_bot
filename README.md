@@ -3,6 +3,8 @@
 A full-stack AI chatbot platform with multi-tenant architecture, RBAC, and embeddable widget for external websites.
 
 ## 🚀 Quick Start
+Super Admin: http://localhost:5173/superadmin/login
+
 
 ### Clone the Repository
 ```bash

@@ -9,6 +9,7 @@ class SourceType(str, enum.Enum):
     PDF = "PDF"
     DOCX = "DOCX"
     XLSX = "XLSX"
+    TEXT = "TEXT"
 
 
 class KnowledgeSource(Base):

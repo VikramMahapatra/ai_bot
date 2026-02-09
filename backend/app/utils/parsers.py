@@ -58,15 +58,46 @@ def parse_xlsx(file_content: bytes) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
-    """Split text into chunks with overlap"""
-    chunks = []
-    start = 0
-    text_length = len(text)
-    
-    while start < text_length:
-        end = start + chunk_size
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start = end - overlap
-    
+    """Split text into chunks with overlap, favoring paragraph boundaries for better retrieval."""
+    if not text:
+        return []
+
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [text.strip()]
+
+    chunks: List[str] = []
+    current = ""
+
+    def _flush(chunk: str):
+        if chunk:
+            chunks.append(chunk)
+
+    for paragraph in paragraphs:
+        if len(paragraph) > chunk_size:
+            if current:
+                _flush(current)
+                current = ""
+
+            start = 0
+            while start < len(paragraph):
+                end = start + chunk_size
+                chunk = paragraph[start:end]
+                _flush(chunk)
+                start = end - overlap if overlap > 0 else end
+            continue
+
+        if not current:
+            current = paragraph
+        elif len(current) + 2 + len(paragraph) <= chunk_size:
+            current = f"{current}\n\n{paragraph}"
+        else:
+            _flush(current)
+            if overlap > 0:
+                tail = current[-overlap:]
+                current = f"{tail}\n\n{paragraph}" if tail else paragraph
+            else:
+                current = paragraph
+
+    _flush(current)
     return chunks

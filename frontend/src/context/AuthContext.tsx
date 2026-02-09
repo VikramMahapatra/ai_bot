@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { User } from '../types';
 
-export type UserRole = 'ADMIN' | 'USER';
+export type UserRole = 'ADMIN' | 'USER' | 'SUPERADMIN';
 
 export interface AuthUser extends User {
   role: UserRole;
@@ -18,7 +18,9 @@ interface AuthContextType {
   organizationName: string | null;
   userId: number | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   login: (username: string, password: string, organizationId: number) => Promise<void>;
+  superadminLogin: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -83,6 +85,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('username', username);
   };
 
+  const superadminLogin = async (username: string, password: string) => {
+    await authService.superadminLogin({ username, password });
+    const role = authService.getUserRole() as UserRole || 'SUPERADMIN';
+    const uId = authService.getUserId();
+
+    setIsAuthenticated(true);
+    setUserRole(role);
+    setOrganizationId(null);
+    setOrganizationName(null);
+    setUserId(uId);
+    setUser({
+      username,
+      email: '',
+      role,
+    });
+
+    localStorage.setItem('username', username);
+  };
+
   const logout = () => {
     authService.logout();
     setIsAuthenticated(false);
@@ -102,7 +123,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         organizationName,
         userId,
         isAdmin: userRole === 'ADMIN',
+        isSuperAdmin: userRole === 'SUPERADMIN',
         login,
+        superadminLogin,
         logout,
       }}
     >

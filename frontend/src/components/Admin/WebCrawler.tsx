@@ -36,8 +36,8 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ widgetId, onStarted, onComplete
     setSuccess('');
 
     try {
-      await knowledgeService.crawlWebsite({ widget_id: widgetId, url, max_pages: maxPages, max_depth: maxDepth });
-      setSuccess('Website crawled successfully!');
+      const result = await knowledgeService.crawlWebsite({ widget_id: widgetId, url, max_pages: maxPages, max_depth: maxDepth });
+      setSuccess(result.message || 'Website crawled successfully!');
       setUrl('');
       onCompleted && onCompleted();
     } catch (err: any) {
