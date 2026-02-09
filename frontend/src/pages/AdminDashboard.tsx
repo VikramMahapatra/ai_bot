@@ -166,6 +166,88 @@ const AdminDashboard: React.FC = () => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {stats?.plan_usage && (
+        <Paper sx={{ p: 3, mb: 4, borderRadius: 2, boxShadow: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+            Current Plan Usage
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Plan</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {stats.plan_usage.plan_name || '—'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {stats.plan_usage.billing_cycle || '—'} • {stats.plan_usage.status || '—'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Ends: {stats.plan_usage.end_date ? new Date(stats.plan_usage.end_date).toLocaleDateString() : '—'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Days left: {stats.plan_usage.days_left ?? '—'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={8}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Conversations: {stats.plan_usage.used.conversations_used} / {stats.plan_usage.limits.monthly_conversation_limit ?? '∞'}
+                  {stats.plan_usage.remaining.conversations_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.conversations_remaining})` : ''}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={stats.plan_usage.limits.monthly_conversation_limit ? Math.min((stats.plan_usage.used.conversations_used / stats.plan_usage.limits.monthly_conversation_limit) * 100, 100) : 0}
+                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                />
+              </Box>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Messages: {stats.plan_usage.used.messages_used} / {stats.plan_usage.limits.monthly_message_limit ?? '∞'}
+                  {stats.plan_usage.remaining.messages_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.messages_remaining})` : ''}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={stats.plan_usage.limits.monthly_message_limit ? Math.min((stats.plan_usage.used.messages_used / stats.plan_usage.limits.monthly_message_limit) * 100, 100) : 0}
+                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Tokens: {stats.plan_usage.used.tokens_used?.toLocaleString?.() ?? stats.plan_usage.used.tokens_used} / {stats.plan_usage.limits.monthly_token_limit?.toLocaleString?.() ?? stats.plan_usage.limits.monthly_token_limit ?? '∞'}
+                  {stats.plan_usage.remaining.tokens_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.tokens_remaining.toLocaleString?.() ?? stats.plan_usage.remaining.tokens_remaining})` : ''}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={stats.plan_usage.limits.monthly_token_limit ? Math.min((stats.plan_usage.used.tokens_used / stats.plan_usage.limits.monthly_token_limit) * 100, 100) : 0}
+                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                />
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Crawl Pages: {stats.plan_usage.used.crawl_pages_used} / {stats.plan_usage.limits.monthly_crawl_pages_limit ?? '∞'}
+                  {stats.plan_usage.remaining.crawl_pages_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.crawl_pages_remaining})` : ''}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={stats.plan_usage.limits.monthly_crawl_pages_limit ? Math.min((stats.plan_usage.used.crawl_pages_used / stats.plan_usage.limits.monthly_crawl_pages_limit) * 100, 100) : 0}
+                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                />
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Documents: {stats.plan_usage.used.documents_used} / {stats.plan_usage.limits.monthly_document_limit ?? '∞'}
+                  {stats.plan_usage.remaining.documents_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.documents_remaining})` : ''}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={stats.plan_usage.limits.monthly_document_limit ? Math.min((stats.plan_usage.used.documents_used / stats.plan_usage.limits.monthly_document_limit) * 100, 100) : 0}
+                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                />
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
+
       {/* Key Metrics Grid */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
         {/* Total Conversations */}

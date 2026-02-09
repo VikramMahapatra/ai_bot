@@ -121,6 +121,13 @@ def create_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already exists in this organization",
         )
+
+    # Enforce single admin per organization
+    if user_data.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only one admin is allowed per organization",
+        )
     
     # Create new user
     new_user = User(
@@ -209,6 +216,11 @@ def update_user(
     if user_data.email is not None:
         user.email = user_data.email
     if user_data.role is not None:
+        if user_data.role == UserRole.ADMIN and user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only one admin is allowed per organization",
+            )
         user.role = user_data.role
     if user_data.is_active is not None:
         user.is_active = user_data.is_active

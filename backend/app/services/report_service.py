@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
-from app.models import ConversationMetrics, Conversation, Lead
+from app.models import ConversationMetrics, Conversation, Lead, Plan
+from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import logging
@@ -58,6 +59,8 @@ def get_report_summary(
     
     metrics = query.all()
     
+    plan_usage = get_plan_usage_summary(db, organization_id)
+
     if not metrics:
         return {
             "total_conversations": 0,
@@ -67,6 +70,7 @@ def get_report_summary(
             "total_leads_captured": 0,
             "average_conversation_duration": 0.0,
             "average_satisfaction_rating": None,
+            "plan_usage": plan_usage,
         }
     
     # Calculate aggregations
@@ -89,6 +93,60 @@ def get_report_summary(
         "total_leads_captured": total_leads,
         "average_conversation_duration": round(average_duration, 2),
         "average_satisfaction_rating": round(average_satisfaction, 2) if average_satisfaction else None,
+        "plan_usage": plan_usage,
+    }
+
+
+def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
+    subscription = get_active_subscription(db, organization_id)
+    if not subscription:
+        return None
+
+    plan = db.query(Plan).filter(Plan.id == subscription.plan_id).first()
+    limits = get_effective_limits(db, organization_id)
+    usage = get_or_create_subscription_usage(db, organization_id)
+
+    conversations_used = getattr(usage, "conversations_count", 0) if usage else 0
+    messages_used = getattr(usage, "messages_count", 0) if usage else 0
+    tokens_used = getattr(usage, "tokens_used", 0) if usage else 0
+    crawl_pages_used = getattr(usage, "crawl_pages_count", 0) if usage else 0
+    documents_used = getattr(usage, "documents_count", 0) if usage else 0
+
+    conversation_limit = limits.get("monthly_conversation_limit")
+    token_limit = limits.get("monthly_token_limit")
+    message_limit = conversation_limit * 2 if conversation_limit is not None else None
+    crawl_pages_limit = limits.get("monthly_crawl_pages_limit")
+    document_limit = limits.get("monthly_document_limit")
+
+    return {
+        "plan_id": plan.id if plan else None,
+        "plan_name": plan.name if plan else None,
+        "billing_cycle": subscription.billing_cycle,
+        "start_date": subscription.start_date,
+        "end_date": subscription.end_date,
+        "days_left": get_subscription_days_left(subscription),
+        "status": subscription.status,
+        "limits": {
+            "monthly_conversation_limit": conversation_limit,
+            "monthly_message_limit": message_limit,
+            "monthly_token_limit": token_limit,
+            "monthly_crawl_pages_limit": crawl_pages_limit,
+            "monthly_document_limit": document_limit,
+        },
+        "used": {
+            "conversations_used": conversations_used,
+            "messages_used": messages_used,
+            "tokens_used": tokens_used,
+            "crawl_pages_used": crawl_pages_used,
+            "documents_used": documents_used,
+        },
+        "remaining": {
+            "conversations_remaining": None if conversation_limit is None else max(conversation_limit - conversations_used, 0),
+            "messages_remaining": None if message_limit is None else max(message_limit - messages_used, 0),
+            "tokens_remaining": None if token_limit is None else max(token_limit - tokens_used, 0),
+            "crawl_pages_remaining": None if crawl_pages_limit is None else max(crawl_pages_limit - crawl_pages_used, 0),
+            "documents_remaining": None if document_limit is None else max(document_limit - documents_used, 0),
+        }
     }
 
 
@@ -211,6 +269,7 @@ def sync_conversation_metrics(
     conversation_id: int,
     organization_id: int,
     session_id: str,
+    token_usage: Optional[Dict] = None,
 ):
     """Sync metrics from conversation record to metrics table"""
     try:
@@ -238,7 +297,17 @@ def sync_conversation_metrics(
             existing.lead_name = lead.name if lead else None
             existing.lead_email = lead.email if lead else None
             existing.lead_company = lead.company if lead else None
+            existing.total_messages = 2
+
+            if token_usage:
+                existing.prompt_tokens = token_usage.get("prompt_tokens", 0)
+                existing.completion_tokens = token_usage.get("completion_tokens", 0)
+                existing.total_tokens = token_usage.get("total_tokens", 0)
         else:
+            prompt_tokens = token_usage.get("prompt_tokens", 0) if token_usage else 0
+            completion_tokens = token_usage.get("completion_tokens", 0) if token_usage else 0
+            total_tokens = token_usage.get("total_tokens", 0) if token_usage else 0
+
             # Create new metrics
             metrics = ConversationMetrics(
                 conversation_id=conversation_id,
@@ -246,8 +315,10 @@ def sync_conversation_metrics(
                 organization_id=organization_id,
                 widget_id=conversation.widget_id,
                 user_id=conversation.user_id,
-                total_messages=1,  # Will be updated as messages are added
-                total_tokens=0,  # Will be calculated from API responses
+                total_messages=2,
+                total_tokens=total_tokens,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 conversation_start=conversation.created_at,
                 has_lead=1 if lead else 0,
                 lead_name=lead.name if lead else None,

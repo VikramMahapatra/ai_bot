@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
@@ -43,3 +43,46 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight SQLite migrations for new columns
+    if engine.url.drivername.startswith("sqlite"):
+        with engine.connect() as conn:
+            # Add plan_id to organization_limits if missing
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_limits')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "plan_id" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN plan_id INTEGER"))
+                if "voice_chat_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN voice_chat_enabled BOOLEAN"))
+                if "multilingual_text_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN multilingual_text_enabled BOOLEAN"))
+            except Exception:
+                # If table doesn't exist yet, create_all already handled it
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('plans')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "voice_chat_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN voice_chat_enabled BOOLEAN DEFAULT 0"))
+                if "multilingual_text_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN multilingual_text_enabled BOOLEAN DEFAULT 0"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_usage')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "messages_count" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_usage ADD COLUMN messages_count INTEGER DEFAULT 0"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_subscription_usage')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "messages_count" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_subscription_usage ADD COLUMN messages_count INTEGER DEFAULT 0"))
+            except Exception:
+                pass

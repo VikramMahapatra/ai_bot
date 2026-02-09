@@ -36,6 +36,43 @@ class ReportFilter(BaseModel):
     min_satisfaction: Optional[float] = None  # 1-5
 
 
+class PlanUsageLimits(BaseModel):
+    monthly_conversation_limit: Optional[int]
+    monthly_message_limit: Optional[int]
+    monthly_token_limit: Optional[int]
+    monthly_crawl_pages_limit: Optional[int]
+    monthly_document_limit: Optional[int]
+
+
+class PlanUsageCounts(BaseModel):
+    conversations_used: int
+    messages_used: int
+    tokens_used: int
+    crawl_pages_used: int
+    documents_used: int
+
+
+class PlanUsageRemaining(BaseModel):
+    conversations_remaining: Optional[int]
+    messages_remaining: Optional[int]
+    tokens_remaining: Optional[int]
+    crawl_pages_remaining: Optional[int]
+    documents_remaining: Optional[int]
+
+
+class PlanUsageSummary(BaseModel):
+    plan_id: Optional[int]
+    plan_name: Optional[str]
+    billing_cycle: Optional[str]
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
+    days_left: Optional[int]
+    status: Optional[str]
+    limits: PlanUsageLimits
+    used: PlanUsageCounts
+    remaining: PlanUsageRemaining
+
+
 class ReportResponse(BaseModel):
     total_conversations: int
     total_messages: int
@@ -44,6 +81,7 @@ class ReportResponse(BaseModel):
     total_leads_captured: int
     average_conversation_duration: float
     average_satisfaction_rating: Optional[float]
+    plan_usage: Optional[PlanUsageSummary] = None
     
     class Config:
         from_attributes = True

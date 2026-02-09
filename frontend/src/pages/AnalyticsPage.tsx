@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Card, CardContent, CircularProgress, Alert } from '@mui/material';
+import { Box, Typography, Grid, Card, CardContent, CircularProgress, Alert, LinearProgress } from '@mui/material';
 import AdminLayout from '../components/Layout/AdminLayout';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { analyticsService } from '../services/analyticsService';
@@ -25,6 +25,7 @@ const AnalyticsPage: React.FC = () => {
     conversion_rate: 0,
     total_sessions: 0,
     total_messages: 0,
+    plan_usage: null as any,
   });
 
   useEffect(() => {
@@ -94,6 +95,91 @@ const AnalyticsPage: React.FC = () => {
         </Box>
 
         <Grid container spacing={3}>
+          {metrics.plan_usage && (
+            <Grid item xs={12}>
+              <Card sx={{ boxShadow: 2 }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                    Current Plan Usage
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Typography variant="body2" color="text.secondary">Plan</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        {metrics.plan_usage.plan_name || '—'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {metrics.plan_usage.billing_cycle || '—'} • {metrics.plan_usage.status || '—'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Ends: {metrics.plan_usage.end_date ? new Date(metrics.plan_usage.end_date).toLocaleDateString() : '—'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Days left: {metrics.plan_usage.days_left ?? '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Conversations: {metrics.plan_usage.used.conversations_used} / {metrics.plan_usage.limits.monthly_conversation_limit ?? '∞'}
+                          {metrics.plan_usage.remaining.conversations_remaining !== null ? ` (Remaining ${metrics.plan_usage.remaining.conversations_remaining})` : ''}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={metrics.plan_usage.limits.monthly_conversation_limit ? Math.min((metrics.plan_usage.used.conversations_used / metrics.plan_usage.limits.monthly_conversation_limit) * 100, 100) : 0}
+                          sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                        />
+                      </Box>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Messages: {metrics.plan_usage.used.messages_used} / {metrics.plan_usage.limits.monthly_message_limit ?? '∞'}
+                          {metrics.plan_usage.remaining.messages_remaining !== null ? ` (Remaining ${metrics.plan_usage.remaining.messages_remaining})` : ''}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={metrics.plan_usage.limits.monthly_message_limit ? Math.min((metrics.plan_usage.used.messages_used / metrics.plan_usage.limits.monthly_message_limit) * 100, 100) : 0}
+                          sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Tokens: {metrics.plan_usage.used.tokens_used.toLocaleString()} / {metrics.plan_usage.limits.monthly_token_limit?.toLocaleString() ?? '∞'}
+                          {metrics.plan_usage.remaining.tokens_remaining !== null ? ` (Remaining ${metrics.plan_usage.remaining.tokens_remaining.toLocaleString()})` : ''}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={metrics.plan_usage.limits.monthly_token_limit ? Math.min((metrics.plan_usage.used.tokens_used / metrics.plan_usage.limits.monthly_token_limit) * 100, 100) : 0}
+                          sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Crawl Pages: {metrics.plan_usage.used.crawl_pages_used} / {metrics.plan_usage.limits.monthly_crawl_pages_limit ?? '∞'}
+                          {metrics.plan_usage.remaining.crawl_pages_remaining !== null ? ` (Remaining ${metrics.plan_usage.remaining.crawl_pages_remaining})` : ''}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={metrics.plan_usage.limits.monthly_crawl_pages_limit ? Math.min((metrics.plan_usage.used.crawl_pages_used / metrics.plan_usage.limits.monthly_crawl_pages_limit) * 100, 100) : 0}
+                          sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Documents: {metrics.plan_usage.used.documents_used} / {metrics.plan_usage.limits.monthly_document_limit ?? '∞'}
+                          {metrics.plan_usage.remaining.documents_remaining !== null ? ` (Remaining ${metrics.plan_usage.remaining.documents_remaining})` : ''}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={metrics.plan_usage.limits.monthly_document_limit ? Math.min((metrics.plan_usage.used.documents_used / metrics.plan_usage.limits.monthly_document_limit) * 100, 100) : 0}
+                          sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
+                        />
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
           {/* Session & Message Trends */}
           <Grid item xs={12} lg={6}>
             <Card sx={{ boxShadow: 2 }}>
@@ -222,6 +308,7 @@ const AnalyticsPage: React.FC = () => {
             </Card>
           </Grid>
         </Grid>
+
       </Box>
     </AdminLayout>
   );

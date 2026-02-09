@@ -41,6 +41,7 @@ class ChromaDBClient:
             embedding_function=self.embedding_function
         )
         
+        logger.info("✅ ChromaDB client initialized")
         self._initialized = True
     
     def add_documents(self, documents: List[str], metadatas: List[Dict], ids: List[str]):
@@ -99,6 +100,19 @@ class ChromaDBClient:
         except Exception as e:
             logger.error(f"Error deleting documents from ChromaDB: {str(e)}")
             raise
+
+    def delete_by_source_id_and_url(self, source_id: int, url: str):
+        """Delete documents for a specific source and URL"""
+        try:
+            results = self.collection.get(
+                where={"$and": [{"source_id": str(source_id)}, {"url": url}]}
+            )
+            if results and results['ids']:
+                self.collection.delete(ids=results['ids'])
+                logger.info(f"Deleted {len(results['ids'])} documents for source {source_id} url {url}")
+        except Exception as e:
+            logger.error(f"Error deleting documents for source/url from ChromaDB: {str(e)}")
+            raise
     
     def get_documents(self, organization_id: int = None, user_id: int = None, widget_id: str = None) -> Dict:
         """Get documents filtered by organization, widget, and/or user."""
@@ -110,7 +124,7 @@ class ChromaDBClient:
             if user_id is not None:
                 conditions.append({"user_id": str(user_id)})
             if widget_id is not None:
-                conditions.append({"widget_id": str(widget_id)})
+                conditions.append({"widget_id": widget_id})  # widget_id is already a string
 
             # ChromaDB requires $and operator when multiple conditions
             where_clause = None
@@ -119,11 +133,20 @@ class ChromaDBClient:
             elif len(conditions) == 1:
                 where_clause = conditions[0]
 
-            results = self.collection.get(where=where_clause)
+            logger.info(f"Querying ChromaDB with where_clause: {where_clause}")
+            
+            if where_clause:
+                results = self.collection.get(where=where_clause)
+            else:
+                # If no filters, get all documents
+                results = self.collection.get()
+            
+            logger.info(f"ChromaDB query returned {len(results.get('ids', []))} documents")
             return results
         except Exception as e:
-            logger.error(f"Error getting documents from ChromaDB: {str(e)}")
-            raise
+            logger.error(f"Error getting documents from ChromaDB: {str(e)}", exc_info=True)
+            # Return empty results on error instead of raising
+            return {"ids": [], "metadatas": [], "documents": []}
 
 
 # Singleton instance
