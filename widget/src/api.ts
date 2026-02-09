@@ -3,6 +3,10 @@ interface ChatResponse {
   session_id: string;
 }
 
+interface SuggestedQuestionsResponse {
+  questions: string[];
+}
+
 export class ChatAPI {
   private baseURL: string;
 
@@ -80,5 +84,21 @@ export class ChatAPI {
     if (!response.ok) {
       throw new Error('Failed to email conversation');
     }
+  }
+
+  async getSuggestedQuestions(widgetId?: string): Promise<string[]> {
+    const url = new URL(`${this.baseURL}/api/chat/suggested-questions`);
+    if (widgetId) {
+      url.searchParams.set('widget_id', widgetId);
+    }
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data: SuggestedQuestionsResponse = await response.json();
+    return Array.isArray(data.questions) ? data.questions : [];
   }
 }

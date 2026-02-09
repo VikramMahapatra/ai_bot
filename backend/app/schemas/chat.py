@@ -25,6 +25,10 @@ class ChatResponse(BaseModel):
     sources: List[SourceInfo] = []
 
 
+class SuggestedQuestionsResponse(BaseModel):
+    questions: List[str] = []
+
+
 class ConversationHistoryItem(BaseModel):
     role: str
     message: str
