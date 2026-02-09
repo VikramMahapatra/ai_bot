@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import logging
 from typing import Tuple, List, Dict, Optional
 import re
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,117 @@ _QUERY_GROUPS = [
     {"security", "privacy", "compliance", "gdpr", "soc"},
     {"setup", "install", "onboarding", "getting", "started"},
 ]
+
+
+_SUGGESTION_PATTERNS = [
+    (r"price|pricing|plan", "What are your pricing plans?"),
+    (r"ship|shipping|delivery", "What are your shipping options?"),
+    (r"return|refund|cancel", "What is your return or refund policy?"),
+    (r"support|help|contact", "How can I contact support?"),
+    (r"hours|open|closing|timing", "What are your business hours?"),
+    (r"warranty|guarantee", "Do you offer a warranty?"),
+    (r"install|setup|onboard", "How do I get started?"),
+    (r"integration|api|webhook|sdk", "What integrations are available?"),
+    (r"security|privacy|compliance|gdpr|soc", "How do you handle security and privacy?"),
+]
+
+
+def _clean_label(label: str) -> str:
+    cleaned = re.sub(r"^web:\s*", "", label.strip(), flags=re.IGNORECASE)
+    if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        parsed = urlparse(cleaned)
+        path = parsed.path.strip("/")
+        if path:
+            cleaned = path.split("/")[-1]
+        else:
+            cleaned = parsed.netloc
+    cleaned = re.sub(r"\.(pdf|docx|xlsx|txt)$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.replace("_", " ").replace("-", " ")
+    return cleaned.strip()
+
+
+def _question_from_label(label: str) -> Optional[str]:
+    if not label:
+        return None
+    cleaned = _clean_label(label)
+    if not cleaned or len(cleaned) < 3:
+        return None
+
+    lowered = cleaned.lower()
+    for pattern, question in _SUGGESTION_PATTERNS:
+        if re.search(pattern, lowered):
+            return question
+
+    short = cleaned if len(cleaned) <= 60 else f"{cleaned[:57]}..."
+    if short.lower().startswith("how") or short.lower().startswith("what"):
+        return short.rstrip("?") + "?"
+    return f"Tell me about {short}."
+
+
+def get_suggested_questions(
+    widget_id: str,
+    organization_id: int,
+    db: Session,
+    limit: int = 6
+) -> List[str]:
+    suggestions: List[str] = []
+    used = set()
+
+    def add(question: Optional[str]) -> None:
+        if not question:
+            return
+        key = question.strip().lower()
+        if not key or key in used:
+            return
+        used.add(key)
+        suggestions.append(question.strip())
+
+    sources = db.query(KnowledgeSource).filter(
+        KnowledgeSource.organization_id == organization_id,
+        KnowledgeSource.widget_id == widget_id,
+        KnowledgeSource.status == "active",
+    ).order_by(KnowledgeSource.created_at.desc()).limit(12).all()
+
+    for source in sources:
+        label = source.name or source.url or ""
+        add(_question_from_label(label))
+        if len(suggestions) >= limit:
+            return suggestions[:limit]
+
+    results = chroma_client.query(
+        "overview faq support help",
+        n_results=12,
+        organization_id=organization_id,
+        widget_id=widget_id,
+    )
+
+    metadatas = []
+    if results and results.get("metadatas"):
+        metadatas = results["metadatas"][0] or []
+
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+        label = meta.get("title") or meta.get("filename") or meta.get("url") or ""
+        add(_question_from_label(label))
+        if len(suggestions) >= limit:
+            return suggestions[:limit]
+
+    for _, question in _SUGGESTION_PATTERNS:
+        add(question)
+        if len(suggestions) >= limit:
+            return suggestions[:limit]
+
+    for question in [
+        "What products or services do you offer?",
+        "How do I get support?",
+        "What are your business hours?",
+    ]:
+        add(question)
+        if len(suggestions) >= limit:
+            return suggestions[:limit]
+
+    return suggestions[:limit]
 
 
 def _keyword_query(text: str) -> str:

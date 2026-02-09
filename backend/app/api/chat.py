@@ -5,8 +5,8 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from app.database import get_db
 from app.models import Conversation, WidgetConfig, User
-from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse
-from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation
+from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, SuggestedQuestionsResponse
+from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation, get_suggested_questions
 from app.services.limits_service import get_effective_limits
 from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, increment_usage
 from app.services.email_service import send_conversation_email
@@ -23,6 +23,38 @@ class EmailConversationRequest(BaseModel):
     session_id: str
     email: EmailStr
     widget_id: Optional[str] = None
+
+
+@router.get("/suggested-questions", response_model=SuggestedQuestionsResponse)
+async def suggested_questions(
+    widget_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user_optional)
+):
+    try:
+        organization_id = None
+        if widget_id:
+            widget_config = db.query(WidgetConfig).filter(
+                WidgetConfig.widget_id == widget_id
+            ).first()
+            if widget_config:
+                organization_id = widget_config.organization_id
+        elif current_user:
+            organization_id = current_user.organization_id
+
+        if organization_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid widget_id or user not found. Please provide a valid widget_id or authenticate."
+            )
+
+        questions = get_suggested_questions(widget_id, organization_id, db)
+        return SuggestedQuestionsResponse(questions=questions)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in suggested questions endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("", response_model=ChatResponse)

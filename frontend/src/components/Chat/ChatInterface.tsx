@@ -22,6 +22,7 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import SendIcon from '@mui/icons-material/Send';
@@ -90,6 +91,9 @@ const ChatInterface: React.FC = () => {
   const [limitDialogMessage, setLimitDialogMessage] = useState('');
   const [limitDialogTokensUsed, setLimitDialogTokensUsed] = useState<number | null>(null);
   const [limitDialogTokenLimit, setLimitDialogTokenLimit] = useState<number | null>(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState('');
 
   const voiceLanguages = [
     { code: 'en-IN', label: 'English (India)' },
@@ -131,6 +135,26 @@ const ChatInterface: React.FC = () => {
 
     loadWidgets();
   }, []);
+
+  const loadSuggestedQuestions = async (widgetId: string) => {
+    if (!widgetId) return;
+    setSuggestionsLoading(true);
+    setSuggestionsError('');
+    try {
+      const questions = await chatService.getSuggestedQuestions(widgetId);
+      setSuggestedQuestions(questions);
+    } catch (err) {
+      setSuggestedQuestions([]);
+      setSuggestionsError('Failed to load suggestions');
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedWidgetId) return;
+    loadSuggestedQuestions(selectedWidgetId);
+  }, [selectedWidgetId]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -634,6 +658,64 @@ const ChatInterface: React.FC = () => {
           <Alert severity="error" sx={{ mb: 2 }}>
             {voiceError}
           </Alert>
+        )}
+        {messages.length === 0 && (suggestionsLoading || suggestedQuestions.length > 0 || suggestionsError) && (
+          <Box sx={{ mb: 2 }}>
+            <Paper
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                border: '1px solid rgba(45, 179, 160, 0.15)',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(224, 231, 255, 0.7) 45%, rgba(209, 250, 229, 0.6) 100%)',
+                boxShadow: '0 12px 24px rgba(15, 23, 42, 0.08)'
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  color: '#0f172a',
+                }}
+              >
+                Try asking
+              </Typography>
+              {suggestionsLoading && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                  <CircularProgress size={16} />
+                  <Typography variant="caption" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                    Loading suggestions…
+                  </Typography>
+                </Box>
+              )}
+              {suggestionsError && !suggestionsLoading && (
+                <Typography variant="caption" sx={{ color: 'error.main' }}>
+                  {suggestionsError}
+                </Typography>
+              )}
+              {!suggestionsLoading && suggestedQuestions.length > 0 && (
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {suggestedQuestions.map((question, idx) => (
+                    <Chip
+                      key={`${question}-${idx}`}
+                      label={question}
+                      onClick={() => handleSend(question)}
+                      sx={(theme) => ({
+                        fontSize: '0.78rem',
+                        fontStyle: 'italic',
+                        borderRadius: '12px',
+                        bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.16),
+                        }
+                      })}
+                    />
+                  ))}
+                </Box>
+              )}
+            </Paper>
+          </Box>
         )}
         {messages.length === 0 && (
           <Typography color="text.secondary" align="center">

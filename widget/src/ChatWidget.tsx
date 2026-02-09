@@ -40,6 +40,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const [emailValue, setEmailValue] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [leadSubmitting, setLeadSubmitting] = useState(false);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const storageKey = `chatbot_session_id_${widgetId || 'default'}`;
   const createSessionId = () => `session_${Date.now()}_${Math.random()}`;
   const [sessionId, setSessionId] = useState(() => {
@@ -64,6 +66,24 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     }
   }, [isOpen, welcomeMessage]);
 
+  const loadSuggestions = async () => {
+    if (!widgetId) return;
+    setSuggestionsLoading(true);
+    try {
+      const questions = await chatAPI.current.getSuggestedQuestions(widgetId);
+      setSuggestedQuestions(questions);
+    } catch {
+      setSuggestedQuestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    loadSuggestions();
+  }, [isOpen, widgetId]);
+
   useEffect(() => {
     if (!isOpen || loading || showLeadForm || showEmailForm) return;
     inputRef.current?.focus();
@@ -78,12 +98,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setShowLeadForm(false);
     setShowEmailForm(false);
     setEmailValue('');
+    setSuggestedQuestions([]);
+    if (isOpen) {
+      loadSuggestions();
+    }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || loading) return;
 
-    const userMessage = input;
+    const userMessage = text;
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
     setLoading(true);
@@ -118,6 +142,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSend = async () => {
+    await sendMessage(input);
   };
 
   const handleLeadSubmit = async () => {
@@ -176,6 +204,14 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     }
   };
 
+  const showSuggestions =
+    isOpen &&
+    !loading &&
+    !showLeadForm &&
+    !showEmailForm &&
+    input.trim().length === 0 &&
+    messages.length <= 1;
+
   return (
     <div
       className={`chatbot-widget-container ${position}`}
@@ -223,6 +259,26 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           </div>
 
           <div className="chatbot-widget-messages">
+            {showSuggestions && (suggestionsLoading || suggestedQuestions.length > 0) && (
+              <div className="chatbot-suggestions">
+                <div className="chatbot-suggestions-title">Try asking</div>
+                <div className="chatbot-suggestions-list">
+                  {suggestionsLoading && (
+                    <div className="chatbot-suggestions-loading">Loading suggestions…</div>
+                  )}
+                  {!suggestionsLoading && suggestedQuestions.map((question, index) => (
+                    <button
+                      key={`${question}-${index}`}
+                      className="chatbot-suggestion-chip"
+                      onClick={() => sendMessage(question)}
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {messages.map((message, index) => (
               <div key={index} className={`chatbot-message ${message.role}`}>
                 <div className="chatbot-message-bubble">{message.content}</div>

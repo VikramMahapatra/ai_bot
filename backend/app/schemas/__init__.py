@@ -11,6 +11,7 @@ from app.schemas.chat import (
     ConversationHistoryItem,
     TranslateRequest,
     TranslateResponse,
+    SuggestedQuestionsResponse,
 )
 from app.schemas.lead import (
     LeadCreate,
@@ -55,6 +56,7 @@ __all__ = [
     "ConversationHistoryItem",
     "TranslateRequest",
     "TranslateResponse",
+    "SuggestedQuestionsResponse",
     "LeadCreate",
     "LeadResponse",
     "WidgetConfigCreate",
