@@ -14,6 +14,9 @@ interface WidgetConfig {
   welcomeMessage?: string;
   primaryColor?: string;
   position?: string;
+
+  shop?: any;
+  user?: any;
 }
 
 const ChatWidget: React.FC<WidgetConfig> = ({
@@ -23,6 +26,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   welcomeMessage = 'Hi! How can I help you?',
   primaryColor = '#007bff',
   position = 'bottom-right',
+  shop,
+  user
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -35,6 +40,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     localStorage.setItem('chatbot_session_id', newId);
     return newId;
   });
+
+  console.log('shop:', shop);
+  console.log('user:', user);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatAPI = useRef(new ChatAPI(apiUrl));
