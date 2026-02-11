@@ -10,6 +10,8 @@ class ChatMessage(BaseModel):
     language_code: Optional[str] = None
     language_label: Optional[str] = None
     retrieval_message: Optional[str] = None
+    shop_domain: Optional[str] = None
+    customer_id: Optional[str] = None
 
 
 class SourceInfo(BaseModel):

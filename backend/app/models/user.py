@@ -18,6 +18,8 @@ class Organization(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    org_domain = Column(String, unique=True, nullable=False)
+    access_token = Column(String, nullable=False)
     
     # Relationship
     users = relationship("User", back_populates="organization")
