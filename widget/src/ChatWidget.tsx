@@ -57,9 +57,6 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     return newId;
   });
 
-  console.log('shop:', shop);
-  console.log('user:', user);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatAPI = useRef(new ChatAPI(apiUrl));
@@ -78,6 +75,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     if (!widgetId) return;
     setSuggestionsLoading(true);
     try {
+
       const questions = await chatAPI.current.getSuggestedQuestions(widgetId);
       setSuggestedQuestions(questions);
     } catch {
@@ -124,7 +122,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       const response = await chatAPI.current.sendMessage(
         userMessage,
         sessionId,
-        widgetId
+        widgetId,
+        shop?.domain,
+        user?.id
       );
 
       setMessages((prev) => [

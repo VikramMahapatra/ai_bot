@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_MINUTES: int = 10080  # 1 week
     
     # CORS Configuration
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,https://thomasina-mesogleal-alarmingly.ngrok-free.dev,https://zentrixel-it-services.myshopify.com"
     
     # Email Configuration
     SMTP_HOST: str = "smtp.office365.com"

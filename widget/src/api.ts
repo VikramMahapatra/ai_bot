@@ -17,7 +17,9 @@ export class ChatAPI {
   async sendMessage(
     message: string,
     sessionId: string,
-    widgetId?: string
+    widgetId?: string,
+    shopDomain?: string,
+    customerId?: string
   ): Promise<ChatResponse> {
     const response = await fetch(`${this.baseURL}/api/chat`, {
       method: 'POST',
@@ -28,6 +30,8 @@ export class ChatAPI {
         message,
         session_id: sessionId,
         widget_id: widgetId,
+        shop_domain: shopDomain,
+        customer_id: customerId,
       }),
     });
 
@@ -44,7 +48,11 @@ export class ChatAPI {
       url.searchParams.set('widget_id', widgetId);
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      headers: {
+        "ngrok-skip-browser-warning": "true"
+      }
+    });
 
     if (!response.ok) {
       return false;
@@ -92,12 +100,15 @@ export class ChatAPI {
       url.searchParams.set('widget_id', widgetId);
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      headers: {
+        "ngrok-skip-browser-warning": "true"
+      }
+    });
 
     if (!response.ok) {
       return [];
     }
-
     const data: SuggestedQuestionsResponse = await response.json();
     return Array.isArray(data.questions) ? data.questions : [];
   }
