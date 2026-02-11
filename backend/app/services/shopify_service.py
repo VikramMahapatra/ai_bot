@@ -64,7 +64,7 @@ async def get_order_status(db: Session, shop_domain: str, customer_id: int, orde
         return None
 
     client = ShopifyClient(shop.org_domain, shop.access_token)
-    order = await get_order_by_number(db, shop_domain, "1003")
+    order = await get_order_by_number(db, shop_domain, order_number)
     if order:
         order_id = order["id"]
         response, _ = await client.get(f"/orders/{order_id}.json")
@@ -94,13 +94,28 @@ async def get_refunds(db: Session, shop_domain: str, customer_id: str):
         return []
 
     client = ShopifyClient(shop.org_domain, shop.access_token)
-    response, _ = await client.get(f"/orders.json?customer_id={customer_id}&status=refunded")
 
-    refunds = response.get("orders", [])
-    return [
-        {"order_number": r["order_number"], "total_refunded": r["total_price"]}
-        for r in refunds
+    response, _ = await client.get(
+        f"/orders.json?customer_id={customer_id}&status=any"
+    )
+
+    orders = response.get("orders", [])
+
+    refunded_orders = [
+        {
+            "order_number": o["order_number"],
+            "total_refunded": sum(
+                float(refund["transactions"][0]["amount"])
+                for refund in o.get("refunds", [])
+                if refund.get("transactions")
+            )
+        }
+        for o in orders
+        if o.get("refunds")  # only refunded orders
     ]
+
+    return refunded_orders
+
 
 async def get_shipping_status(db: Session, shop_domain: str, customer_id: str, order_number: str):
     shop = await get_shop(db, shop_domain)
@@ -108,9 +123,15 @@ async def get_shipping_status(db: Session, shop_domain: str, customer_id: str, o
         return None
 
     client = ShopifyClient(shop.org_domain, shop.access_token)
-    response, _ = await client.get(f"/orders/{order_number}/fulfillments.json")
+    
+    fulfillments = None
+    order = await get_order_by_number(db, shop_domain, order_number)
+    if order:
+        order_id = order["id"]
+    
+        response, _ = await client.get(f"/orders/{order_id}/fulfillments.json")
 
-    fulfillments = response.get("fulfillments", [])
+        fulfillments = response.get("fulfillments", [])
     if fulfillments:
         latest = fulfillments[-1]
         return {
@@ -191,10 +212,47 @@ async def handle_shopify_intent(db: Session, shop_domain: str, customer_id: str,
         return "No refunds found."
 
     elif "account" in msg_lower or "info" in msg_lower:
-        customer = await get_customer_info(db=db, shop_domain=shop_domain, customer_id=customer_id)
-        if customer:
-            return f"Account info: {customer.get('first_name', '')} {customer.get('last_name', '')}, Email: {customer.get('email')}"
-        return "Could not fetch account info."
+        customer = await get_customer_info(
+            db=db,
+            shop_domain=shop_domain,
+            customer_id=customer_id
+        )
+
+        print("Customer info:", customer)
+
+        if not customer:
+            return "Could not fetch account info."
+
+        # Non-PII safe fields
+        orders_count = customer.get("orders_count", "N/A")
+        state = customer.get("state", "N/A")
+        verified_email = customer.get("verified_email", "N/A")
+
+        # Handle restricted fields safely
+        first_name = customer.get("first_name")
+        last_name = customer.get("last_name")
+        email = customer.get("email")
+
+        name_text = (
+            f"{first_name} {last_name}"
+            if first_name or last_name
+            else "Name is restricted due to Shopify privacy settings"
+        )
+
+        email_text = (
+            email
+            if email
+            else "Email is restricted due to Shopify privacy settings"
+        )
+
+        return (
+            f"Account info:\n"
+            f"Name: {name_text}\n"
+            f"Email: {email_text}\n"
+            f"Orders placed: {orders_count}\n"
+            f"Account state: {state}\n"
+            f"Email verified: {verified_email}"
+        )
 
     elif "cart" in msg_lower:
         cart = await get_abandoned_checkouts(db=db, shop_domain=shop_domain, customer_id=customer_id)
@@ -202,6 +260,13 @@ async def handle_shopify_intent(db: Session, shop_domain: str, customer_id: str,
             total_items = sum(sum(item["quantity"] for item in c["line_items"]) for c in cart)
             return f"You have {total_items} item(s) in your cart."
         return "Your cart is empty."
+    
+    elif "product" in msg_lower or "recommended" in msg_lower:
+        products = await get_recommended_products(db=db, shop_domain=shop_domain, customer_id=customer_id)
+        if products:
+            total_items = len(products)
+            return f"You have {total_items} recommended product(s)."
+        return "No recommended products found."
 
 
     elif "shipping" in msg_lower or "track shipment" in msg_lower:
