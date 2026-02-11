@@ -14,6 +14,8 @@ from app.auth import get_current_user, get_current_user_optional
 import logging
 import json
 
+from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -83,6 +85,13 @@ async def chat(
                 status_code=400, 
                 detail="Invalid widget_id or user not found. Please provide a valid widget_id or authenticate."
             )
+           
+        use_shopify = False
+        if message.customer_id and message.shop_domain:
+            is_valid_customer  = await verify_shopify_customer(db, message.shop_domain, int(message.customer_id))
+            use_shopify = is_valid_customer
+            
+        print(f"Shopify customer verified: {use_shopify}")
         
         # Resolve organization for scoping
         user = db.query(User).filter(User.id == user_id).first()
@@ -120,32 +129,48 @@ async def chat(
                 },
             )
 
-        # Generate response with organization-scoped knowledge base
-        response_text, sources, token_usage = generate_chat_response(
-            message.message,
-            message.session_id,
-            message.widget_id,
-            user_id,
-            user.organization_id,
-            db,
-            language_code=message.language_code,
-            language_label=message.language_label,
-            retrieval_message=message.retrieval_message
-        )
+        # ----------------------
+        # Generate Response
+        # ----------------------
+        if use_shopify:
+            # Shopify customer flow
+            response_text = await handle_shopify_intent(
+                db=db,
+                shop_domain=message.shop_domain,
+                customer_id=str(message.customer_id),
+                user_message=message.message
+            )
+            return ChatResponse(
+                response=response_text,
+                session_id=message.session_id
+            )
+        else:
+            # Generate response with organization-scoped knowledge base
+            response_text, sources, token_usage = generate_chat_response(
+                message.message,
+                message.session_id,
+                message.widget_id,
+                user_id,
+                user.organization_id,
+                db,
+                language_code=message.language_code,
+                language_label=message.language_label,
+                retrieval_message=message.retrieval_message
+            )
 
-        increment_usage(
-            db,
-            user.organization_id,
-            conversations_count=2,
-            messages_count=2,
-            tokens_used=token_usage.get("total_tokens", 0)
-        )
-        
-        return ChatResponse(
-            response=response_text,
-            session_id=message.session_id,
-            sources=sources
-        )
+            increment_usage(
+                db,
+                user.organization_id,
+                conversations_count=2,
+                messages_count=2,
+                tokens_used=token_usage.get("total_tokens", 0)
+            )
+            
+            return ChatResponse(
+                response=response_text,
+                session_id=message.session_id,
+                sources=sources
+            )
     except HTTPException:
         raise
     except Exception as e:
