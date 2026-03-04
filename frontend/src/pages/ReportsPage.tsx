@@ -21,6 +21,10 @@ import {
   LinearProgress,
   Chip,
   Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Snackbar,
 } from '@mui/material';
 import {
   Download as FileDownloadIcon,
@@ -31,9 +35,10 @@ import {
   BarChart as BarChartIcon,
   Star,
   ChatBubble,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { reportService, ConversationMetric, DailyStats } from '../services/reportService';
+import { reportService, ConversationMetric, DailyStats, SessionMessage } from '../services/reportService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -77,6 +82,13 @@ const ReportsPage: React.FC = () => {
   const [totalConversations, setTotalConversations] = useState(0);
   const [sortBy] = useState('conversation_start');
   const [sortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [sessionDialogLoading, setSessionDialogLoading] = useState(false);
+  const [sessionDialogId, setSessionDialogId] = useState('');
+  const [sessionMessages, setSessionMessages] = useState<SessionMessage[]>([]);
+  const [outcomeRunning, setOutcomeRunning] = useState(false);
+  const [outcomeSnackbarOpen, setOutcomeSnackbarOpen] = useState(false);
+  const [outcomeSnackbarMessage, setOutcomeSnackbarMessage] = useState('');
 
   // Token data
   const [tokenReport, setTokenReport] = useState<any>(null);
@@ -148,6 +160,25 @@ const ReportsPage: React.FC = () => {
     }
   };
 
+  const handleRunOutcomeProcessing = async () => {
+    try {
+      setOutcomeRunning(true);
+      const res = await reportService.runOutcomeProcessingNow();
+      // Refresh conversations after processing
+      if (tabValue === 1) fetchConversations();
+      setOutcomeSnackbarMessage(`Outcome processing completed: processed=${res.processed}, failed=${res.failed}`);
+      setOutcomeSnackbarOpen(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to run outcome processing');
+    } finally {
+      setOutcomeRunning(false);
+    }
+  };
+
+  const handleOutcomeSnackbarClose = () => {
+    setOutcomeSnackbarOpen(false);
+  };
+
   // Fetch leads report
   const fetchLeadsReport = async () => {
     try {
@@ -184,6 +215,12 @@ const ReportsPage: React.FC = () => {
     fetchSummary();
   }, []);
 
+  useEffect(() => {
+    if (tabValue === 1) {
+      fetchConversations();
+    }
+  }, [tabValue, page, rowsPerPage]);
+
   // Tab change handler
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -193,7 +230,9 @@ const ReportsPage: React.FC = () => {
         break;
       case 1:
         setPage(0);
-        fetchConversations();
+        if (page === 0) {
+          fetchConversations();
+        }
         break;
       case 2:
         fetchTokenReport();
@@ -294,6 +333,32 @@ const ReportsPage: React.FC = () => {
     window.print();
   };
 
+  const truncateSessionId = (sessionId: string) => {
+    if (!sessionId || sessionId.length <= 18) return sessionId;
+    return `${sessionId.slice(0, 8)}...${sessionId.slice(-8)}`;
+  };
+
+  const handleViewSession = async (sessionId: string, sessionWidgetId?: string | null) => {
+    try {
+      setSessionDialogLoading(true);
+      setSessionDialogId(sessionId);
+      setSessionDialogOpen(true);
+      const messages = await reportService.getSessionMessages(sessionId, sessionWidgetId || undefined);
+      setSessionMessages(messages);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch session messages');
+      setSessionMessages([]);
+    } finally {
+      setSessionDialogLoading(false);
+    }
+  };
+
+  const handleCloseSessionDialog = () => {
+    setSessionDialogOpen(false);
+    setSessionDialogId('');
+    setSessionMessages([]);
+  };
+
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
   return (
@@ -384,12 +449,32 @@ const ReportsPage: React.FC = () => {
           >
             Print
           </Button>
+          <Button
+            startIcon={<Star />}
+            variant="contained"
+            color="secondary"
+            onClick={handleRunOutcomeProcessing}
+            disabled={outcomeRunning}
+          >
+            {outcomeRunning ? 'Running...' : 'Run Outcome Processing Now'}
+          </Button>
         </Box>
 
         {loading && <LinearProgress />}
 
         {/* Tabs */}
         <Paper>
+
+        <Snackbar
+          open={outcomeSnackbarOpen}
+          autoHideDuration={4000}
+          onClose={handleOutcomeSnackbarClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
+          <Alert onClose={handleOutcomeSnackbarClose} severity="success" sx={{ width: '100%' }}>
+            {outcomeSnackbarMessage}
+          </Alert>
+        </Snackbar>
           <Tabs
             value={tabValue}
             onChange={handleTabChange}
@@ -628,14 +713,20 @@ const ReportsPage: React.FC = () => {
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">Response Time</TableCell>
                   <TableCell align="right">Satisfaction</TableCell>
+                  <TableCell>Outcome</TableCell>
                   <TableCell>Lead</TableCell>
                   <TableCell>Date</TableCell>
+                  <TableCell align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {conversations.map((conv) => (
                   <TableRow key={conv.id}>
-                    <TableCell>{conv.session_id.substring(0, 12)}...</TableCell>
+                    <TableCell title={conv.session_id} sx={{ maxWidth: 220 }}>
+                      <Typography variant="body2" noWrap>
+                        {truncateSessionId(conv.session_id)}
+                      </Typography>
+                    </TableCell>
                     <TableCell align="right">{conv.total_messages}</TableCell>
                     <TableCell align="right">{conv.total_tokens}</TableCell>
                     <TableCell align="right">
@@ -647,6 +738,14 @@ const ReportsPage: React.FC = () => {
                         : 'N/A'}
                     </TableCell>
                     <TableCell>
+                      <Chip
+                        label={conv.outcome || 'Pending'}
+                        size="small"
+                        color={conv.outcome ? 'primary' : 'default'}
+                        variant={conv.outcome ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                    <TableCell>
                       {conv.has_lead ? (
                         <Chip label={conv.lead_name || 'New Lead'} color="success" size="small" />
                       ) : (
@@ -655,6 +754,16 @@ const ReportsPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       {new Date(conv.conversation_start).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<VisibilityIcon />}
+                        onClick={() => handleViewSession(conv.session_id, conv.widget_id)}
+                      >
+                        View
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -961,6 +1070,43 @@ const ReportsPage: React.FC = () => {
           )}
         </TabPanel>
         </Paper>
+
+        <Dialog open={sessionDialogOpen} onClose={handleCloseSessionDialog} fullWidth maxWidth="md">
+          <DialogTitle>
+            Session Messages: {truncateSessionId(sessionDialogId)}
+          </DialogTitle>
+          <DialogContent dividers>
+            {sessionDialogLoading ? (
+              <LinearProgress />
+            ) : sessionMessages.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No messages found for this session.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {sessionMessages.map((item, idx) => (
+                  <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      {new Date(item.created_at).toLocaleString()}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      User
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {item.message || '—'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      Assistant
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {item.response || '—'}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
       </Box>
     </AdminLayout>
   );

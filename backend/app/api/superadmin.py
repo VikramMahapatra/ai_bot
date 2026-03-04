@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -35,6 +35,8 @@ from app.services.limits_service import (
     get_subscription_days_left,
 )
 from sqlalchemy import func
+from app.config import settings
+from app.services.conversation_outcome_service import run_outcome_processing_batches
 import logging
 
 logger = logging.getLogger(__name__)
@@ -398,6 +400,25 @@ async def superadmin_organization_analytics(
         } if subscription else None,
         "usage": usage,
     }
+
+
+
+
+@router.post('/outcomes/process')
+async def run_outcome_processing_now(
+    payload: dict = Body(None),
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    """Admin endpoint to run outcome processing on-demand.
+
+    Optional JSON payload: {"batch_size": int, "max_batches": int}
+    """
+    batch_size = int(payload.get('batch_size')) if payload and payload.get('batch_size') else settings.OUTCOME_DAEMON_BATCH_SIZE
+    max_batches = int(payload.get('max_batches')) if payload and payload.get('max_batches') else settings.OUTCOME_DAEMON_MAX_BATCHES
+
+    processed, failed = run_outcome_processing_batches(batch_size=batch_size, max_batches=max_batches)
+    return {"processed": processed, "failed": failed}
 
 
 @router.get("/analytics/by-org")

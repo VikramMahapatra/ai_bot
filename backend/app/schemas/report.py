@@ -18,6 +18,7 @@ class ConversationMetricsResponse(BaseModel):
     has_lead: int
     lead_name: Optional[str]
     lead_email: Optional[str]
+    outcome: Optional[str] = None
     conversation_start: Optional[datetime]
     conversation_end: Optional[datetime]
     created_at: datetime
