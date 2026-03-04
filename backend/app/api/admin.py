@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
 from app.models import User, UserRole, Organization
 from app.services.limits_service import get_or_create_limits, get_effective_limits
+from app.config import settings
+from app.services.conversation_outcome_service import run_outcome_processing_batches
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import logging
@@ -12,6 +14,20 @@ import uuid
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
+DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
+
+
+def _ensure_widget_escalation_contacts(config) -> bool:
+    changed = False
+    if not getattr(config, "escalation_contact_level_1", None):
+        config.escalation_contact_level_1 = DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        changed = True
+    if not getattr(config, "escalation_contact_level_2", None):
+        config.escalation_contact_level_2 = DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        changed = True
+    return changed
 
 
 class LoginRequest(BaseModel):
@@ -187,6 +203,10 @@ async def get_widget_config(
     config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
+
+    if _ensure_widget_escalation_contacts(config):
+        db.commit()
+        db.refresh(config)
     
     return config
 
@@ -214,7 +234,9 @@ async def create_widget_config(
         secondary_color=config_data.get("secondary_color", "#6c757d"),
         position=config_data.get("position", "bottom-right"),
         lead_capture_enabled=config_data.get("lead_capture_enabled", True),
-        lead_fields=config_data.get("lead_fields")
+        lead_fields=config_data.get("lead_fields"),
+        escalation_contact_level_1=config_data.get("escalation_contact_level_1", DEFAULT_ESCALATION_CONTACT_LEVEL_1),
+        escalation_contact_level_2=config_data.get("escalation_contact_level_2", DEFAULT_ESCALATION_CONTACT_LEVEL_2),
     )
     db.add(config)
     db.commit()
@@ -249,11 +271,30 @@ async def update_widget_config(
     for key, value in config_data.items():
         if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
+
+    _ensure_widget_escalation_contacts(config)
     
     db.commit()
     db.refresh(config)
     
     return config
+
+
+@router.post('/outcomes/process')
+async def run_outcome_processing_now(
+    payload: Optional[dict] = Body(None),
+    current_user: User = Depends(require_admin),
+):
+    """Run outcome processing on-demand for admins in their organization context."""
+    batch_size = int(payload.get('batch_size')) if payload and payload.get('batch_size') else settings.OUTCOME_DAEMON_BATCH_SIZE
+    max_batches = int(payload.get('max_batches')) if payload and payload.get('max_batches') else settings.OUTCOME_DAEMON_MAX_BATCHES
+
+    processed, failed = run_outcome_processing_batches(
+        batch_size=batch_size,
+        max_batches=max_batches,
+        organization_id=current_user.organization_id,
+    )
+    return {"processed": processed, "failed": failed}
 
 
 @router.get("/widgets")
@@ -267,6 +308,13 @@ async def list_widgets(
     configs = db.query(WidgetConfig).filter(
         WidgetConfig.organization_id == current_user.organization_id
     ).all()
+
+    changed = False
+    for config in configs:
+        if _ensure_widget_escalation_contacts(config):
+            changed = True
+    if changed:
+        db.commit()
     
     return configs
 

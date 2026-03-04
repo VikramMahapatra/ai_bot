@@ -11,6 +11,7 @@ from app.models.lead import Lead
 from app.models.widget_config import WidgetConfig
 from app.models.feedback import MessageFeedback
 from app.models.report_metrics import ConversationMetrics
+from app.models.whatsapp_channel import WhatsAppChannel
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "WidgetConfig",
     "MessageFeedback",
     "ConversationMetrics",
+    "WhatsAppChannel",
 ]

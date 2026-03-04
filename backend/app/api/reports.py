@@ -14,6 +14,7 @@ from app.schemas.report import (
 )
 from app.services.report_service import (
     get_conversation_metrics_query,
+    get_session_conversations_report,
     get_report_summary,
     get_token_usage_report,
     get_leads_report,
@@ -69,30 +70,23 @@ async def get_conversations_report(
     # Parse date strings
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    
-    query = get_conversation_metrics_query(
-        db,
-        current_user.organization_id,
-        start_dt,
-        end_dt,
-        widget_id,
-        min_tokens,
-        max_tokens,
-        has_lead,
+
+    report_data = get_session_conversations_report(
+        db=db,
+        organization_id=current_user.organization_id,
+        skip=skip,
+        limit=limit,
+        start_date=start_dt,
+        end_date=end_dt,
+        widget_id=widget_id,
+        min_tokens=min_tokens,
+        max_tokens=max_tokens,
+        has_lead=has_lead,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
-    
-    # Sorting
-    sort_field = getattr(ConversationMetrics, sort_by)
-    if sort_order == "desc":
-        query = query.order_by(sort_field.desc())
-    else:
-        query = query.order_by(sort_field.asc())
-    
-    # Get total count
-    total = query.count()
-    
-    # Pagination
-    metrics = query.offset(skip).limit(limit).all()
+    metrics = report_data["metrics"]
+    total = report_data["total"]
     
     # Get summary
     summary = get_report_summary(

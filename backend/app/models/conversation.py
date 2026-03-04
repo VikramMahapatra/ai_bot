@@ -15,6 +15,7 @@ class Conversation(Base):
     message = Column(Text, nullable=False)
     response = Column(Text, nullable=False)
     role = Column(String, nullable=False)  # 'user' or 'assistant'
+    outcome = Column(String, nullable=True, index=True)  # Session-level outcome status (positive/negative/satisfactory/etc.)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships

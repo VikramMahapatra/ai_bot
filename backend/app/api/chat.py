@@ -236,7 +236,7 @@ async def chat_stream(
                 },
             )
 
-        stream, sources = stream_chat_response(
+        stream, sources, escalation_fallback_text = stream_chat_response(
             message.message,
             message.session_id,
             message.widget_id,
@@ -252,22 +252,27 @@ async def chat_stream(
             collected_parts = []
             usage_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             try:
-                for chunk in stream:
-                    if getattr(chunk, "usage", None):
-                        usage = chunk.usage
-                        usage_tokens = {
-                            "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
-                            "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
-                            "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
-                        }
-                    if not getattr(chunk, "choices", None):
-                        continue
-                    if not chunk.choices or not getattr(chunk.choices[0], "delta", None):
-                        continue
-                    delta = getattr(chunk.choices[0].delta, "content", None)
-                    if delta:
-                        collected_parts.append(delta)
-                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(delta)} }}\n\n"
+                if stream is None:
+                    fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
+                    collected_parts.append(fallback_text)
+                    yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
+                else:
+                    for chunk in stream:
+                        if getattr(chunk, "usage", None):
+                            usage = chunk.usage
+                            usage_tokens = {
+                                "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                                "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                                "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
+                            }
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        if not chunk.choices or not getattr(chunk.choices[0], "delta", None):
+                            continue
+                        delta = getattr(chunk.choices[0].delta, "content", None)
+                        if delta:
+                            collected_parts.append(delta)
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(delta)} }}\n\n"
             finally:
                 full_text = "".join(collected_parts)
                 persist_conversation(

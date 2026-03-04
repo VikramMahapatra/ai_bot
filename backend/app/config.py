@@ -8,6 +8,14 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-ada-002"
     USE_LOCAL_EMBEDDINGS: bool = True
     LOCAL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    OUTCOME_CLASSIFICATION_MODEL: str = "gpt-4o-mini"
+    OUTCOME_DAEMON_HOUR_UTC: int = 2
+    OUTCOME_DAEMON_MINUTE_UTC: int = 15
+    OUTCOME_DAEMON_INITIAL_DELAY_SECONDS: int = 30
+    OUTCOME_DAEMON_BATCH_SIZE: int = 100
+    OUTCOME_DAEMON_MAX_BATCHES: int = 20
+    META_APP_SECRET: str = ""
+    WHATSAPP_GRAPH_VERSION: str = "v21.0"
     
     # Database Configuration
     DATABASE_URL: str = "sqlite:///./chatbot.db"

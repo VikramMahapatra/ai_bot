@@ -24,11 +24,13 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   apiUrl,
   name = 'AI Assistant',
   welcomeMessage = 'Hi! How can I help you?',
-  primaryColor = '#007bff',
+  primaryColor = '#269b9f',
   position = 'bottom-right',
   shop,
   user
 }) => {
+    // Dark mode state for widget
+    const [darkMode, setDarkMode] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -69,98 +71,116 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     if (isOpen && messages.length === 0 && welcomeMessage) {
       setMessages([{ role: 'assistant', content: welcomeMessage }]);
     }
-  }, [isOpen, welcomeMessage]);
+  return (
+    <div
+      className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
+      style={{ '--primary-color': primaryColor } as React.CSSProperties}
+    >
+      {/* Floating button with fade-in animation */}
+      {!isOpen && (
+        <button
+          className="chatbot-widget-button chatbot-fade-in"
+          onClick={() => setIsOpen(true)}
+          style={{ background: primaryColor }}
+        >
+          💬
+        </button>
+      )}
 
-  const loadSuggestions = async () => {
-    if (!widgetId) return;
-    setSuggestionsLoading(true);
-    try {
+      {/* Chat window with slide/fade animation */}
+      {isOpen && (
+        <div className="chatbot-widget-window chatbot-slide-in">
+          <div
+            className="chatbot-widget-header"
+            style={{ background: primaryColor }}
+          >
+            <h3>{name}</h3>
+            <div className="chatbot-widget-header-actions">
+              <button
+                className="chatbot-widget-header-btn"
+                onClick={resetChat}
+                title="New chat"
+              >
+                ⟳
+              </button>
+              <button
+                className="chatbot-widget-header-btn"
+                onClick={() => setShowEmailForm((v) => !v)}
+                title="Email this conversation"
+              >
+                ✉
+              </button>
+              <button
+                className="chatbot-widget-header-btn"
+                onClick={() => setDarkMode((d) => !d)}
+                title={darkMode ? 'Light mode' : 'Dark mode'}
+                style={{ fontSize: 18 }}
+              >
+                {darkMode ? '🌙' : '☀️'}
+              </button>
+              <button
+                className="chatbot-widget-close"
+                onClick={() => setIsOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
 
-      const questions = await chatAPI.current.getSuggestedQuestions(widgetId);
-      setSuggestedQuestions(questions);
-    } catch {
-      setSuggestedQuestions([]);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  };
+          <div className="chatbot-widget-messages">
+            {showSuggestions && (suggestionsLoading || suggestedQuestions.length > 0) && (
+              <div className="chatbot-suggestions">
+                <div className="chatbot-suggestions-title">Try asking</div>
+                <div className="chatbot-suggestions-list">
+                  {suggestionsLoading && (
+                    <div className="chatbot-suggestions-loading">Loading suggestions…</div>
+                  )}
+                  {!suggestionsLoading && suggestedQuestions.map((question, index) => (
+                    <button
+                      key={`${question}-${index}`}
+                      className="chatbot-suggestion-chip"
+                      onClick={() => sendMessage(question)}
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-  useEffect(() => {
-    if (!isOpen) return;
-    loadSuggestions();
-  }, [isOpen, widgetId]);
+            {messages.map((message, index) => (
+              <div key={index} className={`chatbot-message ${message.role} chatbot-fade-in`}>
+                <div className="chatbot-message-bubble">{message.content}</div>
+              </div>
+            ))}
 
-  useEffect(() => {
-    if (!isOpen || loading || showLeadForm || showEmailForm) return;
-    inputRef.current?.focus();
-  }, [isOpen, loading, showLeadForm, showEmailForm]);
+            {loading && (
+              <div className="chatbot-message assistant chatbot-fade-in">
+                <div className="chatbot-message-bubble">
+                  <div className="chatbot-typing">
+                    <div className="chatbot-typing-dot"></div>
+                    <div className="chatbot-typing-dot"></div>
+                    <div className="chatbot-typing-dot"></div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
 
-  const resetChat = () => {
-    const newId = createSessionId();
-    localStorage.setItem(storageKey, newId);
-    setSessionId(newId);
-    setMessages([]);
-    setLeadSubmitted(false);
-    setShowLeadForm(false);
-    setShowEmailForm(false);
-    setEmailValue('');
-    setSuggestedQuestions([]);
-    if (isOpen) {
-      loadSuggestions();
-    }
-  };
-
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || loading) return;
-
-    const userMessage = text;
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
-    setLoading(true);
-
-    try {
-      const response = await chatAPI.current.sendMessage(
-        userMessage,
-        sessionId,
-        widgetId,
-        shop?.domain,
-        user?.id
-      );
-
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: response.response },
-      ]);
-
-      if (!leadSubmitted) {
-        const shouldCapture = await chatAPI.current.shouldCaptureLead(sessionId, widgetId);
-        if (shouldCapture) {
-          setShowLeadForm(true);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, something went wrong. Please try again.',
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSend = async () => {
-    await sendMessage(input);
-  };
-
-  const handleLeadSubmit = async () => {
-    if (leadSubmitting) return;
-    setLeadSubmitting(true);
-    try {
-      await chatAPI.current.submitLead({
+          {/* ...existing code for input, lead form, footer... */}
+          {showLeadForm && (
+            <div className="chatbot-inline-card chatbot-fade-in">
+              {/* ...lead form fields... */}
+            </div>
+          )}
+          <div className="chatbot-widget-footer">
+            Powered by Zentrixel AI
+          </div>
+        </div>
+      )}
+    </div>
+  );
         session_id: sessionId,
         widget_id: widgetId,
         name: leadForm.name,
@@ -168,6 +188,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         phone: leadForm.phone,
         company: leadForm.company,
       });
+      // <-- Add missing semicolon after API call
       setLeadSubmitted(true);
       setShowLeadForm(false);
       setMessages((prev) => [

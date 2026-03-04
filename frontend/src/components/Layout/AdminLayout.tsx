@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { Box, AppBar, Toolbar, IconButton, Typography, Avatar, Tooltip, Chip } from '@mui/material';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import MenuIcon from '@mui/icons-material/Menu';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useNavigate } from 'react-router-dom';
+import { useContext } from 'react';
+import { ColorModeContext } from '../../App';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../Common/Sidebar';
 
@@ -14,6 +18,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const { logout, organizationName } = useAuth();
+  const colorMode = useContext(ColorModeContext);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -60,7 +65,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 sx={{ mr: 2, fontWeight: 600 }}
               />
             )}
-            
+            <Tooltip title={colorMode.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+              <IconButton onClick={colorMode.toggleColorMode} color="primary" sx={{ mr: 2 }}>
+                {colorMode.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Logout">
               <IconButton onClick={handleLogout} color="error">
                 <LogoutIcon />

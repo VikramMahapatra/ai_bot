@@ -1,7 +1,7 @@
 from openai import OpenAI
 from app.config import settings
 from app.services.rag import chroma_client
-from app.models import Conversation, KnowledgeSource
+from app.models import Conversation, KnowledgeSource, WidgetConfig
 from app.services.report_service import sync_conversation_metrics
 from sqlalchemy.orm import Session
 import logging
@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=settings.OPENAPI_KEY2)
+
+DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
+DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
 
 
 _STOPWORDS = {
@@ -170,6 +173,34 @@ def _expand_queries(base_query: str, raw_message: str) -> List[str]:
     return queries[:3]
 
 
+def _build_escalation_message(level_1: str, level_2: str) -> str:
+    return (
+        "Sorry—I don’t have a reliable answer for this right now. "
+        "If you’d like, I can connect you with our escalation contacts:\n"
+        f"• Level 1: {level_1}\n"
+        f"• Level 2: {level_2}\n"
+        "Would you like me to help you reach them?"
+    )
+
+
+def _looks_like_no_answer(text: Optional[str]) -> bool:
+    if not text:
+        return True
+    lower = text.lower()
+    patterns = [
+        "i don't know",
+        "i do not know",
+        "don't have",
+        "do not have",
+        "can't find",
+        "cannot find",
+        "not available in the provided context",
+        "not in the context",
+        "no relevant information",
+    ]
+    return any(pattern in lower for pattern in patterns)
+
+
 def _prepare_chat_payload(
     message: str,
     session_id: str,
@@ -179,7 +210,7 @@ def _prepare_chat_payload(
     language_code: Optional[str] = None,
     language_label: Optional[str] = None,
     retrieval_message: Optional[str] = None
-) -> Tuple[List[Dict], List[Dict]]:
+) -> Tuple[List[Dict], List[Dict], bool, str]:
     history = db.query(Conversation).filter(
         Conversation.session_id == session_id,
         Conversation.widget_id == widget_id,
@@ -262,6 +293,23 @@ def _prepare_chat_payload(
         _add_results(fallback_results, max_chunks=12, apply_threshold=False)
 
     context = "\n\n".join(context_parts) if context_parts else ""
+    has_context = bool(context_parts)
+
+    widget_config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == widget_id,
+        WidgetConfig.organization_id == organization_id,
+    ).first()
+    escalation_level_1 = (
+        widget_config.escalation_contact_level_1
+        if widget_config and widget_config.escalation_contact_level_1
+        else DEFAULT_ESCALATION_CONTACT_LEVEL_1
+    )
+    escalation_level_2 = (
+        widget_config.escalation_contact_level_2
+        if widget_config and widget_config.escalation_contact_level_2
+        else DEFAULT_ESCALATION_CONTACT_LEVEL_2
+    )
+    escalation_message = _build_escalation_message(escalation_level_1, escalation_level_2)
 
     sources = []
     if source_ids:
@@ -289,8 +337,11 @@ def _prepare_chat_payload(
     messages = [
         {
             "role": "system",
-            "content": f"""You are a helpful AI assistant. Answer using only the context from the user's knowledge base and the conversation history.
-If the answer is not in the context, say you don't know and ask a brief clarifying question.
+            "content": f"""You are a friendly and empathetic assistant chatting like a real human.
+Use warm, natural language, short sentences, and contractions when appropriate.
+Answer using only the context from the user's knowledge base and the conversation history.
+If the answer is not in the context, do not guess. Politely acknowledge it and offer escalation using this exact message:
+{escalation_message}
 Do not use outside knowledge or make assumptions.
 You may derive simple aggregates (e.g., price ranges) from the provided context if present, but do not expose step-by-step reasoning.
 {language_instruction}
@@ -306,7 +357,7 @@ Context:
 
     messages.append({"role": "user", "content": message})
 
-    return messages, sources
+    return messages, sources, has_context, escalation_message
 
 
 def persist_conversation(
@@ -348,7 +399,7 @@ def generate_chat_response(
 ) -> Tuple[str, List[Dict], Dict]:
     """Generate AI response using RAG with organization-scoped knowledge base. Returns (response, sources, token_usage)."""
     try:
-        messages, sources = _prepare_chat_payload(
+        messages, sources, has_context, escalation_message = _prepare_chat_payload(
             message,
             session_id,
             widget_id,
@@ -368,6 +419,8 @@ def generate_chat_response(
         )
         
         ai_response = response.choices[0].message.content
+        if not has_context or _looks_like_no_answer(ai_response):
+            ai_response = escalation_message
 
         usage = getattr(response, "usage", None)
         token_usage = {
@@ -405,7 +458,7 @@ def stream_chat_response(
     language_label: Optional[str] = None,
     retrieval_message: Optional[str] = None
 ):
-    messages, sources = _prepare_chat_payload(
+    messages, sources, has_context, escalation_message = _prepare_chat_payload(
         message,
         session_id,
         widget_id,
@@ -416,6 +469,9 @@ def stream_chat_response(
         retrieval_message=retrieval_message
     )
 
+    if not has_context:
+        return None, sources, escalation_message
+
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
@@ -425,7 +481,7 @@ def stream_chat_response(
         stream_options={"include_usage": True}
     )
 
-    return stream, sources
+    return stream, sources, escalation_message
 
 
 def translate_text(text: str, target_language_code: Optional[str] = None, target_language_label: Optional[str] = None) -> str:

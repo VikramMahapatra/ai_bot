@@ -45,6 +45,166 @@ def get_conversation_metrics_query(
     return query
 
 
+def get_session_conversations_report(
+    db: Session,
+    organization_id: int,
+    skip: int = 0,
+    limit: int = 10,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    widget_id: Optional[str] = None,
+    min_tokens: Optional[int] = None,
+    max_tokens: Optional[int] = None,
+    has_lead: Optional[int] = None,
+    sort_by: str = "conversation_start",
+    sort_order: str = "desc",
+):
+    """Get paginated conversation report aggregated by session_id."""
+    conversation_filters = [
+        Conversation.organization_id == organization_id,
+        Conversation.session_id.isnot(None),
+    ]
+
+    if start_date:
+        conversation_filters.append(Conversation.created_at >= start_date)
+    if end_date:
+        conversation_filters.append(Conversation.created_at <= end_date)
+    if widget_id:
+        conversation_filters.append(Conversation.widget_id == widget_id)
+
+    sessions_subquery = db.query(
+        Conversation.session_id.label("session_id"),
+        func.min(Conversation.id).label("id"),
+        func.min(Conversation.created_at).label("conversation_start"),
+        func.max(Conversation.created_at).label("conversation_end"),
+        func.max(Conversation.created_at).label("created_at"),
+        func.max(Conversation.widget_id).label("widget_id"),
+        func.count(Conversation.id).label("turn_count"),
+        func.max(Conversation.outcome).label("outcome"),
+    ).filter(
+        *conversation_filters
+    ).group_by(
+        Conversation.session_id
+    ).subquery()
+
+    metrics_filters = [
+        ConversationMetrics.organization_id == organization_id,
+    ]
+    if start_date:
+        metrics_filters.append(ConversationMetrics.conversation_start >= start_date)
+    if end_date:
+        metrics_filters.append(ConversationMetrics.conversation_start <= end_date)
+    if widget_id:
+        metrics_filters.append(ConversationMetrics.widget_id == widget_id)
+
+    metrics_subquery = db.query(
+        ConversationMetrics.session_id.label("session_id"),
+        func.sum(ConversationMetrics.total_tokens).label("total_tokens"),
+        func.sum(ConversationMetrics.prompt_tokens).label("prompt_tokens"),
+        func.sum(ConversationMetrics.completion_tokens).label("completion_tokens"),
+        func.avg(ConversationMetrics.average_response_time).label("average_response_time"),
+        func.avg(ConversationMetrics.user_satisfaction).label("user_satisfaction"),
+        func.max(ConversationMetrics.has_lead).label("has_lead"),
+    ).filter(
+        *metrics_filters
+    ).group_by(
+        ConversationMetrics.session_id
+    ).subquery()
+
+    leads_subquery = db.query(
+        Lead.session_id.label("session_id"),
+        func.max(Lead.name).label("lead_name"),
+        func.max(Lead.email).label("lead_email"),
+    ).filter(
+        Lead.organization_id == organization_id
+    ).group_by(
+        Lead.session_id
+    ).subquery()
+
+    query = db.query(
+        sessions_subquery.c.id.label("id"),
+        sessions_subquery.c.session_id.label("session_id"),
+        sessions_subquery.c.widget_id.label("widget_id"),
+        sessions_subquery.c.turn_count.label("turn_count"),
+        sessions_subquery.c.conversation_start.label("conversation_start"),
+        sessions_subquery.c.conversation_end.label("conversation_end"),
+        sessions_subquery.c.created_at.label("created_at"),
+        sessions_subquery.c.outcome.label("outcome"),
+        func.coalesce(metrics_subquery.c.total_tokens, 0).label("total_tokens"),
+        func.coalesce(metrics_subquery.c.prompt_tokens, 0).label("prompt_tokens"),
+        func.coalesce(metrics_subquery.c.completion_tokens, 0).label("completion_tokens"),
+        func.coalesce(metrics_subquery.c.average_response_time, 0.0).label("average_response_time"),
+        metrics_subquery.c.user_satisfaction.label("user_satisfaction"),
+        func.coalesce(metrics_subquery.c.has_lead, 0).label("has_lead"),
+        leads_subquery.c.lead_name.label("lead_name"),
+        leads_subquery.c.lead_email.label("lead_email"),
+    ).select_from(
+        sessions_subquery
+    ).outerjoin(
+        metrics_subquery,
+        metrics_subquery.c.session_id == sessions_subquery.c.session_id,
+    ).outerjoin(
+        leads_subquery,
+        leads_subquery.c.session_id == sessions_subquery.c.session_id,
+    )
+
+    if min_tokens is not None:
+        query = query.filter(func.coalesce(metrics_subquery.c.total_tokens, 0) >= min_tokens)
+    if max_tokens is not None:
+        query = query.filter(func.coalesce(metrics_subquery.c.total_tokens, 0) <= max_tokens)
+    if has_lead is not None:
+        query = query.filter(func.coalesce(metrics_subquery.c.has_lead, 0) == has_lead)
+
+    total = query.count()
+
+    sort_map = {
+        "conversation_start": sessions_subquery.c.conversation_start,
+        "total_tokens": func.coalesce(metrics_subquery.c.total_tokens, 0),
+        "total_messages": sessions_subquery.c.turn_count,
+        "has_lead": func.coalesce(metrics_subquery.c.has_lead, 0),
+    }
+    sort_field = sort_map.get(sort_by, sessions_subquery.c.conversation_start)
+    if sort_order == "asc":
+        query = query.order_by(sort_field.asc())
+    else:
+        query = query.order_by(sort_field.desc())
+
+    rows = query.offset(skip).limit(limit).all()
+
+    metrics = []
+    for row in rows:
+        conversation_duration = 0.0
+        if row.conversation_start and row.conversation_end:
+            conversation_duration = max(
+                (row.conversation_end - row.conversation_start).total_seconds(),
+                0.0,
+            )
+
+        turn_count = int(row.turn_count or 0)
+        metrics.append({
+            "id": int(row.id),
+            "session_id": row.session_id,
+            "organization_id": organization_id,
+            "widget_id": row.widget_id,
+            "total_messages": turn_count * 2,
+            "total_tokens": int(row.total_tokens or 0),
+            "prompt_tokens": int(row.prompt_tokens or 0),
+            "completion_tokens": int(row.completion_tokens or 0),
+            "average_response_time": float(row.average_response_time or 0.0),
+            "conversation_duration": float(conversation_duration),
+            "user_satisfaction": float(row.user_satisfaction) if row.user_satisfaction is not None else None,
+            "has_lead": int(row.has_lead or 0),
+            "lead_name": row.lead_name,
+            "lead_email": row.lead_email,
+            "outcome": row.outcome,
+            "conversation_start": row.conversation_start,
+            "conversation_end": row.conversation_end,
+            "created_at": row.created_at,
+        })
+
+    return {"metrics": metrics, "total": total}
+
+
 def get_report_summary(
     db: Session,
     organization_id: int,
@@ -290,6 +450,22 @@ def sync_conversation_metrics(
         lead = db.query(Lead).filter(
             Lead.session_id == session_id
         ).first()
+
+        session_start, session_end, session_turns = db.query(
+            func.min(Conversation.created_at),
+            func.max(Conversation.created_at),
+            func.count(Conversation.id),
+        ).filter(
+            Conversation.organization_id == organization_id,
+            Conversation.session_id == session_id,
+        ).first()
+
+        conversation_duration = 0.0
+        if session_start and session_end:
+            conversation_duration = max((session_end - session_start).total_seconds(), 0.0)
+
+        total_turns = int(session_turns or 0)
+        total_messages = total_turns * 2
         
         if existing:
             # Update existing metrics
@@ -297,7 +473,12 @@ def sync_conversation_metrics(
             existing.lead_name = lead.name if lead else None
             existing.lead_email = lead.email if lead else None
             existing.lead_company = lead.company if lead else None
-            existing.total_messages = 2
+            existing.total_messages = total_messages
+            existing.total_user_messages = total_turns
+            existing.total_ai_messages = total_turns
+            existing.conversation_start = session_start
+            existing.conversation_end = session_end
+            existing.conversation_duration = conversation_duration
 
             if token_usage:
                 existing.prompt_tokens = token_usage.get("prompt_tokens", 0)
@@ -315,11 +496,15 @@ def sync_conversation_metrics(
                 organization_id=organization_id,
                 widget_id=conversation.widget_id,
                 user_id=conversation.user_id,
-                total_messages=2,
+                total_messages=total_messages,
+                total_user_messages=total_turns,
+                total_ai_messages=total_turns,
                 total_tokens=total_tokens,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                conversation_start=conversation.created_at,
+                conversation_start=session_start or conversation.created_at,
+                conversation_end=session_end,
+                conversation_duration=conversation_duration,
                 has_lead=1 if lead else 0,
                 lead_name=lead.name if lead else None,
                 lead_email=lead.email if lead else None,

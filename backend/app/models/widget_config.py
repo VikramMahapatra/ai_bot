@@ -18,5 +18,7 @@ class WidgetConfig(Base):
     position = Column(String, default="bottom-right")
     lead_capture_enabled = Column(Boolean, default=True)
     lead_fields = Column(Text, nullable=True)  # JSON array string
+    escalation_contact_level_1 = Column(Text, nullable=True)
+    escalation_contact_level_2 = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

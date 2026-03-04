@@ -68,6 +68,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE plans ADD COLUMN voice_chat_enabled BOOLEAN DEFAULT 0"))
                 if "multilingual_text_enabled" not in col_names:
                     conn.execute(text("ALTER TABLE plans ADD COLUMN multilingual_text_enabled BOOLEAN DEFAULT 0"))
+                if "whatsapp_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN whatsapp_enabled BOOLEAN DEFAULT 0"))
             except Exception:
                 pass
 
@@ -79,10 +81,30 @@ def init_db():
             except Exception:
                 pass
 
+                if "whatsapp_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"))
             try:
                 cols = conn.execute(text("PRAGMA table_info('organization_subscription_usage')")).fetchall()
                 col_names = {row[1] for row in cols}
                 if "messages_count" not in col_names:
                     conn.execute(text("ALTER TABLE organization_subscription_usage ADD COLUMN messages_count INTEGER DEFAULT 0"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('widget_configs')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "escalation_contact_level_1" not in col_names:
+                    conn.execute(text("ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_1 TEXT"))
+                if "escalation_contact_level_2" not in col_names:
+                    conn.execute(text("ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_2 TEXT"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('conversations')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "outcome" not in col_names:
+                    conn.execute(text("ALTER TABLE conversations ADD COLUMN outcome TEXT"))
             except Exception:
                 pass
