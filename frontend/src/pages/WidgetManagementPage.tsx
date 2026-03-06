@@ -42,6 +42,8 @@ interface WidgetConfig {
   position: string;
   lead_capture_enabled: boolean;
   lead_fields?: string;
+  escalation_contact_level_1?: string;
+  escalation_contact_level_2?: string;
   user_id?: number;
   organization_id?: number;
   created_at?: string;
@@ -66,6 +68,8 @@ const WidgetManagementPage: React.FC = () => {
     position: 'bottom-right',
     lead_capture_enabled: true,
     lead_fields: '',
+    escalation_contact_level_1: 'Support Team: support@example.com | +1-555-0101',
+    escalation_contact_level_2: 'Escalation Manager: escalation@example.com | +1-555-0102',
   });
 
   // Fetch widgets on mount
@@ -98,6 +102,8 @@ const WidgetManagementPage: React.FC = () => {
       position: 'bottom-right',
       lead_capture_enabled: true,
       lead_fields: '',
+      escalation_contact_level_1: 'Support Team: support@example.com | +1-555-0101',
+      escalation_contact_level_2: 'Escalation Manager: escalation@example.com | +1-555-0102',
     });
     setDialogMode('create');
   };
@@ -408,6 +414,22 @@ const WidgetManagementPage: React.FC = () => {
                 <span>Enable Lead Capture</span>
               </label>
             </Box>
+            <TextField
+              fullWidth
+              label="Escalation Contact - Level 1"
+              name="escalation_contact_level_1"
+              value={formData.escalation_contact_level_1 || ''}
+              onChange={handleFormChange}
+              placeholder="Support Team: support@example.com | +1-555-0101"
+            />
+            <TextField
+              fullWidth
+              label="Escalation Contact - Level 2"
+              name="escalation_contact_level_2"
+              value={formData.escalation_contact_level_2 || ''}
+              onChange={handleFormChange}
+              placeholder="Escalation Manager: escalation@example.com | +1-555-0102"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -480,6 +502,14 @@ const WidgetManagementPage: React.FC = () => {
             <Box>
               <Typography variant="caption" sx={{ color: '#666' }}>Lead Capture</Typography>
               <Typography>{formData.lead_capture_enabled ? 'Enabled' : 'Disabled'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: '#666' }}>Escalation Contact - Level 1</Typography>
+              <Typography>{formData.escalation_contact_level_1 || '-'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: '#666' }}>Escalation Contact - Level 2</Typography>
+              <Typography>{formData.escalation_contact_level_2 || '-'}</Typography>
             </Box>
             {formData.created_at && (
               <Box>

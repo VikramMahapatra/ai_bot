@@ -21,6 +21,7 @@ DEFAULT_LIMITS = {
     "lead_generation_enabled": None,
     "voice_chat_enabled": None,
     "multilingual_text_enabled": None,
+    "whatsapp_enabled": None,
 }
 
 
@@ -68,6 +69,7 @@ def _build_effective_limits(plan: Plan, limits: OrganizationLimits) -> dict:
         "lead_generation_enabled": limits.lead_generation_enabled if limits.lead_generation_enabled is not None else plan.lead_generation_enabled,
         "voice_chat_enabled": limits.voice_chat_enabled if limits.voice_chat_enabled is not None else plan.voice_chat_enabled,
         "multilingual_text_enabled": limits.multilingual_text_enabled if limits.multilingual_text_enabled is not None else plan.multilingual_text_enabled,
+        "whatsapp_enabled": limits.whatsapp_enabled if limits.whatsapp_enabled is not None else plan.whatsapp_enabled,
     }
 
 

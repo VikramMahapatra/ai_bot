@@ -2,10 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
-from app.api import admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, superadmin_router
+from app.api import admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, superadmin_router, whatsapp_router
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
+from app.services.conversation_outcome_service import run_daily_outcome_daemon
 import logging
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -14,6 +16,9 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+outcome_daemon_task = None
+outcome_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -43,6 +48,7 @@ app.include_router(analytics_router)
 app.include_router(superadmin_router)
 app.include_router(feedback_router)
 app.include_router(reports_router)
+app.include_router(whatsapp_router)
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")
@@ -53,10 +59,28 @@ async def options_handler(full_path: str):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup"""
+    global outcome_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
+
+    outcome_daemon_stop_event.clear()
+    outcome_daemon_task = asyncio.create_task(run_daily_outcome_daemon(outcome_daemon_stop_event))
+    logger.info("Conversation outcome daemon started")
+
     logger.info("✅ Backend is ready!")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully stop background tasks"""
+    global outcome_daemon_task
+    outcome_daemon_stop_event.set()
+    if outcome_daemon_task:
+        try:
+            await outcome_daemon_task
+        except Exception:
+            logger.exception("Error while stopping outcome daemon")
 
 
 @app.get("/")
