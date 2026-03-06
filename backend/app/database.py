@@ -57,6 +57,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN voice_chat_enabled BOOLEAN"))
                 if "multilingual_text_enabled" not in col_names:
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN multilingual_text_enabled BOOLEAN"))
+                if "whatsapp_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"))
             except Exception:
                 # If table doesn't exist yet, create_all already handled it
                 pass
@@ -81,8 +83,6 @@ def init_db():
             except Exception:
                 pass
 
-                if "whatsapp_enabled" not in col_names:
-                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"))
             try:
                 cols = conn.execute(text("PRAGMA table_info('organization_subscription_usage')")).fetchall()
                 col_names = {row[1] for row in cols}
