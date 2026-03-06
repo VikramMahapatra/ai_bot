@@ -64,8 +64,16 @@ export interface ConversationMetric {
   has_lead: number;
   lead_name: string | null;
   lead_email: string | null;
+  outcome: string | null;
   conversation_start: string;
   conversation_end: string | null;
+  created_at: string;
+}
+
+export interface SessionMessage {
+  role: string;
+  message: string;
+  response: string;
   created_at: string;
 }
 
@@ -148,6 +156,18 @@ export const reportService = {
 
   async getDailyStats(params: { days?: number }): Promise<{ daily_stats: DailyStats[] }> {
     const response = await api.get('/api/reports/daily-stats', { params });
+    return response.data;
+  },
+
+  async runOutcomeProcessingNow(params?: { batch_size?: number; max_batches?: number }): Promise<{ processed: number; failed: number }> {
+    const response = await api.post('/api/admin/outcomes/process', params || {});
+    return response.data;
+  },
+
+  async getSessionMessages(sessionId: string, widgetId?: string): Promise<SessionMessage[]> {
+    const response = await api.get<SessionMessage[]>(`/api/chat/history/${sessionId}`, {
+      params: widgetId ? { widget_id: widgetId } : undefined,
+    });
     return response.data;
   },
 

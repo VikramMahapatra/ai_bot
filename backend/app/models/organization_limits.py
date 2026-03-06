@@ -21,6 +21,7 @@ class OrganizationLimits(Base):
     lead_generation_enabled = Column(Boolean, nullable=True)
     voice_chat_enabled = Column(Boolean, nullable=True)
     multilingual_text_enabled = Column(Boolean, nullable=True)
+    whatsapp_enabled = Column(Boolean, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

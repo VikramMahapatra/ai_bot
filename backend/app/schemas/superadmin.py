@@ -32,6 +32,7 @@ class OrganizationLimitsBase(BaseModel):
     lead_generation_enabled: Optional[bool] = None
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
+    whatsapp_enabled: Optional[bool] = None
 
 
 class OrganizationLimitsUpdate(BaseModel):
@@ -45,6 +46,7 @@ class OrganizationLimitsUpdate(BaseModel):
     lead_generation_enabled: Optional[bool] = None
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
+    whatsapp_enabled: Optional[bool] = None
 
 
 class OrganizationLimitsResponse(OrganizationLimitsBase):
@@ -121,6 +123,7 @@ class PlanCreate(BaseModel):
     lead_generation_enabled: bool
     voice_chat_enabled: bool
     multilingual_text_enabled: bool
+    whatsapp_enabled: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -139,6 +142,7 @@ class PlanUpdate(BaseModel):
     lead_generation_enabled: Optional[bool] = None
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
+    whatsapp_enabled: Optional[bool] = None
 
 
 class PlanResponse(PlanCreate):
