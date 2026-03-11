@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, AppBar, Toolbar, IconButton, Typography, Avatar, Tooltip, Chip } from '@mui/material';
+import { Box, AppBar, Toolbar, IconButton, Tooltip, Chip } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -32,14 +32,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <Sidebar mobileOpen={mobileOpen} onMobileClose={handleDrawerToggle} />
-      
+
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Top Bar */}
-        <AppBar 
-          position="sticky" 
-          color="default" 
+        <AppBar
+          position="sticky"
+          color="default"
           elevation={0}
-          sx={{ 
+          sx={{
             bgcolor: 'background.paper',
             borderBottom: '1px solid',
             borderColor: 'divider',
@@ -54,11 +54,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             >
               <MenuIcon />
             </IconButton>
-            
+
             <Box sx={{ flexGrow: 1 }} />
 
             {organizationName && (
-              <Chip 
+              <Chip
                 label={organizationName}
                 color="primary"
                 variant="outlined"

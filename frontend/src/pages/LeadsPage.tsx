@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Typography } from '@mui/material';
 import AdminLayout from '../components/Layout/AdminLayout';
 import LeadManager from '../components/Admin/LeadManager';
-import DashboardCards from '../components/Admin/DashboardCards';
 
 const LeadsPage: React.FC = () => {
   return (
