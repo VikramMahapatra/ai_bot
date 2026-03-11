@@ -21,9 +21,10 @@ import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
-export const ColorModeContext = createContext({ toggleColorMode: () => {}, mode: 'light' });
+import CallsPage from './pages/CallsPage';
+export const ColorModeContext = createContext({ toggleColorMode: () => { }, mode: 'light' });
 
-function getTheme(mode) {
+function getTheme(mode: any) {
   return createTheme({
     palette: {
       mode,
@@ -173,19 +174,19 @@ function getTheme(mode) {
 }
 
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({ 
-  children, 
-  requiredRole = 'ALL' 
+const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({
+  children,
+  requiredRole = 'ALL'
 }) => {
   const { isAuthenticated, userRole } = useAuth();
-  
+
   if (!isAuthenticated) {
     if (requiredRole === 'SUPERADMIN') {
       return <Navigate to="/superadmin/login" replace />;
     }
     return <Navigate to="/login" replace />;
   }
-  
+
   // If admin-only route, check role
   if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
     return <Navigate to="/chat" replace />;
@@ -194,7 +195,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMI
   if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
     return <Navigate to="/login" replace />;
   }
-  
+
   return <>{children}</>;
 };
 
@@ -249,6 +250,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ChatPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/calls"
+        element={
+          <ProtectedRoute>
+            <CallsPage />
           </ProtectedRoute>
         }
       />

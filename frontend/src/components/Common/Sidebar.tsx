@@ -28,6 +28,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import WidgetsIcon from '@mui/icons-material/Widgets';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import CallIcon from '@mui/icons-material/Call';
 
 const drawerWidth = 260;
 
@@ -46,6 +47,7 @@ interface MenuItem {
 const allMenuItems: MenuItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin', requiredRole: 'ADMIN' },
   { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
+  { text: 'Calls', icon: <CallIcon />, path: '/calls', requiredRole: 'ALL' },
   { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN' },
   { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN' },
   { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN' },
@@ -234,9 +236,9 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
                   <ListItemIcon sx={{ color: 'text.secondary', minWidth: 28, fontSize: 18 }}>
                     <SettingsIcon fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText 
-                    primary="Settings" 
-                    primaryTypographyProps={{ fontWeight: 500, fontSize: '0.92rem' }} 
+                  <ListItemText
+                    primary="Settings"
+                    primaryTypographyProps={{ fontWeight: 500, fontSize: '0.92rem' }}
                   />
                 </ListItemButton>
               </ListItem>

@@ -10,11 +10,15 @@ import {
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import ContactsIcon from '@mui/icons-material/Contacts';
 import CampaignIcon from '@mui/icons-material/Campaign';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import GroupIcon from '@mui/icons-material/Group';
+
+import AdminLayout from '../components/Layout/AdminLayout';
 import CampaignAnalytics from '../components/calls/CampaignAnalytics';
 import CampaignContacts from '../components/calls/CampaignContacts';
 import CampaignBuilder from '../components/calls/CampaignBuilder';
-import AdminLayout from '../components/Layout/AdminLayout';
-
+import { CallLogsTab } from '../components/calls/CallLogs';
+import { CallingAgentTab } from '../components/calls/CallingAgentTab'; // <- new tab component
 
 const CampaignManager: React.FC = () => {
     const [tab, setTab] = useState(0);
@@ -44,10 +48,14 @@ const CampaignManager: React.FC = () => {
                         onChange={handleChange}
                         indicatorColor="primary"
                         textColor="primary"
+                        variant="scrollable"
+                        scrollButtons="auto"
                     >
                         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Analytics" />
                         <Tab icon={<ContactsIcon />} iconPosition="start" label="Contacts" />
+                        <Tab icon={<GroupIcon />} iconPosition="start" label="Calling Agent" /> {/* NEW */}
                         <Tab icon={<CampaignIcon />} iconPosition="start" label="Campaign Builder" />
+                        <Tab icon={<ListAltIcon />} iconPosition="start" label="Call Logs" />
                     </Tabs>
                 </Paper>
 
@@ -55,7 +63,9 @@ const CampaignManager: React.FC = () => {
                 <Box>
                     {tab === 0 && <CampaignAnalytics />}
                     {tab === 1 && <CampaignContacts />}
-                    {tab === 2 && <CampaignBuilder />}
+                    {tab === 2 && <CallingAgentTab />} {/* NEW */}
+                    {tab === 3 && <CampaignBuilder />}
+                    {tab === 4 && <CallLogsTab />}
                 </Box>
 
             </Box>
