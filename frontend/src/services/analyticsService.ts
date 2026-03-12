@@ -21,7 +21,7 @@ interface MessageVolumeData {
   messages: number;
 }
 
-interface AnalyticsMetrics {
+export interface AnalyticsMetrics {
   total_sessions: number;
   total_messages: number;
   conversion_rate: number;

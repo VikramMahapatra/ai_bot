@@ -1,5 +1,5 @@
 import api from './api';
-import { ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse } from '../types';
+import { ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, AppointmentBookingRequest, AppointmentBookingResponse } from '../types';
 
 export const chatService = {
   async sendMessage(message: ChatMessage): Promise<ChatResponse> {
@@ -76,6 +76,11 @@ export const chatService = {
       params: { widget_id: widgetId },
     });
     return Array.isArray(response.data.questions) ? response.data.questions : [];
+  },
+
+  async bookAppointment(payload: AppointmentBookingRequest): Promise<AppointmentBookingResponse> {
+    const response = await api.post<AppointmentBookingResponse>('/api/chat/appointments', payload);
+    return response.data;
   },
 
   async getFeatureFlags(): Promise<{ subscription_active: boolean; days_left: number; voice_chat_enabled: boolean; multilingual_text_enabled: boolean }> {

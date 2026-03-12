@@ -211,12 +211,12 @@ export const reportService = {
     // Summary Section
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('Summary', margin, yPosition);
     yPosition += 10;
 
     // Summary data as simple text
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     const summaryLines = [
       `Total Conversations: ${summary.total_conversations}`,
@@ -240,13 +240,13 @@ export const reportService = {
     yPosition += 5;
 
     // Conversation Details Section
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text('Conversation Details', margin, yPosition);
     yPosition += 10;
 
     // Column headers
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setFillColor(220, 220, 220);
     const colWidths = [18, 12, 12, 15, 12, 10, 20];
@@ -260,7 +260,7 @@ export const reportService = {
     yPosition += 10;
 
     // Data rows
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     metrics.slice(0, 100).forEach(m => {
       if (yPosition > pageHeight - 20) {
@@ -287,7 +287,7 @@ export const reportService = {
     });
 
     // Footer with page numbers
-    const pageCount = doc.internal.getNumberOfPages();
+    const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       doc.setFontSize(8);
@@ -316,13 +316,13 @@ export const reportService = {
     yPosition += 15;
 
     // Summary metrics
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text('Key Metrics', margin, yPosition);
     yPosition += 10;
 
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     const metrics = [
       { label: 'Total Conversations', value: summary.total_conversations },
@@ -335,9 +335,9 @@ export const reportService = {
     ];
 
     metrics.forEach(metric => {
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text(metric.label, margin, yPosition);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(metric.value.toString(), margin + 100, yPosition);
       yPosition += 10;
     });
@@ -358,7 +358,7 @@ export const reportService = {
     yPosition += 15;
 
     // Table headers
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setFillColor(220, 220, 220);
     doc.setTextColor(0, 0, 0);
@@ -373,7 +373,7 @@ export const reportService = {
     yPosition += 10;
 
     // Data rows
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     metrics.forEach(m => {
       if (yPosition > pageHeight - 20) {
@@ -413,13 +413,13 @@ export const reportService = {
     yPosition += 15;
 
     // Metrics
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text('Token Usage Summary', margin, yPosition);
     yPosition += 10;
 
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     const metrics = [
       { label: 'Total Tokens Used', value: tokenReport.total_tokens.toLocaleString() },
@@ -431,9 +431,9 @@ export const reportService = {
     ];
 
     metrics.forEach(metric => {
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text(metric.label, margin, yPosition);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(metric.value.toString(), margin + 100, yPosition);
       yPosition += 10;
     });
@@ -453,13 +453,13 @@ export const reportService = {
     yPosition += 15;
 
     // Summary metrics
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text('Lead Summary', margin, yPosition);
     yPosition += 10;
 
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     const metrics = [
       { label: 'Total Leads', value: leadReport.total_leads },
@@ -468,9 +468,9 @@ export const reportService = {
     ];
 
     metrics.forEach(metric => {
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text(metric.label, margin, yPosition);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(metric.value.toString(), margin + 100, yPosition);
       yPosition += 10;
     });
@@ -478,12 +478,12 @@ export const reportService = {
     // Leads by widget
     if (Object.keys(leadReport.leads_by_widget).length > 0) {
       yPosition += 5;
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.text('Leads by Widget', margin, yPosition);
       yPosition += 10;
 
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       Object.entries(leadReport.leads_by_widget).forEach(([widget, count]) => {
         doc.text(`${widget}: ${count}`, margin + 5, yPosition);
@@ -507,7 +507,7 @@ export const reportService = {
     yPosition += 15;
 
     // Table headers
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setFillColor(220, 220, 220);
     doc.setTextColor(0, 0, 0);
@@ -522,7 +522,7 @@ export const reportService = {
     yPosition += 10;
 
     // Data rows
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     dailyStats.forEach(stat => {
       if (yPosition > pageHeight - 20) {
@@ -550,3 +550,4 @@ export const reportService = {
 
   
 };
+

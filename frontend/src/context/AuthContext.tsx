@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (username: string, password: string, organizationId: number) => {
-    const response = await authService.login({ username, password, organization_id: organizationId });
+    await authService.login({ username, password, organization_id: organizationId });
     const role = authService.getUserRole() as UserRole || 'USER';
     const orgId = authService.getOrganizationId();
     const uId = authService.getUserId();

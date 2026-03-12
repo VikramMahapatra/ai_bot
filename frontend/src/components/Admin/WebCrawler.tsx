@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Paper,
+  Stack,
+  Chip,
   TextField,
   Button,
   Typography,
@@ -48,50 +49,78 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ widgetId, onStarted, onComplete
   };
 
   return (
-    <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>
-        Web Crawler
-      </Typography>
-      
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <TextField
-          label="Website URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com"
-          fullWidth
-        />
-        
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <TextField
-            label="Max Pages"
-            type="number"
-            value={maxPages}
-            onChange={(e) => setMaxPages(parseInt(e.target.value))}
-            sx={{ flex: 1 }}
-          />
-          <TextField
-            label="Max Depth"
-            type="number"
-            value={maxDepth}
-            onChange={(e) => setMaxDepth(parseInt(e.target.value))}
-            sx={{ flex: 1 }}
-          />
+    <Box>
+      <Stack spacing={2}>
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Website Crawl
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Crawl your website and convert key pages into searchable knowledge chunks.
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Chip label="Best for FAQs" size="small" variant="outlined" />
+            <Chip label="Supports incremental updates" size="small" variant="outlined" />
+          </Stack>
         </Box>
 
-        <Button
-          variant="contained"
-          onClick={handleCrawl}
-          disabled={loading || !widgetId}
-          startIcon={loading && <CircularProgress size={20} />}
+        {error && <Alert severity="error">{error}</Alert>}
+        {success && <Alert severity="success">{success}</Alert>}
+
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            border: '1px solid rgba(148,163,184,0.25)',
+            bgcolor: 'rgba(248,250,252,0.8)',
+          }}
         >
-          {loading ? 'Crawling...' : 'Start Crawling'}
-        </Button>
-      </Box>
-    </Paper>
+          <Stack spacing={2}>
+            <TextField
+              label="Website URL"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com"
+              fullWidth
+              helperText="Use the main website or documentation URL you want the agent to learn from."
+            />
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+              <TextField
+                label="Max Pages"
+                type="number"
+                value={maxPages}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setMaxPages(Number.isFinite(value) && value > 0 ? value : 1);
+                }}
+                inputProps={{ min: 1 }}
+              />
+              <TextField
+                label="Max Depth"
+                type="number"
+                value={maxDepth}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setMaxDepth(Number.isFinite(value) && value > 0 ? value : 1);
+                }}
+                inputProps={{ min: 1 }}
+              />
+            </Box>
+
+            <Button
+              variant="contained"
+              onClick={handleCrawl}
+              disabled={loading || !widgetId}
+              startIcon={loading ? <CircularProgress size={18} color="inherit" /> : null}
+              sx={{ alignSelf: 'flex-start', px: 2.5 }}
+            >
+              {loading ? 'Crawling...' : 'Start Crawl'}
+            </Button>
+          </Stack>
+        </Box>
+      </Stack>
+    </Box>
   );
 };
 

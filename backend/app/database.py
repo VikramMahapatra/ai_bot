@@ -98,6 +98,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_1 TEXT"))
                 if "escalation_contact_level_2" not in col_names:
                     conn.execute(text("ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_2 TEXT"))
+                if "system_prompt" not in col_names:
+                    conn.execute(text("ALTER TABLE widget_configs ADD COLUMN system_prompt TEXT"))
             except Exception:
                 pass
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Typography, Grid, Card, CardContent, CircularProgress, Alert, Chip, Divider, Tabs, Tab, Skeleton } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import InsightsIcon from '@mui/icons-material/Insights';
 import PieChartIcon from '@mui/icons-material/PieChart';
 import TagIcon from '@mui/icons-material/Tag';
@@ -48,6 +49,7 @@ import {
 } from 'recharts';
 
 const AdvancedAnalyticsPage: React.FC = () => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState<any>(null);
@@ -254,16 +256,22 @@ const AdvancedAnalyticsPage: React.FC = () => {
   ]), [safeAdvanced]);
 
   const cardSx = {
-    boxShadow: 2,
+    boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.24)}`,
     borderRadius: 3,
-    background: 'linear-gradient(135deg, rgba(236,254,255,0.9) 0%, rgba(248,250,252,0.9) 60%, rgba(224,231,255,0.9) 100%)',
-    border: '1px solid rgba(148,163,184,0.25)',
+    background: `linear-gradient(145deg, ${alpha(theme.palette.common.white, 0.76)} 0%, ${alpha(
+      theme.palette.background.paper,
+      0.82
+    )} 62%, ${alpha('#dce8f8', 0.82)} 100%)`,
+    border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
   } as const;
   const chartCardSx = {
-    boxShadow: 2,
+    boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.24)}`,
     borderRadius: 3,
-    background: 'linear-gradient(135deg, rgba(240,253,250,0.9) 0%, rgba(239,246,255,0.9) 100%)',
-    border: '1px solid rgba(148,163,184,0.25)',
+    background: `linear-gradient(145deg, ${alpha(theme.palette.common.white, 0.76)} 0%, ${alpha(
+      theme.palette.background.paper,
+      0.82
+    )} 62%, ${alpha('#dce8f8', 0.82)} 100%)`,
+    border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
   } as const;
   const titleSx = { mb: 0, fontWeight: 700, color: '#0f172a' } as const;
   const chartTitleSx = { mb: 0, fontWeight: 700, color: '#0f172a' } as const;
@@ -289,10 +297,37 @@ const AdvancedAnalyticsPage: React.FC = () => {
             sx={{
               mb: 4,
               p: 3,
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, rgba(38,155,159,0.16) 0%, rgba(45,179,160,0.12) 40%, rgba(99,102,241,0.12) 100%)',
-              border: '1px solid rgba(148,163,184,0.25)',
-              boxShadow: '0 20px 40px rgba(15,23,42,0.08)',
+              borderRadius: '22px',
+              background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+                theme.palette.background.paper,
+                0.84
+              )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+              border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+              boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
             }}
           >
             <Skeleton variant="text" width={260} height={40} />
@@ -320,7 +355,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                   px: 2,
                   py: 0.75,
                   borderRadius: '999px',
-                  background: 'linear-gradient(135deg, rgba(34,197,94,0.25) 0%, rgba(14,165,233,0.25) 50%, rgba(99,102,241,0.25) 100%)',
+                  background: 'linear-gradient(135deg, rgba(53,108,255,0.2) 0%, rgba(54,196,255,0.24) 50%, rgba(99,102,241,0.22) 100%)',
                   border: '1px solid rgba(99,102,241,0.35)',
                   boxShadow: '0 12px 24px rgba(15,23,42,0.14)',
                   whiteSpace: 'nowrap',
@@ -377,7 +412,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
     return null;
   }
 
-  const palette = ['#22c55e', '#06b6d4', '#a855f7', '#f97316', '#facc15', '#38bdf8'];
+  const palette = ['#2f6bff', '#2d8ef0', '#5e72ff', '#36c4ff', '#71b6ff', '#3f8dff'];
 
   const CardHeader = ({
     icon,
@@ -396,7 +431,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
           width: compact ? 34 : 38,
           height: compact ? 34 : 38,
           borderRadius: '12px',
-          background: 'linear-gradient(135deg, rgba(45,179,160,0.25) 0%, rgba(99,102,241,0.25) 100%)',
+          background: 'linear-gradient(135deg, rgba(53,108,255,0.2) 0%, rgba(99,102,241,0.24) 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -426,16 +461,19 @@ const AdvancedAnalyticsPage: React.FC = () => {
           sx={{
             mb: 4,
             p: 3,
-            borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(38,155,159,0.16) 0%, rgba(45,179,160,0.12) 40%, rgba(99,102,241,0.12) 100%)',
-            border: '1px solid rgba(148,163,184,0.25)',
-            boxShadow: '0 20px 40px rgba(15,23,42,0.08)',
+            borderRadius: '22px',
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.84
+            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
           }}
         >
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#0f172a', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 1 }}>
             Advanced Analytics
           </Typography>
-          <Typography variant="body1" sx={{ color: '#475569' }}>
+          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
             A deep view of performance, quality, costs, and knowledge gaps.
           </Typography>
           {showLoadingQuotes && (
@@ -443,7 +481,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
               variant="body2"
               sx={{
                 mt: 1.5,
-                color: '#475569',
+                color: 'text.secondary',
                 fontStyle: 'italic',
               }}
             >
@@ -483,7 +521,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                     <PolarGrid stroke="#e2e8f0" />
                     <PolarAngleAxis dataKey="metric" tick={{ fill: '#64748b', fontSize: 12 }} />
                     <PolarRadiusAxis tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                    <Radar dataKey="value" stroke="#269b9f" fill="#269b9f" fillOpacity={0.35} />
+                    <Radar dataKey="value" stroke="#2f6bff" fill="#2f6bff" fillOpacity={0.3} />
                   </RadarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -533,7 +571,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                       <XAxis dataKey="keyword" stroke="#64748b" />
                       <YAxis stroke="#64748b" />
                       <Tooltip />
-                      <Bar dataKey="count" fill="#2db3a0" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="count" fill="#2d8ef0" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -579,7 +617,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                     <XAxis dataKey="label" stroke="#64748b" />
                     <YAxis stroke="#64748b" />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="value" fill="#2d8ef0" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -621,7 +659,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                     <XAxis dataKey="bucket" stroke="#64748b" />
                     <YAxis stroke="#64748b" />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#a855f7" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="value" fill="#5e72ff" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -1291,3 +1329,5 @@ const AdvancedAnalyticsPage: React.FC = () => {
 };
 
 export default AdvancedAnalyticsPage;
+
+

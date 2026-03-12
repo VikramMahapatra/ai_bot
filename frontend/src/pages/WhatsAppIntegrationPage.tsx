@@ -14,10 +14,12 @@ import {
   Divider,
   Stack,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
 import { whatsappService } from '../services/whatsappService';
+import { buildApiUrl, getMetaWhatsAppEmbeddedSignupUrl } from '../config/env';
 
 interface WidgetConfig {
   widget_id: string;
@@ -25,6 +27,7 @@ interface WidgetConfig {
 }
 
 const WhatsAppIntegrationPage: React.FC = () => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -44,7 +47,27 @@ const WhatsAppIntegrationPage: React.FC = () => {
 
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
-  const webhookUrl = `${import.meta.env.VITE_API_URL || window.location.origin}/api/channels/whatsapp/webhook`;
+  const webhookUrl = buildApiUrl('/api/channels/whatsapp/webhook');
+
+  const openMetaWhatsAppWizard = () => {
+    const wizardUrl = getMetaWhatsAppEmbeddedSignupUrl() || 'https://business.facebook.com/wa/manage/phone-numbers/';
+
+    const popup = window.open(
+      wizardUrl,
+      'meta_whatsapp_wizard',
+      'width=980,height=760,resizable=yes,scrollbars=yes,noopener,noreferrer'
+    );
+
+    if (!popup) {
+      // Fallback to same-tab navigation when popup is blocked.
+      window.location.assign(wizardUrl);
+      setError('Popup blocked by browser. Opened Meta setup in the current tab instead.');
+      return;
+    }
+
+    setError('');
+    setSuccess('Meta setup wizard opened. Complete onboarding and use returned values below.');
+  };
 
   const fetchData = async () => {
     try {
@@ -163,17 +186,66 @@ const WhatsAppIntegrationPage: React.FC = () => {
   return (
     <AdminLayout>
       <Box>
-        <Box sx={{ mb: 3 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, md: 2.6 },
+            mb: 3,
+            borderRadius: '22px',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.84
+            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
+          }}
+        >
           <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
             WhatsApp Integration
           </Typography>
           <Typography variant="body1" sx={{ color: 'text.secondary' }}>
             Connect Meta WhatsApp Cloud API and send chatbot replies to mobile users.
           </Typography>
-        </Box>
+        </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard}>
+              Launch Meta Wizard
+            </Button>
+          }
+        >
+          Open Meta WhatsApp onboarding wizard in a popup to generate Phone Number ID and access token.
+        </Alert>
 
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
@@ -326,3 +398,5 @@ const WhatsAppIntegrationPage: React.FC = () => {
 };
 
 export default WhatsAppIntegrationPage;
+
+
