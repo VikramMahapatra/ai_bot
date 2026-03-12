@@ -65,10 +65,30 @@ export interface TranslateRequest {
   text: string;
   target_language_code?: string;
   target_language_label?: string;
+  widget_id?: string;
 }
 
 export interface TranslateResponse {
   translated_text: string;
+}
+
+export interface AppointmentBookingRequest {
+  session_id: string;
+  widget_id: string;
+  appointment_at: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  timezone?: string;
+}
+
+export interface AppointmentBookingResponse {
+  id: number;
+  session_id: string;
+  widget_id: string;
+  appointment_at: string;
+  message: string;
 }
 
 export interface Lead {
@@ -102,6 +122,7 @@ export interface WidgetConfig {
   widget_id: string;
   name: string;
   welcome_message?: string;
+  system_prompt?: string;
   logo_url?: string;
   primary_color: string;
   secondary_color: string;

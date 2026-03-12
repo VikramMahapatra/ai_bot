@@ -3,57 +3,210 @@ Email service for sending conversation transcripts
 """
 import smtplib
 import logging
+import socket
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import make_msgid
 from datetime import datetime
+from html import unescape
+import dns.resolver
+from email_validator import EmailNotValidError, validate_email
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+SMTP_TIMEOUT_SECONDS = 20
 
+
+# def _open_smtp_server():
+#     if settings.SMTP_USE_SSL:
+#         return smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
+
+#     server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
+#     server.starttls()
+#     return server
+
+def _open_smtp_server():
+    if settings.SMTP_USE_SSL:
+        server = smtplib.SMTP_SSL(
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            timeout=SMTP_TIMEOUT_SECONDS
+        )
+        server.ehlo()
+        return server
+
+    server = smtplib.SMTP(
+        settings.SMTP_HOST,
+        settings.SMTP_PORT,
+        timeout=SMTP_TIMEOUT_SECONDS
+    )
+
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+
+    return server
+
+def _decode_smtp_message(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode(errors="ignore")
+    return str(value or "")
+
+
+def _validate_email_address(value: str) -> tuple[str | None, str | None]:
+    try:
+        normalized = validate_email((value or "").strip(), check_deliverability=False).normalized
+        return normalized, None
+    except EmailNotValidError as exc:
+        return None, str(exc)
+
+
+def _is_reputation_or_blocklist_rejection(rcpt_message: str) -> bool:
+    """Detect anti-spam policy blocks that should not hard-stop precheck."""
+    text = (rcpt_message or "").lower()
+    indicators = [
+        "spamhaus",
+        "blocked",
+        "block list",
+        "blacklist",
+        "denylist",
+        "reputation",
+        "policy",
+        "service unavailable",
+        "client host",
+        "ip blocked",
+    ]
+    return any(token in text for token in indicators)
+
+
+def _precheck_recipient_mailbox(email: str) -> tuple[bool | None, str | None]:
+    """Best-effort recipient mailbox check via MX + SMTP RCPT.
+
+    Returns:
+    - (True, None): mailbox accepted by destination MX
+    - (False, reason): mailbox rejected (definitive)
+    - (None, reason): inconclusive, caller may proceed with normal send
+    """
+    if not settings.CAMPAIGN_EMAIL_RCPT_CHECK:
+        return None, None
+
+    timeout = max(3, int(settings.CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS or 10))
+    domain = email.split("@", 1)[1]
+
+    try:
+        answers = dns.resolver.resolve(domain, "MX", lifetime=timeout)
+        mx_hosts = [str(record.exchange).rstrip(".") for record in sorted(answers, key=lambda item: item.preference)]
+    except Exception as exc:
+        return None, f"MX lookup inconclusive: {str(exc)}"
+
+    if not mx_hosts:
+        return None, "MX lookup inconclusive: no MX hosts found"
+
+    probe_from = settings.EMAIL_SENDER or "noreply@example.com"
+    inconclusive_errors = []
+
+    for host in mx_hosts[:3]:
+        try:
+            with smtplib.SMTP(host, 25, timeout=timeout) as smtp:
+                smtp.ehlo("campaign-validator.local")
+                smtp.mail(probe_from)
+                rcpt_code, rcpt_message = smtp.rcpt(email)
+                rcpt_text = _decode_smtp_message(rcpt_message)
+
+                if rcpt_code in (250, 251):
+                    return True, None
+
+                # 550/551/553/554 are definitive recipient rejection responses.
+                if rcpt_code in (550, 551, 553, 554):
+                    if _is_reputation_or_blocklist_rejection(rcpt_text):
+                        inconclusive_errors.append(
+                            f"{host}: RCPT precheck inconclusive due to policy/reputation block ({rcpt_text})"
+                        )
+                        continue
+                    return False, rcpt_text or f"Recipient rejected with SMTP code {rcpt_code}"
+
+                inconclusive_errors.append(f"{host}: SMTP {rcpt_code} {rcpt_text}".strip())
+        except (socket.timeout, OSError, smtplib.SMTPException) as exc:
+            inconclusive_errors.append(f"{host}: {str(exc)}")
+
+    reason = "; ".join(inconclusive_errors).strip()
+    return None, reason or "Recipient check inconclusive"
+
+
+# def send_conversation_email(recipient_email: str, conversation_data: list) -> bool:
+#     """
+#     Send conversation transcript via email
+    
+#     Args:
+#         recipient_email: Email address to send to
+#         conversation_data: List of message dicts with 'role' and 'content'
+    
+#     Returns:
+#         bool: True if sent successfully, False otherwise
+#     """
+#     try:
+#         # Create message
+#         msg = MIMEMultipart('alternative')
+#         msg['Subject'] = 'Your Conversation Transcript - Zentrixel AI'
+#         msg['From'] = settings.EMAIL_SENDER
+#         msg['To'] = recipient_email
+        
+#         # Create HTML content
+#         html_content = _create_html_email(conversation_data)
+        
+#         # Attach HTML part
+#         html_part = MIMEText(html_content, 'html')
+#         msg.attach(html_part)
+        
+#         # Send email
+#         server = _open_smtp_server()
+        
+#         server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+#         server.send_message(msg)
+#         server.quit()
+        
+#         logger.info(f"Conversation email sent successfully to {recipient_email}")
+#         return True
+        
+#     except Exception as e:
+#         logger.error(f"Failed to send email to {recipient_email}: {str(e)}", exc_info=True)
+#         return False
 
 def send_conversation_email(recipient_email: str, conversation_data: list) -> bool:
     """
     Send conversation transcript via email
-    
-    Args:
-        recipient_email: Email address to send to
-        conversation_data: List of message dicts with 'role' and 'content'
-    
-    Returns:
-        bool: True if sent successfully, False otherwise
     """
     try:
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = 'Your Conversation Transcript - Zentrixel AI'
-        msg['From'] = settings.EMAIL_SENDER
-        msg['To'] = recipient_email
-        
-        # Create HTML content
+
         html_content = _create_html_email(conversation_data)
-        
-        # Attach HTML part
-        html_part = MIMEText(html_content, 'html')
-        msg.attach(html_part)
-        
-        # Send email
-        if settings.SMTP_USE_SSL:
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT)
-        else:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
-            server.starttls()
-        
-        server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        
-        logger.info(f"Conversation email sent successfully to {recipient_email}")
+        plain_content = _html_to_plain_text(html_content)
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your Conversation Transcript - Zentrixel AI"
+        msg["From"] = settings.EMAIL_SENDER
+        msg["To"] = recipient_email
+
+        msg.attach(MIMEText(plain_content, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        with _open_smtp_server() as server:
+
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+            refused = server.send_message(msg)
+
+        if refused:
+            logger.error(f"SMTP refused recipients: {refused}")
+            return False
+
+        logger.info(f"Conversation email accepted by SMTP for {recipient_email}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to send email to {recipient_email}: {str(e)}", exc_info=True)
         return False
-
 
 def _create_html_email(conversation_data: list) -> str:
     """Create formatted HTML email content"""
@@ -144,132 +297,268 @@ def _escape_html(text: str) -> str:
     return text
 
 
-def send_new_lead_notification(lead_email: str, lead_name: str, lead_phone: str, 
-                               lead_company: str = None, admin_emails: list = None) -> bool:
+def _apply_campaign_placeholders(template: str, recipient_name: str, campaign_name: str) -> str:
+        """Apply simple merge tags for campaign templates."""
+        safe_name = (recipient_name or "there").strip() or "there"
+        first_name = safe_name.split()[0] if safe_name.strip() else "there"
+        replacements = {
+                "{{name}}": safe_name,
+                "{{first_name}}": first_name,
+                "{{campaign_name}}": campaign_name or "Campaign Update",
+        }
+
+        content = template or ""
+        for key, value in replacements.items():
+                content = content.replace(key, value)
+        return content
+
+
+def _looks_like_html(content: str) -> bool:
+        if not content:
+                return False
+        return bool(re.search(r"<\s*[a-zA-Z][^>]*>", content))
+
+
+def _looks_like_full_email_html(content: str) -> bool:
+        lowered = (content or "").lower()
+        return "<html" in lowered or "<body" in lowered
+
+
+def _sanitize_email_html(content: str) -> str:
+        """Remove obviously unsafe script payloads from campaign HTML."""
+        if not content:
+                return ""
+
+        sanitized = re.sub(r"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", content, flags=re.IGNORECASE)
+        sanitized = re.sub(r"javascript:", "", sanitized, flags=re.IGNORECASE)
+        return sanitized
+
+
+def _html_to_plain_text(content: str) -> str:
+        if not content:
+                return ""
+
+        plain = re.sub(r"<\s*br\s*/?\s*>", "\n", content, flags=re.IGNORECASE)
+        plain = re.sub(r"</\s*p\s*>", "\n\n", plain, flags=re.IGNORECASE)
+        plain = re.sub(r"<[^>]+>", "", plain)
+        plain = unescape(plain)
+        plain = re.sub(r"\n{3,}", "\n\n", plain)
+        return plain.strip()
+
+
+def _render_campaign_wrapper(recipient_name: str, campaign_name: str, body_html: str) -> str:
+        safe_name = _escape_html((recipient_name or "there").strip() or "there")
+        safe_campaign = _escape_html(campaign_name or "Campaign Update")
+        return f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <meta charset=\"UTF-8\" />
+                <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+            </head>
+            <body style=\"margin:0; padding:0; background:#f4f7fb; font-family:Arial, sans-serif; color:#1e293b;\">
+                <div style=\"max-width:640px; margin:0 auto; background:#ffffff;\">
+                    <div style=\"padding:22px 24px; background:linear-gradient(135deg,#3c7be0 0%,#4fb6da 100%);\">
+                        <h1 style=\"margin:0; font-size:20px; line-height:1.3; color:#ffffff;\">{safe_campaign}</h1>
+                    </div>
+                    <div style=\"padding:24px;\">
+                        <p style=\"margin-top:0; color:#425b84; font-size:15px;\">Hi {safe_name},</p>
+                        <div style=\"font-size:15px; line-height:1.65; color:#253757;\">{body_html}</div>
+                    </div>
+                    <div style=\"padding:16px 24px; border-top:1px solid #e4ecf8; font-size:12px; color:#6b7fa5;\">
+                        Sent via Zentrixel Campaigns
+                    </div>
+                </div>
+            </body>
+        </html>
+        """
+
+def send_new_lead_notification(
+    lead_email: str,
+    lead_name: str,
+    lead_phone: str,
+    lead_company: str = None,
+    admin_emails: list = None
+) -> bool:
     """
     Send notification email when new lead is captured
-    
-    Args:
-        lead_email: Email of the captured lead
-        lead_name: Name of the lead
-        lead_phone: Phone number of the lead
-        lead_company: Company of the lead (optional)
-        admin_emails: List of admin emails to notify
-    
-    Returns:
-        bool: True if sent successfully, False otherwise
     """
-    
+
     if not admin_emails:
         logger.warning("No admin emails provided for lead notification")
         return False
-    
+
     try:
-        # Create HTML content for lead notification
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
-        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-                <!-- Header -->
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                           padding: 30px 20px; text-align: center;">
-                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">
-                        🎉 New Lead Captured!
-                    </h1>
-                </div>
-                
-                <!-- Content -->
-                <div style="padding: 30px 20px; background-color: #fafafa;">
-                    <p style="color: #1e293b; font-size: 16px; margin-bottom: 20px;">
-                        A new lead has been captured through your AI chatbot.
-                    </p>
-                    
-                    <!-- Lead Details -->
-                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px;">
-                            <span style="color: #64748b; font-weight: bold; font-size: 14px;">Full Name:</span>
-                            <span style="color: #1e293b; font-size: 16px; font-weight: 600;">{_escape_html(lead_name)}</span>
-                        </div>
-                        
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px;">
-                            <span style="color: #64748b; font-weight: bold; font-size: 14px;">Email:</span>
-                            <span style="color: #1e293b; font-size: 16px;"><a href="mailto:{_escape_html(lead_email)}" style="color: #667eea; text-decoration: none;">{_escape_html(lead_email)}</a></span>
-                        </div>
-                        
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px;">
-                            <span style="color: #64748b; font-weight: bold; font-size: 14px;">Phone:</span>
-                            <span style="color: #1e293b; font-size: 16px;"><a href="tel:{_escape_html(lead_phone)}" style="color: #667eea; text-decoration: none;">{_escape_html(lead_phone)}</a></span>
-                        </div>
-                        
-                        {f'''<div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 12px;">
-                            <span style="color: #64748b; font-weight: bold; font-size: 14px;">Company:</span>
-                            <span style="color: #1e293b; font-size: 16px;">{_escape_html(lead_company)}</span>
-                        </div>''' if lead_company else ''}
-                        
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: #64748b; font-weight: bold; font-size: 14px;">Captured At:</span>
-                            <span style="color: #1e293b; font-size: 16px;">{datetime.now().strftime('%B %d, %Y at %I:%M %p')}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- CTA Button -->
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="http://localhost:5173/admin/leads" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                  color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; 
-                                  font-weight: 600; font-size: 16px;">
-                            View in Dashboard
-                        </a>
-                    </div>
-                </div>
-                
-                <!-- Footer -->
-                <div style="background-color: #1e293b; padding: 20px; text-align: center;">
-                    <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-                        This is an automated notification from Zentrixel AI Bot
-                    </p>
-                    <p style="color: #64748b; font-size: 11px; margin: 8px 0 0 0;">
-                        © {datetime.now().year} Zentrixel. All rights reserved.
-                    </p>
-                </div>
-            </div>
+
+        <body style="margin:0;padding:0;font-family:Segoe UI;background:#f5f5f5">
+
+        <div style="max-width:600px;margin:auto;background:white">
+
+        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+        padding:30px 20px;text-align:center">
+        <h1 style="color:white;margin:0">🎉 New Lead Captured!</h1>
+        </div>
+
+        <div style="padding:30px 20px">
+
+        <p>A new lead has been captured through your AI chatbot.</p>
+
+        <p><b>Name:</b> {_escape_html(lead_name)}</p>
+        <p><b>Email:</b> {_escape_html(lead_email)}</p>
+        <p><b>Phone:</b> {_escape_html(lead_phone)}</p>
+        """
+
+        if lead_company:
+            html_content += f"<p><b>Company:</b> {_escape_html(lead_company)}</p>"
+
+        html_content += f"""
+        <p><b>Captured At:</b> {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+
+        <p style="margin-top:20px">
+        <a href="{_escape_html(settings.FRONTEND_DASHBOARD_LEADS_URL)}"
+        style="background:#667eea;color:white;padding:12px 20px;
+        text-decoration:none;border-radius:6px">
+        View in Dashboard
+        </a>
+        </p>
+
+        </div>
+
+        </div>
+
         </body>
         </html>
         """
-        
-        # Send to each admin email
-        for admin_email in admin_emails:
-            try:
-                msg = MIMEMultipart('alternative')
-                msg['Subject'] = f"🎉 New Lead: {lead_name}"
-                msg['From'] = settings.EMAIL_SENDER
-                msg['To'] = admin_email
-                
-                html_part = MIMEText(html_content, 'html')
-                msg.attach(html_part)
-                
-                # Send email
-                if settings.SMTP_USE_SSL:
-                    server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT)
-                else:
-                    server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
-                    server.starttls()
-                
+
+        plain_content = _html_to_plain_text(html_content)
+
+        with _open_smtp_server() as server:
+
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-                server.send_message(msg)
-                server.quit()
-                
-                logger.info(f"Lead notification sent to {admin_email}")
-            except Exception as e:
-                logger.error(f"Failed to send lead notification to {admin_email}: {str(e)}", exc_info=True)
-        
+
+            for admin_email in admin_emails:
+
+                try:
+
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"] = f"🎉 New Lead: {lead_name}"
+                    msg["From"] = settings.EMAIL_SENDER
+                    msg["To"] = admin_email
+
+                    msg.attach(MIMEText(plain_content, "plain", "utf-8"))
+                    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+                    refused = server.send_message(msg)
+
+                    if refused:
+                        logger.error(f"SMTP refused {admin_email}: {refused}")
+                    else:
+                        logger.info(f"Lead notification sent to {admin_email}")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send lead notification to {admin_email}: {str(e)}",
+                        exc_info=True
+                    )
+
         return True
-        
+
     except Exception as e:
-        logger.error(f"Error in send_new_lead_notification: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error in send_new_lead_notification: {str(e)}",
+            exc_info=True
+        )
         return False
+
+
+def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name: str, message_template: str) -> tuple[bool, str | None]:
+    """Send a campaign email and return success/failure with an optional error message."""
+    normalized_email, validation_error = _validate_email_address(recipient_email)
+    if not normalized_email:
+        return False, validation_error or "Missing or invalid email"
+
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email)
+    if rcpt_ok is False:
+        return False, rcpt_error or "Recipient mailbox rejected"
+    if rcpt_ok is None and rcpt_error:
+        logger.warning("Campaign recipient precheck inconclusive for %s: %s", normalized_email, rcpt_error)
+
+    try:
+        sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
+        envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+        if not sender_email:
+            return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = campaign_name or "Campaign Update"
+        msg["From"] = sender_email
+        msg["Reply-To"] = sender_email
+        msg["To"] = normalized_email
+        msg["Message-ID"] = make_msgid(domain=sender_email.split("@", 1)[1] if "@" in sender_email else None)
+
+        personalized_template = _apply_campaign_placeholders(
+            message_template or "",
+            recipient_name=recipient_name,
+            campaign_name=campaign_name,
+        )
+
+        if _looks_like_html(personalized_template):
+            html_source = _sanitize_email_html(personalized_template)
+            if _looks_like_full_email_html(html_source):
+                final_html = html_source
+            else:
+                final_html = _render_campaign_wrapper(
+                    recipient_name=recipient_name,
+                    campaign_name=campaign_name,
+                    body_html=html_source,
+                )
+        else:
+            final_html = _render_campaign_wrapper(
+                recipient_name=recipient_name,
+                campaign_name=campaign_name,
+                body_html=_escape_html(personalized_template),
+            )
+
+        plain_fallback = _html_to_plain_text(final_html) or (personalized_template or "")
+
+        text_part = MIMEText(plain_fallback, "plain", "utf-8")
+        html_part = MIMEText(final_html, "html", "utf-8")
+        msg.attach(text_part)
+        msg.attach(html_part)
+
+        with _open_smtp_server() as server:
+            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            refused_recipients = server.send_message(
+                msg,
+                from_addr=envelope_sender,
+                to_addrs=[normalized_email],
+            )
+
+        # send_message returns a dict of refused recipients.
+        # For single-recipient campaign sends, any refusal means failure.
+        if refused_recipients:
+            refusal = refused_recipients.get(normalized_email) or next(iter(refused_recipients.values()))
+            if isinstance(refusal, tuple) and len(refusal) >= 2:
+                code, message = refusal[0], _decode_smtp_message(refusal[1])
+                return False, f"SMTP recipient refused ({code}): {message}"
+            return False, "SMTP recipient refused"
+
+        logger.info(
+            "Campaign email accepted by SMTP for %s (from=%s, message_id=%s)",
+            normalized_email,
+            sender_email,
+            msg.get("Message-ID"),
+        )
+        return True, None
+    except Exception as e:
+        logger.error("Failed campaign email to %s: %s", normalized_email, str(e), exc_info=True)
+        return False, str(e)
 

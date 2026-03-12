@@ -7,6 +7,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.analytics import router as analytics_router
 from app.api.superadmin import router as superadmin_router
 from app.api.whatsapp import router as whatsapp_router
+from app.api.campaigns import router as campaigns_router
 
 __all__ = [
     "admin_router",
@@ -18,4 +19,5 @@ __all__ = [
     "analytics_router",
     "superadmin_router",
     "whatsapp_router",
+    "campaigns_router",
 ]

@@ -20,22 +20,28 @@ import {
   Chip,
   Stack,
   Typography,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
   ContentCopy as CopyIcon,
   Visibility as VisibilityIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
+import { buildPublicUrl } from '../config/env';
 
 interface WidgetConfig {
   id?: number;
   widget_id: string;
   name: string;
   welcome_message?: string;
+  system_prompt?: string;
   logo_url?: string;
   primary_color: string;
   secondary_color: string;
@@ -51,7 +57,27 @@ interface WidgetConfig {
 
 type DialogMode = 'create' | 'edit' | 'view' | null;
 
+const normalizeWidget = (widget: Partial<WidgetConfig>): WidgetConfig => ({
+  id: widget.id,
+  widget_id: typeof widget.widget_id === 'string' ? widget.widget_id : '',
+  name: typeof widget.name === 'string' && widget.name.trim() ? widget.name : 'Untitled Widget',
+  welcome_message: typeof widget.welcome_message === 'string' ? widget.welcome_message : 'Hi! How can I help you?',
+  system_prompt: typeof widget.system_prompt === 'string' ? widget.system_prompt : '',
+  logo_url: typeof widget.logo_url === 'string' ? widget.logo_url : '',
+  primary_color: typeof widget.primary_color === 'string' ? widget.primary_color : '#007bff',
+  secondary_color: typeof widget.secondary_color === 'string' ? widget.secondary_color : '#6c757d',
+  position: typeof widget.position === 'string' ? widget.position : 'bottom-right',
+  lead_capture_enabled: Boolean(widget.lead_capture_enabled),
+  lead_fields: typeof widget.lead_fields === 'string' ? widget.lead_fields : '',
+  escalation_contact_level_1: typeof widget.escalation_contact_level_1 === 'string' ? widget.escalation_contact_level_1 : '',
+  escalation_contact_level_2: typeof widget.escalation_contact_level_2 === 'string' ? widget.escalation_contact_level_2 : '',
+  user_id: widget.user_id,
+  organization_id: widget.organization_id,
+  created_at: typeof widget.created_at === 'string' ? widget.created_at : undefined,
+});
+
 const WidgetManagementPage: React.FC = () => {
+  const theme = useTheme();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,9 +88,10 @@ const WidgetManagementPage: React.FC = () => {
     widget_id: '',
     name: '',
     welcome_message: 'Hi! How can I help you?',
+    system_prompt: '',
     logo_url: '',
-    primary_color: '#007bff',
-    secondary_color: '#6c757d',
+    primary_color: '#2f6bff',
+    secondary_color: '#36c4ff',
     position: 'bottom-right',
     lead_capture_enabled: true,
     lead_fields: '',
@@ -81,7 +108,10 @@ const WidgetManagementPage: React.FC = () => {
     try {
       setLoading(true);
       const response = await api.get('/api/admin/widgets');
-      setWidgets(response.data);
+      const widgetList = Array.isArray(response.data)
+        ? response.data.map((widget: Partial<WidgetConfig>) => normalizeWidget(widget))
+        : [];
+      setWidgets(widgetList);
       setError('');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to fetch widgets');
@@ -96,9 +126,10 @@ const WidgetManagementPage: React.FC = () => {
       widget_id: `widget_${Date.now()}`,
       name: '',
       welcome_message: 'Hi! How can I help you?',
+      system_prompt: '',
       logo_url: '',
-      primary_color: '#007bff',
-      secondary_color: '#6c757d',
+      primary_color: '#2f6bff',
+      secondary_color: '#36c4ff',
       position: 'bottom-right',
       lead_capture_enabled: true,
       lead_fields: '',
@@ -130,9 +161,12 @@ const WidgetManagementPage: React.FC = () => {
       if (dialogMode === 'create') {
         await api.post('/api/admin/widget/config', formData);
         setSuccess('Widget created successfully');
-      } else if (dialogMode === 'edit' && currentWidget) {
+      } else if (dialogMode === 'edit' && currentWidget?.widget_id) {
         await api.put(`/api/admin/widget/config/${currentWidget.widget_id}`, formData);
         setSuccess('Widget updated successfully');
+      } else if (dialogMode === 'edit') {
+        setError('Widget ID is missing. Cannot update this widget.');
+        return;
       }
       setError('');
       handleCloseDialog();
@@ -173,6 +207,19 @@ const WidgetManagementPage: React.FC = () => {
     setSuccess('Embed code copied to clipboard');
   };
 
+  const getAgentTestUrl = (widgetId: string) => buildPublicUrl(`/agent-test/${encodeURIComponent(widgetId)}`);
+
+  const handleCopyTestUrl = async (widgetId: string) => {
+    if (!widgetId) return;
+    try {
+      await navigator.clipboard.writeText(getAgentTestUrl(widgetId));
+      setSuccess('Agent test URL copied to clipboard');
+      setError('');
+    } catch {
+      setError('Failed to copy agent test URL');
+    }
+  };
+
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     setFormData((prev) => ({
@@ -196,28 +243,76 @@ const WidgetManagementPage: React.FC = () => {
     <Box>
       <Stack spacing={3}>
         {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Paper
+          sx={{
+            p: { xs: 2, md: 2.4 },
+            borderRadius: '22px',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.84
+            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
+          }}
+        >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
-              Widget Management
+              Agent Management
             </Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Create and manage chatbot widgets for your organization
+              Create and manage chatbot agents for your organization
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
-            Create Widget
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleOpenCreate}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
+              boxShadow: '0 12px 22px rgba(45,122,240,0.3)',
+            }}
+          >
+            Create Agent
           </Button>
         </Box>
+        </Paper>
 
         {/* Alerts */}
         {error && <Alert severity="error">{error}</Alert>}
         {success && <Alert severity="success">{success}</Alert>}
 
         {/* Widgets Table */}
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}>
           <Table>
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableHead sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.08) }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>Name</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Widget ID</TableCell>
@@ -230,18 +325,29 @@ const WidgetManagementPage: React.FC = () => {
             <TableBody>
               {widgets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: '#999' }}>
-                    No widgets created yet. Click "Create Widget" to get started.
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                    No agents created yet. Click "Create Agent" to get started.
                   </TableCell>
                 </TableRow>
               ) : (
-                widgets.map((widget) => (
-                  <TableRow key={widget.widget_id} hover>
+                widgets.map((widget, index) => {
+                  const widgetId = widget.widget_id?.trim() || '';
+                  return (
+                  <TableRow key={widgetId || `widget-row-${widget.id ?? index}`} hover>
                     <TableCell sx={{ fontWeight: 500 }}>{widget.name}</TableCell>
                     <TableCell>
-                      <code style={{ fontSize: '11px', backgroundColor: '#f5f5f5', padding: '2px 4px' }}>
-                        {widget.widget_id.substring(0, 12)}...
-                      </code>
+                      <Box
+                        component="code"
+                        sx={{
+                          fontSize: '11px',
+                          backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                          px: 0.6,
+                          py: 0.2,
+                          borderRadius: 0.8,
+                        }}
+                      >
+                        {widgetId ? `${widgetId.substring(0, 12)}...` : 'Unavailable'}
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -258,7 +364,7 @@ const WidgetManagementPage: React.FC = () => {
                         variant={widget.lead_capture_enabled ? 'filled' : 'outlined'}
                       />
                     </TableCell>
-                    <TableCell sx={{ fontSize: '12px', color: '#666' }}>
+                    <TableCell sx={{ fontSize: '12px', color: 'text.secondary' }}>
                       {widget.created_at ? new Date(widget.created_at).toLocaleDateString() : '-'}
                     </TableCell>
                     <TableCell sx={{ textAlign: 'right' }}>
@@ -273,8 +379,18 @@ const WidgetManagementPage: React.FC = () => {
                         </IconButton>
                         <IconButton
                           size="small"
+                          title="Copy Test URL"
+                          onClick={() => handleCopyTestUrl(widgetId)}
+                          disabled={!widgetId}
+                          color="success"
+                        >
+                          <LinkIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
                           title="Copy Embed Code"
-                          onClick={() => handleCopyEmbedCode(widget.widget_id)}
+                          onClick={() => handleCopyEmbedCode(widgetId)}
+                          disabled={!widgetId}
                           color="primary"
                         >
                           <CopyIcon fontSize="small" />
@@ -283,6 +399,7 @@ const WidgetManagementPage: React.FC = () => {
                           size="small"
                           title="Edit"
                           onClick={() => handleOpenEdit(widget)}
+                          disabled={!widgetId}
                           color="warning"
                         >
                           <EditIcon fontSize="small" />
@@ -290,7 +407,8 @@ const WidgetManagementPage: React.FC = () => {
                         <IconButton
                           size="small"
                           title="Delete"
-                          onClick={() => handleDelete(widget.widget_id)}
+                          onClick={() => handleDelete(widgetId)}
+                          disabled={!widgetId}
                           color="error"
                         >
                           <DeleteIcon fontSize="small" />
@@ -298,7 +416,7 @@ const WidgetManagementPage: React.FC = () => {
                       </Stack>
                     </TableCell>
                   </TableRow>
-                ))
+                )})
               )}
             </TableBody>
           </Table>
@@ -313,7 +431,7 @@ const WidgetManagementPage: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          {dialogMode === 'create' ? 'Create New Widget' : 'Edit Widget'}
+          {dialogMode === 'create' ? 'Create New Agent' : 'Edit Agent'}
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
@@ -337,6 +455,16 @@ const WidgetManagementPage: React.FC = () => {
             />
             <TextField
               fullWidth
+              label="System Prompt (Optional)"
+              name="system_prompt"
+              value={formData.system_prompt}
+              onChange={handleFormChange}
+              multiline
+              rows={4}
+              placeholder="Use this to customize assistant behavior for this agent"
+            />
+            <TextField
+              fullWidth
               label="Logo URL"
               name="logo_url"
               value={formData.logo_url}
@@ -345,16 +473,17 @@ const WidgetManagementPage: React.FC = () => {
             />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
               <Box>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: '#666' }}>
+                <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
                   Primary Color
-                </label>
+                </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  <input
+                  <Box
+                    component="input"
                     type="color"
                     name="primary_color"
                     value={formData.primary_color}
                     onChange={handleFormChange}
-                    style={{ width: '50px', height: '40px', cursor: 'pointer' }}
+                    sx={{ width: 50, height: 40, cursor: 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
                   />
                   <TextField
                     size="small"
@@ -366,16 +495,17 @@ const WidgetManagementPage: React.FC = () => {
                 </Box>
               </Box>
               <Box>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: '#666' }}>
+                <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
                   Secondary Color
-                </label>
+                </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  <input
+                  <Box
+                    component="input"
                     type="color"
                     name="secondary_color"
                     value={formData.secondary_color}
                     onChange={handleFormChange}
-                    style={{ width: '50px', height: '40px', cursor: 'pointer' }}
+                    sx={{ width: 50, height: 40, cursor: 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
                   />
                   <TextField
                     size="small"
@@ -404,15 +534,16 @@ const WidgetManagementPage: React.FC = () => {
               <option value="top-left">Top Left</option>
             </TextField>
             <Box>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  name="lead_capture_enabled"
-                  checked={formData.lead_capture_enabled}
-                  onChange={handleFormChange}
-                />
-                <span>Enable Lead Capture</span>
-              </label>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="lead_capture_enabled"
+                    checked={formData.lead_capture_enabled}
+                    onChange={handleFormChange}
+                  />
+                }
+                label="Enable Lead Capture"
+              />
             </Box>
             <TextField
               fullWidth
@@ -442,33 +573,33 @@ const WidgetManagementPage: React.FC = () => {
 
       {/* View Dialog */}
       <Dialog open={dialogMode === 'view'} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Widget Details</DialogTitle>
+        <DialogTitle>Agent Details</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Widget ID</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent ID</Typography>
               <Typography sx={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
                 {formData.widget_id}
               </Typography>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Name</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Name</Typography>
               <Typography>{formData.name}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Welcome Message</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Welcome Message</Typography>
               <Typography>{formData.welcome_message}</Typography>
             </Box>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
               <Box>
-                <Typography variant="caption" sx={{ color: '#666' }}>Primary Color</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Primary Color</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                   <Box
                     sx={{
                       width: '30px',
                       height: '30px',
                       backgroundColor: formData.primary_color,
-                      border: '1px solid #ddd',
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
                       borderRadius: '4px',
                     }}
                   />
@@ -478,14 +609,14 @@ const WidgetManagementPage: React.FC = () => {
                 </Box>
               </Box>
               <Box>
-                <Typography variant="caption" sx={{ color: '#666' }}>Secondary Color</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Secondary Color</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                   <Box
                     sx={{
                       width: '30px',
                       height: '30px',
                       backgroundColor: formData.secondary_color,
-                      border: '1px solid #ddd',
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
                       borderRadius: '4px',
                     }}
                   />
@@ -496,29 +627,48 @@ const WidgetManagementPage: React.FC = () => {
               </Box>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Position</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Position</Typography>
               <Typography>{formData.position}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Lead Capture</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Lead Capture</Typography>
               <Typography>{formData.lead_capture_enabled ? 'Enabled' : 'Disabled'}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Escalation Contact - Level 1</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 1</Typography>
               <Typography>{formData.escalation_contact_level_1 || '-'}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Escalation Contact - Level 2</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 2</Typography>
               <Typography>{formData.escalation_contact_level_2 || '-'}</Typography>
             </Box>
             {formData.created_at && (
               <Box>
-                <Typography variant="caption" sx={{ color: '#666' }}>Created</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Created</Typography>
                 <Typography>{new Date(formData.created_at).toLocaleString()}</Typography>
               </Box>
             )}
             <Box>
-              <Typography variant="caption" sx={{ color: '#666' }}>Embed Code</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent Test URL</Typography>
+              <TextField
+                fullWidth
+                size="small"
+                value={formData.widget_id ? getAgentTestUrl(formData.widget_id) : ''}
+                InputProps={{ readOnly: true }}
+                sx={{ mt: 0.5 }}
+              />
+              <Button
+                size="small"
+                startIcon={<LinkIcon />}
+                onClick={() => handleCopyTestUrl(formData.widget_id)}
+                disabled={!formData.widget_id}
+                sx={{ mt: 1 }}
+              >
+                Copy Test URL
+              </Button>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Embed Code</Typography>
               <TextField
                 fullWidth
                 size="small"
@@ -533,6 +683,7 @@ const WidgetManagementPage: React.FC = () => {
     name: 'AI Assistant',
     welcomeMessage: 'Hi! How can I help you today?',
     primaryColor: '#007bff',
+    primaryColor: '#2f6bff',
     position: 'bottom-right'
   };
 </script>
@@ -544,6 +695,7 @@ const WidgetManagementPage: React.FC = () => {
                 size="small"
                 startIcon={<CopyIcon />}
                 onClick={() => handleCopyEmbedCode(formData.widget_id)}
+                disabled={!formData.widget_id}
                 sx={{ mt: 1 }}
               >
                 Copy Embed Code
@@ -553,7 +705,7 @@ const WidgetManagementPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Close</Button>
-          <Button onClick={() => handleOpenEdit(formData as WidgetConfig)} variant="contained">
+          <Button onClick={() => handleOpenEdit(formData as WidgetConfig)} variant="contained" disabled={!formData.widget_id}>
             Edit
           </Button>
         </DialogActions>
@@ -564,3 +716,5 @@ const WidgetManagementPage: React.FC = () => {
 };
 
 export default WidgetManagementPage;
+
+

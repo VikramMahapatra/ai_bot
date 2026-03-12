@@ -27,6 +27,7 @@ backend/exports/
 # Environment files
 .env
 .env.local
+backend/env.env
 
 # IDEs
 .vscode/

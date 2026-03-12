@@ -83,7 +83,17 @@ class ChromaDBClient:
             results = self.collection.query(**query_params)
             return results
         except Exception as e:
-            logger.error(f"Error querying ChromaDB: {str(e)}")
+            error_text = str(e)
+            if "dimension" in error_text.lower() and "does not match" in error_text.lower():
+                logger.error(
+                    "Chroma embedding dimension mismatch detected. "
+                    "This usually happens when switching embedding backends without rebuilding the collection. "
+                    "Returning empty results to avoid request failure. Error: %s",
+                    error_text,
+                )
+                return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+            logger.error(f"Error querying ChromaDB: {error_text}")
             raise
     
     def delete_by_source_id(self, source_id: int):

@@ -13,6 +13,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
@@ -110,7 +111,7 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
     return (
       <Box sx={{ textAlign: 'center', py: 1.5 }}>
         <CheckCircleIcon sx={{ color: 'success.main', fontSize: 32, mb: 0.5 }} />
-        <p style={{ fontSize: '12px', margin: 0, color: '#4caf50' }}>Thank you for your feedback!</p>
+        <p style={{ fontSize: '12px', margin: 0, color: '#2f855a' }}>Thank you for your feedback!</p>
       </Box>
     );
   }
@@ -122,10 +123,12 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
           size="small"
           onClick={handleOpenDialog}
           sx={{
-            color: '#2db3a0',
+            color: 'primary.main',
             padding: '4px',
+            border: '1px solid rgba(53,108,255,0.2)',
+            borderRadius: 1.5,
             '&:hover': {
-              backgroundColor: 'rgba(45, 179, 160, 0.08)',
+              backgroundColor: 'rgba(53,108,255,0.12)',
             },
           }}
         >
@@ -133,8 +136,20 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
         </IconButton>
       </Tooltip>
 
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>Rate this response</DialogTitle>
+      <Dialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            background: 'linear-gradient(150deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.96) 100%)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, fontWeight: 800, color: 'primary.main' }}>Rate this response</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -147,12 +162,17 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
               value={rating}
               onChange={(_, value) => setRating(value)}
               size="large"
-              sx={{ fontSize: '2.5rem' }}
+              sx={{
+                fontSize: '2.3rem',
+                '& .MuiRating-iconFilled': {
+                  color: '#2d8ef0',
+                },
+              }}
             />
           </Box>
 
           {rating && (
-            <Box sx={{ textAlign: 'center', mb: 3, color: '#64748b', fontWeight: 500 }}>
+            <Box sx={{ textAlign: 'center', mb: 2.5, color: 'text.secondary', fontWeight: 600, fontSize: '0.85rem' }}>
               {getRatingLabel(rating)}
             </Box>
           )}
@@ -167,11 +187,12 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
             sx={{
               mb: 2,
               '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
                 '&:hover fieldset': {
-                  borderColor: '#2db3a0',
+                  borderColor: '#356dff',
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: '#2db3a0',
+                  borderColor: '#356dff',
                 },
               },
             }}
@@ -187,7 +208,9 @@ export const MessageFeedback: React.FC<MessageFeedbackProps> = ({
             variant="contained"
             disabled={rating === null || loading}
             sx={{
-              background: rating ? 'linear-gradient(135deg, #2db3a0 0%, #1b9a7f 100%)' : '#ccc',
+              textTransform: 'none',
+              fontWeight: 700,
+              background: rating ? 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)' : '#ccc',
             }}
             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : undefined}
           >

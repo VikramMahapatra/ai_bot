@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, AppBar, Toolbar, IconButton, Tooltip, Chip } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -30,21 +31,47 @@ const SuperAdminLayout: React.FC<SuperAdminLayoutProps> = ({ children }) => {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+        position: 'relative',
+        overflowX: 'clip',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: -200,
+          right: -120,
+          width: 360,
+          height: 360,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(54,127,255,0.22) 0%, rgba(54,127,255,0) 70%)',
+          pointerEvents: 'none',
+        }}
+      />
       <SuperAdminSidebar mobileOpen={mobileOpen} onMobileClose={handleDrawerToggle} />
 
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
         <AppBar
           position="sticky"
           color="default"
           elevation={0}
           sx={{
-            bgcolor: 'background.paper',
+            backdropFilter: 'blur(12px)',
+            background: (theme) =>
+              `linear-gradient(120deg, ${alpha(theme.palette.background.paper, 0.82)} 0%, ${alpha(
+                theme.palette.primary.main,
+                0.12
+              )} 100%)`,
             borderBottom: '1px solid',
             borderColor: 'divider',
+            boxShadow: (theme) => `0 12px 28px ${alpha(theme.palette.primary.dark, 0.18)}`,
           }}
         >
-          <Toolbar>
+          <Toolbar sx={{ minHeight: { xs: 66, md: 72 }, px: { xs: 1, sm: 1.6, md: 2.2 }, gap: 0.6, overflowX: 'hidden' }}>
             <IconButton
               color="inherit"
               edge="start"
@@ -54,13 +81,13 @@ const SuperAdminLayout: React.FC<SuperAdminLayoutProps> = ({ children }) => {
               <MenuIcon />
             </IconButton>
 
-            <Box sx={{ flexGrow: 1 }} />
+            <Box sx={{ flexGrow: 1, minWidth: 0 }} />
 
             <Chip
               label="Super Admin"
               color="primary"
               variant="outlined"
-              sx={{ mr: 2, fontWeight: 600 }}
+              sx={{ mr: 1.5, fontWeight: 700 }}
             />
             <Tooltip title={colorMode.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
               <IconButton onClick={colorMode.toggleColorMode} color="primary" sx={{ mr: 2 }}>
@@ -75,7 +102,17 @@ const SuperAdminLayout: React.FC<SuperAdminLayoutProps> = ({ children }) => {
           </Toolbar>
         </AppBar>
 
-        <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3, md: 4 } }}>
+        <Box
+          component="main"
+          className="page-reveal layered-admin-surfaces"
+          data-scroll-reset="true"
+          sx={{
+            flexGrow: 1,
+            px: { xs: 1.5, sm: 2.5, md: 4 },
+            py: { xs: 2, sm: 3, md: 3.5 },
+            overflowX: 'clip',
+          }}
+        >
           {children}
         </Box>
       </Box>

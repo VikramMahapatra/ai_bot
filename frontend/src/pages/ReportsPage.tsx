@@ -26,6 +26,7 @@ import {
   DialogContent,
   Snackbar,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   Download as FileDownloadIcon,
   LocalPrintshop as PrintIcon,
@@ -63,6 +64,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const ReportsPage: React.FC = () => {
+  const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -359,24 +361,68 @@ const ReportsPage: React.FC = () => {
     setSessionMessages([]);
   };
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+  const COLORS = ['#2f6bff', '#2d8ef0', '#5e72ff', '#36c4ff', '#7ab9ff'];
+
+  const metricCardSx = {
+    boxShadow: 2,
+    borderRadius: 3,
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+    background: 'linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(236,245,255,0.92) 100%)',
+  };
 
   return (
     <AdminLayout>
       <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, md: 2.6 },
+            mb: 3,
+            borderRadius: '22px',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.84
+            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
+          }}
+        >
+          <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 1 }}>
             Reports & Analytics
           </Typography>
           <Typography variant="body1" sx={{ color: 'text.secondary' }}>
             View detailed analytics and metrics for your conversations, leads, and system performance.
           </Typography>
-        </Box>
+        </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
         {/* Filters */}
-        <Paper sx={{ p: 3, mb: 3 }}>
+        <Paper sx={{ p: 3, mb: 3, borderRadius: '18px', border: `1px solid ${alpha(theme.palette.common.white, 0.62)}` }}>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             Filter Reports
           </Typography>
@@ -452,7 +498,11 @@ const ReportsPage: React.FC = () => {
           <Button
             startIcon={<Star />}
             variant="contained"
-            color="secondary"
+            sx={{
+              background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
+              textTransform: 'none',
+              fontWeight: 700,
+            }}
             onClick={handleRunOutcomeProcessing}
             disabled={outcomeRunning}
           >
@@ -463,7 +513,7 @@ const ReportsPage: React.FC = () => {
         {loading && <LinearProgress />}
 
         {/* Tabs */}
-        <Paper>
+        <Paper sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
 
         <Snackbar
           open={outcomeSnackbarOpen}
@@ -495,7 +545,7 @@ const ReportsPage: React.FC = () => {
             <Grid container spacing={3}>
               {summary.plan_usage && (
                 <Grid item xs={12}>
-                  <Card sx={{ boxShadow: 1 }}>
+                  <Card sx={metricCardSx}>
                     <CardContent>
                       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                         Current Plan Usage
@@ -579,7 +629,7 @@ const ReportsPage: React.FC = () => {
                 </Grid>
               )}
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -597,7 +647,7 @@ const ReportsPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -608,14 +658,14 @@ const ReportsPage: React.FC = () => {
                           {summary.total_messages}
                         </Typography>
                       </Box>
-                      <ChatBubble sx={{ fontSize: 32, color: '#00C49F', opacity: 0.7 }} />
+                      <ChatBubble sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -626,14 +676,14 @@ const ReportsPage: React.FC = () => {
                           {summary.total_tokens?.toLocaleString()}
                         </Typography>
                       </Box>
-                      <TrendingUp sx={{ fontSize: 32, color: '#FFBB28', opacity: 0.7 }} />
+                      <TrendingUp sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -644,14 +694,14 @@ const ReportsPage: React.FC = () => {
                           {summary.average_tokens_per_conversation?.toFixed(0)}
                         </Typography>
                       </Box>
-                      <BarChartIcon sx={{ fontSize: 32, color: '#FF8042', opacity: 0.7 }} />
+                      <BarChartIcon sx={{ fontSize: 32, color: '#369fff', opacity: 0.7 }} />
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -662,14 +712,14 @@ const ReportsPage: React.FC = () => {
                           {summary.total_leads_captured}
                         </Typography>
                       </Box>
-                      <ShoppingCart sx={{ fontSize: 32, color: '#8884D8', opacity: 0.7 }} />
+                      <ShoppingCart sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} sm={6} md={4}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                       <Box>
@@ -680,14 +730,14 @@ const ReportsPage: React.FC = () => {
                           {summary.average_satisfaction_rating?.toFixed(2) || 'N/A'} / 5
                         </Typography>
                       </Box>
-                      <Star sx={{ fontSize: 32, color: '#FFD700', opacity: 0.7 }} />
+                      <Star sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12}>
-                <Card sx={{ boxShadow: 1 }}>
+                <Card sx={metricCardSx}>
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                       Conversation Duration
@@ -785,88 +835,34 @@ const ReportsPage: React.FC = () => {
         <TabPanel value={tabValue} index={2}>
           {tokenReport && (
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Total Tokens
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {tokenReport.total_tokens?.toLocaleString()}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Prompt Tokens
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {tokenReport.prompt_tokens?.toLocaleString()}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Completion Tokens
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {tokenReport.completion_tokens?.toLocaleString()}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Avg Tokens/Conversation
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {tokenReport.average_tokens_per_conversation?.toFixed(0)}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Conversations
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {tokenReport.conversations_count}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Estimated Cost
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      ${tokenReport.cost_estimate?.toFixed(4) || '0.00'}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
+              {[
+                ['Total Tokens', tokenReport.total_tokens?.toLocaleString()],
+                ['Prompt Tokens', tokenReport.prompt_tokens?.toLocaleString()],
+                ['Completion Tokens', tokenReport.completion_tokens?.toLocaleString()],
+                ['Avg Tokens/Conversation', tokenReport.average_tokens_per_conversation?.toFixed(0)],
+                ['Conversations', tokenReport.conversations_count],
+                ['Estimated Cost', `$${tokenReport.cost_estimate?.toFixed(4) || '0.00'}`],
+              ].map(([label, value]) => (
+                <Grid item xs={12} sm={6} md={4} key={String(label)}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">
+                        {String(label)}
+                      </Typography>
+                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                        {String(value ?? '0')}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
 
               <Grid item xs={12}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Token Distribution</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Token Distribution
+                    </Typography>
                     <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
                         <Pie
@@ -879,7 +875,7 @@ const ReportsPage: React.FC = () => {
                           labelLine={false}
                           label={(entry: any) => `${entry.name}: ${entry.value}`}
                           outerRadius={80}
-                          fill="#8884d8"
+                          fill="#2f6bff"
                           dataKey="value"
                         >
                           {COLORS.map((color, index) => (
@@ -900,55 +896,37 @@ const ReportsPage: React.FC = () => {
         <TabPanel value={tabValue} index={3}>
           {leadReport && (
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Total Leads
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {leadReport.total_leads}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Leads with Email
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {leadReport.leads_with_email}
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-                      Conversion Rate
-                    </p>
-                    <h3 style={{ margin: '8px 0 0 0' }}>
-                      {leadReport.conversion_rate?.toFixed(2)}%
-                    </h3>
-                  </CardContent>
-                </Card>
-              </Grid>
+              {[
+                ['Total Leads', leadReport.total_leads],
+                ['Leads with Email', leadReport.leads_with_email],
+                ['Conversion Rate', `${leadReport.conversion_rate?.toFixed(2)}%`],
+              ].map(([label, value]) => (
+                <Grid item xs={12} sm={6} md={4} key={String(label)}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">
+                        {String(label)}
+                      </Typography>
+                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                        {String(value ?? '0')}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
 
               <Grid item xs={12} md={6}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Leads by Widget</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Leads by Widget
+                    </Typography>
                     <Box>
                       {Object.entries(leadReport.leads_by_widget || {}).map(
                         ([widget, count]: [string, any]) => (
                           <Box key={widget} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <span>{widget || 'Unknown'}</span>
-                            <strong>{count}</strong>
+                            <Typography variant="body2">{widget || 'Unknown'}</Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{count}</Typography>
                           </Box>
                         )
                       )}
@@ -958,9 +936,11 @@ const ReportsPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Leads by Date (Last 7 Days)</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Leads by Date (Last 7 Days)
+                    </Typography>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart
                         data={Object.entries(leadReport.leads_by_date || {})
@@ -971,7 +951,7 @@ const ReportsPage: React.FC = () => {
                         <XAxis dataKey="date" />
                         <YAxis />
                         <Tooltip />
-                        <Bar dataKey="leads" fill="#8884d8" />
+                        <Bar dataKey="leads" fill="#2f6bff" />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -986,9 +966,11 @@ const ReportsPage: React.FC = () => {
           {dailyStats.length > 0 && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Daily Conversations</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Daily Conversations
+                    </Typography>
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={dailyStats}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -996,7 +978,7 @@ const ReportsPage: React.FC = () => {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Line type="monotone" dataKey="conversation_count" stroke="#8884d8" name="Conversations" />
+                        <Line type="monotone" dataKey="conversation_count" stroke="#2f6bff" name="Conversations" />
                       </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -1004,9 +986,11 @@ const ReportsPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Daily Messages & Tokens</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Daily Messages & Tokens
+                    </Typography>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={dailyStats}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -1015,8 +999,8 @@ const ReportsPage: React.FC = () => {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="total_messages" fill="#8884d8" name="Messages" />
-                        <Bar yAxisId="right" dataKey="total_tokens" fill="#82ca9d" name="Tokens" />
+                        <Bar yAxisId="left" dataKey="total_messages" fill="#2f6bff" name="Messages" />
+                        <Bar yAxisId="right" dataKey="total_tokens" fill="#36c4ff" name="Tokens" />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -1024,16 +1008,18 @@ const ReportsPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <Card>
+                <Card sx={metricCardSx}>
                   <CardContent>
-                    <h4>Daily Leads Captured</h4>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      Daily Leads Captured
+                    </Typography>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={dailyStats}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis />
                         <Tooltip />
-                        <Bar dataKey="leads_captured" fill="#ffc658" name="Leads" />
+                        <Bar dataKey="leads_captured" fill="#5e72ff" name="Leads" />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -1113,3 +1099,5 @@ const ReportsPage: React.FC = () => {
 };
 
 export default ReportsPage;
+
+
