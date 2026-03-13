@@ -2,14 +2,14 @@ from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, J
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from backend.app.database import Base
+from app.database import Base
 
 class CampaignSchedule(Base):
     __tablename__ = "campaign_schedules"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
     start_datetime = Column(DateTime)
     timezone = Column(String)
@@ -28,4 +28,4 @@ class CampaignSchedule(Base):
     retry_busy = Column(Integer)
     retry_voicemail = Column(Integer)
 
-    campaign = relationship("Campaign", back_populates="schedule")
+    campaign = relationship("CallCampaign", back_populates="schedule")

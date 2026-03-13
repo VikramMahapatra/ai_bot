@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Paper,
+  Stack,
   Button,
   Typography,
   Alert,
   LinearProgress,
-  List,
-  ListItem,
-  ListItemText,
+  Chip,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { knowledgeService } from '../../services/knowledgeService';
@@ -53,50 +51,73 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ widgetId, onStarted, on
   };
 
   return (
-    <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>
-        Document Upload
-      </Typography>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
-
-      <Box sx={{ mb: 2 }}>
-        <Button
-          variant="contained"
-          component="label"
-          startIcon={<CloudUploadIcon />}
-          disabled={uploading || !widgetId}
-        >
-          Upload Documents
-          <input
-            type="file"
-            hidden
-            multiple
-            accept=".pdf,.docx,.doc,.xlsx,.xls"
-            onChange={handleFileUpload}
-          />
-        </Button>
-        {uploading && <LinearProgress sx={{ mt: 2 }} />}
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        Supported formats: PDF, DOCX, XLSX
-      </Typography>
-
-      {uploadedFiles.length > 0 && (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="subtitle2">Recently uploaded:</Typography>
-          <List dense>
-            {uploadedFiles.map((file, index) => (
-              <ListItem key={index}>
-                <ListItemText primary={file} />
-              </ListItem>
-            ))}
-          </List>
+    <Box>
+      <Stack spacing={2}>
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Document Upload
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Add files that contain product policies, manuals, and FAQs.
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Chip label="PDF" size="small" variant="outlined" />
+            <Chip label="DOCX" size="small" variant="outlined" />
+            <Chip label="XLSX" size="small" variant="outlined" />
+          </Stack>
         </Box>
-      )}
-    </Paper>
+
+        {error && <Alert severity="error">{error}</Alert>}
+        {success && <Alert severity="success">{success}</Alert>}
+
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            border: '1px dashed rgba(71,85,105,0.35)',
+            bgcolor: 'rgba(248,250,252,0.8)',
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Button
+              variant="contained"
+              component="label"
+              startIcon={<CloudUploadIcon />}
+              disabled={uploading || !widgetId}
+              sx={{ alignSelf: 'flex-start', px: 2.5 }}
+            >
+              Select Document Files
+              <input
+                type="file"
+                hidden
+                multiple
+                accept=".pdf,.docx,.doc,.xlsx,.xls"
+                onChange={handleFileUpload}
+              />
+            </Button>
+
+            <Typography variant="caption" color="text.secondary">
+              You can select multiple files in one go. Files are embedded automatically after upload.
+            </Typography>
+
+            {uploading && <LinearProgress sx={{ mt: 0.5, borderRadius: 1 }} />}
+          </Stack>
+        </Box>
+
+        {uploadedFiles.length > 0 && (
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Recently Uploaded
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {uploadedFiles.map((file, index) => (
+                <Chip key={`${file}-${index}`} label={file} variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+        )}
+      </Stack>
+    </Box>
   );
 };
 

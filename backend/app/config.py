@@ -1,51 +1,90 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 
 class Settings(BaseSettings):
+    # App Metadata / Runtime
+    APP_TITLE: str
+    APP_DESCRIPTION: str
+    APP_VERSION: str
+    LOG_LEVEL: str
+    LOG_FORMAT: str
+    UVICORN_HOST: str
+    UVICORN_PORT: int
+
     # OpenAI Configuration
     OPENAPI_KEY2: str
-    EMBEDDING_MODEL: str = "text-embedding-ada-002"
-    USE_LOCAL_EMBEDDINGS: bool = True
-    LOCAL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    OUTCOME_CLASSIFICATION_MODEL: str = "gpt-4o-mini"
-    OUTCOME_DAEMON_HOUR_UTC: int = 2
-    OUTCOME_DAEMON_MINUTE_UTC: int = 15
-    OUTCOME_DAEMON_INITIAL_DELAY_SECONDS: int = 30
-    OUTCOME_DAEMON_BATCH_SIZE: int = 100
-    OUTCOME_DAEMON_MAX_BATCHES: int = 20
-    META_APP_SECRET: str = ""
-    WHATSAPP_GRAPH_VERSION: str = "v21.0"
+    OPENAI_CHAT_MODEL: str
+    OPENAI_TRANSLATION_MODEL: str
+    EMBEDDING_MODEL: str
+    USE_LOCAL_EMBEDDINGS: bool
+    LOCAL_EMBEDDING_MODEL: str
+    OUTCOME_CLASSIFICATION_MODEL: str
+    OUTCOME_DAEMON_HOUR_UTC: int
+    OUTCOME_DAEMON_MINUTE_UTC: int
+    OUTCOME_DAEMON_INITIAL_DELAY_SECONDS: int
+    OUTCOME_DAEMON_BATCH_SIZE: int
+    OUTCOME_DAEMON_MAX_BATCHES: int
+    META_APP_SECRET: str
+    WHATSAPP_GRAPH_VERSION: str
+    DEV_BYPASS_SUBSCRIPTION_CHECK: bool = False
+
+    # Chat Escalation Defaults
+    DEFAULT_ESCALATION_CONTACT_LEVEL_1: str
+    DEFAULT_ESCALATION_CONTACT_LEVEL_2: str
+
+    # Reporting Defaults
+    TOKEN_COST_PROMPT_PER_1K: float
+    TOKEN_COST_COMPLETION_PER_1K: float
     
     # Database Configuration
-    DATABASE_URL: str = "sqlite:///./chatbot.db"
-    CHROMA_PERSIST_DIR: str = "./data/chroma"
-    UPLOAD_DIR: str = "./data/uploads"
-    EXPORT_DIR: str = "./data/exports"
+    DATABASE_URL: str
+    CHROMA_PERSIST_DIR: str
+    UPLOAD_DIR: str
+    EXPORT_DIR: str
     
     # JWT Configuration
     JWT_SECRET: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_MINUTES: int = 10080  # 1 week
+    JWT_ALGORITHM: str
+    JWT_EXPIRATION_MINUTES: int
     
     # CORS Configuration
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,https://thomasina-mesogleal-alarmingly.ngrok-free.dev,https://zentrixel-it-services.myshopify.com,http://aibot.zentrixel.com,https://aibot.zentrixel.com"
+    CORS_ORIGINS: str
+    CORS_ALLOW_ORIGIN_REGEX: str
+    CORS_ALLOW_CREDENTIALS: bool
+    CORS_ALLOW_METHODS: str
+    CORS_ALLOW_HEADERS: str
     
     # Email Configuration
-    SMTP_HOST: str = "smtp.office365.com"
-    SMTP_PORT: int = 25
-    SMTP_USERNAME: str = "smtp@sales-arm.com"
-    SMTP_PASSWORD: str = "Salesarm@1"
-    SMTP_USE_SSL: bool = False
-    EMAIL_SENDER: str = "noreply@sales-arm.com"
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    SMTP_USE_SSL: bool
+    EMAIL_SENDER: str
+    CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
+    CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
+
+    # Frontend URLs used in notifications
+    FRONTEND_DASHBOARD_LEADS_URL: str
     
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+
+    @property
+    def cors_allow_methods_list(self) -> List[str]:
+        return [method.strip() for method in self.CORS_ALLOW_METHODS.split(",") if method.strip()]
+
+    @property
+    def cors_allow_headers_list(self) -> List[str]:
+        return [header.strip() for header in self.CORS_ALLOW_HEADERS.split(",") if header.strip()]
+
+    model_config = SettingsConfigDict(
+        env_file=(".env.example",),
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 settings = Settings()

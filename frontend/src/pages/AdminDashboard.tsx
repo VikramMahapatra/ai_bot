@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { keyframes } from '@mui/system';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Grid,
-  Paper,
-  Typography,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
-  Alert,
-  Tabs,
+  Grid,
+  LinearProgress,
+  Paper,
   Tab,
   Table,
   TableBody,
@@ -17,828 +16,854 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  LinearProgress,
-  useTheme,
-  useMediaQuery
+  Tabs,
+  Typography,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import AdminLayout from '../components/Layout/AdminLayout';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import WidgetsIcon from '@mui/icons-material/Widgets';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
+import AutoGraphIcon from '@mui/icons-material/AutoGraph';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as ChartTooltip,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import { dashboardService } from '../services/dashboardService';
 
+interface PlanUsage {
+  limits: {
+    monthly_message_limit: number | null;
+    monthly_token_limit: number | null;
+    monthly_crawl_pages_limit: number | null;
+    monthly_document_limit: number | null;
+  };
+  used: {
+    messages_used: number;
+    tokens_used: number;
+    crawl_pages_used: number;
+    documents_used: number;
+  };
+  remaining: {
+    messages_remaining: number | null;
+    tokens_remaining: number | null;
+    crawl_pages_remaining: number | null;
+    documents_remaining: number | null;
+  };
+}
+
+interface DashboardStats {
+  total_conversations: number;
+  total_leads: number;
+  conversion_rate: number;
+  total_widgets: number;
+  total_knowledge_sources: number;
+  conversations_7d: number;
+  leads_7d: number;
+  plan_usage: PlanUsage | null;
+}
+
+interface DailyConversationPoint {
+  date: string;
+  count: number;
+}
+
+interface TrendPoint {
+  date: string;
+  conversations: number;
+  leads: number;
+}
+
+interface LeadSourcePoint {
+  source: string;
+  count: number;
+}
+
+interface LeadItem {
+  id: number;
+  name?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  created_at?: string;
+}
+
+interface SessionItem {
+  session_id: string;
+  message_count: number;
+  has_lead: boolean;
+  lead_name?: string;
+  last_message_at?: string;
+}
+
+interface WidgetItem {
+  id: number;
+  name: string;
+  widget_id: string;
+  conversations_count: number;
+  leads_count: number;
+  position?: string;
+  lead_capture_enabled?: boolean;
+}
+
+interface KnowledgeSourceItem {
+  id: number;
+  name: string;
+  source_type: string;
+  status: string;
+  created_at?: string;
+}
+
 interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
+  children: React.ReactNode;
   value: number;
+  index: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
+  if (value !== index) return null;
+  return <Box sx={{ pt: 2.5 }}>{children}</Box>;
+};
 
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`tabpanel-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+const numberOrZero = (value: unknown): number => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
 
-// Animated counter for metrics (custom hook)
-function useAnimatedCount(value: number, duration = 1200) {
-  const [count, setCount] = React.useState(0);
-  React.useEffect(() => {
-    let start = 0;
-    const step = Math.ceil((value || 0) / (duration / 16));
-    if (!value) return setCount(0);
-    const interval = setInterval(() => {
-      start += step;
-      if (start >= value) {
-        setCount(value);
-        clearInterval(interval);
-      } else {
-        setCount(start);
-      }
-    }, 16);
-    return () => clearInterval(interval);
-  }, [value, duration]);
-  return count;
-}
+const textOrDash = (value?: string | null): string => {
+  return value && value.trim() ? value : '-';
+};
 
+const shortText = (value: string, length: number): string => {
+  if (!value) return '-';
+  return value.length > length ? `${value.slice(0, length)}...` : value;
+};
+
+const formatDate = (value?: string): string => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString();
+};
+
+const formatDateTime = (value?: string): string => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString();
+};
+
+const percent = (used: number, limit: number | null): number => {
+  if (!limit || limit <= 0) return 0;
+  return Math.min((used / limit) * 100, 100);
+};
+
+const formatLimitValue = (value: number | null): string => {
+  if (value === null || typeof value === 'undefined') return '∞';
+  return value.toLocaleString();
+};
 
 const AdminDashboard: React.FC = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  // State
-  const [tabValue, setTabValue] = useState(0);
+  const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [stats, setStats] = useState<any>(null);
-  const [dailyConversations, setDailyConversations] = useState<any[]>([]);
-  const [recentLeads, setRecentLeads] = useState<any[]>([]);
-  const [widgets, setWidgets] = useState<any[]>([]);
-  const [knowledgeSources, setKnowledgeSources] = useState<any[]>([]);
-  const [leadsBySource, setLeadsBySource] = useState<any[]>([]);
-  const [topSessions, setTopSessions] = useState<any[]>([]);
-  const [conversationTrend, setConversationTrend] = useState<any[]>([]);
 
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [dailyConversations, setDailyConversations] = useState<DailyConversationPoint[]>([]);
+  const [conversationTrend, setConversationTrend] = useState<TrendPoint[]>([]);
+  const [leadsBySource, setLeadsBySource] = useState<LeadSourcePoint[]>([]);
+  const [recentLeads, setRecentLeads] = useState<LeadItem[]>([]);
+  const [topSessions, setTopSessions] = useState<SessionItem[]>([]);
+  const [widgets, setWidgets] = useState<WidgetItem[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([]);
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  // Animated values for metrics (call hooks in stable order)
-  // Always call hooks with a number to keep hook order stable
-  const animatedTotalConversations = useAnimatedCount(
-    typeof stats?.total_conversations === 'number' ? stats.total_conversations : 0
-  );
-  const animatedTotalLeads = useAnimatedCount(
-    typeof stats?.total_leads === 'number' ? stats.total_leads : 0
-  );
-  const animatedConversionRate = useAnimatedCount(
-    typeof stats?.conversion_rate === 'number' ? stats.conversion_rate : 0
-  );
-  const animatedTotalWidgets = useAnimatedCount(
-    typeof stats?.total_widgets === 'number' ? stats.total_widgets : 0
-  );
-
-  
-
-  const loadDashboardData = async () => {
-    try {
+    const load = async () => {
       setLoading(true);
       setError('');
 
-      // Load each endpoint individually with error handling
-      const stats = await dashboardService.getStats().catch(err => {
-        console.error('Stats error:', err);
-        return null;
-      });
-      
-      const daily = await dashboardService.getDailyConversations(7).catch(err => {
-        console.error('Daily conversations error:', err);
-        return { data: [] };
-      });
-      
-      const leads = await dashboardService.getRecentLeads(10).catch(err => {
-        console.error('Recent leads error:', err);
-        return { leads: [] };
-      });
-      
-      const widgetsData = await dashboardService.getWidgets().catch(err => {
-        console.error('Widgets error:', err);
-        return { widgets: [] };
-      });
-      
-      const sources = await dashboardService.getKnowledgeSources().catch(err => {
-        console.error('Knowledge sources error:', err);
-        return { sources: [] };
-      });
-      
-      const leadSource = await dashboardService.getLeadsBySource().catch(err => {
-        console.error('Leads by source error:', err);
-        return { data: [] };
-      });
-      
-      const sessions = await dashboardService.getTopSessions(10).catch(err => {
-        console.error('Top sessions error:', err);
-        return { sessions: [] };
-      });
-      
-      const trend = await dashboardService.getConversationTrend(30).catch(err => {
-        console.error('Conversation trend error:', err.response?.data?.detail || err.message);
-        setError(`Chart data unavailable: ${err.response?.data?.detail || err.message}`);
-        return { data: [] };
-      });
+      const [
+        statsRes,
+        dailyRes,
+        leadsRes,
+        widgetsRes,
+        sourcesRes,
+        bySourceRes,
+        topSessionsRes,
+        trendRes,
+      ] = await Promise.allSettled([
+        dashboardService.getStats(),
+        dashboardService.getDailyConversations(7),
+        dashboardService.getRecentLeads(10),
+        dashboardService.getWidgets(),
+        dashboardService.getKnowledgeSources(),
+        dashboardService.getLeadsBySource(),
+        dashboardService.getTopSessions(10),
+        dashboardService.getConversationTrend(30),
+      ]);
 
-      setStats(stats);
-      setDailyConversations(daily.data || []);
-      setRecentLeads(leads.leads || []);
-      setWidgets(widgetsData.widgets || []);
-      setKnowledgeSources(sources.sources || []);
-      setLeadsBySource(leadSource.data || []);
-      setTopSessions(sessions.sessions || []);
-      setConversationTrend(trend.data || []);
-      
-      // Debug logging
-      console.log('Daily conversations data:', daily.data);
-      console.log('Leads by source data:', leadSource.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load dashboard data');
-      console.error('Dashboard error:', err);
-    } finally {
+      if (statsRes.status === 'fulfilled') {
+        const raw = (statsRes.value || {}) as Partial<DashboardStats>;
+        setStats({
+          total_conversations: numberOrZero(raw.total_conversations),
+          total_leads: numberOrZero(raw.total_leads),
+          conversion_rate: numberOrZero(raw.conversion_rate),
+          total_widgets: numberOrZero(raw.total_widgets),
+          total_knowledge_sources: numberOrZero(raw.total_knowledge_sources),
+          conversations_7d: numberOrZero(raw.conversations_7d),
+          leads_7d: numberOrZero(raw.leads_7d),
+          plan_usage: raw.plan_usage || null,
+        });
+      }
+
+      if (dailyRes.status === 'fulfilled') {
+        const data = Array.isArray((dailyRes.value as any)?.data) ? (dailyRes.value as any).data : [];
+        setDailyConversations(
+          data.map((row: any) => ({
+            date: String(row?.date || ''),
+            count: numberOrZero(row?.count),
+          }))
+        );
+      }
+
+      if (leadsRes.status === 'fulfilled') {
+        const data = Array.isArray((leadsRes.value as any)?.leads) ? (leadsRes.value as any).leads : [];
+        setRecentLeads(data as LeadItem[]);
+      }
+
+      if (widgetsRes.status === 'fulfilled') {
+        const data = Array.isArray((widgetsRes.value as any)?.widgets) ? (widgetsRes.value as any).widgets : [];
+        setWidgets(data as WidgetItem[]);
+      }
+
+      if (sourcesRes.status === 'fulfilled') {
+        const data = Array.isArray((sourcesRes.value as any)?.sources) ? (sourcesRes.value as any).sources : [];
+        setKnowledgeSources(data as KnowledgeSourceItem[]);
+      }
+
+      if (bySourceRes.status === 'fulfilled') {
+        const data = Array.isArray((bySourceRes.value as any)?.data) ? (bySourceRes.value as any).data : [];
+        setLeadsBySource(
+          data.map((row: any) => ({
+            source: String(row?.source || 'Unknown'),
+            count: numberOrZero(row?.count),
+          }))
+        );
+      }
+
+      if (topSessionsRes.status === 'fulfilled') {
+        const data = Array.isArray((topSessionsRes.value as any)?.sessions) ? (topSessionsRes.value as any).sessions : [];
+        setTopSessions(data as SessionItem[]);
+      }
+
+      if (trendRes.status === 'fulfilled') {
+        const data = Array.isArray((trendRes.value as any)?.data) ? (trendRes.value as any).data : [];
+        setConversationTrend(
+          data.map((row: any) => ({
+            date: String(row?.date || ''),
+            conversations: numberOrZero(row?.conversations),
+            leads: numberOrZero(row?.leads),
+          }))
+        );
+      } else {
+        setError('Some chart sections could not be loaded right now.');
+      }
+
       setLoading(false);
-    }
-  };
+    };
 
-  if (loading && !stats) {
-    // Only show full-page loading on first load
-    return (
-      <AdminLayout>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-          <CircularProgress />
-        </Box>
-      </AdminLayout>
-    );
-  }
+    load().catch(() => {
+      setLoading(false);
+      setError('Failed to load dashboard. Please refresh.');
+    });
+  }, []);
 
-  const COLORS = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#a8edea'];
+  const pieColors = useMemo(
+    () => [
+      '#4e89d5',
+      '#67a4e8',
+      '#3d75d9',
+      '#79b4f1',
+      '#5f99dd',
+      '#7f93b8',
+    ],
+    []
+  );
 
+  const glassPanelSx = {
+    borderRadius: '18px',
+    border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+    background: `linear-gradient(150deg, ${alpha(theme.palette.common.white, 0.66)} 0%, ${alpha(
+      theme.palette.background.paper,
+      0.76
+    )} 66%, ${alpha('#dbe9fa', 0.72)} 100%)`,
+    boxShadow: `0 16px 32px ${alpha(theme.palette.primary.dark, 0.13)}`,
+    backdropFilter: 'blur(12px)',
+    position: 'relative',
+    overflow: 'hidden',
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      pointerEvents: 'none',
+      background:
+        'linear-gradient(138deg, rgba(255,255,255,0.22) 10%, transparent 28%), linear-gradient(28deg, transparent 52%, rgba(120,168,223,0.14) 53%, transparent 76%)',
+    },
+  } as const;
 
+  const kpis = [
+    {
+      label: 'Total Conversations',
+      value: numberOrZero(stats?.total_conversations),
+      hint: `${numberOrZero(stats?.conversations_7d)} in last 7 days`,
+      icon: <ChatBubbleOutlineIcon sx={{ color: theme.palette.primary.dark }} />,
+      gradient: `linear-gradient(130deg, ${alpha('#9cc3f3', 0.64)} 0%, ${alpha('#dce9ff', 0.76)} 100%)`,
+      wave: theme.palette.primary.main,
+    },
+    {
+      label: 'Total Leads',
+      value: numberOrZero(stats?.total_leads),
+      hint: `${numberOrZero(stats?.leads_7d)} in last 7 days`,
+      icon: <PersonAddAlt1Icon sx={{ color: theme.palette.primary.dark }} />,
+      gradient: `linear-gradient(130deg, ${alpha('#9fcbf6', 0.64)} 0%, ${alpha('#deedff', 0.76)} 100%)`,
+      wave: theme.palette.secondary.main,
+    },
+    {
+      label: 'Conversion Rate',
+      value: `${numberOrZero(stats?.conversion_rate)}%`,
+      hint: 'Leads from conversations',
+      icon: <TrendingUpIcon sx={{ color: theme.palette.primary.dark }} />,
+      gradient: `linear-gradient(130deg, ${alpha('#a9d2fb', 0.64)} 0%, ${alpha('#e3f0ff', 0.78)} 100%)`,
+      wave: '#468ed4',
+    },
+    {
+      label: 'Active Agents',
+      value: numberOrZero(stats?.total_widgets),
+      hint: `${numberOrZero(stats?.total_knowledge_sources)} sources connected`,
+      icon: <WidgetsIcon sx={{ color: theme.palette.primary.dark }} />,
+      gradient: `linear-gradient(130deg, ${alpha('#a1c8f4', 0.64)} 0%, ${alpha('#dceaff', 0.76)} 100%)`,
+      wave: '#4b84ce',
+    },
+  ];
 
-
-
-
-  // Glassmorphism effect
-  const glass = {
-    background: 'rgba(255,255,255,0.25)',
-    boxShadow: '0 8px 32px 0 rgba(31,38,135,0.12)',
-    backdropFilter: 'blur(8px)',
-    border: '1.5px solid rgba(255,255,255,0.18)',
-  };
-
-  // Icon avatar style
-  const iconAvatar = {
-    bgcolor: 'rgba(38,155,159,0.12)',
-    width: 56,
-    height: 56,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '12px',
-    boxShadow: '0 6px 18px 0 rgba(38,155,159,0.08)',
-    position: 'absolute',
-    top: 16,
-    right: 16,
-  };
-
-  // Animated gradient background for header
-  const gradientAnim = keyframes`
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  `;
+  const planUsageItems = stats?.plan_usage
+    ? [
+        {
+          label: 'Messages',
+          used: numberOrZero(stats.plan_usage.used.messages_used),
+          limit: stats.plan_usage.limits.monthly_message_limit,
+          remaining: stats.plan_usage.remaining.messages_remaining,
+          color: '#4e89d5',
+        },
+        {
+          label: 'Tokens',
+          used: numberOrZero(stats.plan_usage.used.tokens_used),
+          limit: stats.plan_usage.limits.monthly_token_limit,
+          remaining: stats.plan_usage.remaining.tokens_remaining,
+          color: '#56a8d6',
+        },
+        {
+          label: 'Crawl Pages',
+          used: numberOrZero(stats.plan_usage.used.crawl_pages_used),
+          limit: stats.plan_usage.limits.monthly_crawl_pages_limit,
+          remaining: stats.plan_usage.remaining.crawl_pages_remaining,
+          color: '#4f83cf',
+        },
+        {
+          label: 'Documents',
+          used: numberOrZero(stats.plan_usage.used.documents_used),
+          limit: stats.plan_usage.limits.monthly_document_limit,
+          remaining: stats.plan_usage.remaining.documents_remaining,
+          color: '#5e9bd9',
+        },
+      ]
+    : [];
 
   return (
     <AdminLayout>
-      <Box sx={{ maxWidth: 1200, mx: 'auto', px: 2 }}>
-        {/* Header */}
-        <Box sx={{
-          mb: 4,
-          p: 3,
-          borderRadius: 4,
-          background: 'linear-gradient(90deg, #21c8af 0%, #43e97b 100%)',
-          color: 'white',
-          boxShadow: '0 8px 32px 0 rgba(33,200,175,0.12)',
-          animation: `${gradientAnim} 8s ease-in-out infinite`,
-          backgroundSize: '200% 200%',
-        }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: 1, mb: 1 }}>
-            <span role="img" aria-label="dashboard">📊</span> Dashboard
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.92)' }}>
-            Welcome! Here's your business performance overview.
-          </Typography>
-        </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      {stats?.plan_usage && (
-        <Paper sx={{ p: 3, mb: 4, borderRadius: 2, boxShadow: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-            Current Plan Usage
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{
-                p: 4,
-                minHeight: 150,
-                borderRadius: '16px',
-                ...glass,
-                background: 'linear-gradient(135deg, #43e97b 0%, #21c8af 100%)',
-                color: 'primary.contrastText',
-                position: 'relative',
-                overflow: 'hidden',
-                transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-                '&:hover': { transform: 'translateY(-6px)', boxShadow: '0 20px 40px rgba(33,200,175,0.12)' },
-              }}>
-                <Box sx={iconAvatar}><WidgetsIcon sx={{ fontSize: 26, color: 'white' }} /></Box>
-                <Typography variant="caption" sx={{ opacity: 0.95, display: 'block', mb: 1, color: 'white' }}>
-                  Active Widgets
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: 'white', letterSpacing: 1 }}>
-                  {stats ? animatedTotalWidgets : 0}
-                </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.85, color: 'white' }}>
-                  Knowledge sources: {stats?.total_knowledge_sources || 0}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={9}>
-              <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-                <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Messages: {stats.plan_usage.used.messages_used} / {stats.plan_usage.limits.monthly_message_limit ?? '∞'}
-                  {stats.plan_usage.remaining.messages_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.messages_remaining})` : ''}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={stats.plan_usage.limits.monthly_message_limit ? Math.min((stats.plan_usage.used.messages_used / stats.plan_usage.limits.monthly_message_limit) * 100, 100) : 0}
-                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
-                />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Tokens: {stats.plan_usage.used.tokens_used?.toLocaleString?.() ?? stats.plan_usage.used.tokens_used} / {stats.plan_usage.limits.monthly_token_limit?.toLocaleString?.() ?? stats.plan_usage.limits.monthly_token_limit ?? '∞'}
-                  {stats.plan_usage.remaining.tokens_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.tokens_remaining.toLocaleString?.() ?? stats.plan_usage.remaining.tokens_remaining})` : ''}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={stats.plan_usage.limits.monthly_token_limit ? Math.min((stats.plan_usage.used.tokens_used / stats.plan_usage.limits.monthly_token_limit) * 100, 100) : 0}
-                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
-                />
-              </Box>
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Crawl Pages: {stats.plan_usage.used.crawl_pages_used} / {stats.plan_usage.limits.monthly_crawl_pages_limit ?? '∞'}
-                  {stats.plan_usage.remaining.crawl_pages_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.crawl_pages_remaining})` : ''}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={stats.plan_usage.limits.monthly_crawl_pages_limit ? Math.min((stats.plan_usage.used.crawl_pages_used / stats.plan_usage.limits.monthly_crawl_pages_limit) * 100, 100) : 0}
-                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
-                />
-              </Box>
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Documents: {stats.plan_usage.used.documents_used} / {stats.plan_usage.limits.monthly_document_limit ?? '∞'}
-                  {stats.plan_usage.remaining.documents_remaining !== null ? ` (Remaining ${stats.plan_usage.remaining.documents_remaining})` : ''}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={stats.plan_usage.limits.monthly_document_limit ? Math.min((stats.plan_usage.used.documents_used / stats.plan_usage.limits.monthly_document_limit) * 100, 100) : 0}
-                  sx={{ height: 8, borderRadius: 2, mt: 0.5 }}
-                />
-              </Box>
-              </Paper>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-
-      {/* Key Metrics Grid - Redesigned */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* Total Conversations */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{
-            p: 4,
-            minHeight: 150,
-            borderRadius: '16px',
-            ...glass,
-            background: 'linear-gradient(135deg, #667eea 0%, #21c8af 100%)',
-            color: 'primary.contrastText',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-            '&:hover': { transform: 'translateY(-6px)', boxShadow: '0 20px 40px rgba(33,200,175,0.12)' },
-          }}>
-            <Box sx={iconAvatar}><ChatBubbleOutlineIcon sx={{ fontSize: 26, color: 'white' }} /></Box>
-            <Typography variant="caption" sx={{ opacity: 0.95, display: 'block', mb: 1, color: 'white' }}>
-              Total Conversations
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: 'white', letterSpacing: 1 }}>
-              {stats ? animatedTotalConversations : 0}
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.85, color: 'white' }}>
-              {stats?.conversations_7d || 0} in last 7 days
-            </Typography>
-          </Paper>
-        </Grid>
-        {/* Total Leads */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{
-            p: 4,
-            minHeight: 150,
-            borderRadius: '16px',
-            ...glass,
-            background: 'linear-gradient(135deg, #f093fb 0%, #43e97b 100%)',
-            color: 'primary.contrastText',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-            '&:hover': { transform: 'translateY(-6px)', boxShadow: '0 20px 40px rgba(245, 87, 108, 0.12)' },
-          }}>
-            <Box sx={iconAvatar}><PersonAddIcon sx={{ fontSize: 26, color: 'white' }} /></Box>
-            <Typography variant="caption" sx={{ opacity: 0.95, display: 'block', mb: 1, color: 'white' }}>
-              Total Leads
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: 'white', letterSpacing: 1 }}>
-              {stats ? animatedTotalLeads : 0}
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.85, color: 'white' }}>
-              {stats?.leads_7d || 0} in last 7 days
-            </Typography>
-          </Paper>
-        </Grid>
-        {/* Conversion Rate */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{
-            p: 4,
-            minHeight: 150,
-            borderRadius: '16px',
-            ...glass,
-            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-            color: 'primary.contrastText',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-            '&:hover': { transform: 'translateY(-6px)', boxShadow: '0 20px 40px rgba(79, 172, 254, 0.12)' },
-          }}>
-            <Box sx={iconAvatar}><TrendingUpIcon sx={{ fontSize: 26, color: 'white' }} /></Box>
-            <Typography variant="caption" sx={{ opacity: 0.95, display: 'block', mb: 1, color: 'white' }}>
-              Conversion Rate
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: 'white', letterSpacing: 1 }}>
-              {stats ? animatedConversionRate : 0}%
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.85, color: 'white' }}>
-              Leads from conversations
-            </Typography>
-          </Paper>
-        </Grid>
-        {/* Total Widgets */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{
-            p: 3,
-            borderRadius: '20px',
-            ...glass,
-            background: 'linear-gradient(135deg, #43e97b 0%, #21c8af 100%)',
-            color: 'primary.contrastText',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.2s',
-            '&:hover': { transform: 'translateY(-4px) scale(1.03)', boxShadow: '0 12px 32px 0 rgba(67, 233, 123, 0.18)' },
-          }}>
-            <Box sx={iconAvatar}><WidgetsIcon sx={{ fontSize: 28, color: '#43e97b' }} /></Box>
-            <Typography variant="caption" sx={{ opacity: 0.9, display: 'block', mb: 1, color: 'white' }}>
-              Active Widgets
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: 'white', letterSpacing: 1 }}>
-              {stats ? animatedTotalWidgets : 0}
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.8, color: 'white' }}>
-              Knowledge sources: {stats?.total_knowledge_sources || 0}
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Charts Section - Two-column layout: main charts left, pie+sessions right */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={7}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
-                  Daily Conversations (7 Days)
-                </Typography>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={dailyConversations}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e6edf3" />
-                    <XAxis dataKey="date" stroke="#94a3b8" />
-                    <YAxis stroke="#94a3b8" />
-                    <ChartTooltip 
-                      contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: 'white' }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="count" 
-                      stroke="#2db3a0" 
-                      strokeWidth={3}
-                      dot={{ fill: '#2db3a0', r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>
-                  Conversation vs Leads Trend (30 Days)
-                </Typography>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={conversationTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e6edf3" />
-                    <XAxis dataKey="date" stroke="#94a3b8" />
-                    <YAxis stroke="#94a3b8" />
-                    <ChartTooltip 
-                      contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: 'white' }}
-                    />
-                    <Legend />
-                    <Bar dataKey="conversations" fill="#2db3a0" radius={[8, 8, 0, 0]} />
-                    <Bar dataKey="leads" fill="#667eea" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Paper>
-            </Grid>
-          </Grid>
-        </Grid>
-
-        <Grid item xs={12} md={5}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
-                  Leads by Source
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 2, color: '#64748b', fontSize: '0.875rem' }}>
-                  Where your leads are coming from (by widget/channel)
-                </Typography>
-                {leadsBySource.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie
-                        data={leadsBySource}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={true}
-                        label={({ source, count, percent }) => `${source}: ${count} (${(percent * 100).toFixed(1)}%)`}
-                        outerRadius={90}
-                        fill="#8884d8"
-                        dataKey="count"
-                      >
-                        {leadsBySource.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <ChartTooltip 
-                        contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: 'white' }}
-                        formatter={(value: any, name: any, props: any) => {
-                          const total = leadsBySource.reduce((sum, item) => sum + item.count, 0);
-                          const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                          return [`${value} leads (${percent}%)`, 'Count'];
-                        }}
-                      />
-                      <Legend 
-                        verticalAlign="bottom" 
-                        height={36}
-                        formatter={(value, entry: any) => {
-                          const item = leadsBySource.find(d => d.source === entry.payload.source);
-                          return `${entry.payload.source} (${item?.count || 0})`;
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 260 }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      No lead data available
-                    </Typography>
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
-                  Top Active Sessions
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 2, color: '#64748b', fontSize: '0.875rem' }}>
-                  Sessions with the most message exchanges
-                </Typography>
-                {topSessions.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={topSessions.slice(0, 5)} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e6edf3" />
-                      <XAxis type="number" stroke="#64748b" tick={{ fontSize: 12 }} />
-                      <YAxis 
-                        type="category" 
-                        dataKey="session_id" 
-                        stroke="#64748b" 
-                        tick={{ fontSize: 11 }}
-                        width={110}
-                        tickFormatter={(value) => value.substring(0, 12) + '...'}
-                      />
-                      <ChartTooltip 
-                        contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: 'white' }}
-                        formatter={(value: any, name: any, props: any) => {
-                          const session = topSessions.find(s => s.session_id === props.payload.session_id);
-                          return [`${value} messages`, 'Count'];
-                        }}
-                        labelFormatter={(value) => {
-                          const session = topSessions.find(s => s.session_id === value);
-                          if (session?.last_message_at) {
-                            const date = new Date(session.last_message_at);
-                            return `Session: ${value.substring(0, 16)}...\nLast active: ${date.toLocaleString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            })}`;
-                          }
-                          return `Session: ${value.substring(0, 20)}...`;
-                        }}
-                      />
-                      <Bar 
-                        dataKey="message_count" 
-                        fill="#43e97b" 
-                        radius={[0, 8, 8, 0]}
-                        name="Messages"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 260 }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      No session data available
-                    </Typography>
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-          </Grid>
-        </Grid>
-      </Grid>
-
-      {/* Tabs for Detailed Views */}
-      <Paper sx={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={(e, newValue) => setTabValue(newValue)}
+      <Box sx={{ maxWidth: 1380, mx: 'auto', px: { xs: 0, md: 0.5 }, position: 'relative' }}>
+        <Box
           sx={{
-            borderBottom: '1px solid #e2e8f0',
-            '& .MuiTab-root': {
-              textTransform: 'none',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#64748b',
-              '&.Mui-selected': {
-                color: '#2db3a0',
-              }
-            }
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+            background:
+              'linear-gradient(130deg, transparent 18%, rgba(132,172,228,0.18) 19%, transparent 38%), linear-gradient(36deg, transparent 52%, rgba(111,165,229,0.14) 53%, transparent 74%)',
+          }}
+        />
+        <Paper
+          elevation={0}
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            p: { xs: 2, md: 2.8 },
+            mb: 3,
+            borderRadius: '24px',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.9)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.82
+            )} 74%, ${alpha('#a9bfdc', 0.96)} 100%)`,
+            color: 'text.primary',
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
           }}
         >
-          <Tab label="Recent Leads" />
-          <Tab label="Top Conversations" />
-          <Tab label="Widgets" />
-          <Tab label="Knowledge Sources" />
-        </Tabs>
+          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.4, color: 'text.primary' }}>
+            Dashboard
+          </Typography>
+          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+            Real-time view of conversations, leads, agent performance, and knowledge growth.
+          </Typography>
+        </Paper>
 
-        {/* Recent Leads Tab */}
-        <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ background: '#f8fafc' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Email</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Phone</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Company</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Date</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {recentLeads.length > 0 ? (
-                  recentLeads.map((lead) => (
-                    <TableRow key={lead.id} sx={{ '&:hover': { background: '#f8fafc' } }}>
-                      <TableCell sx={{ fontWeight: 500 }}>{lead.name || 'N/A'}</TableCell>
-                      <TableCell>{lead.email || 'N/A'}</TableCell>
-                      <TableCell>{lead.phone || 'N/A'}</TableCell>
-                      <TableCell>
-                        {lead.company ? (
-                          <Chip label={lead.company} size="small" variant="outlined" />
-                        ) : (
-                          <Typography variant="caption" sx={{ color: '#94a3b8' }}>-</Typography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ color: '#64748b', fontSize: '13px' }}>
-                        {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'N/A'}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} sx={{ textAlign: 'center', py: 3, color: '#94a3b8' }}>
-                      No leads yet
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
+        {loading && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+        {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {/* Top Conversations Tab */}
-        <TabPanel value={tabValue} index={1}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ background: '#f8fafc' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Session ID</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }} align="center">Messages</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Lead Captured</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Last Message</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {topSessions.length > 0 ? (
-                  topSessions.map((session) => (
-                    <TableRow key={session.session_id} sx={{ '&:hover': { background: '#f8fafc' } }}>
-                      <TableCell sx={{ fontWeight: 500, fontSize: '12px', maxWidth: '200px', overflow: 'auto' }}>
-                        {session.session_id.substring(0, 30)}...
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip 
-                          label={session.message_count} 
-                          size="small" 
-                          sx={{ background: '#e0f2f7', color: '#2db3a0', fontWeight: 700 }}
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          {kpis.map((kpi) => (
+            <Grid item xs={12} sm={6} lg={3} key={kpi.label}>
+              <Paper
+                elevation={0}
+                sx={{
+                  zIndex: 1,
+                  p: 2,
+                  borderRadius: '18px',
+                  background: kpi.gradient,
+                  color: 'text.primary',
+                  minHeight: 142,
+                  border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
+                  boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    background:
+                      'linear-gradient(140deg, rgba(255,255,255,0.18) 6%, transparent 22%), linear-gradient(28deg, transparent 58%, rgba(74,137,213,0.14) 59%, transparent 82%)',
+                  },
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                      {kpi.label}
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.35, color: 'text.primary' }}>
+                      {kpi.value}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.2 }}>
+                      {kpi.hint}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.14),
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
+                    }}
+                  >
+                    {kpi.icon}
+                  </Box>
+                </Box>
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: 14,
+                    right: 14,
+                    bottom: 12,
+                    height: 30,
+                    opacity: 0.95,
+                  }}
+                >
+                  <svg width="100%" height="100%" viewBox="0 0 220 30" preserveAspectRatio="none" aria-hidden="true">
+                    <path
+                      d="M0,22 C18,8 34,28 52,18 C70,8 86,28 104,16 C124,4 142,28 160,14 C178,3 196,20 220,10"
+                      fill="none"
+                      stroke={alpha(kpi.wave, 0.9)}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+
+        {stats?.plan_usage && (
+          <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+              <AutoGraphIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Plan Usage
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              {planUsageItems.map((item) => {
+                const progress = percent(item.used, item.limit);
+                return (
+                  <Grid item xs={12} md={6} key={item.label}>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: '12px',
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                        background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.74)} 0%, ${alpha(
+                          '#deebfb',
+                          0.62
+                        )} 100%)`,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.6 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {item.label}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={`${progress.toFixed(1)}%`}
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: alpha(item.color, 0.14),
+                            color: item.color,
+                            border: `1px solid ${alpha(item.color, 0.25)}`,
+                          }}
                         />
-                      </TableCell>
-                      <TableCell>
-                        {session.has_lead ? (
-                          <Chip 
-                            label={session.lead_name || 'Yes'} 
-                            size="small" 
-                            color="success"
-                            variant="filled"
-                          />
-                        ) : (
-                          <Chip 
-                            label="No" 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ color: '#94a3b8' }}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ color: '#64748b', fontSize: '13px' }}>
-                        {session.last_message_at ? new Date(session.last_message_at).toLocaleString() : 'N/A'}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3, color: '#94a3b8' }}>
-                      No conversations yet
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
-
-        {/* Widgets Tab */}
-        <TabPanel value={tabValue} index={2}>
-          <Grid container spacing={2}>
-            {widgets.length > 0 ? (
-              widgets.map((widget) => (
-                <Grid item xs={12} sm={6} md={4} key={widget.id}>
-                  <Card sx={{ borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-                    <CardContent>
-                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1e293b' }}>
-                        {widget.name}
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
+                        {item.used.toLocaleString()} / {formatLimitValue(item.limit)}
+                        {item.remaining !== null ? ` (remaining ${numberOrZero(item.remaining).toLocaleString()})` : ''}
                       </Typography>
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.5 }}>
-                          Conversations: {widget.conversations_count}
-                        </Typography>
-                        <LinearProgress variant="determinate" value={Math.min(widget.conversations_count * 10, 100)} sx={{ mb: 1 }} />
-                      </Box>
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.5 }}>
-                          Leads: {widget.leads_count}
-                        </Typography>
-                        <LinearProgress variant="determinate" value={Math.min(widget.leads_count * 10, 100)} sx={{ mb: 1 }} />
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-                        <Chip 
-                          label={widget.position} 
-                          size="small" 
-                          variant="outlined"
-                        />
-                        <Chip 
-                          label={widget.lead_capture_enabled ? 'Capture On' : 'Capture Off'} 
-                          size="small" 
-                          color={widget.lead_capture_enabled ? 'success' : 'default'}
-                        />
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))
-            ) : (
-              <Grid item xs={12}>
-                <Typography sx={{ textAlign: 'center', py: 3, color: '#94a3b8' }}>
-                  No widgets created yet
-                </Typography>
-              </Grid>
-            )}
-          </Grid>
-        </TabPanel>
+                      <LinearProgress
+                        variant="determinate"
+                        value={progress}
+                        sx={{
+                          height: 8,
+                          borderRadius: 999,
+                          overflow: 'hidden',
+                          bgcolor: alpha(item.color, 0.18),
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 999,
+                            background: `linear-gradient(90deg, ${alpha(item.color, 0.85)} 0%, ${item.color} 100%)`,
+                          },
+                        }}
+                      />
+                    </Paper>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Paper>
+        )}
 
-        {/* Knowledge Sources Tab */}
-        <TabPanel value={tabValue} index={3}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ background: '#f8fafc' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Created</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {knowledgeSources.length > 0 ? (
-                  knowledgeSources.map((source) => (
-                    <TableRow key={source.id} sx={{ '&:hover': { background: '#f8fafc' } }}>
-                      <TableCell sx={{ fontWeight: 500 }}>{source.name}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={source.source_type} 
-                          size="small" 
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={source.status} 
-                          size="small" 
-                          color={source.status === 'active' ? 'success' : 'default'}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ color: '#64748b', fontSize: '13px' }}>
-                        {source.created_at ? new Date(source.created_at).toLocaleDateString() : 'N/A'}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Daily Conversations (7 days)</Typography>
+              <ResponsiveContainer width="100%" height={290}>
+                <LineChart data={dailyConversations}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
+                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} />
+                  <YAxis stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <ChartTooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                      background: alpha(theme.palette.background.paper, 0.92),
+                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                    }}
+                  />
+                  <Line type="monotone" dataKey="count" stroke="#4e89d5" strokeWidth={3.4} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </Paper>
+
+            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Conversations vs Leads Trend</Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={conversationTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
+                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} />
+                  <YAxis stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <ChartTooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                      background: alpha(theme.palette.background.paper, 0.92),
+                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="conversations" fill="#4e89d5" radius={[7, 7, 0, 0]} />
+                  <Bar dataKey="leads" fill="#67a4e8" radius={[7, 7, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} lg={4}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Leads by Source</Typography>
+              {leadsBySource.length > 0 ? (
+                <ResponsiveContainer width="100%" height={290}>
+                  <PieChart>
+                    <Pie data={leadsBySource} dataKey="count" nameKey="source" cx="50%" cy="45%" outerRadius={88} innerRadius={46}>
+                      {leadsBySource.map((_, idx) => (
+                        <Cell key={`lead-source-${idx}`} fill={pieColors[idx % pieColors.length]} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip
+                      formatter={(value: number | string | undefined, _name, item) => {
+                        const sourceName = (item?.payload as LeadSourcePoint)?.source || 'Source';
+                        return [`${numberOrZero(value)} leads`, sourceName];
+                      }}
+                    />
+                    <Legend verticalAlign="bottom" height={32} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">No lead source data available.</Typography>
+              )}
+            </Paper>
+
+            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Top Sessions</Typography>
+              {topSessions.length > 0 ? (
+                <ResponsiveContainer width="100%" height={290}>
+                  <BarChart data={topSessions.slice(0, 6)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
+                    <XAxis type="number" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="session_id"
+                      stroke={theme.palette.text.secondary}
+                      width={108}
+                      tickFormatter={(value: string) => shortText(value, 10)}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <ChartTooltip
+                      formatter={(value: number | string | undefined) => [`${numberOrZero(value)} messages`, 'Volume']}
+                    />
+                    <Bar dataKey="message_count" fill="#4e89d5" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">No session data available.</Typography>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+
+        <Paper sx={{ ...glassPanelSx, p: 2.2 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, value: number) => setTab(value)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`, mb: 0.5 }}
+          >
+            <Tab label="Recent Leads" />
+            <Tab label="Top Conversations" />
+            <Tab label="Agents" />
+            <Tab label="Knowledge Sources" />
+          </Tabs>
+
+          <TabPanel value={tab} index={0}>
+            <TableContainer>
+              <Table>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3, color: '#94a3b8' }}>
-                      No knowledge sources yet
-                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
-      </Paper>
+                </TableHead>
+                <TableBody>
+                  {recentLeads.length ? (
+                    recentLeads.map((lead) => (
+                      <TableRow key={lead.id} hover>
+                        <TableCell>{textOrDash(lead.name)}</TableCell>
+                        <TableCell>{textOrDash(lead.email)}</TableCell>
+                        <TableCell>{textOrDash(lead.phone)}</TableCell>
+                        <TableCell>{textOrDash(lead.company)}</TableCell>
+                        <TableCell>{formatDate(lead.created_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">No recent leads.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={tab} index={1}>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="center">Messages</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Last Activity</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {topSessions.length ? (
+                    topSessions.map((session) => (
+                      <TableRow key={session.session_id} hover>
+                        <TableCell sx={{ fontFamily: 'monospace' }}>{shortText(session.session_id, 28)}</TableCell>
+                        <TableCell align="center">
+                          <Chip label={session.message_count} size="small" color="primary" variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          {session.has_lead ? (
+                            <Chip label={textOrDash(session.lead_name)} size="small" color="success" />
+                          ) : (
+                            <Chip label="No" size="small" variant="outlined" />
+                          )}
+                        </TableCell>
+                        <TableCell>{formatDateTime(session.last_message_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">No conversation sessions yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={tab} index={2}>
+            <Grid container spacing={2}>
+              {widgets.length ? (
+                widgets.map((widget, idx) => (
+                  <Grid item xs={12} sm={6} md={4} key={widget.widget_id || String(widget.id || idx)}>
+                    <Card sx={{ borderRadius: 2.5, border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}` }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+                          {widget.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                          {widget.widget_id}
+                        </Typography>
+
+                        <Box sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" color="text.secondary">Conversations: {numberOrZero(widget.conversations_count)}</Typography>
+                          <LinearProgress variant="determinate" value={Math.min(numberOrZero(widget.conversations_count) * 10, 100)} sx={{ mt: 0.4, borderRadius: 1 }} />
+                        </Box>
+
+                        <Box sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" color="text.secondary">Leads: {numberOrZero(widget.leads_count)}</Typography>
+                          <LinearProgress variant="determinate" value={Math.min(numberOrZero(widget.leads_count) * 10, 100)} sx={{ mt: 0.4, borderRadius: 1 }} />
+                        </Box>
+
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip size="small" label={textOrDash(widget.position)} variant="outlined" />
+                          <Chip
+                            size="small"
+                            label={widget.lead_capture_enabled ? 'Lead Capture On' : 'Lead Capture Off'}
+                            color={widget.lead_capture_enabled ? 'success' : 'default'}
+                            variant={widget.lead_capture_enabled ? 'filled' : 'outlined'}
+                          />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))
+              ) : (
+                <Grid item xs={12}>
+                  <Typography color="text.secondary" align="center">No agents found.</Typography>
+                </Grid>
+              )}
+            </Grid>
+          </TabPanel>
+
+          <TabPanel value={tab} index={3}>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {knowledgeSources.length ? (
+                    knowledgeSources.map((source) => (
+                      <TableRow key={source.id} hover>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <MenuBookIcon fontSize="small" color="primary" />
+                            {source.name}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={source.source_type} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={source.status}
+                            size="small"
+                            color={source.status === 'active' ? 'success' : 'default'}
+                            variant={source.status === 'active' ? 'filled' : 'outlined'}
+                          />
+                        </TableCell>
+                        <TableCell>{formatDate(source.created_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">No knowledge sources yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+        </Paper>
+
+        {loading && !stats && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+            <CircularProgress />
+          </Box>
+        )}
       </Box>
     </AdminLayout>
   );
 };
 
 export default AdminDashboard;
+
+

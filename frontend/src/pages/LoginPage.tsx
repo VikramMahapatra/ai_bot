@@ -21,7 +21,6 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
-import BusinessIcon from '@mui/icons-material/Business';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
@@ -37,7 +36,7 @@ function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
   return (
     <div hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 2.2 }}>{children}</Box>}
     </div>
   );
 }
@@ -129,34 +128,77 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8 }}>
-        <Paper sx={{ p: 4, boxShadow: '0 4px 24px 0 rgba(38,155,159,0.08)' }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 64, height: 64, mb: 1 }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        py: { xs: 3, md: 5 },
+        background:
+          'radial-gradient(circle at 8% 14%, rgba(74,191,255,0.18) 0%, transparent 44%), radial-gradient(circle at 88% 20%, rgba(53,108,255,0.2) 0%, transparent 46%), linear-gradient(160deg, #f6f9ff 0%, #ecf4ff 45%, #f7fbff 100%)',
+      }}
+    >
+      <Container maxWidth="sm">
+        <Paper
+          sx={{
+            p: { xs: 2.2, md: 3 },
+            borderRadius: 3,
+            border: '1px solid rgba(53,108,255,0.2)',
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(237,246,255,0.93) 100%)',
+            boxShadow: '0 26px 60px rgba(19,34,77,0.14)',
+            backdropFilter: 'blur(7px)',
+          }}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 1 }}>
+            <Avatar
+              sx={{
+                width: 68,
+                height: 68,
+                mb: 1,
+                background: 'linear-gradient(140deg, #2f5ce0 0%, #2d8ef0 100%)',
+                boxShadow: '0 16px 28px rgba(45,122,240,0.32)',
+              }}
+            >
               <SmartToyIcon fontSize="large" />
             </Avatar>
-            <Typography variant="h4" align="center" gutterBottom sx={{ fontWeight: 700, color: 'primary.main' }}>
+            <Typography variant="h4" align="center" gutterBottom sx={{ fontWeight: 800, color: 'primary.main', mb: 0.4 }}>
               Welcome to Zentrixel AI
             </Typography>
-            <Typography variant="subtitle1" align="center" sx={{ color: 'text.secondary', mb: 1 }}>
-              Your Conversational Intelligence Platform
-            </Typography>
             <Typography variant="body2" align="center" sx={{ color: 'text.secondary', mb: 2 }}>
-              Sign in to manage your knowledge, leads, and chat with AI.<br />New here? Register to get started!
+              Sign in to manage your knowledge base, leads, and AI conversations.
             </Typography>
           </Box>
 
-          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} centered sx={{ mb: 2 }}>
+          <Tabs
+            value={tabValue}
+            onChange={(_, v) => setTabValue(v)}
+            centered
+            sx={{
+              mb: 1,
+              '& .MuiTabs-indicator': { display: 'none' },
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                minHeight: 42,
+                borderRadius: 2,
+                fontWeight: 700,
+                color: 'text.secondary',
+                mx: 0.5,
+              },
+              '& .Mui-selected': {
+                color: 'primary.main',
+                background: 'rgba(53,108,255,0.13)',
+              },
+            }}
+          >
             <Tab label="Login" />
             <Tab label="Register" />
           </Tabs>
 
-          {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mt: 1.2 }}>{error}</Alert>}
 
           <TabPanel value={tabValue} index={0}>
             <form onSubmit={handleLogin}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.4 }}>
                 <TextField
                   label="Username"
                   value={username}
@@ -170,12 +212,12 @@ const LoginPage: React.FC = () => {
                     ),
                   }}
                 />
-                
+
                 {showOrgDropdown && (
                   <Box sx={{ position: 'relative' }}>
                     {loadingOrgs ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2 }}>
-                        <CircularProgress size={20} />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.2 }}>
+                        <CircularProgress size={18} />
                         <Typography variant="body2">Loading organizations...</Typography>
                       </Box>
                     ) : (
@@ -211,7 +253,21 @@ const LoginPage: React.FC = () => {
                     ),
                   }}
                 />
-                <Button type="submit" variant="contained" size="large" disabled={loadingOrgs}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  disabled={loadingOrgs}
+                  sx={{
+                    mt: 0.4,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 800,
+                    background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
+                    boxShadow: '0 14px 24px rgba(45,122,240,0.3)',
+                  }}
+                >
                   Login
                 </Button>
               </Box>
@@ -220,7 +276,7 @@ const LoginPage: React.FC = () => {
 
           <TabPanel value={tabValue} index={1}>
             <form onSubmit={handleRegister}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.4 }}>
                 <TextField
                   label="Organization Name"
                   value={organizationName}
@@ -275,15 +331,28 @@ const LoginPage: React.FC = () => {
                     ),
                   }}
                 />
-                <Button type="submit" variant="contained" size="large">
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  sx={{
+                    mt: 0.4,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 800,
+                    background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
+                    boxShadow: '0 14px 24px rgba(45,122,240,0.3)',
+                  }}
+                >
                   Create Organization
                 </Button>
               </Box>
             </form>
           </TabPanel>
         </Paper>
-      </Box>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

@@ -85,7 +85,7 @@ const CampaignAnalytics = () => {
                                 <Typography variant="subtitle2">
                                     Successful Calls
                                 </Typography>
-                                <CheckCircleIcon color="success" />
+                                <CheckCircleIcon color="primary" />
                             </Box>
 
                             <Typography variant="h5" mt={1}>
@@ -119,7 +119,7 @@ const CampaignAnalytics = () => {
                                 <Typography variant="subtitle2">
                                     Conversion Rate
                                 </Typography>
-                                <TrendingUpIcon color="success" />
+                                <TrendingUpIcon color="primary" />
                             </Box>
 
                             <Typography variant="h5" mt={1}>
@@ -153,7 +153,7 @@ const CampaignAnalytics = () => {
                                 <Typography variant="subtitle2">
                                     Duration
                                 </Typography>
-                                <AccessTimeIcon color="action" />
+                                <AccessTimeIcon color="primary" />
                             </Box>
 
                             <Typography variant="h5" mt={1}>

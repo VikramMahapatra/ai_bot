@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from app.models import ConversationMetrics, Conversation, Lead, Plan
-from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits
+from app.config import settings
+from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits, get_or_create_usage, get_or_create_limits
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import logging
@@ -259,12 +260,32 @@ def get_report_summary(
 
 def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
     subscription = get_active_subscription(db, organization_id)
-    if not subscription:
-        return None
 
-    plan = db.query(Plan).filter(Plan.id == subscription.plan_id).first()
-    limits = get_effective_limits(db, organization_id)
-    usage = get_or_create_subscription_usage(db, organization_id)
+    plan = None
+    start_date = None
+    end_date = None
+    billing_cycle = None
+    days_left = None
+    status = "inactive"
+
+    if subscription:
+        plan = db.query(Plan).filter(Plan.id == subscription.plan_id).first()
+        start_date = subscription.start_date
+        end_date = subscription.end_date
+        billing_cycle = subscription.billing_cycle
+        days_left = get_subscription_days_left(subscription)
+        status = subscription.status
+        usage = get_or_create_subscription_usage(db, organization_id) or get_or_create_usage(db, organization_id)
+        limits = get_effective_limits(db, organization_id)
+    else:
+        usage = get_or_create_usage(db, organization_id)
+        org_limits = get_or_create_limits(db, organization_id)
+        limits = {
+            "monthly_conversation_limit": org_limits.monthly_conversation_limit,
+            "monthly_token_limit": org_limits.monthly_token_limit,
+            "monthly_crawl_pages_limit": org_limits.monthly_crawl_pages_limit,
+            "monthly_document_limit": org_limits.monthly_document_limit,
+        }
 
     conversations_used = getattr(usage, "conversations_count", 0) if usage else 0
     messages_used = getattr(usage, "messages_count", 0) if usage else 0
@@ -280,12 +301,12 @@ def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
 
     return {
         "plan_id": plan.id if plan else None,
-        "plan_name": plan.name if plan else None,
-        "billing_cycle": subscription.billing_cycle,
-        "start_date": subscription.start_date,
-        "end_date": subscription.end_date,
-        "days_left": get_subscription_days_left(subscription),
-        "status": subscription.status,
+        "plan_name": plan.name if plan else "No active subscription",
+        "billing_cycle": billing_cycle,
+        "start_date": start_date,
+        "end_date": end_date,
+        "days_left": days_left,
+        "status": status,
         "limits": {
             "monthly_conversation_limit": conversation_limit,
             "monthly_message_limit": message_limit,
@@ -336,9 +357,9 @@ def get_token_usage_report(
     conversations_count = len(metrics)
     average_tokens = total_tokens / conversations_count if conversations_count > 0 else 0
     
-    # Estimate cost (GPT-4: $0.03 per 1K prompt tokens, $0.06 per 1K completion tokens)
-    prompt_cost = (prompt_tokens / 1000) * 0.03
-    completion_cost = (completion_tokens / 1000) * 0.06
+    # Estimate cost from env-configured rates
+    prompt_cost = (prompt_tokens / 1000) * settings.TOKEN_COST_PROMPT_PER_1K
+    completion_cost = (completion_tokens / 1000) * settings.TOKEN_COST_COMPLETION_PER_1K
     cost_estimate = prompt_cost + completion_cost
     
     return {

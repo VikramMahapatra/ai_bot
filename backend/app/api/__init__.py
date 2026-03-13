@@ -8,7 +8,8 @@ from app.api.analytics import router as analytics_router
 from app.api.superadmin import router as superadmin_router
 from app.api.whatsapp import router as whatsapp_router
 from app.api.calling_agent import router as calling_agent_router
-from app.api.campaign import router as campaign_router
+from app.api.call_campaign import router as call_campaign_router
+from app.api.campaigns import router as campaigns_router
 from app.api.call_log import router as call_log_router
 
 
@@ -23,4 +24,5 @@ __all__ = [
     "analytics_router",
     "superadmin_router",
     "whatsapp_router",
+    "campaigns_router",
 ]

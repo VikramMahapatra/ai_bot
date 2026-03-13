@@ -2,16 +2,16 @@ from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, J
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from backend.app.database import Base
+from app.database import Base
 
 class CampaignContact(Base):
     __tablename__ = "campaign_contacts"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
-    contact_id = Column(Integer, ForeignKey("leads.id"))
+    campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
+    contact_id = Column(Integer, ForeignKey("contacts.id"))
 
     status = Column(String, default="Pending")
 
-    campaign = relationship("Campaign", back_populates="contacts")
+    campaign = relationship("CallCampaign", back_populates="contacts")

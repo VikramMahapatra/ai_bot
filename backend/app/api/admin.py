@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
-from app.models import User, UserRole, Organization
+from app.models import User, UserRole, Organization, Appointment, WidgetConfig
 from app.services.limits_service import get_or_create_limits, get_effective_limits
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+from datetime import datetime, timedelta
 import logging
 import uuid
 
@@ -229,6 +230,7 @@ async def create_widget_config(
         widget_id=widget_id,
         name=config_data.get("name", "Chatbot"),
         welcome_message=config_data.get("welcome_message"),
+        system_prompt=config_data.get("system_prompt"),
         logo_url=config_data.get("logo_url"),
         primary_color=config_data.get("primary_color", "#007bff"),
         secondary_color=config_data.get("secondary_color", "#6c757d"),
@@ -317,6 +319,106 @@ async def list_widgets(
         db.commit()
     
     return configs
+
+
+@router.get("/appointments")
+async def list_appointments(
+    widget_id: Optional[str] = None,
+    status: Optional[str] = None,
+    upcoming_only: bool = False,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """List appointments for the current organization."""
+    query = db.query(Appointment).filter(
+        Appointment.organization_id == current_user.organization_id
+    )
+
+    if widget_id:
+        query = query.filter(Appointment.widget_id == widget_id)
+    if status:
+        query = query.filter(Appointment.status == status)
+    if upcoming_only:
+        query = query.filter(Appointment.appointment_at >= datetime.utcnow())
+
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date)
+            query = query.filter(Appointment.appointment_at >= start_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format. Use ISO format")
+
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date)
+            if len(end_date) <= 10:
+                end_dt = end_dt + timedelta(days=1)
+            query = query.filter(Appointment.appointment_at <= end_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format. Use ISO format")
+
+    appointments = query.order_by(Appointment.appointment_at.asc()).all()
+
+    widget_map = {
+        row.widget_id: row.name
+        for row in db.query(WidgetConfig).filter(
+            WidgetConfig.organization_id == current_user.organization_id
+        ).all()
+    }
+
+    return {
+        "appointments": [
+            {
+                "id": item.id,
+                "session_id": item.session_id,
+                "widget_id": item.widget_id,
+                "widget_name": widget_map.get(item.widget_id, item.widget_id),
+                "name": item.name,
+                "email": item.email,
+                "phone": item.phone,
+                "notes": item.notes,
+                "timezone": item.timezone,
+                "appointment_at": item.appointment_at,
+                "status": item.status,
+                "created_at": item.created_at,
+            }
+            for item in appointments
+        ]
+    }
+
+
+@router.put("/appointments/{appointment_id}/status")
+async def update_appointment_status(
+    appointment_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update appointment status for the current organization."""
+    allowed = {"booked", "completed", "cancelled", "no_show"}
+    new_status = str(payload.get("status", "")).strip().lower()
+    if new_status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed values: {', '.join(sorted(allowed))}")
+
+    appointment = db.query(Appointment).filter(
+        Appointment.id == appointment_id,
+        Appointment.organization_id == current_user.organization_id,
+    ).first()
+
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    appointment.status = new_status
+    db.commit()
+    db.refresh(appointment)
+
+    return {
+        "id": appointment.id,
+        "status": appointment.status,
+        "message": "Appointment status updated"
+    }
 
 
 @router.delete("/widget/config/{widget_id}")

@@ -12,6 +12,8 @@ from app.models.widget_config import WidgetConfig
 from app.models.feedback import MessageFeedback
 from app.models.report_metrics import ConversationMetrics
 from app.models.whatsapp_channel import WhatsAppChannel
+from app.models.appointment import Appointment
+from app.models.campaign import Campaign, ContactList, Contact, CampaignLog
 
 __all__ = [
     "User",
@@ -31,4 +33,9 @@ __all__ = [
     "MessageFeedback",
     "ConversationMetrics",
     "WhatsAppChannel",
+    "Appointment",
+    "Campaign",
+    "ContactList",
+    "Contact",
+    "CampaignLog",
 ]

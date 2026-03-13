@@ -12,6 +12,7 @@ class WidgetConfig(Base):
     widget_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
     welcome_message = Column(Text, nullable=True)
+    system_prompt = Column(Text, nullable=True)
     logo_url = Column(String, nullable=True)
     primary_color = Column(String, default="#007bff")
     secondary_color = Column(String, default="#6c757d")

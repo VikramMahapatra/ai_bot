@@ -29,6 +29,7 @@ class CallingAgentCreate(BaseModel):
     follow_up_whatsapp: bool = False
     
 class CallingAgentUpdate(BaseModel):
+    type: Optional[str] = None
     name: Optional[str] = None
     greeting: Optional[str] = None
     prompt: Optional[str] = None

@@ -1,24 +1,60 @@
+import json
 import logging
-from typing import List
+from typing import Annotated, List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends
-from backend.app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentRead, TestCallRequest
-from backend.app.database import get_db
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentRead, CallingAgentUpdate, TestCallRequest
+from app.database import get_db
 from sqlalchemy.orm import Session
-from backend.app.services import calling_agent_service as service
+from app.services import calling_agent_service as service
+from app.auth import get_current_user
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/calling-agent", tags=["calling-agent"])
 
 @router.post("/create", response_model=CallingAgentRead)
-def create_agent(agent: CallingAgentCreate, db: Session = Depends(get_db)):
-    return service.create_agent(db, agent)
+def create_agent(
+    agent: str = Form(...), 
+    attachments: Optional[List[UploadFile]] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    agent_dict = json.loads(agent)
+    agent_data = CallingAgentCreate(**agent_dict)
+    return service.create_agent(db, current_user.organization_id,  agent_data, attachments)
 
 
-@router.get("/all", response_model=List[CallingAgentRead])
-def read_agents(db: Session = Depends(get_db)):
-    return service.read_agents(db)
+@router.post("/update/{agent_id:int}", response_model=CallingAgentRead)
+def update_agent(
+    agent_id: int,
+    agent: str = Form(...),
+    attachments: Optional[Annotated[List[UploadFile], File(multiple=True)]] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    agent_dict = json.loads(agent)
+    print("Agent Data:", agent_dict)
+    agent_data = CallingAgentUpdate(**agent_dict)
+    
+    if attachments:
+        print(len(attachments))
+        for file in attachments:
+            print("File:", file.filename)
+
+    return service.update_agent(db, agent_id, agent_data, attachments)
+
+
+@router.get("/all")
+def read_agents(
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    sort_by: str = "newest",
+    db: Session = Depends(get_db)
+):
+    return service.read_agents(db, search, skip, limit, sort_by)
     
 @router.get("/{agent_id:int}", response_model=CallingAgentRead)
 def get_agent(agent_id: int, db: Session = Depends(get_db)):

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box,
+  Paper,
   Button,
   Card,
   CardContent,
@@ -21,6 +22,7 @@ import {
   Tooltip,
   Chip,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -28,7 +30,27 @@ import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
 import { superadminService } from '../services/superadminService';
 import { Plan } from '../types';
 
-const defaultPlan: Omit<Plan, 'id'> = {
+type PlanForm = Omit<Plan, 'id'>;
+type PlanNumericKey =
+  | 'monthly_conversation_limit'
+  | 'monthly_crawl_pages_limit'
+  | 'max_crawl_depth'
+  | 'monthly_document_limit'
+  | 'max_document_size_mb'
+  | 'monthly_token_limit'
+  | 'max_query_words';
+
+const numericLimitFields: Array<[PlanNumericKey, string]> = [
+  ['monthly_conversation_limit', 'Monthly Conversations'],
+  ['monthly_crawl_pages_limit', 'Monthly Crawl Pages'],
+  ['max_crawl_depth', 'Max Crawl Depth'],
+  ['monthly_document_limit', 'Monthly Documents'],
+  ['max_document_size_mb', 'Max Document Size (MB)'],
+  ['monthly_token_limit', 'Monthly Token Limit'],
+  ['max_query_words', 'Max Query Words'],
+];
+
+const defaultPlan: PlanForm = {
   name: '',
   description: '',
   price_inr: 0,
@@ -47,13 +69,14 @@ const defaultPlan: Omit<Plan, 'id'> = {
 };
 
 const SuperAdminPlansPage: React.FC = () => {
+  const theme = useTheme();
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [form, setForm] = useState<Omit<Plan, 'id'>>(defaultPlan);
+  const [form, setForm] = useState<PlanForm>(defaultPlan);
   const [createOpen, setCreateOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
-  const [editForm, setEditForm] = useState<Omit<Plan, 'id'>>(defaultPlan);
+  const [editForm, setEditForm] = useState<PlanForm>(defaultPlan);
 
   const loadPlans = async () => {
     const data = await superadminService.listPlans();
@@ -159,7 +182,45 @@ const SuperAdminPlansPage: React.FC = () => {
 
   return (
     <SuperAdminLayout>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 2, md: 2.3 },
+          mb: 3,
+          borderRadius: '22px',
+          border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+          background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+            theme.palette.background.paper,
+            0.84
+          )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+          boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
+        }}
+      >
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700 }}>
             Plans
@@ -177,16 +238,18 @@ const SuperAdminPlansPage: React.FC = () => {
           </Button>
         </Box>
       </Box>
+      </Paper>
 
       <Grid container spacing={3}>
         {plans.map((plan) => (
           <Grid item xs={12} md={6} key={plan.id}>
             <Card sx={{
               border: '1px solid',
-              borderColor: 'divider',
-              background: 'linear-gradient(135deg, rgba(38,155,159,0.08) 0%, rgba(255,255,255,1) 60%)',
+              borderColor: alpha(theme.palette.primary.main, 0.18),
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, rgba(53,108,255,0.1) 0%, rgba(255,255,255,1) 60%)',
               transition: 'all 0.2s ease',
-              '&:hover': { boxShadow: 3 },
+              '&:hover': { boxShadow: 3, transform: 'translateY(-2px)' },
             }}>
               <CardContent>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -221,9 +284,9 @@ const SuperAdminPlansPage: React.FC = () => {
                           width: 40,
                           height: 40,
                           borderRadius: 2,
-                          bgcolor: 'rgba(38,155,159,0.15)',
+                          bgcolor: alpha(theme.palette.primary.main, 0.15),
                           color: 'primary.main',
-                          '&:hover': { bgcolor: 'rgba(38,155,159,0.25)' },
+                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
                         }}
                       >
                         <VisibilityIcon />
@@ -238,9 +301,9 @@ const SuperAdminPlansPage: React.FC = () => {
                           width: 40,
                           height: 40,
                           borderRadius: 2,
-                          bgcolor: 'rgba(124,58,237,0.15)',
-                          color: '#7c3aed',
-                          '&:hover': { bgcolor: 'rgba(124,58,237,0.25)' },
+                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                          color: 'secondary.main',
+                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
                         }}
                       >
                         <EditIcon />
@@ -286,21 +349,13 @@ const SuperAdminPlansPage: React.FC = () => {
             Limits
           </Typography>
           <Grid container spacing={2}>
-            {([
-              ['monthly_conversation_limit', 'Monthly Conversations'],
-              ['monthly_crawl_pages_limit', 'Monthly Crawl Pages'],
-              ['max_crawl_depth', 'Max Crawl Depth'],
-              ['monthly_document_limit', 'Monthly Documents'],
-              ['max_document_size_mb', 'Max Document Size (MB)'],
-              ['monthly_token_limit', 'Monthly Token Limit'],
-              ['max_query_words', 'Max Query Words'],
-            ] as [keyof Plan, string][]).map(([key, label]) => (
+            {numericLimitFields.map(([key, label]) => (
               <Grid item xs={12} md={4} key={key}>
                 <TextField
                   label={label}
                   type="number"
                   fullWidth
-                  value={form[key] as number}
+                  value={form[key]}
                   onChange={(e) => setForm({ ...form, [key]: Number(e.target.value) })}
                 />
               </Grid>
@@ -425,21 +480,13 @@ const SuperAdminPlansPage: React.FC = () => {
             Limits
           </Typography>
           <Grid container spacing={2}>
-            {([
-              ['monthly_conversation_limit', 'Monthly Conversations'],
-              ['monthly_crawl_pages_limit', 'Monthly Crawl Pages'],
-              ['max_crawl_depth', 'Max Crawl Depth'],
-              ['monthly_document_limit', 'Monthly Documents'],
-              ['max_document_size_mb', 'Max Document Size (MB)'],
-              ['monthly_token_limit', 'Monthly Token Limit'],
-              ['max_query_words', 'Max Query Words'],
-            ] as [keyof Plan, string][]).map(([key, label]) => (
+            {numericLimitFields.map(([key, label]) => (
               <Grid item xs={12} md={4} key={key}>
                 <TextField
                   label={label}
                   type="number"
                   fullWidth
-                  value={editForm[key] as number}
+                  value={editForm[key]}
                   onChange={(e) => setEditForm({ ...editForm, [key]: Number(e.target.value) })}
                 />
               </Grid>
@@ -500,3 +547,5 @@ const SuperAdminPlansPage: React.FC = () => {
 };
 
 export default SuperAdminPlansPage;
+
+

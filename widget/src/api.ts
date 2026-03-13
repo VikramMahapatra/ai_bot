@@ -7,6 +7,25 @@ interface SuggestedQuestionsResponse {
   questions: string[];
 }
 
+interface AppointmentBookingRequest {
+  session_id: string;
+  widget_id: string;
+  appointment_at: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  timezone?: string;
+}
+
+interface AppointmentBookingResponse {
+  id: number;
+  session_id: string;
+  widget_id: string;
+  appointment_at: string;
+  message: string;
+}
+
 export class ChatAPI {
   private baseURL: string;
 
@@ -111,5 +130,21 @@ export class ChatAPI {
     }
     const data: SuggestedQuestionsResponse = await response.json();
     return Array.isArray(data.questions) ? data.questions : [];
+  }
+
+  async bookAppointment(payload: AppointmentBookingRequest): Promise<AppointmentBookingResponse> {
+    const response = await fetch(`${this.baseURL}/api/chat/appointments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to book appointment');
+    }
+
+    return response.json();
   }
 }

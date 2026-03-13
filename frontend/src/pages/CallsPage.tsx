@@ -34,10 +34,11 @@ const CampaignManager: React.FC = () => {
                 {/* Page Header */}
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
-                        Campaign Manager
+                        AI Call Automation
                     </Typography>
+
                     <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                        Create, manage, and schedule AI-powered calling campaigns using your agent.
+                        Automate outbound calls with AI agents, manage campaigns, and monitor call performance.
                     </Typography>
                 </Box>
 

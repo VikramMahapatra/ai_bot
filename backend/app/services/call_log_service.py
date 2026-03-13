@@ -1,20 +1,63 @@
-from backend.app.models.call_logs import CallLog, CallTranscript
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import or_
+
+from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
 
-from backend.app.models.calling_agents import CallingAgent
-from backend.app.models.lead import Lead
-from backend.app.schemas.call_log import CallLogCreate
+from app.models.calling_agents import CallingAgent
+from app.models.lead import Lead
+from app.schemas.call_log import CallLogCreate
 
-def get_call_logs(db: Session):
+def get_call_logs(
+    db: Session,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    from_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+):
 
-    logs = db.query(CallLog).all()
+    query = (
+        db.query(CallLog, Lead.name.label("contact_name"), CallingAgent.name.label("agent_name"))
+        .outerjoin(Lead, Lead.id == CallLog.contact_id)
+        .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
+    )
 
-    result = []
+    # SEARCH
+    if search:
+        query = query.filter(
+            or_(
+                Lead.name.ilike(f"%{search}%"),
+                CallingAgent.name.ilike(f"%{search}%"),
+                CallLog.status.ilike(f"%{search}%"),
+                CallLog.type.ilike(f"%{search}%")
+            )
+        )
 
-    for log in logs:
+    # DATE FILTER
+    if from_date:
+        query = query.filter(CallLog.start_time >= from_date)
 
-        contact = db.query(Lead).filter(Lead.id == log.contact_id).first()
-        agent = db.query(CallingAgent).filter(CallingAgent.id == log.agent_id).first()
+    if end_date:
+        query = query.filter(CallLog.start_time <= end_date)
+
+    # TOTAL COUNT
+    total = query.count()
+
+    # PAGINATION
+    logs = (
+        query
+        .order_by(CallLog.start_time.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    rows = []
+
+    for log, contact_name, agent_name in logs:
 
         transcripts = (
             db.query(CallTranscript)
@@ -22,10 +65,10 @@ def get_call_logs(db: Session):
             .all()
         )
 
-        result.append({
+        rows.append({
             "id": log.id,
-            "contact": contact.name if contact else None,
-            "agent": agent.name if agent else None,
+            "contact": contact_name,
+            "agent": agent_name,
             "type": log.type,
             "mode": log.mode,
             "status": log.status,
@@ -42,7 +85,14 @@ def get_call_logs(db: Session):
             ]
         })
 
-    return result
+    return {
+        "items": rows,
+        "pagination": {
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+    }
 
 
 def create_call_log(db: Session, data: CallLogCreate):
