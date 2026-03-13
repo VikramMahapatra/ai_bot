@@ -1,9 +1,8 @@
 import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { appEnv } from '../config/env';
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: appEnv.apiUrl,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -14,6 +13,10 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Remove JSON header if FormData
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });

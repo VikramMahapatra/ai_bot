@@ -13,8 +13,16 @@ logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=settings.OPENAPI_KEY2)
 
-DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
-DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
+
+DEFAULT_WIDGET_SYSTEM_PROMPT = (
+    "You are a friendly and empathetic assistant chatting like a real human. "
+    "Use warm, natural language, short sentences, and contractions when appropriate."
+)
+
+APPOINTMENT_BOOKING_CTA = (
+    "Would you like to book an appointment? "
+    "You can choose a preferred slot from the in-app calendar."
+)
 
 
 _STOPWORDS = {
@@ -201,6 +209,27 @@ def _looks_like_no_answer(text: Optional[str]) -> bool:
     return any(pattern in lower for pattern in patterns)
 
 
+def _has_prior_turns(db: Session, session_id: str, widget_id: str) -> bool:
+    return db.query(Conversation.id).filter(
+        Conversation.session_id == session_id,
+        Conversation.widget_id == widget_id,
+    ).first() is not None
+
+
+def append_appointment_cta_if_needed(response_text: str, is_first_turn: bool) -> str:
+    if not is_first_turn:
+        return response_text
+    if not response_text:
+        return APPOINTMENT_BOOKING_CTA
+
+    lower = response_text.lower()
+    appointment_keywords = ["appointment", "book", "booking", "schedule", "calendar", "slot"]
+    if any(keyword in lower for keyword in appointment_keywords):
+        return response_text
+
+    return f"{response_text}\n\n{APPOINTMENT_BOOKING_CTA}"
+
+
 def _prepare_chat_payload(
     message: str,
     session_id: str,
@@ -299,15 +328,21 @@ def _prepare_chat_payload(
         WidgetConfig.widget_id == widget_id,
         WidgetConfig.organization_id == organization_id,
     ).first()
+
+    custom_system_prompt = ""
+    if widget_config and widget_config.system_prompt:
+        custom_system_prompt = widget_config.system_prompt.strip()
+    system_prompt = custom_system_prompt or DEFAULT_WIDGET_SYSTEM_PROMPT
+
     escalation_level_1 = (
         widget_config.escalation_contact_level_1
         if widget_config and widget_config.escalation_contact_level_1
-        else DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
     )
     escalation_level_2 = (
         widget_config.escalation_contact_level_2
         if widget_config and widget_config.escalation_contact_level_2
-        else DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
     )
     escalation_message = _build_escalation_message(escalation_level_1, escalation_level_2)
 
@@ -337,13 +372,14 @@ def _prepare_chat_payload(
     messages = [
         {
             "role": "system",
-            "content": f"""You are a friendly and empathetic assistant chatting like a real human.
-Use warm, natural language, short sentences, and contractions when appropriate.
-Answer using only the context from the user's knowledge base and the conversation history.
-If the answer is not in the context, do not guess. Politely acknowledge it and offer escalation using this exact message:
+            "content": f"""{system_prompt}
+
+Follow these non-negotiable rules:
+- Answer using only the context from the user's knowledge base and the conversation history.
+- If the answer is not in context, do not guess. Offer escalation using this exact message:
 {escalation_message}
-Do not use outside knowledge or make assumptions.
-You may derive simple aggregates (e.g., price ranges) from the provided context if present, but do not expose step-by-step reasoning.
+- Do not use outside knowledge or make assumptions.
+- You may derive simple aggregates (e.g., price ranges) from context if present, but do not expose step-by-step reasoning.
 {language_instruction}
 
 Context:
@@ -399,6 +435,8 @@ def generate_chat_response(
 ) -> Tuple[str, List[Dict], Dict]:
     """Generate AI response using RAG with organization-scoped knowledge base. Returns (response, sources, token_usage)."""
     try:
+        is_first_turn = not _has_prior_turns(db, session_id, widget_id)
+
         messages, sources, has_context, escalation_message = _prepare_chat_payload(
             message,
             session_id,
@@ -412,7 +450,7 @@ def generate_chat_response(
         
         # Generate response
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=settings.OPENAI_CHAT_MODEL,
             messages=messages,
             max_tokens=500,
             temperature=0.3
@@ -421,6 +459,7 @@ def generate_chat_response(
         ai_response = response.choices[0].message.content
         if not has_context or _looks_like_no_answer(ai_response):
             ai_response = escalation_message
+        ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn)
 
         usage = getattr(response, "usage", None)
         token_usage = {
@@ -473,7 +512,7 @@ def stream_chat_response(
         return None, sources, escalation_message
 
     stream = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_CHAT_MODEL,
         messages=messages,
         max_tokens=500,
         temperature=0.3,
@@ -491,7 +530,7 @@ def translate_text(text: str, target_language_code: Optional[str] = None, target
     label = target_language_label or 'the requested language'
     code = target_language_code or 'unknown'
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_TRANSLATION_MODEL,
         messages=[
             {
                 "role": "system",

@@ -4,7 +4,7 @@ from app.config import settings
 from app.database import init_db
 from app.api import (
     admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, 
-    superadmin_router, whatsapp_router, calling_agent_router
+    superadmin_router, whatsapp_router, campaigns_router, calling_agent_router, call_campaign_router, call_log_router
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -14,8 +14,8 @@ import asyncio
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format=settings.LOG_FORMAT
 )
 
 logger = logging.getLogger(__name__)
@@ -25,19 +25,19 @@ outcome_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
-    title="AI Chatbot Platform API",
-    description="Backend API for AI-powered chatbot with RAG capabilities",
-    version="1.0.0"
+    title=settings.APP_TITLE,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"https://.*\.myshopify\.com",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origin_regex=settings.CORS_ALLOW_ORIGIN_REGEX or None,
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.cors_allow_methods_list,
+    allow_headers=settings.cors_allow_headers_list,
 )
 
 # Register routers
@@ -52,7 +52,10 @@ app.include_router(superadmin_router)
 app.include_router(feedback_router)
 app.include_router(reports_router)
 app.include_router(whatsapp_router)
+app.include_router(campaigns_router)
 app.include_router(calling_agent_router)
+app.include_router(call_campaign_router)
+app.include_router(call_log_router)
 
 
 # Handle OPTIONS requests for CORS preflight
@@ -92,8 +95,8 @@ async def shutdown_event():
 async def root():
     """Root endpoint"""
     return {
-        "message": "AI Chatbot Platform API",
-        "version": "1.0.0",
+        "message": settings.APP_TITLE,
+        "version": settings.APP_VERSION,
         "docs": "/docs"
     }
 
@@ -106,4 +109,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.UVICORN_HOST, port=settings.UVICORN_PORT)

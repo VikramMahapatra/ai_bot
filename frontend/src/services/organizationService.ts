@@ -1,5 +1,4 @@
 import api from './api';
-import { authService } from './authService';
 
 export interface User {
   id: number;

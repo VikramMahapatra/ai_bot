@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Box,
     Card,
@@ -11,7 +11,13 @@ import {
     TextField,
     MenuItem,
     Button,
+    Paper,
+    Alert,
+    CardActionArea,
+    LinearProgress,
+    Chip
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -22,77 +28,115 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import GroupIcon from '@mui/icons-material/Group';
+import PhoneIcon from "@mui/icons-material/Phone";
+import PublicIcon from "@mui/icons-material/Public";
+
 import { AddAgentForm } from './AddAgentForm';
-
-interface Agent {
-    id: number;
-    type: 'Inbound' | 'Outbound';
-    name: string;
-    callingNo: string;
-    status: 'Active' | 'Paused';
-    destination: string;
-    activeCampaigns: number;
-    allocatedCalls: number;
-    pendingCalls: number;
-    attemptedCalls: number;
-    createdAt: Date; // for sorting
-}
-
-const mockAgents: Agent[] = [
-    {
-        id: 1,
-        type: 'Outbound',
-        name: 'Agent A',
-        callingNo: '+919800000001',
-        status: 'Active',
-        destination: 'India',
-        activeCampaigns: 3,
-        allocatedCalls: 150,
-        pendingCalls: 50,
-        attemptedCalls: 100,
-        createdAt: new Date('2026-03-01T10:00:00'),
-    },
-    {
-        id: 2,
-        type: 'Inbound',
-        name: 'Agent B',
-        callingNo: '+919800000002',
-        status: 'Paused',
-        destination: 'USA',
-        activeCampaigns: 1,
-        allocatedCalls: 50,
-        pendingCalls: 20,
-        attemptedCalls: 30,
-        createdAt: new Date('2026-03-10T12:00:00'),
-    },
-];
+import { CallingAgent, callingAgentService } from '../../services/callingAgentService';
+import { alpha, useTheme } from '@mui/material/styles';
+import {
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions
+} from "@mui/material";
 
 export const CallingAgentTab: React.FC = () => {
+    const theme = useTheme();
     const [search, setSearch] = useState('');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
     const [showForm, setShowForm] = useState(false);
+    const [agentType, setAgentType] = useState<"inbound" | "outbound">("outbound");
+    const [showTypeDialog, setShowTypeDialog] = useState(false);
+    const [agents, setAgents] = useState<CallingAgent[]>([]);
+    const [agentTotal, setAgentTotal] = useState(0);
+    const [agentPage, setAgentPage] = useState(0);
+    const [agentRowsPerPage, setAgentRowsPerPage] = useState(10);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [formMode, setFormMode] = useState<"create" | "edit">(
+        "create",
+    );
+    const [selectedAgent, setSelectedAgent] = useState<CallingAgent | null>(null);
 
-    const handleSaveAgent = (data: any) => {
-        console.log('New Agent Data:', data);
-        setShowForm(false);
+
+    const showError = (message: string) => {
+        setSuccess('');
+        setError(message);
     };
 
-    const handleTestCall = (agent: Agent) => alert(`Test call: ${agent.name}`);
-    const handlePause = (agent: Agent) => alert(`Pause/Resume: ${agent.name}`);
-    const handleEdit = (agent: Agent) => alert(`Edit settings: ${agent.name}`);
-    const handleAddAgent = () => setShowForm(true);
+    const showSuccess = (message: string) => {
+        setError('');
+        setSuccess(message);
+    };
 
-    // Filter + sort agents
-    const filteredAgents = mockAgents
-        .filter(
-            (agent) =>
-                agent.name.toLowerCase().includes(search.toLowerCase()) ||
-                agent.callingNo.includes(search)
-        )
-        .sort((a, b) => {
-            if (sortBy === 'newest') return b.createdAt.getTime() - a.createdAt.getTime();
-            return a.createdAt.getTime() - b.createdAt.getTime();
+    const loadCallingAgents = async () => {
+        const data = await callingAgentService.allCallingAgents({
+            search: search || undefined,
+            skip: agentPage * agentRowsPerPage,
+            limit: agentRowsPerPage,
+            sortBy: sortBy
         });
+        setAgents(data.items || []);
+        setAgentTotal(data.pagination?.total || 0);
+    };
+
+    useEffect(() => {
+        loadCallingAgents();
+    }, []);
+
+    useEffect(() => {
+        const run = async () => {
+            try {
+                await loadCallingAgents();
+            } catch (err: any) {
+                showError(err?.response?.data?.detail || 'Failed to load agent list');
+            }
+        };
+        run();
+    }, [search, agentPage, agentRowsPerPage]);
+
+    const handleSaveAgent = async (data: FormData) => {
+        setLoading(true);
+        try {
+
+            for (let pair of data.entries()) {
+                console.log(pair[0], pair[1]);
+            }
+            if (formMode === "create") {
+                await callingAgentService.createCallingAgent(data);
+            } else {
+                await callingAgentService.updateCallingAgent(data, selectedAgent?.id);
+            }
+
+            setShowForm(false);
+            loadCallingAgents();
+
+        } catch (err: any) {
+            console.log(err)
+            showError('Failed to save the data');
+        } finally {
+            setLoading(false);
+        }
+
+    };
+
+    const handleTestCall = (agent: CallingAgent) => alert(`Test call: ${agent.name}`);
+    const handlePause = (agent: CallingAgent) => alert(`Pause/Resume: ${agent.name}`);
+    const handleEdit = (agent: CallingAgent) => {
+        setSelectedAgent(agent);
+        setAgentType(agent.type as any)
+        setFormMode("edit");
+        setShowForm(true);
+        setError('');
+    }
+    const handleAddAgent = () => {
+        setShowTypeDialog(true);
+        setFormMode("create");
+        setError('');
+    }
 
     return (
         <Box>
@@ -133,100 +177,331 @@ export const CallingAgentTab: React.FC = () => {
                     </Stack>
 
                     <Box mt={{ xs: 1, sm: 0 }}>
-                        <Button variant="contained" color="primary" onClick={handleAddAgent}>
-                            Add New Agent
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<AddIcon />}
+                            onClick={handleAddAgent}>
+                            Create Agent
                         </Button>
                     </Box>
                 </Stack>
             )}
             {/* Inline AddAgentForm */}
-            {showForm && <AddAgentForm onCancel={() => setShowForm(false)} onSave={handleSaveAgent} />}
+            {showForm && <AddAgentForm agent={selectedAgent} mode={formMode} agentType={agentType} onCancel={() => setShowForm(false)} onSave={handleSaveAgent} />}
+
+            <Stack
+                mb={2}
+            >
+                {error && (
+                    <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
+                        {error}
+                    </Alert>
+                )}
+                {success && (
+                    <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
+                        {success}
+                    </Alert>
+                )}
+            </Stack>
+
+            {loading && <LinearProgress sx={{ borderRadius: 1.2 }} />}
 
             {/* Agent Cards */}
-            <Grid container spacing={3}>
-                {filteredAgents.map((agent) => (
-                    <Grid item xs={12} md={6} key={agent.id}>
-                        <Card sx={{ position: 'relative', overflow: 'visible' }}>
-                            {/* Header */}
-                            <CardContent sx={{ backgroundColor: '#f5f5f5', mb: 1, borderRadius: 1 }}>
-                                <Stack direction="row" alignItems="center" justifyContent="space-between">
-                                    <Stack direction="row" spacing={1} alignItems="center">
-                                        <Tooltip title={agent.type === 'Outbound' ? 'Outbound Call' : 'Inbound Call'}>
-                                            {agent.type === 'Outbound' ? (
-                                                <CallMadeIcon color="primary" />
-                                            ) : (
-                                                <CallReceivedIcon color="secondary" />
-                                            )}
-                                        </Tooltip>
+            {/* Agent Cards */}
+            {
+                !showForm && (
+                    <>
+                        {agents.length === 0 ? (
+                            <Paper
+                                sx={{
+                                    p: 6,
+                                    textAlign: "center",
+                                    borderRadius: 3,
+                                    border: "1px dashed #ccc",
+                                    backgroundColor: "#fafafa"
+                                }}
+                            >
+                                <Stack spacing={2} alignItems="center">
+                                    <GroupIcon sx={{ fontSize: 60, color: "text.secondary" }} />
 
-                                        <Typography variant="h6">{agent.name}</Typography>
+                                    <Typography variant="h6">
+                                        No Calling Agents Found
+                                    </Typography>
 
-                                        <Tooltip title={agent.status}>
-                                            <FiberManualRecordIcon
+                                    <Typography variant="body2" color="text.secondary" maxWidth={400}>
+                                        You haven't created any calling agents yet. Create an agent to start
+                                        running inbound or outbound campaigns.
+                                    </Typography>
+
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<AddIcon />}
+                                        onClick={() => setShowForm(true)}
+                                    >
+                                        Create Agent
+                                    </Button>
+                                </Stack>
+                            </Paper>
+                        ) : (
+                            <Grid container spacing={3}>
+                                {agents.map((agent) => (
+                                    <Grid item xs={12} md={6} key={agent.id}>
+                                        <Card sx={{ position: "relative", overflow: "visible" }}>
+                                            {/* Header */}
+                                            <CardContent
                                                 sx={{
-                                                    fontSize: 12,
-                                                    color: agent.status === 'Active' ? 'green' : 'orange',
+                                                    backgroundColor: "#f5f5f5",
+                                                    mb: 1,
+                                                    borderRadius: 1
                                                 }}
-                                            />
-                                        </Tooltip>
-                                    </Stack>
+                                            >
+                                                <Stack
+                                                    direction="row"
+                                                    alignItems="center"
+                                                    justifyContent="space-between"
+                                                >
+                                                    <Stack direction="row" spacing={1} alignItems="center">
+                                                        <Tooltip
+                                                            title={
+                                                                agent.type === "Outbound"
+                                                                    ? "Outbound Call"
+                                                                    : "Inbound Call"
+                                                            }
+                                                        >
+                                                            {agent.type === "Outbound" ? (
+                                                                <CallMadeIcon color="primary" />
+                                                            ) : (
+                                                                <CallReceivedIcon color="secondary" />
+                                                            )}
+                                                        </Tooltip>
 
-                                    <Stack direction="row" spacing={1}>
-                                        <Tooltip title="Test Call">
-                                            <IconButton size="small" onClick={() => handleTestCall(agent)}>
-                                                <CallIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Pause / Resume">
-                                            <IconButton size="small" onClick={() => handlePause(agent)}>
-                                                <PauseIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Settings">
-                                            <IconButton size="small" onClick={() => handleEdit(agent)}>
-                                                <EditIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </Stack>
-                                </Stack>
-                                <Typography variant="body2" color="text.secondary">
-                                    {agent.callingNo} | {agent.destination}
-                                </Typography>
-                            </CardContent>
+                                                        <Typography variant="h6">
+                                                            {agent.name}
+                                                        </Typography>
 
-                            {/* Body: Active Campaigns */}
-                            <CardContent>
-                                <Stack direction="row" spacing={2} alignItems="center" mb={1}>
-                                    <CampaignIcon color="primary" />
-                                    <Typography>Active Campaigns: {agent.activeCampaigns}</Typography>
-                                </Stack>
+                                                        <Tooltip title={agent.status}>
+                                                            <FiberManualRecordIcon
+                                                                sx={{
+                                                                    fontSize: 12,
+                                                                    color:
+                                                                        agent.status === "Active"
+                                                                            ? "green"
+                                                                            : "orange"
+                                                                }}
+                                                            />
+                                                        </Tooltip>
+                                                    </Stack>
 
-                                {/* Credit Summary */}
-                                <Typography variant="subtitle2" mb={1}>
-                                    Credit Summary
-                                </Typography>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Box textAlign="center" flex={1}>
-                                        <AssignmentIcon color="action" sx={{ fontSize: 28 }} />
-                                        <Typography variant="h6">{agent.allocatedCalls}</Typography>
-                                        <Typography variant="caption">Allocated</Typography>
-                                    </Box>
-                                    <Box textAlign="center" flex={1}>
-                                        <HourglassEmptyIcon color="warning" sx={{ fontSize: 28 }} />
-                                        <Typography variant="h6">{agent.pendingCalls}</Typography>
-                                        <Typography variant="caption">Pending</Typography>
-                                    </Box>
-                                    <Box textAlign="center" flex={1}>
-                                        <CheckCircleIcon color="success" sx={{ fontSize: 28 }} />
-                                        <Typography variant="h6">{agent.attemptedCalls}</Typography>
-                                        <Typography variant="caption">Attempted</Typography>
-                                    </Box>
-                                </Stack>
-                            </CardContent>
-                        </Card>
+                                                    <Stack direction="row" spacing={1}>
+                                                        <Tooltip title="Test Call">
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={() => handleTestCall(agent)}
+                                                            >
+                                                                <CallIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+
+                                                        <Tooltip title="Pause / Resume">
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={() => handlePause(agent)}
+                                                            >
+                                                                <PauseIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+
+                                                        <Tooltip title="Settings">
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={() => handleEdit(agent)}
+                                                            >
+                                                                <EditIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </Stack>
+                                                </Stack>
+
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                    <Chip
+                                                        size="small"
+                                                        icon={<PhoneIcon color='primary' />}
+                                                        label={agent.calling_no || "Not Assigned"}
+                                                        color={agent.calling_no ? "success" : "default"}
+                                                        variant={agent.calling_no ? "filled" : "outlined"}
+                                                    />
+
+                                                    <Chip
+                                                        size="small"
+                                                        icon={<PublicIcon color='primary' />}
+                                                        label={agent.destination?.join(", ")}
+                                                        variant="outlined"
+                                                    />
+                                                </Stack>
+                                            </CardContent>
+
+                                            {/* Body */}
+                                            <CardContent>
+                                                <Stack
+                                                    direction="row"
+                                                    spacing={2}
+                                                    alignItems="center"
+                                                    mb={1}
+                                                >
+                                                    <CampaignIcon color="primary" />
+                                                    <Typography>
+                                                        Active Campaigns: {agent.active_campaigns}
+                                                    </Typography>
+                                                </Stack>
+
+                                                <Typography variant="subtitle2" mb={1}>
+                                                    Credit Summary
+                                                </Typography>
+
+                                                <Stack
+                                                    direction="row"
+                                                    justifyContent="space-between"
+                                                    alignItems="center"
+                                                >
+                                                    <Box textAlign="center" flex={1}>
+                                                        <AssignmentIcon
+                                                            color="secondary"
+                                                            sx={{ fontSize: 28 }}
+                                                        />
+                                                        <Typography variant="h6">
+                                                            {agent.allocated_calls}
+                                                        </Typography>
+                                                        <Typography variant="caption">
+                                                            Allocated
+                                                        </Typography>
+                                                    </Box>
+
+                                                    <Box textAlign="center" flex={1}>
+                                                        <HourglassEmptyIcon
+                                                            color="warning"
+                                                            sx={{ fontSize: 28 }}
+                                                        />
+                                                        <Typography variant="h6">
+                                                            {agent.pending_calls}
+                                                        </Typography>
+                                                        <Typography variant="caption">
+                                                            Pending
+                                                        </Typography>
+                                                    </Box>
+
+                                                    <Box textAlign="center" flex={1}>
+                                                        <CheckCircleIcon
+                                                            color="primary"
+                                                            sx={{ fontSize: 28 }}
+                                                        />
+                                                        <Typography variant="h6">
+                                                            {agent.attempted_calls}
+                                                        </Typography>
+                                                        <Typography variant="caption">
+                                                            Attempted
+                                                        </Typography>
+                                                    </Box>
+                                                </Stack>
+                                            </CardContent>
+                                        </Card>
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        )}
+                    </>
+                )
+            }
+            <Dialog
+                open={showTypeDialog}
+                onClose={() => setShowTypeDialog(false)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Select Agent Type</DialogTitle>
+
+                <DialogContent>
+                    <Grid container spacing={2} mt={1} alignItems="stretch">
+
+                        {/* INBOUND */}
+                        <Grid item xs={12} md={6} display="flex">
+                            <Card
+                                sx={{
+                                    borderRadius: 2,
+                                    width: "100%",
+                                    display: "flex"
+                                }}
+                            >
+                                <CardActionArea
+                                    sx={{ flex: 1 }}
+                                    onClick={() => {
+                                        setAgentType("inbound");
+                                        setShowTypeDialog(false);
+                                        setSelectedAgent(null);
+                                        setShowForm(true);
+                                    }}
+                                >
+                                    <CardContent>
+                                        <Stack spacing={1} alignItems="center" textAlign="center">
+                                            <CallReceivedIcon sx={{ fontSize: 40, color: "success.main" }} />
+
+                                            <Typography variant="h6">
+                                                Inbound Agent
+                                            </Typography>
+
+                                            <Typography variant="body2" color="text.secondary">
+                                                Handles incoming calls from customers
+                                            </Typography>
+                                        </Stack>
+                                    </CardContent>
+                                </CardActionArea>
+                            </Card>
+                        </Grid>
+
+                        {/* OUTBOUND */}
+                        <Grid item xs={12} md={6} display="flex">
+                            <Card
+                                sx={{
+                                    borderRadius: 2,
+                                    width: "100%",
+                                    display: "flex"
+                                }}
+                            >
+                                <CardActionArea
+                                    sx={{ flex: 1 }}
+                                    onClick={() => {
+                                        setAgentType("outbound");
+                                        setShowTypeDialog(false);
+                                        setSelectedAgent(null);
+                                        setShowForm(true);
+                                    }}
+                                >
+                                    <CardContent>
+                                        <Stack spacing={1} alignItems="center" textAlign="center">
+                                            <CallMadeIcon sx={{ fontSize: 40, color: "primary.main" }} />
+
+                                            <Typography variant="h6">
+                                                Outbound Agent
+                                            </Typography>
+
+                                            <Typography variant="body2" color="text.secondary">
+                                                Makes calls to leads or customers
+                                            </Typography>
+                                        </Stack>
+                                    </CardContent>
+                                </CardActionArea>
+                            </Card>
+                        </Grid>
+
                     </Grid>
-                ))}
-            </Grid>
-        </Box>
+                </DialogContent>
+
+                <DialogActions>
+                    <Button onClick={() => setShowTypeDialog(false)}>
+                        Cancel
+                    </Button>
+                </DialogActions>
+            </Dialog>
+        </Box >
     );
 };

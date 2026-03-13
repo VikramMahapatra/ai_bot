@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Grid,
     Button,
@@ -14,8 +14,10 @@ import {
     Typography,
     Box,
     TextField,
-    Autocomplete
+    Autocomplete,
+    MenuItem
 } from "@mui/material";
+import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
 
 interface ContactsProps {
     nextStep: () => void;
@@ -31,8 +33,88 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
 
     const [openAdd, setOpenAdd] = useState(false);
     const [mode, setMode] = useState<"crm" | "csv" | null>(null);
-
+    const [contactLists, setContactLists] = useState<ContactList[]>([]);
     const [openNewContact, setOpenNewContact] = useState(false);
+    const [contactForm, setContactForm] = useState({
+        name: "",
+        email: "",
+        phone: "",
+        contact_list_id: ""
+    });
+
+
+    const [errors, setErrors] = useState<any>({});
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+
+        setContactForm(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const loadContactLists = async () => {
+        const data = await callCampaignService.getContactLists();
+        setContactLists(data || []);
+    };
+
+    useEffect(() => {
+        loadContactLists();
+    }, []);
+
+
+    const validate = () => {
+
+        const newErrors: any = {};
+
+        if (!contactForm.contact_list_id) {
+            newErrors.contact_list_id = "List Name is required";
+        }
+
+        if (!contactForm.name.trim()) {
+            newErrors.name = "Name is required";
+        }
+
+        if (!contactForm.phone.trim()) {
+            newErrors.phone = "Phone is required";
+        }
+
+        if (!contactForm.email.trim()) {
+            newErrors.email = "Email is required";
+        }
+
+        if (contactForm.email && !/\S+@\S+\.\S+/.test(contactForm.email)) {
+            newErrors.email = "Invalid email";
+        }
+
+        setErrors(newErrors);
+
+        return Object.keys(newErrors).length === 0;
+    };
+
+    const handleSaveContact = async () => {
+        if (!validate()) return;
+
+        try {
+            await callCampaignService.createContact(contactForm);
+            resetForm();
+        } catch (err: any) {
+            console.log(err?.response?.data?.detail || 'Something went wrong');
+        }
+    };
+
+    const resetForm = () => {
+        setContactForm({
+            name: "",
+            email: "",
+            phone: "",
+            contact_list_id: ""
+        });
+
+        setErrors({});
+        setOpenNewContact(false);
+    };
 
     return (
         <Grid container spacing={2}>
@@ -44,7 +126,9 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
                 <Button
                     variant="outlined"
                     sx={{ mr: 2 }}
-                    onClick={() => setOpenNewContact(true)}
+                    onClick={() => {
+                        setOpenNewContact(true)
+                    }}
                 >
                     New Contact
                 </Button>
@@ -188,18 +272,50 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
                 <DialogContent>
 
                     <Grid container spacing={2} mt={1}>
-
                         <Grid item xs={12}>
                             <TextField
+                                required
+                                select
+                                fullWidth
+                                label="Contact List"
+                                name="contact_list_id"
+                                value={contactForm.contact_list_id}
+                                onChange={(e) =>
+                                    setContactForm({ ...contactForm, contact_list_id: e.target.value })
+                                }
+                                error={!!errors.contact_list_id}
+                                helperText={errors.contact_list_id}
+                            >
+                                {contactLists.map((list) => (
+                                    <MenuItem key={list.id} value={list.id}>
+                                        {list.list_name}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12}>
+                            <TextField
+                                required
                                 fullWidth
                                 label="Name"
+                                name="name"
+                                value={contactForm.name}
+                                onChange={handleInputChange}
+                                error={!!errors.name}
+                                helperText={errors.name}
                             />
                         </Grid>
 
                         <Grid item xs={12}>
                             <TextField
+                                required
                                 fullWidth
                                 label="Email"
+                                name="email"
+                                value={contactForm.email}
+                                onChange={handleInputChange}
+                                error={!!errors.email}
+                                helperText={errors.email}
                             />
                         </Grid>
 
@@ -207,15 +323,15 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
                             <TextField
                                 fullWidth
                                 label="Phone"
+                                name="phone"
+                                value={contactForm.phone}
+                                onChange={handleInputChange}
+                                error={!!errors.phone}
+                                helperText={errors.phone}
                             />
                         </Grid>
 
-                        <Grid item xs={12}>
-                            <TextField
-                                fullWidth
-                                label="Company"
-                            />
-                        </Grid>
+
 
                     </Grid>
 
@@ -223,11 +339,14 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
 
                 <DialogActions>
 
-                    <Button onClick={() => setOpenNewContact(false)}>
+                    <Button onClick={() => {
+                        setOpenNewContact(false);
+                        resetForm();
+                    }}>
                         Cancel
                     </Button>
 
-                    <Button variant="contained">
+                    <Button variant="contained" onClick={handleSaveContact}>
                         Save Contact
                     </Button>
 

@@ -1,22 +1,50 @@
 # Create Agent
 import os
 import shutil
-from typing import List
-from uuid import UUID
+from typing import List, Optional
+from uuid import UUID, uuid4
 
 from fastapi import File, HTTPException, UploadFile
 
-from backend.app.models.calling_agents import CallingAgent, CallingAgentTestCall
+from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from sqlalchemy.orm import Session
 
-from backend.app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentUpdate, TestCallRequest
+from app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentUpdate, TestCallRequest
 
-def create_agent(db: Session, agent: CallingAgentCreate):
+UPLOAD_DIR = "uploads/agent_training_docs"
+
+def create_agent(
+    db: Session,
+    organization_id: int,
+    agent: CallingAgentCreate,
+    training_files: Optional[List[UploadFile]] = None
+):
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    saved_files = []
+
+    # Save uploaded files
+    if training_files:
+        for file in training_files:
+            ext = file.filename.split(".")[-1]
+            unique_name = f"{uuid4()}.{ext}"
+            file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+            with open(file_path, "wb") as buffer:
+                buffer.write(file.file.read())
+
+            saved_files.append(file_path)
+
     db_agent = CallingAgent(
+        organization_id= organization_id,
         name=agent.name,
         greeting=agent.greeting,
         prompt=agent.prompt,
-        training_doc=",".join(agent.destination) if agent.destination else None,
+
+        # Save uploaded files
+        training_doc=",".join(saved_files) if saved_files else None,
+
         destination=",".join(agent.destination) if agent.destination else None,
         enable_sentiment=agent.enable_sentiment,
         voice_mail_detection=agent.voice_mail_detection,
@@ -26,15 +54,113 @@ def create_agent(db: Session, agent: CallingAgentCreate):
         summary_prompt=agent.summary_prompt,
         follow_up_whatsapp=agent.follow_up_whatsapp
     )
+
     db.add(db_agent)
     db.commit()
     db.refresh(db_agent)
-    return db_agent
+
+    return {
+        **db_agent.__dict__,
+        "destination": db_agent.destination.split(",") if db_agent.destination else []
+    }
+
+def update_agent(
+    db: Session,
+    agent_id: int,
+    agent: CallingAgentUpdate,
+    training_files: Optional[List[UploadFile]] = None
+):
+
+    db_agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
+
+    if not db_agent:
+        raise ValueError("Agent not found")
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    saved_files = []
+
+    # existing files
+    if db_agent.training_doc:
+        saved_files = db_agent.training_doc.split(",")
+
+    # save new files
+    if training_files:
+        for file in training_files:
+            ext = file.filename.split(".")[-1]
+            unique_name = f"{uuid4()}.{ext}"
+            file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+            with open(file_path, "wb") as buffer:
+                buffer.write(file.file.read())
+
+            saved_files.append(file_path)
+
+    # update fields
+    db_agent.name = agent.name
+    db_agent.greeting = agent.greeting
+    db_agent.prompt = agent.prompt
+    db_agent.destination = ",".join(agent.destination) if agent.destination else None
+    db_agent.enable_sentiment = agent.enable_sentiment
+    db_agent.voice_mail_detection = agent.voice_mail_detection
+    db_agent.enable_call_recording = agent.enable_call_recording
+    db_agent.success_parameters = agent.success_parameters
+    db_agent.enable_call_summary = agent.enable_call_summary
+    db_agent.summary_prompt = agent.summary_prompt
+    db_agent.follow_up_whatsapp = agent.follow_up_whatsapp
+
+    db_agent.training_doc = ",".join(saved_files) if saved_files else None
+
+    db.commit()
+    db.refresh(db_agent)
+
+    return {
+        **db_agent.__dict__,
+        "destination": db_agent.destination.split(",") if db_agent.destination else []
+    }
 
 
 # Read All Agents
-def read_agents(db: Session):
-    return db.query(CallingAgent).order_by(CallingAgent.created_at.desc()).all()
+def read_agents(
+    db: Session,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    sort_by: str = "newest"
+):
+    query = db.query(CallingAgent)
+
+    if search:
+        query = query.filter(CallingAgent.name.ilike(f"%{search}%"))
+
+    if sort_by == "oldest":
+        query = query.order_by(CallingAgent.created_at.asc())
+    else:
+        query = query.order_by(CallingAgent.created_at.desc())
+
+    total = query.count()
+
+    rows = query.offset(skip).limit(limit).all()
+
+    items = []
+    for agent in rows:
+        data = agent.__dict__.copy()
+
+        # convert destination string → list
+        data["destination"] = (
+            agent.destination.split(",") if agent.destination else []
+        )
+
+        items.append(data)
+
+    return {
+        "items": items,
+        "pagination": {
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+    }
 
 
 # Optional: Get Single Agent
@@ -66,74 +192,6 @@ def update_credits(
     db.commit()
     db.refresh(agent)
     return agent
-
-
-def create_agent_with_file(
-    db: Session,
-    agent: CallingAgentCreate,
-    training_doc: UploadFile = File(None)    
-):
-    filename = None
-    if training_doc:
-        os.makedirs("uploads", exist_ok=True)
-        filename = f"uploads/{training_doc.filename}"
-        with open(filename, "wb") as f:
-            shutil.copyfileobj(training_doc.file, f)
-            
-    db_agent = CallingAgent(
-        name=agent.name,
-        greeting=agent.greeting,
-        prompt=agent.prompt,
-        training_doc=filename,
-        destination=",".join(agent.destination) if agent.destination else None,
-        enable_sentiment=agent.enable_sentiment,
-        voice_mail_detection=agent.voice_mail_detection,
-        enable_call_recording=agent.enable_call_recording,
-        success_parameters=agent.success_parameters,
-        enable_call_summary=agent.enable_call_summary,
-        summary_prompt=agent.summary_prompt,
-        follow_up_whatsapp=agent.follow_up_whatsapp
-    )
-
-    db.add(db_agent)
-    db.commit()
-    db.refresh(db_agent)
-    return db_agent
-
-def update_agent_with_file(
-    db: Session,
-    agent_id: str,
-    agent: CallingAgentUpdate,
-    training_doc: UploadFile = File(None)
-):
-
-    db_agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
-
-    if not db_agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Upload new training file if provided
-    if training_doc:
-        os.makedirs("uploads", exist_ok=True)
-        filename = f"uploads/{training_doc.filename}"
-
-        with open(filename, "wb") as f:
-            shutil.copyfileobj(training_doc.file, f)
-
-        db_agent.training_doc = filename
-
-    update_data = agent.dict(exclude_unset=True)
-
-    if "destination" in update_data and update_data["destination"]:
-        update_data["destination"] = ",".join(update_data["destination"])
-
-    for field, value in update_data.items():
-        setattr(db_agent, field, value)
-
-    db.commit()
-    db.refresh(db_agent)
-
-    return db_agent
 
 
 def test_call(

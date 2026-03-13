@@ -1,4 +1,5 @@
 import React from 'react';
+import { alpha } from '@mui/material/styles';
 import {
   Drawer,
   List,
@@ -28,9 +29,12 @@ import LockIcon from '@mui/icons-material/Lock';
 import WidgetsIcon from '@mui/icons-material/Widgets';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import CampaignIcon from '@mui/icons-material/Campaign';
 import CallIcon from '@mui/icons-material/Call';
 
-const drawerWidth = 260;
+const drawerWidth = 280;
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -53,8 +57,11 @@ const allMenuItems: MenuItem[] = [
   { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN' },
   { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN' },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN' },
   { text: 'WhatsApp', icon: <WhatsAppIcon />, path: '/integrations/whatsapp', requiredRole: 'ADMIN' },
-  { text: 'Widget Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
+  { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN' },
+  { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
+  { text: 'Create Chat Agent', icon: <AutoAwesomeIcon />, path: '/create-chat-agent', requiredRole: 'ADMIN' },
   { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN' },
 ];
 
@@ -63,8 +70,20 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
   const location = useLocation();
   const { userRole, user } = useAuth();
 
+  const resetScrollPosition = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    document.querySelectorAll<HTMLElement>('[data-scroll-reset="true"]').forEach((el) => {
+      el.scrollTop = 0;
+    });
+  };
+
   const handleNavigation = (path: string) => {
-    navigate(path);
+    resetScrollPosition();
+    if (location.pathname !== path) {
+      navigate(path);
+    }
     if (onMobileClose) {
       onMobileClose();
     }
@@ -82,21 +101,34 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
       display: 'flex',
       flexDirection: 'column',
       bgcolor: 'background.paper',
-      boxShadow: '0 2px 16px 0 rgba(38,155,159,0.04)',
-      borderRight: '1.5px solid #e2e8f0',
+      background: (theme) =>
+        `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.9)} 0%, ${alpha(
+          theme.palette.primary.main,
+          0.1
+        )} 100%)`,
+      backdropFilter: 'blur(16px)',
+      boxShadow: (theme) => `0 18px 34px ${alpha(theme.palette.primary.dark, 0.16)}`,
+      borderRight: (theme) => `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
       px: 0,
       py: 0,
     }}>
       {/* Logo Section */}
-      <Box sx={{ px: 2, pt: 2, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
+      <Box sx={{ px: 2.2, pt: 2.2, pb: 1.2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Avatar
+          sx={{
+            width: 38,
+            height: 38,
+            background: 'linear-gradient(135deg, #366dff 0%, #36c4ff 100%)',
+            boxShadow: '0 10px 20px rgba(54,109,255,0.28)',
+          }}
+        >
           <SmartToyIcon fontSize="small" />
         </Avatar>
         <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main', lineHeight: 1, fontSize: '1.05rem' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1, fontSize: '1.04rem' }}>
             Zentrixel
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.78rem', lineHeight: 1 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.74rem', lineHeight: 1 }}>
             AI Platform
           </Typography>
         </Box>
@@ -105,31 +137,43 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
       <Divider />
 
       {/* User Info Section */}
-      <Box sx={{ px: 2, py: 0.5, mb: 0.5 }}>
+      <Box sx={{ px: 1.8, py: 0.9, mb: 0.2 }}>
         <Box sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 1,
-          flexWrap: 'wrap',
-          bgcolor: '#f4f7fa',
-          borderRadius: 2,
-          px: 1,
-          py: 0.7,
+          gap: 0.9,
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.07),
+          border: (theme) => `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+          borderRadius: 3,
+          px: 1.1,
+          py: 0.75,
         }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.85rem', mr: 1, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {user?.username || 'User'}
-          </Typography>
+          <Avatar
+            sx={{
+              width: 31,
+              height: 31,
+              fontSize: '0.8rem',
+              background: 'linear-gradient(135deg, #3d75d9 0%, #52b8df 100%)',
+            }}
+          >
+            {(user?.username || 'U').charAt(0).toUpperCase()}
+          </Avatar>
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary', fontSize: '0.82rem', display: 'block', maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.username || 'User'}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem', display: 'block', maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.email || 'user@example.com'}
+            </Typography>
+          </Box>
           <Chip
-            icon={userRole === 'ADMIN' ? <LockIcon sx={{ fontSize: 14 }} /> : undefined}
+            icon={userRole === 'ADMIN' ? <LockIcon sx={{ fontSize: 13 }} /> : undefined}
             label={userRole || 'USER'}
             size="small"
             variant="outlined"
             color={userRole === 'ADMIN' ? 'error' : 'default'}
-            sx={{ height: 18, fontSize: '0.7rem', px: 0.5 }}
+            sx={{ height: 19, fontSize: '0.64rem', px: 0.2 }}
           />
-          <Typography variant="caption" sx={{ color: 'primary.main', fontSize: '0.75rem', ml: 1, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {user?.email || 'user@example.com'}
-          </Typography>
         </Box>
       </Box>
 
@@ -144,22 +188,41 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
         alignItems: 'center',
         pt: 1,
         pb: 0.5,
+        minHeight: 0,
       }}>
         <List
           sx={{
-            width: '95%',
-            bgcolor: '#f8fafb',
-            borderRadius: 3,
-            border: '1.5px solid #e2e8f0',
-            boxShadow: '0 2px 8px 0 rgba(38,155,159,0.04)',
+            width: '93%',
+            bgcolor: (theme) => alpha(theme.palette.background.paper, 0.65),
+            borderRadius: 3.5,
+            border: (theme) => `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+            boxShadow: (theme) => `0 12px 24px ${alpha(theme.palette.primary.dark, 0.1)}`,
             p: 0.5,
             m: 0,
             display: 'flex',
             flexDirection: 'column',
             gap: 0.5,
-            maxHeight: 'calc(100vh - 260px)',
+            flexGrow: 1,
+            minHeight: 0,
+            maxHeight: '100%',
             overflowY: 'auto',
             overflowX: 'hidden',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(54,109,255,0.78) rgba(54,109,255,0.14)',
+            '&::-webkit-scrollbar': {
+              width: 10,
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: 'rgba(54,109,255,0.14)',
+              borderRadius: 10,
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(54,109,255,0.7)',
+              borderRadius: 10,
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              backgroundColor: 'rgba(54,109,255,0.9)',
+            },
           }}
         >
           {visibleMenuItems.map((item) => {
@@ -170,37 +233,42 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
                   <ListItemButton
                     onClick={() => handleNavigation(item.path)}
                     sx={{
-                      borderRadius: '50px',
-                      border: isActive ? '1.2px solid #269b9f' : '1.2px solid #e2e8f0',
-                      bgcolor: isActive
-                        ? 'linear-gradient(90deg, #21c8af 0%, #269b9f 100%)'
-                        : '#f8fafb',
-                      color: 'primary.main',
-                      minHeight: 36,
-                      height: 36,
-                      boxShadow: isActive ? '0 2px 8px 0 rgba(38,155,159,0.08)' : 'none',
+                      borderRadius: 2.2,
+                      border: (theme) =>
+                        `1px solid ${isActive ? alpha(theme.palette.primary.main, 0.44) : alpha(theme.palette.primary.main, 0.14)}`,
+                      background: isActive
+                        ? 'linear-gradient(90deg, rgba(79,130,212,0.22) 0%, rgba(79,180,214,0.22) 100%)'
+                        : 'transparent',
+                      color: 'text.primary',
+                      minHeight: 42,
+                      height: 42,
+                      boxShadow: isActive ? '0 8px 18px rgba(50,103,180,0.18)' : 'none',
                       '&:hover': {
-                        bgcolor: isActive
-                          ? 'linear-gradient(90deg, #1e7e85 0%, #269b9f 100%)'
-                          : '#e0f2f7',
-                        color: 'primary.dark',
-                        borderColor: '#269b9f',
+                        background: 'linear-gradient(90deg, rgba(79,130,212,0.14) 0%, rgba(79,180,214,0.16) 100%)',
+                        borderColor: 'primary.main',
                       },
                       transition: 'all 0.2s cubic-bezier(0.4,0,0.2,1)',
                       px: 1.5,
                     }}
                   >
-                    <ListItemIcon sx={{ color: 'primary.main', minWidth: 28, fontSize: 18 }}>
+                    <ListItemIcon
+                      sx={{
+                        color: isActive ? 'primary.main' : 'text.secondary',
+                        minWidth: 30,
+                        fontSize: 18,
+                        transition: 'color 180ms ease',
+                      }}
+                    >
                       {item.icon}
                     </ListItemIcon>
                     <ListItemText
                       primary={item.text}
                       primaryTypographyProps={{
                         fontWeight: isActive ? 700 : 500,
-                        fontSize: '0.92rem',
+                        fontSize: '0.89rem',
                         letterSpacing: 0.1,
                         whiteSpace: 'nowrap',
-                        color: 'primary.main',
+                        color: isActive ? 'primary.main' : 'text.primary',
                       }}
                     />
                   </ListItemButton>
@@ -215,7 +283,15 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
 
       {/* Settings at Bottom */}
       <Box sx={{ width: '100%', px: 2, pb: 2, mt: 'auto' }}>
-        <Box sx={{ bgcolor: '#f4f7fa', borderRadius: 2, px: 0.5, py: 0.5 }}>
+        <Box
+          sx={{
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+            borderRadius: 2,
+            px: 0.5,
+            py: 0.5,
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+          }}
+        >
           <List disablePadding sx={{ width: '100%' }}>
             <Tooltip title="Settings" placement="right">
               <ListItem disablePadding sx={{ width: '100%' }}>
@@ -229,7 +305,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
                     justifyContent: 'flex-start',
                     bgcolor: 'transparent',
                     '&:hover': {
-                      bgcolor: 'action.hover',
+                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
                     },
                   }}
                 >
@@ -261,8 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
-            borderRight: '1px solid',
-            borderColor: 'divider',
+            borderRight: 'none',
           },
         }}
       >

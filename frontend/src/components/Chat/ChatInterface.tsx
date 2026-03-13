@@ -14,7 +14,6 @@ import {
   DialogActions,
   IconButton,
   Alert,
-  Divider,
   Collapse,
   Chip,
   FormControl,
@@ -22,7 +21,8 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { alpha, keyframes } from '@mui/material/styles';
+import { useLocation } from 'react-router-dom';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import SendIcon from '@mui/icons-material/Send';
@@ -36,6 +36,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { chatService } from '../../services/chatService';
 import { leadService } from '../../services/leadService';
 import { dashboardService } from '../../services/dashboardService';
@@ -76,6 +77,8 @@ const ChatInterface: React.FC = () => {
   const [emailError, setEmailError] = useState('');
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [multilingualTextEnabled, setMultilingualTextEnabled] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -94,6 +97,14 @@ const ChatInterface: React.FC = () => {
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState('');
+  const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
+  const [appointmentName, setAppointmentName] = useState('');
+  const [appointmentEmail, setAppointmentEmail] = useState('');
+  const [appointmentPhone, setAppointmentPhone] = useState('');
+  const [appointmentDateTime, setAppointmentDateTime] = useState('');
+  const [appointmentNotes, setAppointmentNotes] = useState('');
+  const [bookingAppointment, setBookingAppointment] = useState(false);
+  const [appointmentError, setAppointmentError] = useState('');
 
   const voiceLanguages = [
     { code: 'en-IN', label: 'English (India)' },
@@ -116,8 +127,18 @@ const ChatInterface: React.FC = () => {
   };
 
   useEffect(() => {
+    if (messages.length === 0) {
+      messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (location.pathname === '/chat') {
+      messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const loadWidgets = async () => {
@@ -208,6 +229,26 @@ const ChatInterface: React.FC = () => {
     }
     setLoading(true);
 
+    let assistantIndex = -1;
+    const showLimitDialog = (detail?: string, tokensUsed?: number, tokenLimit?: number) => {
+      const messageText = detail || 'Your plan limit has been reached. Please upgrade or try again later.';
+      setLimitDialogMessage(messageText);
+      setLimitDialogTokensUsed(typeof tokensUsed === 'number' ? tokensUsed : null);
+      setLimitDialogTokenLimit(typeof tokenLimit === 'number' ? tokenLimit : null);
+      setLimitDialogOpen(true);
+    };
+
+    const replaceAssistantWith = (text: string) => {
+      if (assistantIndex < 0) return;
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content: text }
+            : msg
+        )
+      );
+    };
+
     try {
       if (multilingualTextEnabled && isNonEnglish && isAsciiOnly) {
         try {
@@ -227,30 +268,11 @@ const ChatInterface: React.FC = () => {
       }
 
       setMessages((prev) => [...prev, { role: 'user', content: displayMessage }]);
-      let assistantIndex = -1;
       setMessages((prev) => {
         assistantIndex = prev.length;
         return [...prev, { role: 'assistant', content: '', sources: [] }];
       });
       setStreaming(true);
-
-      const showLimitDialog = (detail?: string, tokensUsed?: number, tokenLimit?: number) => {
-        const messageText = detail || 'Your plan limit has been reached. Please upgrade or try again later.';
-        setLimitDialogMessage(messageText);
-        setLimitDialogTokensUsed(typeof tokensUsed === 'number' ? tokensUsed : null);
-        setLimitDialogTokenLimit(typeof tokenLimit === 'number' ? tokenLimit : null);
-        setLimitDialogOpen(true);
-      };
-
-      const replaceAssistantWith = (text: string) => {
-        setMessages((prev) =>
-          prev.map((msg, index) =>
-            index === assistantIndex
-              ? { ...msg, content: text }
-              : msg
-          )
-        );
-      };
 
       try {
         const controller = new AbortController();
@@ -526,123 +548,270 @@ const ChatInterface: React.FC = () => {
     }
   };
 
+  const openAppointmentDialog = () => {
+    if (!selectedWidgetId) {
+      setWidgetError('Please select a widget before booking an appointment.');
+      return;
+    }
+    if (!appointmentDateTime) {
+      const seed = new Date(Date.now() + 60 * 60 * 1000);
+      const localDate = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      setAppointmentDateTime(localDate);
+    }
+    setAppointmentError('');
+    setAppointmentDialogOpen(true);
+  };
+
+  const handleBookAppointment = async () => {
+    if (!selectedWidgetId) {
+      setAppointmentError('Please select a widget before booking.');
+      return;
+    }
+    if (!appointmentName.trim()) {
+      setAppointmentError('Please provide your name.');
+      return;
+    }
+    if (!appointmentDateTime) {
+      setAppointmentError('Please pick a date and time.');
+      return;
+    }
+
+    const dateValue = new Date(appointmentDateTime);
+    if (Number.isNaN(dateValue.getTime())) {
+      setAppointmentError('Invalid appointment date/time.');
+      return;
+    }
+
+    try {
+      setBookingAppointment(true);
+      setAppointmentError('');
+      const result = await chatService.bookAppointment({
+        session_id: sessionId,
+        widget_id: selectedWidgetId,
+        appointment_at: dateValue.toISOString(),
+        name: appointmentName.trim(),
+        email: appointmentEmail.trim() || undefined,
+        phone: appointmentPhone.trim() || undefined,
+        notes: appointmentNotes.trim() || undefined,
+        timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: `Please book an appointment for ${dateValue.toLocaleString()}.` },
+        { role: 'assistant', content: result.message },
+      ]);
+
+      setAppointmentDialogOpen(false);
+      setAppointmentName('');
+      setAppointmentEmail('');
+      setAppointmentPhone('');
+      setAppointmentNotes('');
+    } catch (err: any) {
+      setAppointmentError(err?.response?.data?.detail || 'Failed to book appointment. Please try again.');
+    } finally {
+      setBookingAppointment(false);
+    }
+  };
+
+  const bubbleAppear = keyframes`
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  `;
+
+  const typingPulse = keyframes`
+    0% { transform: translateY(0); opacity: 0.35; }
+    50% { transform: translateY(-3px); opacity: 1; }
+    100% { transform: translateY(0); opacity: 0.35; }
+  `;
+
+  const glassCardBg = 'linear-gradient(140deg, rgba(255,255,255,0.82) 0%, rgba(236,244,255,0.76) 100%)';
+
   return (
-    <Box sx={{ height: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', minHeight: '500px', maxHeight: '700px' }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
       {widgetError && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           {widgetError}
         </Alert>
       )}
-      <Paper sx={{ flexGrow: 1, overflow: 'auto', p: 2, mb: 2, background: 'linear-gradient(135deg, #e0f2f7 0%, #f8fafb 100%)' }}>
-        <Box sx={{
-          display: 'flex',
-          alignItems: 'center',
-          mb: 3,
-          justifyContent: 'space-between',
-          position: 'sticky',
-          top: 0,
-          zIndex: 2,
-          background: 'linear-gradient(135deg, #e0f2f7 0%, #f8fafb 100%)',
-          py: 1,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+      <Paper
+        data-scroll-reset="true"
+        ref={messagesContainerRef}
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          p: { xs: 1.3, md: 2 },
+          mb: 1.4,
+          borderRadius: 3,
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+          background: glassCardBg,
+          backdropFilter: 'blur(8px)',
+        }}
+      >
+        <Box
+          sx={{
+            mb: 2,
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
+            p: { xs: 1.1, md: 1.2 },
+            borderRadius: 2.2,
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            background: 'linear-gradient(120deg, rgba(232,240,255,0.88) 0%, rgba(215,238,255,0.9) 100%)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.2, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', mr: 1.2, boxShadow: '0 10px 20px rgba(54,109,255,0.24)' }}>
               <SmartToyIcon />
             </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>Zentrixel AI Chat</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>Ask anything, get instant answers.</Typography>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.05 }}>
+                Zentrixel AI Chat
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.82rem' }}>
+                Ask anything and get grounded, context-aware responses.
+              </Typography>
             </Box>
           </Box>
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel id="chat-widget-select-label">Widget</InputLabel>
-            <Select
-              labelId="chat-widget-select-label"
-              value={selectedWidgetId}
-              label="Widget"
-              onChange={(e) => setSelectedWidgetId(e.target.value)}
+          <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+            <Button
+              onClick={openAppointmentDialog}
+              startIcon={<CalendarMonthIcon />}
+              sx={{
+                background: 'linear-gradient(135deg, #285ad9 0%, #2d8ef0 55%, #36c4ff 100%)',
+                color: 'white',
+                px: 1.8,
+                py: 0.9,
+                borderRadius: 2.2,
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                boxShadow: '0 8px 18px rgba(45,122,240,0.34)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #2049b8 0%, #2277d0 55%, #2ea9d8 100%)',
+                },
+              }}
             >
-              {widgets.map((widget) => (
-                <MenuItem key={widget.widget_id} value={widget.widget_id}>
-                  {widget.name} ({widget.widget_id})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {(multilingualTextEnabled || voiceEnabled) && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <FormControl size="small" sx={{ minWidth: 170 }}>
-                <InputLabel id="voice-lang-label">
-                  {multilingualTextEnabled ? 'Language' : 'Voice Language'}
-                </InputLabel>
-                <Select
-                  labelId="voice-lang-label"
-                  value={selectedLang}
-                  label={multilingualTextEnabled ? 'Language' : 'Voice Language'}
-                  onChange={(e) => setSelectedLang(e.target.value as string)}
+              Book Appointment
+            </Button>
+            {messages.length > 0 && (
+              <Tooltip title="Email this conversation" placement="left">
+                <Button
+                  onClick={handleEmailConversation}
+                  startIcon={<EmailIcon />}
+                  sx={{ 
+                    background: 'linear-gradient(135deg, #355be0 0%, #5f75ff 100%)',
+                    color: 'white',
+                    px: 1.8,
+                    py: 0.9,
+                    borderRadius: 2.2,
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    boxShadow: '0 8px 18px rgba(53,91,224,0.32)',
+                    '&:hover': { 
+                      background: 'linear-gradient(135deg, #2948b7 0%, #4a5fd8 100%)',
+                    },
+                  }}
                 >
-                  {voiceLanguages.map((lang) => (
-                    <MenuItem key={lang.code} value={lang.code}>
-                      {lang.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              {voiceEnabled && (
-                <>
-                  <Tooltip title={listening ? 'Stop voice input' : 'Start voice input'}>
-                    <span>
-                      <IconButton
-                        onClick={listening ? stopListening : startListening}
-                        disabled={!voiceSupported}
-                        sx={{ bgcolor: listening ? 'rgba(239,68,68,0.1)' : 'rgba(45,179,160,0.1)' }}
-                      >
-                        {listening ? <MicOffIcon color="error" /> : <MicIcon color="primary" />}
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title={speakReplies ? 'Disable voice replies' : 'Enable voice replies'}>
-                    <span>
-                      <IconButton
-                        onClick={() => setSpeakReplies((prev) => !prev)}
-                        disabled={!voiceSupported}
-                        sx={{ bgcolor: speakReplies ? 'rgba(59,130,246,0.1)' : 'transparent' }}
-                      >
-                        <VolumeUpIcon color={speakReplies ? 'primary' : 'inherit'} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </>
-              )}
-            </Box>
-          )}
-          {messages.length > 0 && (
-            <Tooltip title="Email this conversation" placement="left">
-              <Button
-                onClick={handleEmailConversation}
-                startIcon={<EmailIcon />}
-                sx={{ 
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: 'white',
-                  px: 2.5,
-                  py: 1,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                  textTransform: 'none',
-                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
-                  '&:hover': { 
-                    background: 'linear-gradient(135deg, #5568d3 0%, #6a4290 100%)',
-                    boxShadow: '0 6px 16px rgba(102, 126, 234, 0.5)',
-                    transform: 'translateY(-2px)'
-                  },
-                  transition: 'all 0.3s ease'
-                }}
+                  Email Chat
+                </Button>
+              </Tooltip>
+            )}
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 0.9 }}>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="chat-widget-select-label">Widget</InputLabel>
+              <Select
+                labelId="chat-widget-select-label"
+                value={selectedWidgetId}
+                label="Widget"
+                onChange={(e) => setSelectedWidgetId(e.target.value)}
               >
-                Email Chat
-              </Button>
-            </Tooltip>
-          )}
+                {widgets.map((widget) => (
+                  <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                    {widget.name} ({widget.widget_id})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {(multilingualTextEnabled || voiceEnabled) && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                <FormControl size="small" sx={{ minWidth: 172 }}>
+                  <InputLabel id="voice-lang-label">
+                    {multilingualTextEnabled ? 'Language' : 'Voice Language'}
+                  </InputLabel>
+                  <Select
+                    labelId="voice-lang-label"
+                    value={selectedLang}
+                    label={multilingualTextEnabled ? 'Language' : 'Voice Language'}
+                    onChange={(e) => setSelectedLang(e.target.value as string)}
+                  >
+                    {voiceLanguages.map((lang) => (
+                      <MenuItem key={lang.code} value={lang.code}>
+                        {lang.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {voiceEnabled && (
+                  <>
+                    <Tooltip title={listening ? 'Stop voice input' : 'Start voice input'}>
+                      <span>
+                        <IconButton
+                          onClick={listening ? stopListening : startListening}
+                          disabled={!voiceSupported}
+                          sx={{
+                            bgcolor: listening ? 'rgba(239,68,109,0.14)' : 'rgba(56,109,255,0.12)',
+                            border: '1px solid rgba(56,109,255,0.2)',
+                          }}
+                        >
+                          {listening ? <MicOffIcon color="error" /> : <MicIcon color="primary" />}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title={speakReplies ? 'Disable voice replies' : 'Enable voice replies'}>
+                      <span>
+                        <IconButton
+                          onClick={() => setSpeakReplies((prev) => !prev)}
+                          disabled={!voiceSupported}
+                          sx={{
+                            bgcolor: speakReplies ? 'rgba(56,109,255,0.18)' : 'transparent',
+                            border: '1px solid rgba(56,109,255,0.2)',
+                          }}
+                        >
+                          <VolumeUpIcon color={speakReplies ? 'primary' : 'inherit'} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </>
+                )}
+              </Box>
+            )}
+          </Box>
+        </Box>
         </Box>
         {!multilingualTextEnabled && (
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -651,7 +820,7 @@ const ChatInterface: React.FC = () => {
         )}
         {voiceEnabled && !voiceSupported && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            Voice chat isn’t supported in this browser.
+            Voice chat isn't supported in this browser.
           </Alert>
         )}
         {voiceError && (
@@ -718,186 +887,244 @@ const ChatInterface: React.FC = () => {
           </Box>
         )}
         {messages.length === 0 && (
-          <Typography color="text.secondary" align="center">
-            Start a conversation...
-          </Typography>
-        )}
-        {messages.map((message, index) => (
           <Box
-            key={index}
             sx={{
-              mb: 2,
-              display: 'flex',
-              flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
-              alignItems: 'flex-start',
+              minHeight: 160,
+              display: 'grid',
+              placeItems: 'center',
+              color: 'text.secondary',
+              textAlign: 'center',
             }}
           >
-            <Tooltip title={message.role === 'user' ? 'You' : 'AI'} placement={message.role === 'user' ? 'right' : 'left'}>
-              <Avatar sx={{ 
-                bgcolor: message.role === 'user' ? '#4db8c9' : '#ffffff', 
-                ml: message.role === 'user' ? 2 : 0, 
-                mr: message.role === 'user' ? 0 : 2,
-                border: message.role === 'assistant' ? '2px solid #e0f2f7' : 'none',
-                color: message.role === 'assistant' ? '#2db3a0' : 'white',
-                mt: 0.5,
-              }}>
-                {message.role === 'user' ? <PersonIcon /> : <SmartToyIcon />}
-              </Avatar>
-            </Tooltip>
-            <Box sx={{ maxWidth: '70%' }}>
-              <Paper
-                sx={{
-                  p: 2,
-                  bgcolor: message.role === 'user' 
-                    ? 'linear-gradient(135deg, #80ccd9 0%, #4db8c9 100%)' 
-                    : '#ffffff',
-                  background: message.role === 'user' 
-                    ? 'linear-gradient(135deg, #80ccd9 0%, #4db8c9 100%)' 
-                    : '#ffffff',
-                  color: message.role === 'user' ? 'white' : '#1e293b',
-                  borderRadius: message.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  boxShadow: message.role === 'user' 
-                    ? '0 4px 12px 0 rgba(77,184,201,0.3)' 
-                    : '0 2px 8px 0 rgba(0,0,0,0.08)',
-                  border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
-                }}
-              >
-                {message.role === 'assistant' ? (
-                  <MarkdownRenderer content={message.content} isUserMessage={false} />
-                ) : (
-                  <Typography variant="body1">{message.content}</Typography>
-                )}
-              </Paper>
+            <Typography color="text.secondary">Start a conversation to see responses here.</Typography>
+          </Box>
+        )}
 
-              {/* Feedback + Sources row - Only for Assistant Messages */}
-              {message.role === 'assistant' && (
-                <Box sx={{ mt: 1, ml: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-                  <MessageFeedback 
-                    messageIndex={index} 
-                    sessionId={sessionId}
-                    onFeedbackSubmitted={() => {
-                      // Optional: refresh analytics or show notification
-                    }}
-                  />
-                  {message.sources && message.sources.length > 0 && (
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        setExpandedSources((prev) => {
-                          const newSet = new Set(prev);
-                          const sourceKey = index;
-                          if (newSet.has(sourceKey)) {
-                            newSet.delete(sourceKey);
-                          } else {
-                            newSet.add(sourceKey);
-                          }
-                          return newSet;
-                        });
-                      }}
-                      sx={{
-                        textTransform: 'none',
-                        fontSize: '0.875rem',
-                        color: '#2db3a0',
-                        p: 0.5,
-                        minWidth: 'auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.5,
-                        '&:hover': {
-                          background: 'rgba(45, 179, 160, 0.08)'
-                        }
-                      }}
-                      startIcon={
-                        <ExpandMoreIcon 
-                          sx={{
-                            fontSize: '1.2rem',
-                            transform: expandedSources.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
-                            transition: 'transform 0.3s ease'
-                          }}
-                        />
-                      }
-                    >
-                      <InfoIcon sx={{ fontSize: '1rem' }} />
-                      <span style={{ marginLeft: '4px' }}>Sources ({message.sources.length})</span>
-                    </Button>
+        {messages.map((message, index) => {
+          const isUser = message.role === 'user';
+          return (
+            <Box
+              key={index}
+              sx={{
+                mb: 1.8,
+                display: 'flex',
+                flexDirection: isUser ? 'row-reverse' : 'row',
+                alignItems: 'flex-start',
+                gap: 1,
+                animation: `${bubbleAppear} 320ms ease both`,
+                animationDelay: `${Math.min(index * 25, 350)}ms`,
+              }}
+            >
+              <Tooltip title={isUser ? 'You' : 'AI'} placement={isUser ? 'right' : 'left'}>
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    bgcolor: isUser ? 'primary.main' : 'rgba(255,255,255,0.95)',
+                    color: isUser ? 'white' : 'primary.main',
+                    border: isUser ? 'none' : '1px solid rgba(54,109,255,0.28)',
+                    boxShadow: isUser ? '0 10px 18px rgba(56,109,255,0.3)' : '0 8px 14px rgba(15,23,42,0.08)',
+                    mt: 0.45,
+                  }}
+                >
+                  {isUser ? <PersonIcon fontSize="small" /> : <SmartToyIcon fontSize="small" />}
+                </Avatar>
+              </Tooltip>
+
+              <Box sx={{ maxWidth: { xs: '84%', md: '74%' } }}>
+                <Paper
+                  sx={{
+                    px: 1.5,
+                    py: 1.15,
+                    borderRadius: isUser ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
+                    background: isUser
+                      ? 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 65%, #4bc8ff 100%)'
+                      : 'linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(239,246,255,0.96) 100%)',
+                    color: isUser ? 'common.white' : 'text.primary',
+                    border: isUser ? 'none' : '1px solid rgba(53,108,255,0.2)',
+                    boxShadow: isUser ? '0 12px 24px rgba(45,122,240,0.28)' : '0 12px 24px rgba(15,23,42,0.08)',
+                  }}
+                >
+                  {message.role === 'assistant' ? (
+                    <MarkdownRenderer content={message.content} isUserMessage={false} />
+                  ) : (
+                    <Typography variant="body2" sx={{ lineHeight: 1.55 }}>
+                      {message.content}
+                    </Typography>
                   )}
-                </Box>
-              )}
+                </Paper>
 
-              {/* Sources Section - Only for Assistant Messages */}
-              {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
-                <Collapse in={expandedSources.has(index)} timeout="auto">
-                  <Box sx={{
-                    mt: 1,
-                    p: 1.5,
-                    bgcolor: '#f8fafb',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1
-                  }}>
-                    {message.sources.map((source) => (
-                      <Box
+                {message.role === 'assistant' && (
+                  <Box
+                    sx={{
+                      mt: 0.65,
+                      ml: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1.2,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <MessageFeedback
+                      messageIndex={index}
+                      sessionId={sessionId}
+                      onFeedbackSubmitted={() => {
+                        // Hook preserved for potential analytics updates.
+                      }}
+                    />
+                    {message.sources && message.sources.length > 0 && (
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setExpandedSources((prev) => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(index)) {
+                              newSet.delete(index);
+                            } else {
+                              newSet.add(index);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.78rem',
+                          color: 'primary.main',
+                          p: 0.6,
+                          minWidth: 'auto',
+                          borderRadius: 1.5,
+                          '&:hover': {
+                            background: 'rgba(56,109,255,0.1)',
+                          },
+                        }}
+                        startIcon={
+                          <ExpandMoreIcon
+                            sx={{
+                              fontSize: '1.1rem',
+                              transform: expandedSources.has(index) ? 'rotate(180deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.25s ease',
+                            }}
+                          />
+                        }
+                      >
+                        <InfoIcon sx={{ fontSize: '0.95rem' }} />
+                        <span style={{ marginLeft: '4px' }}>Sources ({message.sources.length})</span>
+                      </Button>
+                    )}
+                  </Box>
+                )}
+
+                {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
+                  <Collapse in={expandedSources.has(index)} timeout="auto">
+                    <Box
+                      sx={{
+                        mt: 0.9,
+                        p: 1.2,
+                        borderRadius: 2,
+                        border: '1px solid rgba(53,108,255,0.16)',
+                        background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(235,244,255,0.92) 100%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 0.85,
+                      }}
+                    >
+                      {message.sources.map((source) => (
+                        <Box
                           key={source.id}
                           sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             p: 1,
-                            bgcolor: '#ffffff',
-                            borderRadius: '6px',
-                            border: '1px solid #e2e8f0',
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(53,108,255,0.14)',
+                            background: 'rgba(255,255,255,0.88)',
                           }}
                         >
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1e293b', mb: 0.25 }}>
-                              {source.name}
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <Chip
-                                label={source.type}
-                                size="small"
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.35 }}>
+                            {source.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 0.7, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <Chip
+                              label={source.type}
+                              size="small"
+                              sx={{
+                                height: 20,
+                                bgcolor: 'rgba(56,109,255,0.12)',
+                                color: 'primary.main',
+                                fontWeight: 700,
+                                fontSize: '0.68rem',
+                              }}
+                            />
+                            {source.url && (
+                              <Typography
+                                variant="caption"
+                                component="a"
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 sx={{
-                                  height: '20px',
-                                  bgcolor: '#e0f2f7',
-                                  color: '#2db3a0',
-                                  fontWeight: 600,
-                                  fontSize: '0.75rem'
+                                  color: 'primary.main',
+                                  textDecoration: 'none',
+                                  '&:hover': { textDecoration: 'underline' },
                                 }}
-                              />
-                              {source.url && (
-                                <Typography 
-                                  variant="caption" 
-                                  component="a"
-                                  href={source.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  sx={{
-                                    color: '#667eea',
-                                    textDecoration: 'none',
-                                    '&:hover': {
-                                      textDecoration: 'underline'
-                                    }
-                                  }}
-                                >
-                                  {new URL(source.url).hostname}
-                                </Typography>
-                              )}
-                            </Box>
+                              >
+                                {new URL(source.url).hostname}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                       ))}
                     </Box>
                   </Collapse>
-              )}
+                )}
+              </Box>
             </Box>
-          </Box>
-        ))}
+          );
+        })}
+
         {loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
-            <Paper sx={{ p: 2 }}>
-              <CircularProgress size={20} />
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
+            <Avatar
+              sx={{
+                width: 34,
+                height: 34,
+                bgcolor: 'rgba(255,255,255,0.95)',
+                color: 'primary.main',
+                border: '1px solid rgba(54,109,255,0.28)',
+                boxShadow: '0 8px 14px rgba(15,23,42,0.08)',
+                mt: 0.45,
+              }}
+            >
+              <SmartToyIcon fontSize="small" />
+            </Avatar>
+            <Paper
+              sx={{
+                px: 1.5,
+                py: 1,
+                borderRadius: '18px 18px 18px 6px',
+                border: '1px solid rgba(53,108,255,0.2)',
+                background: 'linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(239,246,255,0.96) 100%)',
+                boxShadow: '0 12px 24px rgba(15,23,42,0.08)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                {[0, 1, 2].map((dot) => (
+                  <Box
+                    key={dot}
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: 'primary.main',
+                      opacity: 0.45,
+                      animation: `${typingPulse} 980ms ease-in-out infinite`,
+                      animationDelay: `${dot * 120}ms`,
+                    }}
+                  />
+                ))}
+                <Typography variant="caption" sx={{ color: 'text.secondary', ml: 0.2 }}>
+                  AI is typing...
+                </Typography>
+              </Box>
             </Paper>
           </Box>
         )}
@@ -911,9 +1138,9 @@ const ChatInterface: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, #ffffff 0%, #f8fafb 100%)',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
+            borderRadius: '18px',
+            background: 'linear-gradient(135deg, #ffffff 0%, #f2f8ff 100%)',
+            boxShadow: '0 24px 60px rgba(45, 122, 240, 0.2)',
           }
         }}
       >
@@ -929,7 +1156,7 @@ const ChatInterface: React.FC = () => {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #2db3a0 0%, #1b9a7f 100%)',
+              background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -952,16 +1179,16 @@ const ChatInterface: React.FC = () => {
         <DialogContent sx={{ pt: 3 }}>
           {/* Trust Badge */}
           <Box sx={{
-            background: 'linear-gradient(135deg, #e0f2f7 0%, #f0f9fb 100%)',
+            background: 'linear-gradient(135deg, #e6f0ff 0%, #f2f8ff 100%)',
             borderRadius: '12px',
             p: 2,
             mb: 3,
-            border: '1px solid #d1e7ed'
+            border: '1px solid rgba(53,108,255,0.22)'
           }}>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2 }}>
-              <SecurityIcon sx={{ color: '#2db3a0', mt: 0.5, fontSize: 20 }} />
+              <SecurityIcon sx={{ color: '#356dff', mt: 0.5, fontSize: 20 }} />
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1b9a7f', mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#2456d1', mb: 0.5 }}>
                   Your Privacy is Protected
                 </Typography>
                 <Typography variant="caption" sx={{ color: '#64748b', lineHeight: 1.5 }}>
@@ -988,10 +1215,10 @@ const ChatInterface: React.FC = () => {
                     borderRadius: '10px',
                     background: '#ffffff',
                     '&:hover fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                       borderWidth: '2px'
                     }
                   },
@@ -1018,10 +1245,10 @@ const ChatInterface: React.FC = () => {
                     borderRadius: '10px',
                     background: '#ffffff',
                     '&:hover fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                       borderWidth: '2px'
                     }
                   }
@@ -1044,10 +1271,10 @@ const ChatInterface: React.FC = () => {
                     borderRadius: '10px',
                     background: '#ffffff',
                     '&:hover fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                       borderWidth: '2px'
                     }
                   }
@@ -1070,10 +1297,10 @@ const ChatInterface: React.FC = () => {
                     borderRadius: '10px',
                     background: '#ffffff',
                     '&:hover fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#2db3a0',
+                      borderColor: '#356dff',
                       borderWidth: '2px'
                     }
                   }
@@ -1124,14 +1351,14 @@ const ChatInterface: React.FC = () => {
               disabled={submittingLead || !leadName.trim() || !leadEmail.trim()}
               sx={{
                 borderRadius: '10px',
-                background: 'linear-gradient(135deg, #2db3a0 0%, #1b9a7f 100%)',
+                background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
                 textTransform: 'none',
                 fontWeight: 600,
                 fontSize: '14px',
                 py: 1.25,
-                boxShadow: '0 4px 12px rgba(45, 179, 160, 0.3)',
+                boxShadow: '0 6px 16px rgba(45, 122, 240, 0.3)',
                 '&:hover': {
-                  boxShadow: '0 6px 16px rgba(45, 179, 160, 0.4)',
+                  boxShadow: '0 8px 18px rgba(45, 122, 240, 0.36)',
                 },
                 '&:disabled': {
                   background: '#cbd5e1',
@@ -1163,7 +1390,7 @@ const ChatInterface: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ 
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
           color: 'white',
           display: 'flex',
           alignItems: 'center',
@@ -1217,9 +1444,9 @@ const ChatInterface: React.FC = () => {
                 disabled={sendingEmail || !emailAddress}
                 sx={{
                   py: 1.5,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #5568d3 0%, #6a4290 100%)',
+                    background: 'linear-gradient(135deg, #2747be 0%, #256fb8 100%)',
                   }
                 }}
               >
@@ -1238,6 +1465,85 @@ const ChatInterface: React.FC = () => {
             </>
           )}
         </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={appointmentDialogOpen}
+        onClose={() => setAppointmentDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            border: '1px solid rgba(53,108,255,0.2)',
+            background: 'linear-gradient(140deg, #ffffff 0%, #f2f8ff 100%)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: 'primary.main' }}>Book Appointment</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {appointmentError && <Alert severity="error">{appointmentError}</Alert>}
+            <TextField
+              label="Name"
+              value={appointmentName}
+              onChange={(e) => setAppointmentName(e.target.value)}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Email"
+              type="email"
+              value={appointmentEmail}
+              onChange={(e) => setAppointmentEmail(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Phone"
+              value={appointmentPhone}
+              onChange={(e) => setAppointmentPhone(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Appointment Date & Time"
+              type="datetime-local"
+              value={appointmentDateTime}
+              onChange={(e) => setAppointmentDateTime(e.target.value)}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+            <TextField
+              label="Notes"
+              value={appointmentNotes}
+              onChange={(e) => setAppointmentNotes(e.target.value)}
+              multiline
+              minRows={3}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            onClick={() => setAppointmentDialogOpen(false)}
+            disabled={bookingAppointment}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleBookAppointment}
+            disabled={bookingAppointment}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
+            }}
+          >
+            {bookingAppointment ? 'Booking...' : 'Confirm Appointment'}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Usage Limit Dialog */}
@@ -1287,7 +1593,19 @@ const ChatInterface: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          alignItems: 'center',
+          gap: 1,
+          p: { xs: 1, md: 1.2 },
+          borderRadius: 2.5,
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+          background: 'linear-gradient(150deg, rgba(255,255,255,0.95) 0%, rgba(234,243,255,0.92) 100%)',
+          boxShadow: '0 14px 30px rgba(15,23,42,0.08)',
+        }}
+      >
         <TextField
           fullWidth
           value={input}
@@ -1295,12 +1613,32 @@ const ChatInterface: React.FC = () => {
           onKeyPress={handleKeyPress}
           placeholder="Type your message..."
           disabled={loading}
+          size="small"
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 2,
+              backgroundColor: 'rgba(255,255,255,0.92)',
+            },
+          }}
         />
         <Button
           variant="contained"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={loading || !input.trim()}
           endIcon={<SendIcon />}
+          sx={{
+            minWidth: 116,
+            py: 1.1,
+            px: 2,
+            borderRadius: 2,
+            textTransform: 'none',
+            fontWeight: 800,
+            background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
+            boxShadow: '0 10px 20px rgba(45,122,240,0.34)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #2747be 0%, #256fb8 100%)',
+            },
+          }}
         >
           Send
         </Button>

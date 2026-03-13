@@ -1,16 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from app.database import get_db
-from app.models import Conversation, WidgetConfig, User
+from app.models import Conversation, WidgetConfig, User, Appointment
 from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, SuggestedQuestionsResponse
-from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation, get_suggested_questions
-from app.services.limits_service import get_effective_limits
-from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, increment_usage
+from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation, get_suggested_questions, append_appointment_cta_if_needed
+from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, get_or_create_usage, increment_usage
 from app.services.email_service import send_conversation_email
 from app.auth import get_current_user, get_current_user_optional
+from app.config import settings
 import logging
 import json
 
@@ -21,10 +24,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
+def _get_subscription_session_count(db: Session, organization_id: int, usage) -> int:
+    """Count distinct sessions in the active subscription window for accurate conversation limits."""
+    if not usage:
+        return 0
+
+    query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
+        Conversation.organization_id == organization_id,
+        Conversation.created_at >= usage.period_start,
+        Conversation.created_at <= usage.period_end,
+    )
+    return int(query.scalar() or 0)
+
+
+def _get_monthly_session_count(db: Session, organization_id: int) -> int:
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
+        Conversation.organization_id == organization_id,
+        Conversation.created_at >= month_start,
+    )
+    return int(query.scalar() or 0)
+
+
+def _canonical_timezone(tz_name: Optional[str]) -> Optional[str]:
+    if not tz_name:
+        return tz_name
+    if tz_name == "Asia/Calcutta":
+        return "Asia/Kolkata"
+    return tz_name
+
+
 class EmailConversationRequest(BaseModel):
     session_id: str
     email: EmailStr
     widget_id: Optional[str] = None
+
+
+class AppointmentBookingRequest(BaseModel):
+    session_id: str
+    widget_id: str
+    appointment_at: datetime
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    timezone: Optional[str] = None
+
+
+class AppointmentBookingResponse(BaseModel):
+    id: int
+    session_id: str
+    widget_id: str
+    appointment_at: datetime
+    message: str
 
 
 @router.get("/suggested-questions", response_model=SuggestedQuestionsResponse)
@@ -99,12 +152,37 @@ async def chat(
             raise HTTPException(status_code=404, detail="User not found for chat context")
 
         limits = get_effective_limits(db, user.organization_id)
+        subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
         if not limits.get("subscription_active"):
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            if settings.DEV_BYPASS_SUBSCRIPTION_CHECK:
+                logger.warning(
+                    "DEV_BYPASS_SUBSCRIPTION_CHECK enabled for org_id=%s; allowing chat without active subscription",
+                    user.organization_id,
+                )
+                limits = {
+                    **limits,
+                    "subscription_active": True,
+                    "monthly_conversation_limit": None,
+                    "monthly_token_limit": None,
+                    "max_query_words": None,
+                }
+            else:
+                raise HTTPException(status_code=403, detail="Subscription inactive or expired")
 
-        usage = get_or_create_subscription_usage(db, user.organization_id)
-        if not usage:
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+        usage = subscription_usage or get_or_create_usage(db, user.organization_id)
+
+        is_new_session = db.query(Conversation.id).filter(
+            Conversation.organization_id == user.organization_id,
+            Conversation.session_id == message.session_id,
+            Conversation.widget_id == message.widget_id,
+        ).first() is None
+
+        # Self-heal historical overcounting from earlier conversation counter logic.
+        actual_sessions_used = _get_subscription_session_count(db, user.organization_id, subscription_usage) if subscription_usage else _get_monthly_session_count(db, user.organization_id)
+        if subscription_usage and usage.conversations_count and usage.conversations_count > actual_sessions_used:
+            usage.conversations_count = actual_sessions_used
+            db.commit()
+            db.refresh(usage)
 
         word_count = len(message.message.split())
         if limits.get("max_query_words") and word_count > limits["max_query_words"]:
@@ -113,10 +191,18 @@ async def chat(
                 detail=f"Query exceeds max word limit of {limits['max_query_words']}",
             )
 
-        if limits.get("monthly_conversation_limit") and usage.conversations_count >= limits["monthly_conversation_limit"]:
+        if (
+            limits.get("monthly_conversation_limit")
+            and is_new_session
+            and actual_sessions_used >= limits["monthly_conversation_limit"]
+        ):
             raise HTTPException(
                 status_code=403,
-                detail="Monthly conversation limit exceeded",
+                detail={
+                    "message": "Monthly conversation limit exceeded",
+                    "conversations_used": actual_sessions_used,
+                    "conversation_limit": limits["monthly_conversation_limit"],
+                },
             )
 
         if limits.get("monthly_token_limit") and usage.tokens_used >= limits["monthly_token_limit"]:
@@ -161,7 +247,7 @@ async def chat(
             increment_usage(
                 db,
                 user.organization_id,
-                conversations_count=2,
+                conversations_count=1 if is_new_session else 0,
                 messages_count=2,
                 tokens_used=token_usage.get("total_tokens", 0)
             )
@@ -206,12 +292,37 @@ async def chat_stream(
             raise HTTPException(status_code=404, detail="User not found for chat context")
 
         limits = get_effective_limits(db, user.organization_id)
+        subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
         if not limits.get("subscription_active"):
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            if settings.DEV_BYPASS_SUBSCRIPTION_CHECK:
+                logger.warning(
+                    "DEV_BYPASS_SUBSCRIPTION_CHECK enabled for org_id=%s; allowing streamed chat without active subscription",
+                    user.organization_id,
+                )
+                limits = {
+                    **limits,
+                    "subscription_active": True,
+                    "monthly_conversation_limit": None,
+                    "monthly_token_limit": None,
+                    "max_query_words": None,
+                }
+            else:
+                raise HTTPException(status_code=403, detail="Subscription inactive or expired")
 
-        usage = get_or_create_subscription_usage(db, user.organization_id)
-        if not usage:
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+        usage = subscription_usage or get_or_create_usage(db, user.organization_id)
+
+        is_new_session = db.query(Conversation.id).filter(
+            Conversation.organization_id == user.organization_id,
+            Conversation.session_id == message.session_id,
+            Conversation.widget_id == message.widget_id,
+        ).first() is None
+
+        # Self-heal historical overcounting from earlier conversation counter logic.
+        actual_sessions_used = _get_subscription_session_count(db, user.organization_id, subscription_usage) if subscription_usage else _get_monthly_session_count(db, user.organization_id)
+        if subscription_usage and usage.conversations_count and usage.conversations_count > actual_sessions_used:
+            usage.conversations_count = actual_sessions_used
+            db.commit()
+            db.refresh(usage)
 
         word_count = len(message.message.split())
         if limits.get("max_query_words") and word_count > limits["max_query_words"]:
@@ -220,10 +331,18 @@ async def chat_stream(
                 detail=f"Query exceeds max word limit of {limits['max_query_words']}",
             )
 
-        if limits.get("monthly_conversation_limit") and usage.conversations_count >= limits["monthly_conversation_limit"]:
+        if (
+            limits.get("monthly_conversation_limit")
+            and is_new_session
+            and actual_sessions_used >= limits["monthly_conversation_limit"]
+        ):
             raise HTTPException(
                 status_code=403,
-                detail="Monthly conversation limit exceeded",
+                detail={
+                    "message": "Monthly conversation limit exceeded",
+                    "conversations_used": actual_sessions_used,
+                    "conversation_limit": limits["monthly_conversation_limit"],
+                },
             )
 
         if limits.get("monthly_token_limit") and usage.tokens_used >= limits["monthly_token_limit"]:
@@ -247,6 +366,11 @@ async def chat_stream(
             language_label=message.language_label,
             retrieval_message=message.retrieval_message
         )
+
+        is_first_turn = db.query(Conversation.id).filter(
+            Conversation.session_id == message.session_id,
+            Conversation.widget_id == message.widget_id,
+        ).first() is None
 
         def event_generator():
             collected_parts = []
@@ -275,6 +399,12 @@ async def chat_stream(
                             yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(delta)} }}\n\n"
             finally:
                 full_text = "".join(collected_parts)
+                final_text = append_appointment_cta_if_needed(full_text, is_first_turn)
+                if final_text != full_text and final_text.startswith(full_text):
+                    suffix = final_text[len(full_text):]
+                    if suffix:
+                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(suffix)} }}\n\n"
+                full_text = final_text
                 persist_conversation(
                     db,
                     session_id=message.session_id,
@@ -288,7 +418,7 @@ async def chat_stream(
                 increment_usage(
                     db,
                     user.organization_id,
-                    conversations_count=2,
+                    conversations_count=1 if is_new_session else 0,
                     messages_count=2,
                     tokens_used=usage_tokens.get("total_tokens", 0)
                 )
@@ -300,6 +430,64 @@ async def chat_stream(
     except Exception as e:
         logger.error(f"Error in chat stream endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/appointments", response_model=AppointmentBookingResponse)
+async def book_appointment(
+    request: AppointmentBookingRequest,
+    db: Session = Depends(get_db),
+):
+    """Book an appointment for a chat session and widget."""
+    widget_config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == request.widget_id
+    ).first()
+    if not widget_config:
+        raise HTTPException(status_code=400, detail="Invalid widget_id")
+
+    appointment_time = request.appointment_at
+    now = datetime.now(timezone.utc) if appointment_time.tzinfo else datetime.utcnow()
+    if appointment_time <= now:
+        raise HTTPException(status_code=400, detail="Appointment time must be in the future")
+
+    canonical_tz = _canonical_timezone(request.timezone.strip()) if request.timezone else None
+
+    appointment = Appointment(
+        session_id=request.session_id,
+        widget_id=request.widget_id,
+        user_id=widget_config.user_id,
+        organization_id=widget_config.organization_id,
+        name=request.name.strip(),
+        email=str(request.email) if request.email else None,
+        phone=request.phone.strip() if request.phone else None,
+        notes=request.notes.strip() if request.notes else None,
+        timezone=canonical_tz,
+        appointment_at=appointment_time,
+        status="booked",
+    )
+    db.add(appointment)
+    db.commit()
+    db.refresh(appointment)
+
+    appointment_dt = appointment.appointment_at
+    if appointment_dt.tzinfo is None:
+        appointment_dt = appointment_dt.replace(tzinfo=timezone.utc)
+
+    tz_label = canonical_tz or "UTC"
+    try:
+        target_tz = ZoneInfo(tz_label)
+    except Exception:
+        target_tz = timezone.utc
+        tz_label = "UTC"
+
+    local_dt = appointment_dt.astimezone(target_tz)
+    time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
+    return AppointmentBookingResponse(
+        id=appointment.id,
+        session_id=appointment.session_id,
+        widget_id=appointment.widget_id,
+        appointment_at=appointment.appointment_at,
+        message=f"Appointment booked for {time_label} ({tz_label}).",
+    )
 
 
 @router.post("/translate", response_model=TranslateResponse)

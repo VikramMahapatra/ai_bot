@@ -14,8 +14,8 @@ const stats = [
     change: '+12%',
     changeType: 'increase',
     icon: <PeopleAltIcon fontSize="large" />,
-    color: '#269b9f',
-    bgGradient: 'linear-gradient(135deg, #e0f2f7 0%, #b3dfe9 100%)',
+    color: '#2f6bff',
+    bgGradient: 'linear-gradient(135deg, #e7f0ff 0%, #d2e3ff 100%)',
   },
   {
     label: 'Knowledge Sources',
@@ -23,8 +23,8 @@ const stats = [
     change: '+8%',
     changeType: 'increase',
     icon: <MenuBookIcon fontSize="large" />,
-    color: '#2db3a0',
-    bgGradient: 'linear-gradient(135deg, #d9f0ef 0%, #b3dfe9 100%)',
+    color: '#2d8ef0',
+    bgGradient: 'linear-gradient(135deg, #e8f3ff 0%, #d4e9ff 100%)',
   },
   {
     label: 'Active Users',
@@ -32,8 +32,8 @@ const stats = [
     change: '+23%',
     changeType: 'increase',
     icon: <TrendingUpIcon fontSize="large" />,
-    color: '#2ba876',
-    bgGradient: 'linear-gradient(135deg, #e8f5f1 0%, #c8e6dd 100%)',
+    color: '#5e72ff',
+    bgGradient: 'linear-gradient(135deg, #eef1ff 0%, #dde2ff 100%)',
   },
   {
     label: 'AI Bots',
@@ -41,8 +41,8 @@ const stats = [
     change: 'Stable',
     changeType: 'neutral',
     icon: <SmartToyIcon fontSize="large" />,
-    color: '#ffd700',
-    bgGradient: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+    color: '#36c4ff',
+    bgGradient: 'linear-gradient(135deg, #e8f8ff 0%, #d5f0ff 100%)',
   },
 ];
 
@@ -56,11 +56,11 @@ const DashboardCards: React.FC = () => {
               sx={{ 
                 position: 'relative',
                 overflow: 'hidden',
-                boxShadow: '0 4px 20px 0 rgba(38,155,159,0.12)',
+                boxShadow: '0 4px 20px 0 rgba(53,108,255,0.14)',
                 transition: 'all 0.3s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: '0 8px 30px 0 rgba(38,155,159,0.2)',
+                  boxShadow: '0 8px 30px 0 rgba(53,108,255,0.2)',
                 },
                 '&::before': {
                   content: '""',

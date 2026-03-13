@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChatAPI } from './api';
 import './styles.css';
 
@@ -14,10 +14,11 @@ interface WidgetConfig {
   welcomeMessage?: string;
   primaryColor?: string;
   position?: string;
-
   shop?: any;
   user?: any;
 }
+
+const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 const ChatWidget: React.FC<WidgetConfig> = ({
   widgetId,
@@ -27,103 +28,340 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   primaryColor = '#269b9f',
   position = 'bottom-right',
   shop,
-  user
+  user,
 }) => {
-    // Dark mode state for widget
-    const [darkMode, setDarkMode] = useState(false);
+  const storageKey = `chatbot_session_id_${widgetId || 'default'}`;
+
+  const [darkMode, setDarkMode] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
+  const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadForm, setLeadForm] = useState({
     name: '',
     email: '',
     phone: '',
     company: '',
   });
+
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailValue, setEmailValue] = useState('');
   const [emailSending, setEmailSending] = useState(false);
-  const [leadSubmitting, setLeadSubmitting] = useState(false);
+
+  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
+  const [appointmentForm, setAppointmentForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    appointment_at: '',
+    notes: '',
+  });
+
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const storageKey = `chatbot_session_id_${widgetId || 'default'}`;
-  const createSessionId = () => `session_${Date.now()}_${Math.random()}`;
+
   const [sessionId, setSessionId] = useState(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) return stored;
-    const newId = createSessionId();
-    localStorage.setItem(storageKey, newId);
-    return newId;
+    const created = createSessionId();
+    localStorage.setItem(storageKey, created);
+    return created;
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatAPI = useRef(new ChatAPI(apiUrl));
 
+  const shopDomain = useMemo(() => shop?.domain || shop?.shop_domain || undefined, [shop]);
+  const customerId = useMemo(() => user?.id || user?.customer_id || undefined, [user]);
+
+  const showSuggestions =
+    isOpen &&
+    !loading &&
+    !showLeadForm &&
+    !showEmailForm &&
+    !showAppointmentForm &&
+    input.trim().length === 0 &&
+    messages.length <= 1;
+
+  useEffect(() => {
+    chatAPI.current = new ChatAPI(apiUrl);
+  }, [apiUrl]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => {
-    if (isOpen && messages.length === 0 && welcomeMessage) {
-      setMessages([{ role: 'assistant', content: welcomeMessage }]);
+    if (isOpen && messages.length === 0) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: `${welcomeMessage} I can also help you book an appointment.`,
+        },
+      ]);
     }
+  }, [isOpen, messages.length, welcomeMessage]);
+
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      if (!isOpen || !widgetId) return;
+      setSuggestionsLoading(true);
+      try {
+        const questions = await chatAPI.current.getSuggestedQuestions(widgetId);
+        setSuggestedQuestions(questions);
+      } catch {
+        setSuggestedQuestions([]);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    };
+
+    loadSuggestions();
+  }, [isOpen, widgetId]);
+
+  const resetChat = () => {
+    const created = createSessionId();
+    localStorage.setItem(storageKey, created);
+    setSessionId(created);
+    setMessages([
+      {
+        role: 'assistant',
+        content: `${welcomeMessage} I can also help you book an appointment.`,
+      },
+    ]);
+    setInput('');
+    setShowLeadForm(false);
+    setLeadSubmitted(false);
+    setShowEmailForm(false);
+    setEmailValue('');
+    setShowAppointmentForm(false);
+  };
+
+  const sendMessage = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || loading) return;
+
+    if (!overrideText) {
+      setInput('');
+    }
+    setLoading(true);
+    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+
+    try {
+      const response = await chatAPI.current.sendMessage(
+        text,
+        sessionId,
+        widgetId,
+        shopDomain,
+        customerId ? String(customerId) : undefined
+      );
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: response?.response || 'I could not generate a response right now.',
+        },
+      ]);
+
+      try {
+        const shouldCapture = await chatAPI.current.shouldCaptureLead(sessionId, widgetId);
+        if (shouldCapture && !leadSubmitted) {
+          setShowLeadForm(true);
+        }
+      } catch {
+        // Ignore lead-capture check failures.
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Sorry, something went wrong. Please try again.',
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleSend = () => {
+    sendMessage();
+  };
+
+  const handleLeadSubmit = async () => {
+    if (leadSubmitting) return;
+    if (!leadForm.name.trim() && !leadForm.email.trim() && !leadForm.phone.trim()) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Please add at least one contact field so we can follow up.' },
+      ]);
+      return;
+    }
+
+    setLeadSubmitting(true);
+    try {
+      await chatAPI.current.submitLead({
+        session_id: sessionId,
+        widget_id: widgetId,
+        name: leadForm.name.trim() || undefined,
+        email: leadForm.email.trim() || undefined,
+        phone: leadForm.phone.trim() || undefined,
+        company: leadForm.company.trim() || undefined,
+      });
+
+      setLeadSubmitted(true);
+      setShowLeadForm(false);
+      setLeadForm({ name: '', email: '', phone: '', company: '' });
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Thanks. Your details have been received.' },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Sorry, failed to submit your details. Please try again.' },
+      ]);
+    } finally {
+      setLeadSubmitting(false);
+    }
+  };
+
+  const handleEmailSubmit = async () => {
+    if (!emailValue.trim() || emailSending) return;
+    setEmailSending(true);
+    try {
+      await chatAPI.current.emailConversation(sessionId, emailValue.trim(), widgetId);
+      setShowEmailForm(false);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Transcript sent to ${emailValue.trim()}.` },
+      ]);
+      setEmailValue('');
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Sorry, failed to send the transcript. Please try again.' },
+      ]);
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const openAppointmentForm = () => {
+    if (!appointmentForm.appointment_at) {
+      const seed = new Date(Date.now() + 60 * 60 * 1000);
+      const localDate = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      setAppointmentForm((prev) => ({ ...prev, appointment_at: localDate, name: prev.name || leadForm.name }));
+    }
+    setShowAppointmentForm(true);
+  };
+
+  const handleAppointmentSubmit = async () => {
+    if (appointmentSubmitting) return;
+    if (!appointmentForm.name.trim() || !appointmentForm.appointment_at) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Please share your name and preferred appointment time.' },
+      ]);
+      return;
+    }
+
+    const selectedDate = new Date(appointmentForm.appointment_at);
+    if (Number.isNaN(selectedDate.getTime())) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'The selected appointment time is invalid. Please try again.' },
+      ]);
+      return;
+    }
+
+    setAppointmentSubmitting(true);
+    try {
+      const result = await chatAPI.current.bookAppointment({
+        session_id: sessionId,
+        widget_id: widgetId,
+        appointment_at: selectedDate.toISOString(),
+        name: appointmentForm.name.trim(),
+        email: appointmentForm.email.trim() || undefined,
+        phone: appointmentForm.phone.trim() || undefined,
+        notes: appointmentForm.notes.trim() || undefined,
+        timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
+      });
+
+      setShowAppointmentForm(false);
+      setAppointmentForm({
+        name: appointmentForm.name,
+        email: appointmentForm.email,
+        phone: appointmentForm.phone,
+        appointment_at: '',
+        notes: '',
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: result?.message || `Appointment booked for ${selectedDate.toLocaleString()}.`,
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Sorry, we could not book your appointment right now. Please try again.',
+        },
+      ]);
+    } finally {
+      setAppointmentSubmitting(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   return (
     <div
       className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
       style={{ '--primary-color': primaryColor } as React.CSSProperties}
     >
-      {/* Floating button with fade-in animation */}
       {!isOpen && (
-        <button
-          className="chatbot-widget-button chatbot-fade-in"
-          onClick={() => setIsOpen(true)}
-          style={{ background: primaryColor }}
-        >
+        <button className="chatbot-widget-button chatbot-fade-in" onClick={() => setIsOpen(true)} style={{ background: primaryColor }}>
           💬
         </button>
       )}
 
-      {/* Chat window with slide/fade animation */}
       {isOpen && (
         <div className="chatbot-widget-window chatbot-slide-in">
-          <div
-            className="chatbot-widget-header"
-            style={{ background: primaryColor }}
-          >
+          <div className="chatbot-widget-header" style={{ background: primaryColor }}>
             <h3>{name}</h3>
             <div className="chatbot-widget-header-actions">
-              <button
-                className="chatbot-widget-header-btn"
-                onClick={resetChat}
-                title="New chat"
-              >
-                ⟳
-              </button>
-              <button
-                className="chatbot-widget-header-btn"
-                onClick={() => setShowEmailForm((v) => !v)}
-                title="Email this conversation"
-              >
-                ✉
-              </button>
+              <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>
+              <button className="chatbot-widget-header-btn" onClick={() => setShowEmailForm((v) => !v)} title="Email this conversation">✉</button>
+              <button className="chatbot-widget-header-btn" onClick={openAppointmentForm} title="Book appointment">📅</button>
               <button
                 className="chatbot-widget-header-btn"
                 onClick={() => setDarkMode((d) => !d)}
                 title={darkMode ? 'Light mode' : 'Dark mode'}
-                style={{ fontSize: 18 }}
+                style={{ fontSize: 16 }}
               >
-                {darkMode ? '🌙' : '☀️'}
+                {darkMode ? '🌙' : '☀'}
               </button>
-              <button
-                className="chatbot-widget-close"
-                onClick={() => setIsOpen(false)}
-              >
-                ×
-              </button>
+              <button className="chatbot-widget-close" onClick={() => setIsOpen(false)}>×</button>
             </div>
           </div>
 
@@ -132,9 +370,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               <div className="chatbot-suggestions">
                 <div className="chatbot-suggestions-title">Try asking</div>
                 <div className="chatbot-suggestions-list">
-                  {suggestionsLoading && (
-                    <div className="chatbot-suggestions-loading">Loading suggestions…</div>
-                  )}
+                  {suggestionsLoading && <div className="chatbot-suggestions-loading">Loading suggestions...</div>}
                   {!suggestionsLoading && suggestedQuestions.map((question, index) => (
                     <button
                       key={`${question}-${index}`}
@@ -168,174 +404,13 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ...existing code for input, lead form, footer... */}
-          {showLeadForm && (
-            <div className="chatbot-inline-card chatbot-fade-in">
-              {/* ...lead form fields... */}
-            </div>
-          )}
-          <div className="chatbot-widget-footer">
-            Powered by Zentrixel AI
-          </div>
-        </div>
-      )}
-    </div>
-  );
-        session_id: sessionId,
-        widget_id: widgetId,
-        name: leadForm.name,
-        email: leadForm.email,
-        phone: leadForm.phone,
-        company: leadForm.company,
-      });
-      // <-- Add missing semicolon after API call
-      setLeadSubmitted(true);
-      setShowLeadForm(false);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Thanks! Your details have been received.' },
-      ]);
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Sorry, failed to submit your details. Please try again.' },
-      ]);
-    } finally {
-      setLeadSubmitting(false);
-    }
-  };
-
-  const handleEmailSubmit = async () => {
-    if (!emailValue.trim() || emailSending) return;
-    setEmailSending(true);
-    try {
-      await chatAPI.current.emailConversation(sessionId, emailValue.trim(), widgetId);
-      setShowEmailForm(false);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: `Transcript sent to ${emailValue.trim()}.` },
-      ]);
-      setEmailValue('');
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Sorry, failed to send the transcript. Please try again.' },
-      ]);
-    } finally {
-      setEmailSending(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const showSuggestions =
-    isOpen &&
-    !loading &&
-    !showLeadForm &&
-    !showEmailForm &&
-    input.trim().length === 0 &&
-    messages.length <= 1;
-
-  return (
-    <div
-      className={`chatbot-widget-container ${position}`}
-      style={{ '--primary-color': primaryColor } as React.CSSProperties}
-    >
-      {!isOpen && (
-        <button
-          className="chatbot-widget-button"
-          onClick={() => setIsOpen(true)}
-          style={{ background: primaryColor }}
-        >
-          💬
-        </button>
-      )}
-
-      {isOpen && (
-        <div className="chatbot-widget-window">
-          <div
-            className="chatbot-widget-header"
-            style={{ background: primaryColor }}
-          >
-            <h3>{name}</h3>
-            <div className="chatbot-widget-header-actions">
-              <button
-                className="chatbot-widget-header-btn"
-                onClick={resetChat}
-                title="New chat"
-              >
-                ⟳
-              </button>
-              <button
-                className="chatbot-widget-header-btn"
-                onClick={() => setShowEmailForm((v) => !v)}
-                title="Email this conversation"
-              >
-                ✉
-              </button>
-              <button
-                className="chatbot-widget-close"
-                onClick={() => setIsOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-          </div>
-
-          <div className="chatbot-widget-messages">
-            {showSuggestions && (suggestionsLoading || suggestedQuestions.length > 0) && (
-              <div className="chatbot-suggestions">
-                <div className="chatbot-suggestions-title">Try asking</div>
-                <div className="chatbot-suggestions-list">
-                  {suggestionsLoading && (
-                    <div className="chatbot-suggestions-loading">Loading suggestions…</div>
-                  )}
-                  {!suggestionsLoading && suggestedQuestions.map((question, index) => (
-                    <button
-                      key={`${question}-${index}`}
-                      className="chatbot-suggestion-chip"
-                      onClick={() => sendMessage(question)}
-                    >
-                      {question}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {messages.map((message, index) => (
-              <div key={index} className={`chatbot-message ${message.role}`}>
-                <div className="chatbot-message-bubble">{message.content}</div>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="chatbot-message assistant">
-                <div className="chatbot-message-bubble">
-                  <div className="chatbot-typing">
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
           <div className="chatbot-widget-input-container">
             <input
               type="text"
               className="chatbot-widget-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder="Type your message..."
               disabled={loading}
               ref={inputRef}
@@ -351,7 +426,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           </div>
 
           {showEmailForm && (
-            <div className="chatbot-inline-card">
+            <div className="chatbot-inline-card chatbot-fade-in">
               <div className="chatbot-inline-title">Email Conversation</div>
               <input
                 type="email"
@@ -367,7 +442,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   disabled={emailSending || !emailValue.trim()}
                   style={{ background: primaryColor }}
                 >
-                  {emailSending ? 'Sending…' : 'Send'}
+                  {emailSending ? 'Sending...' : 'Send'}
                 </button>
                 <button
                   className="chatbot-inline-button secondary"
@@ -380,8 +455,65 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             </div>
           )}
 
+          {showAppointmentForm && (
+            <div className="chatbot-inline-card chatbot-fade-in">
+              <div className="chatbot-inline-title">Book Appointment</div>
+              <input
+                type="text"
+                className="chatbot-inline-input"
+                placeholder="Name"
+                value={appointmentForm.name}
+                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                type="email"
+                className="chatbot-inline-input"
+                placeholder="Email"
+                value={appointmentForm.email}
+                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, email: e.target.value }))}
+              />
+              <input
+                type="tel"
+                className="chatbot-inline-input"
+                placeholder="Phone"
+                value={appointmentForm.phone}
+                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, phone: e.target.value }))}
+              />
+              <input
+                type="datetime-local"
+                className="chatbot-inline-input"
+                value={appointmentForm.appointment_at}
+                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_at: e.target.value }))}
+              />
+              <input
+                type="text"
+                className="chatbot-inline-input"
+                placeholder="Notes"
+                value={appointmentForm.notes}
+                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
+              />
+              <div className="chatbot-inline-actions">
+                <button
+                  className="chatbot-inline-button"
+                  onClick={handleAppointmentSubmit}
+                  disabled={appointmentSubmitting}
+                  style={{ background: primaryColor }}
+                >
+                  {appointmentSubmitting ? 'Booking...' : 'Confirm'}
+                </button>
+                <button
+                  className="chatbot-inline-button secondary"
+                  onClick={() => setShowAppointmentForm(false)}
+                  disabled={appointmentSubmitting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {showLeadForm && (
-            <div className="chatbot-inline-card">
+            <div className="chatbot-inline-card chatbot-fade-in">
               <div className="chatbot-inline-title">Stay in touch</div>
               <input
                 type="text"
@@ -418,7 +550,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   disabled={leadSubmitting}
                   style={{ background: primaryColor }}
                 >
-                  {leadSubmitting ? 'Submitting…' : 'Submit'}
+                  {leadSubmitting ? 'Submitting...' : 'Submit'}
                 </button>
                 <button
                   className="chatbot-inline-button secondary"
@@ -431,9 +563,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             </div>
           )}
 
-          <div className="chatbot-widget-footer">
-            Powered by Zentrixel AI
-          </div>
+          <div className="chatbot-widget-footer">Powered by Zentrixel AI</div>
         </div>
       )}
     </div>

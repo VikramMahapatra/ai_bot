@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
-from backend.app.database import Base
+from app.database import Base
 
 
 class CallLog(Base):
@@ -26,7 +26,7 @@ class CallLog(Base):
     end_time = Column(DateTime)
     audio_url = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     transcripts = relationship("CallTranscript", back_populates="call_log")
     
     

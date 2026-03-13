@@ -1,4 +1,5 @@
 import React from 'react';
+import { alpha } from '@mui/material/styles';
 import {
   Drawer,
   List,
@@ -21,7 +22,7 @@ import InsightsIcon from '@mui/icons-material/Insights';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 
-const drawerWidth = 260;
+const drawerWidth = 274;
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -46,24 +47,49 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
   const location = useLocation();
   const { user } = useAuth();
 
+  const resetScrollPosition = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    document.querySelectorAll<HTMLElement>('[data-scroll-reset="true"]').forEach((el) => {
+      el.scrollTop = 0;
+    });
+  };
+
   const handleNavigation = (path: string) => {
-    navigate(path);
+    resetScrollPosition();
+    if (location.pathname !== path) {
+      navigate(path);
+    }
     if (onMobileClose) {
       onMobileClose();
     }
   };
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
-      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: 'background.paper',
+        background: (theme) =>
+          `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.94)} 0%, ${alpha(
+            theme.palette.primary.main,
+            0.08
+          )} 100%)`,
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      <Box sx={{ p: 2.4, display: 'flex', alignItems: 'center', gap: 1.6 }}>
+        <Avatar sx={{ width: 42, height: 42, background: 'linear-gradient(135deg, #366dff 0%, #36c4ff 100%)' }}>
           <AdminPanelSettingsIcon fontSize="large" />
         </Avatar>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main', lineHeight: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1, fontSize: '1.05rem' }}>
             Zentrixel AI
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
             Super Admin Console
           </Typography>
         </Box>
@@ -71,7 +97,7 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
 
       <Divider />
 
-      <Box sx={{ px: 2, py: 2 }}>
+      <Box sx={{ px: 1.8, py: 1.4 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
             {user?.username || 'superadmin'}
@@ -91,7 +117,35 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
 
       <Divider />
 
-      <List sx={{ flexGrow: 1, px: 2, py: 2 }}>
+      <List
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          px: 1.8,
+          py: 1.6,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.6,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(54,109,255,0.78) rgba(54,109,255,0.14)',
+          '&::-webkit-scrollbar': {
+            width: 10,
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: 'rgba(54,109,255,0.14)',
+            borderRadius: 10,
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'rgba(54,109,255,0.7)',
+            borderRadius: 10,
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            backgroundColor: 'rgba(54,109,255,0.9)',
+          },
+        }}
+      >
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -100,16 +154,21 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
                 <ListItemButton
                   onClick={() => handleNavigation(item.path)}
                   sx={{
-                    borderRadius: 2,
-                    bgcolor: isActive ? 'primary.main' : 'transparent',
-                    color: isActive ? 'white' : 'text.primary',
+                    borderRadius: 2.2,
+                    border: (theme) =>
+                      `1px solid ${isActive ? alpha(theme.palette.primary.main, 0.44) : alpha(theme.palette.primary.main, 0.14)}`,
+                    background: isActive
+                      ? 'linear-gradient(90deg, rgba(54,109,255,0.18) 0%, rgba(54,196,255,0.18) 100%)'
+                      : 'transparent',
+                    color: 'text.primary',
                     '&:hover': {
-                      bgcolor: isActive ? 'primary.dark' : 'action.hover',
+                      background: 'linear-gradient(90deg, rgba(54,109,255,0.12) 0%, rgba(54,196,255,0.14) 100%)',
+                      borderColor: 'primary.main',
                     },
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  <ListItemIcon sx={{ color: isActive ? 'white' : 'primary.main', minWidth: 40 }}>
+                  <ListItemIcon sx={{ color: isActive ? 'primary.main' : 'text.secondary', minWidth: 38 }}>
                     {item.icon}
                   </ListItemIcon>
                   <ListItemText
@@ -117,6 +176,7 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
                     primaryTypographyProps={{
                       fontWeight: isActive ? 600 : 500,
                       fontSize: '0.95rem',
+                      color: isActive ? 'primary.main' : 'text.primary',
                     }}
                   />
                 </ListItemButton>
@@ -139,8 +199,7 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
-            borderRight: '1px solid',
-            borderColor: 'divider',
+            borderRight: 'none',
           },
         }}
       >

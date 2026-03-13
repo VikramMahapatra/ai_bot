@@ -4,7 +4,7 @@ from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, J
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from backend.app.database import Base
+from app.database import Base
 
 
 class CallingAgent(Base):
@@ -42,7 +42,7 @@ class CallingAgent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    campaigns = relationship("Campaign", back_populates="agent")
+    campaigns = relationship("CallCampaign", back_populates="agent")
     
     
     

@@ -24,24 +24,20 @@ import {
   Alert,
   IconButton,
   Tooltip,
-  Paper,
+  Typography,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import AdminLayout from '../components/Layout/AdminLayout';
 import { useAuth } from '../context/AuthContext';
-import { organizationService } from '../services/organizationService';
+import { organizationService, type User as OrganizationUser } from '../services/organizationService';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: 'ADMIN' | 'USER';
-  is_active: boolean;
-  organization_id: number;
+interface User extends OrganizationUser {
+  organization_id?: number;
 }
 
 interface CreateUserData {
@@ -52,6 +48,7 @@ interface CreateUserData {
 }
 
 const UserManagementPage: React.FC = () => {
+  const theme = useTheme();
   const { isAdmin, organizationId } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,26 +196,68 @@ const UserManagementPage: React.FC = () => {
     <AdminLayout>
       <Box sx={{ p: 3 }}>
         {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <div>
-            <h1 style={{ margin: '0 0 8px 0', color: '#269b9f' }}>User Management</h1>
-            <p style={{ margin: 0, color: '#999', fontSize: '14px' }}>
+        <Card
+          sx={{
+            mb: 3,
+            p: { xs: 2, md: 2.3 },
+            borderRadius: '22px',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
+            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.84
+            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+              pointerEvents: 'none',
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: '-24%',
+              right: '-6%',
+              width: '42%',
+              height: '150%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+              pointerEvents: 'none',
+            },
+            '& > *': {
+              position: 'relative',
+              zIndex: 1,
+            },
+          }}
+        >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.8 }}>
+              User Management
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Create and manage users in your organization
-            </p>
-          </div>
+            </Typography>
+          </Box>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => handleOpenDialog()}
             sx={{
-              background: 'linear-gradient(135deg, #269b9f 0%, #2db3a0 100%)',
+              background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
               textTransform: 'none',
-              fontWeight: 600,
+              borderRadius: 2,
+              fontWeight: 700,
+              boxShadow: '0 12px 20px rgba(45,122,240,0.28)',
             }}
           >
             Create User
           </Button>
         </Box>
+        </Card>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -227,7 +266,7 @@ const UserManagementPage: React.FC = () => {
         )}
 
         {/* Users Table */}
-        <Card>
+        <Card sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}>
           <CardContent sx={{ p: 0 }}>
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -241,12 +280,12 @@ const UserManagementPage: React.FC = () => {
               <TableContainer>
                 <Table>
                   <TableHead>
-                    <TableRow sx={{ bgcolor: '#f5f5f5', borderBottom: '2px solid #e0e0e0' }}>
-                      <TableCell sx={{ fontWeight: 600, color: '#269b9f' }}>Username</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#269b9f' }}>Email</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#269b9f' }}>Role</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#269b9f' }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 600, color: '#269b9f' }} align="right">
+                    <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}` }}>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Username</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Email</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Role</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }} align="right">
                         Actions
                       </TableCell>
                     </TableRow>
@@ -256,8 +295,8 @@ const UserManagementPage: React.FC = () => {
                       <TableRow
                         key={user.id}
                         sx={{
-                          '&:hover': { bgcolor: '#f9f9f9' },
-                          borderBottom: '1px solid #e0e0e0',
+                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
                         }}
                       >
                         <TableCell sx={{ fontWeight: 500 }}>{user.username}</TableCell>
@@ -284,7 +323,7 @@ const UserManagementPage: React.FC = () => {
                             <IconButton
                               size="small"
                               onClick={() => handleOpenDialog(user)}
-                              sx={{ color: '#269b9f' }}
+                              sx={{ color: 'primary.main' }}
                             >
                               <EditIcon fontSize="small" />
                             </IconButton>
@@ -319,7 +358,7 @@ const UserManagementPage: React.FC = () => {
 
         {/* Create/Edit User Dialog */}
         <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ bgcolor: '#f5f5f5', fontWeight: 600, color: '#269b9f' }}>
+          <DialogTitle sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700, color: 'primary.main' }}>
             {editingUser ? 'Edit User' : 'Create New User'}
           </DialogTitle>
           <DialogContent sx={{ pt: 3 }}>
@@ -367,7 +406,7 @@ const UserManagementPage: React.FC = () => {
             <Button
               onClick={editingUser ? handleUpdateUser : handleCreateUser}
               variant="contained"
-              sx={{ background: 'linear-gradient(135deg, #269b9f 0%, #2db3a0 100%)' }}
+              sx={{ background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)', fontWeight: 700, textTransform: 'none' }}
             >
               {editingUser ? 'Update' : 'Create'}
             </Button>
@@ -379,3 +418,5 @@ const UserManagementPage: React.FC = () => {
 };
 
 export default UserManagementPage;
+
+

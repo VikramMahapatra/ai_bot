@@ -21,3 +21,10 @@ class CampaignUpdate(BaseModel):
     agent_id: Optional[str] = None
     contacts: Optional[List[str]] = None
     schedule: Optional[dict] = None
+    
+    
+class ContactCreate(BaseModel):
+    name: str | None
+    email: str | None
+    phone: str | None
+    contact_list_id: int

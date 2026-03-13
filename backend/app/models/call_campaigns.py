@@ -2,10 +2,10 @@ from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, J
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from backend.app.database import Base
+from app.database import Base
 
-class Campaign(Base):
-    __tablename__ = "campaigns"
+class CallCampaign(Base):
+    __tablename__ = "call_campaigns"
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
@@ -14,7 +14,7 @@ class Campaign(Base):
     category = Column(String)
     priority = Column(String)
     status = Column(String, default="Draft")
-    agent_id = Column(int, ForeignKey("calling_agents.id"))
+    agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)
