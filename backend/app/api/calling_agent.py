@@ -77,3 +77,12 @@ def update_agent_status(
     db: Session = Depends(get_db)
 ):
     return service.update_agent_status(db, agent_id, data)
+
+
+@router.get("/lookup")
+def get_agent_lookup(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.agent_lookup(db, current_user.organization_id, search)

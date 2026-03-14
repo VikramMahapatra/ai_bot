@@ -247,3 +247,30 @@ def update_agent_status(
         "agent_id": agent.id,
         "status": agent.status
     }
+    
+    
+# Agent Lookup
+def agent_lookup(
+    db: Session, 
+    organization_id: int,
+    search: Optional[str] = None):
+
+    query = db.query(
+        CallingAgent.id,
+        CallingAgent.name
+    ).filter(CallingAgent.organization_id == organization_id)
+
+    if search:
+        query = query.filter(
+            CallingAgent.name.ilike(f"%{search}%")
+        )
+
+    agents = query.order_by(CallingAgent.name.asc()).all()
+
+    return [
+        {
+            "id": agent.id,
+            "name": agent.name
+        }
+        for agent in agents
+    ]
