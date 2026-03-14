@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from app.database import get_db
 from sqlalchemy.orm import Session
-from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCreate
+from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactByIdsRequest, ContactCreate
 from app.services import call_campaign_service as service
 from app.models.user import User
 from app.auth import get_current_user
@@ -25,11 +25,19 @@ def list_campaigns(
     db: Session = Depends(get_db)):
     return service.list_campaigns(db, search, skip, limit)
 
-@router.post("/create") 
-def create_campaign( data: CampaignCreate, db: Session = Depends(get_db)):
-    return service.create_campaign(db, data)
+@router.get("/{campaign_id:int}")
+def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
+    return service.get_campaign(db, campaign_id)
 
-@router.put("/{campaign_id:int}/update")
+@router.post("/create") 
+def create_campaign( 
+    data: CampaignCreate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.create_campaign(db,current_user.organization_id, data)
+
+@router.put("/update/{campaign_id:int}")
 def update_campaign(
     campaign_id: int,
     data: CampaignUpdate,
@@ -45,6 +53,10 @@ def delete_campaign(
 ):
     return service.delete_campaign(db, campaign_id)
 
+@router.post("/contacts/by-ids")
+def get_contacts_by_ids(params: ContactByIdsRequest, db: Session = Depends(get_db)):
+    return service.get_contacts_by_ids(db, params.ids)
+
 @router.get("/contacts")
 def get_contacts(
     search: Optional[str] = None,
@@ -52,6 +64,10 @@ def get_contacts(
     limit: int = 50,
     db: Session = Depends(get_db)):
     return service.get_contacts(db, search, skip, limit)
+
+@router.get("/contacts/lookup")
+def contacts_lookup(db: Session = Depends(get_db)):
+    return service.get_contacts_lookup(db)
 
 @router.get("/contact-lists")
 def get_contact_lists(db: Session = Depends(get_db)):

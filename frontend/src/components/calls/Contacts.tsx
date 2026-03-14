@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { alpha, useTheme } from '@mui/material/styles';
 import {
     Grid,
     Button,
@@ -15,25 +16,28 @@ import {
     Box,
     TextField,
     Autocomplete,
-    MenuItem
+    MenuItem,
+    Alert,
+    Stack
 } from "@mui/material";
 import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
 
 interface ContactsProps {
+    form: any;
+    setForm: any;
+    campaignContacts: Contact[];
+    setCampaignContacts: React.Dispatch<React.SetStateAction<Contact[]>>;
     nextStep: () => void;
     prevStep: () => void;
 }
 
-const crmContacts = [
-    { label: "Rohit Patil - +919989821211" },
-    { label: "Amit Sharma - +919812345678" }
-];
 
-const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
+const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextStep, prevStep }: ContactsProps) => {
 
     const [openAdd, setOpenAdd] = useState(false);
     const [mode, setMode] = useState<"crm" | "csv" | null>(null);
     const [contactLists, setContactLists] = useState<ContactList[]>([]);
+    const [crmContacts, setCrmContacts] = useState<Contact[]>([]);
     const [openNewContact, setOpenNewContact] = useState(false);
     const [contactForm, setContactForm] = useState({
         name: "",
@@ -42,8 +46,27 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
         contact_list_id: ""
     });
 
-
     const [errors, setErrors] = useState<any>({});
+    const [contactError, setContactError] = useState("");
+    const theme = useTheme();
+    const [dialogContacts, setDialogContacts] = useState<Contact[]>([]);
+
+    const handleAddContacts = () => {
+        const existingIds = campaignContacts.map(c => c.id);
+
+        const newContacts = dialogContacts.filter(
+            c => !existingIds.includes(c.id)
+        );
+
+        setCampaignContacts(prev => [...prev, ...newContacts]);
+
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: [...prev.contacts, ...newContacts.map(c => c.id)]
+        }));
+        setOpenAdd(false);
+    };
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -59,9 +82,16 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
         setContactLists(data || []);
     };
 
+    const loadExistingContacts = async () => {
+        const data = await callCampaignService.getContactLookup();
+        setCrmContacts(data || []);
+    };
+
+
     useEffect(() => {
         loadContactLists();
-    }, []);
+        loadExistingContacts();
+    }, [form]);
 
 
     const validate = () => {
@@ -104,6 +134,21 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
         }
     };
 
+    const handleCloseDialog = () => {
+        setOpenAdd(false);
+        setMode(null)
+    };
+
+    const handleContinue = () => {
+        if (form.contacts.length === 0) {
+            setContactError("Please add at least one contact");
+            return;
+        }
+
+        setContactError("");
+        nextStep();
+    };
+
     const resetForm = () => {
         setContactForm({
             name: "",
@@ -114,6 +159,12 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
 
         setErrors({});
         setOpenNewContact(false);
+    };
+
+    const handleOpenAddContacts = () => {
+        setDialogContacts(campaignContacts); // preload selected contacts
+        setOpenAdd(true);
+        setMode(null);
     };
 
     return (
@@ -135,10 +186,7 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
 
                 <Button
                     variant="contained"
-                    onClick={() => {
-                        setOpenAdd(true);
-                        setMode(null);
-                    }}
+                    onClick={handleOpenAddContacts}
                 >
                     Add Contacts
                 </Button>
@@ -148,24 +196,41 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
             {/* CONTACT TABLE */}
 
             <Grid item xs={12}>
+                <Stack
+                    mb={2}
+                >
+                    {contactError && (
+                        <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
+                            {contactError}
+                        </Alert>
+                    )}
+                </Stack>
                 <Table>
 
                     <TableHead>
                         <TableRow>
                             <TableCell>Name</TableCell>
                             <TableCell>Phone</TableCell>
-                            <TableCell>City</TableCell>
-                            <TableCell>Status</TableCell>
+                            <TableCell>Email</TableCell>
                         </TableRow>
                     </TableHead>
 
                     <TableBody>
-                        <TableRow>
-                            <TableCell>Roh Patil</TableCell>
-                            <TableCell>+919989821211</TableCell>
-                            <TableCell>Mumbai</TableCell>
-                            <TableCell>Draft</TableCell>
-                        </TableRow>
+                        {campaignContacts.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={3} align="center">
+                                    No contacts added
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            campaignContacts.map((contact: any, index: number) => (
+                                <TableRow key={index}>
+                                    <TableCell>{contact.name}</TableCell>
+                                    <TableCell>{contact.phone}</TableCell>
+                                    <TableCell>{contact.email}</TableCell>
+                                </TableRow>
+                            ))
+                        )}
                     </TableBody>
 
                 </Table>
@@ -178,7 +243,9 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
             </Grid>
 
             <Grid item xs={6} textAlign="right">
-                <Button variant="contained" onClick={nextStep}>
+                <Button variant="contained"
+                    onClick={handleContinue}
+                >
                     Continue
                 </Button>
             </Grid>
@@ -225,11 +292,12 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
                             <Autocomplete
                                 multiple
                                 options={crmContacts}
+                                getOptionLabel={(option: Contact) => option.label ?? ""}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                value={dialogContacts}
+                                onChange={(event, newValue) => setDialogContacts(newValue)}
                                 renderInput={(params) => (
-                                    <TextField
-                                        {...params}
-                                        label="Select Contacts"
-                                    />
+                                    <TextField {...params} label="Select Contacts" />
                                 )}
                             />
 
@@ -250,8 +318,8 @@ const Contacts = ({ nextStep, prevStep }: ContactsProps) => {
                 </DialogContent>
 
                 <DialogActions>
-                    <Button onClick={() => setMode(null)}>Back</Button>
-                    <Button variant="contained" onClick={() => setOpenAdd(false)}>
+                    <Button onClick={handleCloseDialog}>Back</Button>
+                    <Button variant="contained" onClick={handleAddContacts}>
                         Done
                     </Button>
                 </DialogActions>

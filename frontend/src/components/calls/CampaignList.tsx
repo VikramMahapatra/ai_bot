@@ -32,6 +32,7 @@ import { useEffect, useState } from "react";
 
 interface Props {
     onAddCampaign: () => void;
+    onEditCampaign: (id?: number) => void;
 }
 
 const campaigns = [
@@ -74,7 +75,7 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const CampaignList: React.FC<Props> = ({ onAddCampaign }) => {
+const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
 
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [campaignTotal, setCampaignTotal] = useState(0);
@@ -372,11 +373,14 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign }) => {
 
                                     <TableCell align="right">
 
-                                        <IconButton size="small">
+                                        {/* <IconButton size="small">
                                             <VisibilityIcon />
-                                        </IconButton>
+                                        </IconButton> */}
 
-                                        <IconButton size="small">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => onEditCampaign(campaign.id)}
+                                        >
                                             <EditIcon />
                                         </IconButton>
 

@@ -14,6 +14,11 @@ export interface CallingAgent {
     created_at: Date
 }
 
+export interface CallingAgentLookup {
+    id?: number
+    name: string
+}
+
 export interface CallingAgentFilters {
     search?: string
     skip?: number
@@ -45,6 +50,11 @@ export const callingAgentService = {
 
     async allCallingAgents(params: CallingAgentFilters = {}): Promise<CallingAgentListResponse> {
         const response = await api.get('/api/calling-agent/all', { params });
+        return response.data;
+    },
+
+    async agentLookup(): Promise<CallingAgentLookup[]> {
+        const response = await api.get<CallingAgentLookup[]>('/api/calling-agent/lookup');
         return response.data;
     },
 
