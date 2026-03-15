@@ -7,15 +7,17 @@ import socket
 import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.utils import make_msgid
+from email.utils import make_msgid, formatdate
 from datetime import datetime
 from html import unescape
 import dns.resolver
 from email_validator import EmailNotValidError, validate_email
+from typing import Iterable, Optional
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 SMTP_TIMEOUT_SECONDS = 20
+RESERVED_TEST_DOMAINS = {"example.com", "example.org", "example.net", "test.com", "localhost", "local"}
 
 
 # def _open_smtp_server():
@@ -60,6 +62,14 @@ def _validate_email_address(value: str) -> tuple[str | None, str | None]:
         return normalized, None
     except EmailNotValidError as exc:
         return None, str(exc)
+
+
+def _is_reserved_test_email(email: str) -> bool:
+    """Treat known placeholder/test domains as non-deliverable recipients."""
+    if not email or "@" not in email:
+        return False
+    domain = email.rsplit("@", 1)[-1].strip().lower()
+    return domain in RESERVED_TEST_DOMAINS
 
 
 def _is_reputation_or_blocklist_rejection(rcpt_message: str) -> bool:
@@ -561,4 +571,133 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
     except Exception as e:
         logger.error("Failed campaign email to %s: %s", normalized_email, str(e), exc_info=True)
         return False, str(e)
+
+
+def send_appointment_rescheduled_notification(
+    recipients: Iterable[str],
+    participant_name: str,
+    participant_email: Optional[str],
+    appointment_time_label: str,
+    timezone_label: str,
+    previous_time_label: Optional[str] = None,
+    meeting_link: Optional[str] = None,
+    widget_name: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> tuple[bool, list[str]]:
+    """Send appointment reschedule notifications to participant and escalation/admin contacts."""
+    unique_recipients: list[str] = []
+    seen: set[str] = set()
+
+    for raw_email in recipients or []:
+        normalized_email, validation_error = _validate_email_address(str(raw_email or "").strip())
+        if not normalized_email:
+            if raw_email:
+                logger.warning("Skipping invalid reschedule recipient %s: %s", raw_email, validation_error)
+            continue
+        if _is_reserved_test_email(normalized_email):
+            logger.info("Skipping placeholder/test reschedule recipient: %s", normalized_email)
+            continue
+        key = normalized_email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_recipients.append(normalized_email)
+
+    if not unique_recipients:
+        return False, ["No valid recipients found for appointment reschedule notification"]
+
+    safe_name = _escape_html((participant_name or "Participant").strip() or "Participant")
+    safe_participant_email = _escape_html((participant_email or "-").strip() or "-")
+    safe_widget = _escape_html((widget_name or "AI Assistant").strip() or "AI Assistant")
+    safe_time = _escape_html(appointment_time_label)
+    safe_tz = _escape_html(timezone_label)
+    safe_meet_link = _escape_html((meeting_link or "https://meet.google.com/new").strip() or "https://meet.google.com/new")
+    safe_notes = _escape_html((notes or "").strip())
+    safe_previous = _escape_html(previous_time_label) if previous_time_label else None
+
+    html_parts = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset=\"UTF-8\"></head>",
+        "<body style=\"margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif;background:#f4f7fb;color:#1f2937;\">",
+        "<div style=\"max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;\">",
+        "<div style=\"padding:20px 24px;background:linear-gradient(130deg,#2563eb,#1d4ed8);color:#ffffff;\">",
+        "<h2 style=\"margin:0;font-size:20px;\">Appointment Rescheduled</h2>",
+        "</div>",
+        "<div style=\"padding:22px 24px;font-size:14px;line-height:1.65;\">",
+        f"<p style=\"margin-top:0;\">The appointment for <strong>{safe_name}</strong> has been rescheduled.</p>",
+        f"<p><strong>Agent:</strong> {safe_widget}<br>",
+        f"<strong>Participant Email:</strong> {safe_participant_email}<br>",
+        f"<strong>New Time:</strong> {safe_time} ({safe_tz})</p>",
+    ]
+
+    if safe_previous:
+        html_parts.append(f"<p><strong>Previous Time:</strong> {safe_previous}</p>")
+
+    if safe_notes:
+        html_parts.append(f"<p><strong>Notes:</strong> {safe_notes}</p>")
+
+    html_parts.extend(
+        [
+            f"<p><strong>Google Meet Link:</strong><br><a href=\"{safe_meet_link}\" target=\"_blank\" rel=\"noopener noreferrer\">{safe_meet_link}</a></p>",
+            "<p style=\"color:#6b7280;font-size:12px;margin-bottom:0;\">",
+            "If needed, the admin can replace this link with a dedicated Google Meet URL.",
+            "</p>",
+            "</div>",
+            "</div>",
+            "</body></html>",
+        ]
+    )
+
+    html_content = "".join(html_parts)
+    plain_content = _html_to_plain_text(html_content)
+    errors: list[str] = []
+    sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
+    envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+
+    if not sender_email or not envelope_sender:
+        return False, ["EMAIL_SENDER/SMTP_USERNAME is not configured"]
+
+    try:
+        with _open_smtp_server() as server:
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+            for recipient in unique_recipients:
+                try:
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"] = f"Appointment Rescheduled: {participant_name or 'Participant'}"
+                    msg["From"] = sender_email
+                    msg["Reply-To"] = sender_email
+                    msg["To"] = recipient
+                    msg["Date"] = formatdate(localtime=True)
+                    msg["Message-ID"] = make_msgid(domain=sender_email.split("@", 1)[1] if "@" in sender_email else None)
+
+                    msg.attach(MIMEText(plain_content, "plain", "utf-8"))
+                    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+                    refused = server.send_message(
+                        msg,
+                        from_addr=envelope_sender,
+                        to_addrs=[recipient],
+                    )
+                    if refused:
+                        err = f"SMTP refused recipient {recipient}: {refused}"
+                        errors.append(err)
+                        logger.error(err)
+                    else:
+                        logger.info(
+                            "Appointment reschedule notification accepted by SMTP for %s (message_id=%s)",
+                            recipient,
+                            msg.get("Message-ID"),
+                        )
+                except Exception as recipient_exc:
+                    err = f"Failed sending reschedule notification to {recipient}: {str(recipient_exc)}"
+                    errors.append(err)
+                    logger.error(err, exc_info=True)
+    except Exception as exc:
+        err = f"Reschedule notification SMTP error: {str(exc)}"
+        errors.append(err)
+        logger.error(err, exc_info=True)
+
+    return len(errors) == 0, errors
 

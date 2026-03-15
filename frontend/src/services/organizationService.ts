@@ -13,8 +13,13 @@ export interface Organization {
   id: number;
   name: string;
   description?: string;
+  default_meet_link?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface OrganizationMeetingSettings {
+  default_meet_link: string;
 }
 
 export const organizationService = {
@@ -25,6 +30,18 @@ export const organizationService = {
 
   async getCurrentOrganization(): Promise<Organization> {
     const response = await api.get<Organization>('/api/organizations/me');
+    return response.data;
+  },
+
+  async getMeetingSettings(): Promise<OrganizationMeetingSettings> {
+    const response = await api.get<OrganizationMeetingSettings>('/api/organizations/me/meeting-settings');
+    return response.data;
+  },
+
+  async updateMeetingSettings(defaultMeetLink: string): Promise<OrganizationMeetingSettings> {
+    const response = await api.put<OrganizationMeetingSettings>('/api/organizations/me/meeting-settings', {
+      default_meet_link: defaultMeetLink,
+    });
     return response.data;
   },
 

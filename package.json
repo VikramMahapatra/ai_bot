@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "moment-timezone": "^0.6.0",
     "recharts": "^3.7.0"
   }
 }

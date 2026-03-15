@@ -12,12 +12,14 @@ class OrganizationCreate(BaseModel):
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    default_meet_link: Optional[str] = None
 
 
 class OrganizationResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    default_meet_link: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
