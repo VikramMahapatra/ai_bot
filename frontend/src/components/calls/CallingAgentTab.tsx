@@ -15,8 +15,11 @@ import {
     Alert,
     CardActionArea,
     LinearProgress,
-    Chip
+    Chip,
+    Select
 } from '@mui/material';
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PublishIcon from "@mui/icons-material/Publish";
 import AddIcon from '@mui/icons-material/Add';
 import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
@@ -31,7 +34,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import GroupIcon from '@mui/icons-material/Group';
 import PhoneIcon from "@mui/icons-material/Phone";
 import PublicIcon from "@mui/icons-material/Public";
-
+import InputAdornment from "@mui/material/InputAdornment";
 import { AddAgentForm } from './AddAgentForm';
 import { CallingAgent, callingAgentService } from '../../services/callingAgentService';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -41,6 +44,7 @@ import {
     DialogContent,
     DialogActions
 } from "@mui/material";
+import TestCallDialog from './TestCallDialog';
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
@@ -61,6 +65,11 @@ export const CallingAgentTab: React.FC = () => {
     );
     const [selectedAgent, setSelectedAgent] = useState<CallingAgent | null>(null);
 
+
+    // CALL TEST DIALOG
+    const [openTestDialog, setOpenTestDialog] = useState(false);
+    const [phoneNumber, setPhoneNumber] = useState("");
+    const [countryCode, setCountryCode] = useState("+91");
 
     const showError = (message: string) => {
         setSuccess('');
@@ -123,8 +132,36 @@ export const CallingAgentTab: React.FC = () => {
 
     };
 
-    const handleTestCall = (agent: CallingAgent) => alert(`Test call: ${agent.name}`);
-    const handlePause = (agent: CallingAgent) => alert(`Pause/Resume: ${agent.name}`);
+    const handlePublish = async (agent: CallingAgent) => {
+        setLoading(true);
+        try {
+            await callingAgentService.updateAgentStatus(agent.id!, "Active");
+            loadCallingAgents();
+        } catch (error) {
+            showError(`Failed to publish agent`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleTestCall = (agent: CallingAgent) => {
+        setSelectedAgent(agent);
+        setOpenTestDialog(true);
+    };
+
+    const handlePause = async (agent: CallingAgent) => {
+        setLoading(true);
+        const newStatus = agent.status === "Paused" ? "Active" : "Paused";
+        try {
+            await callingAgentService.updateAgentStatus(agent.id!, newStatus);
+            loadCallingAgents();
+        } catch (error) {
+            showError(`Failed to update the status`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleEdit = (agent: CallingAgent) => {
         setSelectedAgent(agent);
         setAgentType(agent.type as any)
@@ -205,9 +242,12 @@ export const CallingAgentTab: React.FC = () => {
                 )}
             </Stack>
 
-            {loading && <LinearProgress sx={{ borderRadius: 1.2 }} />}
+            {loading && (
+                <Box mb={3}>
+                    <LinearProgress sx={{ borderRadius: 1.2 }} />
+                </Box>
+            )}
 
-            {/* Agent Cards */}
             {/* Agent Cards */}
             {
                 !showForm && (
@@ -287,13 +327,27 @@ export const CallingAgentTab: React.FC = () => {
                                                                     color:
                                                                         agent.status === "Active"
                                                                             ? "green"
-                                                                            : "orange"
+                                                                            : agent.status === "Paused"
+                                                                                ? "orange"
+                                                                                : "gray"
                                                                 }}
                                                             />
                                                         </Tooltip>
                                                     </Stack>
 
                                                     <Stack direction="row" spacing={1}>
+                                                        {/* Publish button for Draft */}
+                                                        {agent.status === "Draft" && (
+                                                            <Tooltip title="Publish Agent">
+                                                                <IconButton
+                                                                    size="small"
+                                                                    color="success"
+                                                                    onClick={() => handlePublish(agent)}
+                                                                >
+                                                                    <PublishIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        )}
                                                         <Tooltip title="Test Call">
                                                             <IconButton
                                                                 size="small"
@@ -303,14 +357,21 @@ export const CallingAgentTab: React.FC = () => {
                                                             </IconButton>
                                                         </Tooltip>
 
-                                                        <Tooltip title="Pause / Resume">
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={() => handlePause(agent)}
-                                                            >
-                                                                <PauseIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
+                                                        {/* Pause / Resume */}
+                                                        {agent.status !== "Draft" && (
+                                                            <Tooltip title={agent.status === "Active" ? "Pause Agent" : "Resume Agent"}>
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={() => handlePause(agent)}
+                                                                >
+                                                                    {agent.status === "Active" ? (
+                                                                        <PauseIcon />
+                                                                    ) : (
+                                                                        <PlayArrowIcon />
+                                                                    )}
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        )}
 
                                                         <Tooltip title="Settings">
                                                             <IconButton
@@ -334,8 +395,14 @@ export const CallingAgentTab: React.FC = () => {
 
                                                     <Chip
                                                         size="small"
-                                                        icon={<PublicIcon color='primary' />}
-                                                        label={agent.destination?.join(", ")}
+                                                        icon={<PublicIcon color="primary" />}
+                                                        label={
+                                                            agent.server_location === "india"
+                                                                ? "India Server"
+                                                                : agent.server_location === "us"
+                                                                    ? "US Server"
+                                                                    : agent.server_location
+                                                        }
                                                         variant="outlined"
                                                     />
                                                 </Stack>
@@ -502,6 +569,11 @@ export const CallingAgentTab: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <TestCallDialog
+                open={openTestDialog}
+                onClose={() => setOpenTestDialog(false)}
+                agent={selectedAgent}
+            />
         </Box >
     );
 };

@@ -35,14 +35,7 @@ def update_agent(
     current_user: User = Depends(get_current_user)
 ):
     agent_dict = json.loads(agent)
-    print("Agent Data:", agent_dict)
     agent_data = CallingAgentUpdate(**agent_dict)
-    
-    if attachments:
-        print(len(attachments))
-        for file in attachments:
-            print("File:", file.filename)
-
     return service.update_agent(db, agent_id, agent_data, attachments)
 
 
