@@ -38,7 +38,6 @@ const KnowledgePage: React.FC = () => {
               0.84
             )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
             boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
-            position: 'relative',
             overflow: 'hidden',
             '&::before': {
               content: '""',
