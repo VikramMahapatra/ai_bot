@@ -185,7 +185,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 }
                             }}
                         />
-                        <Stack spacing={2}>
+                        {/* <Stack spacing={2}>
 
                             <Button variant="outlined" component="label">
                                 Upload Training Document (Optional)
@@ -205,7 +205,6 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                                     <Stack direction="row" flexWrap="wrap" gap={1}>
 
-                                        {/* Existing Files (Edit Mode) */}
                                         {existingFiles.map((file, index) => (
                                             <Chip
                                                 key={`existing-${index}`}
@@ -218,7 +217,6 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                             />
                                         ))}
 
-                                        {/* Newly Uploaded Files */}
                                         {files.map((file, index) => (
                                             <Chip
                                                 key={`new-${index}`}
@@ -233,7 +231,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 </>
                             )}
 
-                        </Stack>
+                        </Stack> */}
                         <FormControl error={!!errors.destination}>
                             <InputLabel>Destination Country</InputLabel>
 
@@ -257,7 +255,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             )}
                         </FormControl>
                     </Stack>
-                </Card>
+                </Card >
 
                 {/* Analysis Options */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -276,7 +274,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             label="Enable Call Recording"
                         />
                     </Stack>
-                </Card>
+                </Card >
 
                 {/* Success Parameters */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -323,15 +321,15 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             label="After call completion, send follow-up WhatsApp message"
                         />
                     </Stack>
-                </Card>
+                </Card >
 
                 {/* Save Button aligned right */}
-                <Box display="flex" justifyContent="flex-end">
+                <Box display="flex" justifyContent="flex-end" >
                     <Button variant="contained" onClick={handleSubmit}>
                         {mode === "create" ? "Save Agent" : "Update Agent"}
                     </Button>
-                </Box>
-            </Stack>
-        </Card>
+                </Box >
+            </Stack >
+        </Card >
     );
 };
