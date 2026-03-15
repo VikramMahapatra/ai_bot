@@ -18,8 +18,14 @@ import { alpha, useTheme } from '@mui/material/styles';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
+import { launchWhatsAppEmbeddedSignup, loadFacebookSdk } from '../services/metaEmbeddedSignup';
 import { whatsappService } from '../services/whatsappService';
-import { buildApiUrl, getMetaWhatsAppEmbeddedSignupUrl } from '../config/env';
+import {
+  buildApiUrl,
+  getMetaAppId,
+  getMetaEmbeddedSignupConfigId,
+  getMetaWhatsAppEmbeddedSignupUrl,
+} from '../config/env';
 
 interface WidgetConfig {
   widget_id: string;
@@ -29,6 +35,9 @@ interface WidgetConfig {
 const WhatsAppIntegrationPage: React.FC = () => {
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
+  const [metaConnecting, setMetaConnecting] = useState(false);
+  const [metaSdkReady, setMetaSdkReady] = useState(false);
+  const [metaSdkFailed, setMetaSdkFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState('');
@@ -48,25 +57,130 @@ const WhatsAppIntegrationPage: React.FC = () => {
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
   const webhookUrl = buildApiUrl('/api/channels/whatsapp/webhook');
+  const metaRedirectUri = buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`);
 
-  const openMetaWhatsAppWizard = () => {
-    const wizardUrl = getMetaWhatsAppEmbeddedSignupUrl() || 'https://business.facebook.com/wa/manage/phone-numbers/';
-
-    const popup = window.open(
-      wizardUrl,
-      'meta_whatsapp_wizard',
-      'width=980,height=760,resizable=yes,scrollbars=yes,noopener,noreferrer'
-    );
-
-    if (!popup) {
-      // Fallback to same-tab navigation when popup is blocked.
-      window.location.assign(wizardUrl);
-      setError('Popup blocked by browser. Opened Meta setup in the current tab instead.');
+  useEffect(() => {
+    const metaAppId = getMetaAppId();
+    if (!metaAppId) {
+      setMetaSdkReady(false);
+      setMetaSdkFailed(true);
       return;
     }
 
-    setError('');
-    setSuccess('Meta setup wizard opened. Complete onboarding and use returned values below.');
+    let active = true;
+    setMetaSdkFailed(false);
+    loadFacebookSdk(metaAppId)
+      .then(() => {
+        if (active) {
+          setMetaSdkReady(true);
+          setMetaSdkFailed(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMetaSdkReady(false);
+          setMetaSdkFailed(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const openMetaOAuthFallback = (metaAppId: string, configId: string) => {
+    const state = `wa_${Date.now()}`;
+    const oauthUrl =
+      `https://www.facebook.com/v19.0/dialog/oauth` +
+      `?client_id=${encodeURIComponent(metaAppId)}` +
+      `&redirect_uri=${encodeURIComponent(metaRedirectUri)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}` +
+      `&config_id=${encodeURIComponent(configId)}` +
+      `&state=${encodeURIComponent(state)}`;
+
+    const popup = window.open(oauthUrl, 'meta_whatsapp_oauth', 'width=980,height=760,resizable=yes,scrollbars=yes');
+    if (!popup) {
+      window.location.assign(oauthUrl);
+      setError('Popup blocked. Opened Meta signup in current tab.');
+    } else {
+      setSuccess('Meta signup opened via OAuth fallback. Complete setup in popup.');
+    }
+  };
+
+  const handleMetaAuthCode = async (code: string, source: 'sdk' | 'redirect' = 'sdk') => {
+    if (!form.widget_id) {
+      throw new Error('Please select a widget before connecting WhatsApp.');
+    }
+
+    const verifyToken = (form.verify_token || '').trim() || `wa_verify_${Date.now()}`;
+    const exchange = await whatsappService.exchangeEmbeddedSignupCode({
+      code,
+      redirect_uri: source === 'redirect' ? metaRedirectUri : undefined,
+      widget_id: form.widget_id,
+      verify_token: verifyToken,
+      business_phone_number: (form.business_phone_number || '').trim() || undefined,
+      is_active: form.is_active,
+      auto_save: true,
+    });
+
+    setForm((prev) => ({
+      ...prev,
+      phone_number_id: exchange.phone_number_id || prev.phone_number_id,
+      waba_id: exchange.waba_id || prev.waba_id,
+      access_token: exchange.access_token || prev.access_token,
+      verify_token: verifyToken,
+      business_phone_number: exchange.business_phone_number || prev.business_phone_number,
+    }));
+
+    setSuccess(
+      exchange.saved
+        ? 'WhatsApp connected and configuration saved via Meta wizard.'
+        : 'Meta wizard completed. Review the imported values before saving.'
+    );
+  };
+
+  const openMetaWhatsAppWizard = async () => {
+    if (!form.widget_id) {
+      setError('Please select a widget before connecting WhatsApp.');
+      return;
+    }
+
+    const metaAppId = getMetaAppId();
+    const configId = getMetaEmbeddedSignupConfigId();
+    const fallbackUrl = getMetaWhatsAppEmbeddedSignupUrl();
+
+    if (!metaAppId || !configId) {
+      if (fallbackUrl) {
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        setError('Meta SDK env is missing. Opened fallback URL from env. Set VITE_META_APP_ID and VITE_META_EMBEDDED_SIGNUP_CONFIG_ID.');
+        return;
+      }
+      setError('Set VITE_META_APP_ID and VITE_META_EMBEDDED_SIGNUP_CONFIG_ID in frontend .env.');
+      return;
+    }
+
+    try {
+      setMetaConnecting(true);
+      setError('');
+      if (metaSdkFailed) {
+        openMetaOAuthFallback(metaAppId, configId);
+        setError('Meta SDK failed to load. Opened fallback signup window.');
+        return;
+      }
+
+      if (!metaSdkReady) {
+        setError('Meta SDK is still loading. Please wait a moment and click Connect WhatsApp again.');
+        return;
+      }
+
+      const code = await launchWhatsAppEmbeddedSignup(configId);
+      await handleMetaAuthCode(code, 'sdk');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Meta signup failed.');
+    } finally {
+      setMetaConnecting(false);
+    }
   };
 
   const fetchData = async () => {
@@ -104,6 +218,39 @@ const WhatsAppIntegrationPage: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const onMetaMessage = async (event: MessageEvent) => {
+      const payload = event.data as any;
+      if (!payload || payload.type !== 'META_WHATSAPP_EMBEDDED_SIGNUP') {
+        return;
+      }
+
+      if (payload.error) {
+        setError(`Meta signup failed: ${payload.error}`);
+        return;
+      }
+
+      const code = (payload.code || '').trim();
+      const source = payload.source === 'redirect' ? 'redirect' : 'sdk';
+      if (!code) {
+        return;
+      }
+
+      try {
+        setMetaConnecting(true);
+        setError('');
+        await handleMetaAuthCode(code, source);
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || err?.message || 'Meta signup exchange failed.');
+      } finally {
+        setMetaConnecting(false);
+      }
+    };
+
+    window.addEventListener('message', onMetaMessage);
+    return () => window.removeEventListener('message', onMetaMessage);
+  }, [form.business_phone_number, form.is_active, form.verify_token, form.widget_id]);
 
   const handleChange = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -239,12 +386,12 @@ const WhatsAppIntegrationPage: React.FC = () => {
           severity="info"
           sx={{ mb: 2 }}
           action={
-            <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard}>
-              Launch Meta Wizard
+            <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard} disabled={metaConnecting}>
+              {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
             </Button>
           }
         >
-          Open Meta WhatsApp onboarding wizard in a popup to generate Phone Number ID and access token.
+          Open Meta embedded signup popup and auto-import Phone Number ID and access token.
         </Alert>
 
         <Paper sx={{ p: 3, mb: 3 }}>

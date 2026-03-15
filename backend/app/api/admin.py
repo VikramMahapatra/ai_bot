@@ -4,13 +4,16 @@ from app.database import get_db
 from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
 from app.models import User, UserRole, Organization, Appointment, WidgetConfig
 from app.services.limits_service import get_or_create_limits, get_effective_limits
+from app.services.email_service import send_appointment_rescheduled_notification
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import logging
 import uuid
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
 DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
+EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+DEFAULT_GOOGLE_MEET_LINK = "https://meet.google.com/new"
 
 
 def _ensure_widget_escalation_contacts(config) -> bool:
@@ -29,6 +34,43 @@ def _ensure_widget_escalation_contacts(config) -> bool:
         config.escalation_contact_level_2 = DEFAULT_ESCALATION_CONTACT_LEVEL_2
         changed = True
     return changed
+
+
+def _extract_emails(*values: Optional[str]) -> List[str]:
+    """Extract and deduplicate emails from free-form contact strings."""
+    found: List[str] = []
+    seen = set()
+    for value in values:
+        if not value:
+            continue
+        for email in EMAIL_PATTERN.findall(value):
+            key = email.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(email)
+    return found
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    normalized = (value or "").strip().replace("Z", "+00:00")
+    return datetime.fromisoformat(normalized)
+
+
+def _format_datetime_with_timezone(value: datetime, timezone_name: Optional[str]) -> tuple[str, str]:
+    dt_value = value
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=timezone.utc)
+
+    tz_label = (timezone_name or "UTC").strip() or "UTC"
+    try:
+        target_tz = ZoneInfo(tz_label)
+    except Exception:
+        target_tz = timezone.utc
+        tz_label = "UTC"
+
+    local_dt = dt_value.astimezone(target_tz)
+    return local_dt.strftime("%d %b %Y, %I:%M %p"), tz_label
 
 
 class LoginRequest(BaseModel):
@@ -418,6 +460,114 @@ async def update_appointment_status(
         "id": appointment.id,
         "status": appointment.status,
         "message": "Appointment status updated"
+    }
+
+
+@router.put("/appointments/{appointment_id}/reschedule")
+async def reschedule_appointment(
+    appointment_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Reschedule an appointment and notify participant + escalation contacts."""
+    raw_appointment_at = payload.get("appointment_at")
+    if not raw_appointment_at:
+        raise HTTPException(status_code=400, detail="appointment_at is required")
+
+    try:
+        new_appointment_at = _parse_iso_datetime(str(raw_appointment_at))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid appointment_at format. Use ISO format")
+
+    now = datetime.now(timezone.utc) if new_appointment_at.tzinfo else datetime.utcnow()
+    if new_appointment_at <= now:
+        raise HTTPException(status_code=400, detail="Rescheduled appointment time must be in the future")
+
+    appointment = db.query(Appointment).filter(
+        Appointment.id == appointment_id,
+        Appointment.organization_id == current_user.organization_id,
+    ).first()
+
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    widget_config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == appointment.widget_id,
+        WidgetConfig.organization_id == current_user.organization_id,
+    ).first()
+
+    old_appointment_at = appointment.appointment_at
+    old_timezone = appointment.timezone
+
+    new_timezone = payload.get("timezone")
+    if new_timezone is not None:
+        appointment.timezone = str(new_timezone).strip() or None
+
+    notes = payload.get("notes")
+    if notes is not None:
+        appointment.notes = str(notes).strip() or None
+
+    appointment.appointment_at = new_appointment_at
+    appointment.status = "booked"
+
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    org_default_meet_link = (getattr(org, "default_meet_link", None) or "").strip()
+    meeting_link = (
+        str(payload.get("meeting_link") or "").strip()
+        or org_default_meet_link
+        or DEFAULT_GOOGLE_MEET_LINK
+    )
+
+    db.commit()
+    db.refresh(appointment)
+
+    old_time_label, old_tz_label = _format_datetime_with_timezone(old_appointment_at, old_timezone or appointment.timezone)
+    new_time_label, tz_label = _format_datetime_with_timezone(appointment.appointment_at, appointment.timezone)
+
+    escalation_emails = _extract_emails(
+        widget_config.escalation_contact_level_1 if widget_config else None,
+        widget_config.escalation_contact_level_2 if widget_config else None,
+    )
+    recipients: List[str] = []
+    if appointment.email:
+        recipients.append(appointment.email)
+    if current_user.email:
+        recipients.append(current_user.email)
+    recipients.extend(escalation_emails)
+
+    notification_ok, notification_errors = send_appointment_rescheduled_notification(
+        recipients=recipients,
+        participant_name=appointment.name,
+        participant_email=appointment.email,
+        appointment_time_label=new_time_label,
+        timezone_label=tz_label,
+        previous_time_label=f"{old_time_label} ({old_tz_label})",
+        meeting_link=meeting_link,
+        widget_name=(widget_config.name if widget_config else appointment.widget_id),
+        notes=appointment.notes,
+    )
+
+    response_message = "Appointment rescheduled successfully"
+    if not notification_ok:
+        response_message += " (notification delivery had issues)"
+
+    return {
+        "id": appointment.id,
+        "appointment_at": appointment.appointment_at,
+        "timezone": appointment.timezone,
+        "status": appointment.status,
+        "meeting_link": meeting_link,
+        "notification": {
+            "sent": notification_ok,
+            "recipient_count": len({(email or '').strip().lower() for email in recipients if (email or '').strip()}),
+            "errors": notification_errors,
+        },
+        "message": response_message,
+        "previous_time": {
+            "label": old_time_label,
+            "timezone": old_tz_label,
+        },
     }
 
 

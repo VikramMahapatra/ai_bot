@@ -11,6 +11,10 @@ class WhatsAppSendError(Exception):
     pass
 
 
+class WhatsAppEmbeddedSignupError(Exception):
+    pass
+
+
 def verify_meta_signature(signature_header: Optional[str], body: bytes) -> bool:
     """Verify Meta webhook signature when META_APP_SECRET is configured.
 
@@ -54,3 +58,105 @@ def send_whatsapp_text_message(
     if response.status_code >= 400:
         raise WhatsAppSendError(f"Meta send failed: {response.status_code} {response.text}")
     return response.json()
+
+
+def _graph_version() -> str:
+    return (settings.WHATSAPP_GRAPH_VERSION or "v19.0").strip()
+
+
+def _as_data_list(value) -> list:
+    if isinstance(value, dict):
+        data = value.get("data")
+        if isinstance(data, list):
+            return data
+        return []
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _extract_whatsapp_ids_from_me_response(payload: dict) -> dict:
+    businesses = _as_data_list(payload.get("businesses"))
+    for business in businesses:
+        owned_wabas = _as_data_list(business.get("owned_whatsapp_business_accounts"))
+        for waba in owned_wabas:
+            waba_id = str(waba.get("id") or "").strip() or None
+            numbers = _as_data_list(waba.get("phone_numbers"))
+            for number in numbers:
+                phone_number_id = str(number.get("id") or "").strip() or None
+                if phone_number_id:
+                    return {
+                        "waba_id": waba_id,
+                        "phone_number_id": phone_number_id,
+                        "business_phone_number": (number.get("display_phone_number") or "").strip() or None,
+                    }
+
+    return {
+        "waba_id": None,
+        "phone_number_id": None,
+        "business_phone_number": None,
+    }
+
+
+def _fetch_whatsapp_embedded_details(access_token: str) -> dict:
+    version = _graph_version()
+    me_url = f"https://graph.facebook.com/{version}/me"
+    fields = "businesses{id,name,owned_whatsapp_business_accounts{id,name,phone_numbers{id,display_phone_number,verified_name}}}"
+
+    response = requests.get(
+        me_url,
+        params={
+            "fields": fields,
+            "access_token": access_token,
+        },
+        timeout=20,
+    )
+
+    if response.status_code >= 400:
+        raise WhatsAppEmbeddedSignupError(
+            f"Failed to fetch WhatsApp account details: {response.status_code} {response.text}"
+        )
+
+    return _extract_whatsapp_ids_from_me_response(response.json() or {})
+
+
+def exchange_meta_embedded_signup_code(code: str, redirect_uri: Optional[str] = None) -> dict:
+    app_id = (settings.META_APP_ID or "").strip()
+    app_secret = (settings.META_APP_SECRET or "").strip()
+    version = _graph_version()
+
+    if not app_id or not app_secret:
+        raise WhatsAppEmbeddedSignupError("META_APP_ID and META_APP_SECRET must be configured")
+
+    if not (code or "").strip():
+        raise WhatsAppEmbeddedSignupError("Missing authorization code from Meta embedded signup")
+
+    token_url = f"https://graph.facebook.com/{version}/oauth/access_token"
+    params = {
+        "client_id": app_id,
+        "client_secret": app_secret,
+        "code": code.strip(),
+    }
+
+    effective_redirect_uri = (redirect_uri or settings.META_EMBEDDED_REDIRECT_URI or "").strip()
+    if effective_redirect_uri:
+        params["redirect_uri"] = effective_redirect_uri
+
+    token_response = requests.get(token_url, params=params, timeout=20)
+    if token_response.status_code >= 400:
+        raise WhatsAppEmbeddedSignupError(
+            f"Meta code exchange failed: {token_response.status_code} {token_response.text}"
+        )
+
+    payload = token_response.json() or {}
+    access_token = (payload.get("access_token") or "").strip()
+    if not access_token:
+        raise WhatsAppEmbeddedSignupError("Meta code exchange succeeded but access_token was not returned")
+
+    details = _fetch_whatsapp_embedded_details(access_token)
+    return {
+        "access_token": access_token,
+        "token_type": payload.get("token_type"),
+        "expires_in": payload.get("expires_in"),
+        **details,
+    }

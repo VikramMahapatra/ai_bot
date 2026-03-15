@@ -12,8 +12,17 @@ from app.schemas import (
     UserUpdate,
 )
 from typing import List
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
+
+
+class OrganizationMeetingSettingsResponse(BaseModel):
+    default_meet_link: str
+
+
+class OrganizationMeetingSettingsUpdateRequest(BaseModel):
+    default_meet_link: str
 
 
 @router.post("/", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
@@ -56,6 +65,58 @@ def get_current_organization(
             detail="Organization not found",
         )
     return org
+
+
+@router.get("/me/meeting-settings", response_model=OrganizationMeetingSettingsResponse)
+def get_current_org_meeting_settings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get organization-level default Google Meet URL."""
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found",
+        )
+
+    return OrganizationMeetingSettingsResponse(
+        default_meet_link=(org.default_meet_link or "").strip() or "https://meet.google.com/new"
+    )
+
+
+@router.put("/me/meeting-settings", response_model=OrganizationMeetingSettingsResponse)
+def update_current_org_meeting_settings(
+    payload: OrganizationMeetingSettingsUpdateRequest,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update organization-level default Google Meet URL (admin only)."""
+    org = db.query(Organization).filter(Organization.id == admin_user.organization_id).first()
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found",
+        )
+
+    next_link = (payload.default_meet_link or "").strip()
+    if not next_link:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="default_meet_link is required",
+        )
+
+    if not (next_link.startswith("https://") or next_link.startswith("http://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="default_meet_link must be a valid URL starting with http:// or https://",
+        )
+
+    org.default_meet_link = next_link
+    db.commit()
+    db.refresh(org)
+
+    return OrganizationMeetingSettingsResponse(default_meet_link=org.default_meet_link)
 
 
 @router.get("/me/widgets")

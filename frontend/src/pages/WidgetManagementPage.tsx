@@ -22,6 +22,9 @@ import {
   Typography,
   Checkbox,
   FormControlLabel,
+  Stepper,
+  Step,
+  StepLabel,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import {
@@ -32,6 +35,7 @@ import {
   Visibility as VisibilityIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
 import { buildPublicUrl } from '../config/env';
@@ -55,6 +59,14 @@ interface WidgetConfig {
   created_at?: string;
 }
 
+interface WhatsAppConfigSummary {
+  configured: boolean;
+  widget_id?: string;
+  phone_number_id?: string;
+  waba_id?: string | null;
+  is_active?: boolean;
+}
+
 type DialogMode = 'create' | 'edit' | 'view' | null;
 
 const normalizeWidget = (widget: Partial<WidgetConfig>): WidgetConfig => ({
@@ -76,14 +88,19 @@ const normalizeWidget = (widget: Partial<WidgetConfig>): WidgetConfig => ({
   created_at: typeof widget.created_at === 'string' ? widget.created_at : undefined,
 });
 
+const managementSteps = ['Agent Profile', 'Knowledge Base', 'Integrations', 'Share & Embed'];
+
 const WidgetManagementPage: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
+  const [dialogStep, setDialogStep] = useState(0);
   const [currentWidget, setCurrentWidget] = useState<WidgetConfig | null>(null);
+  const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfigSummary>({ configured: false });
   const [formData, setFormData] = useState<WidgetConfig>({
     widget_id: '',
     name: '',
@@ -107,11 +124,17 @@ const WidgetManagementPage: React.FC = () => {
   const fetchWidgets = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/admin/widgets');
-      const widgetList = Array.isArray(response.data)
-        ? response.data.map((widget: Partial<WidgetConfig>) => normalizeWidget(widget))
+      const [widgetsRes, whatsappRes] = await Promise.all([
+        api.get('/api/admin/widgets'),
+        api.get('/api/admin/whatsapp/config').catch(() => ({ data: { configured: false } })),
+      ]);
+
+      const widgetList = Array.isArray(widgetsRes.data)
+        ? widgetsRes.data.map((widget: Partial<WidgetConfig>) => normalizeWidget(widget))
         : [];
+
       setWidgets(widgetList);
+      setWhatsappConfig(whatsappRes.data || { configured: false });
       setError('');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to fetch widgets');
@@ -122,38 +145,27 @@ const WidgetManagementPage: React.FC = () => {
   };
 
   const handleOpenCreate = () => {
-    setFormData({
-      widget_id: `widget_${Date.now()}`,
-      name: '',
-      welcome_message: 'Hi! How can I help you?',
-      system_prompt: '',
-      logo_url: '',
-      primary_color: '#2f6bff',
-      secondary_color: '#36c4ff',
-      position: 'bottom-right',
-      lead_capture_enabled: true,
-      lead_fields: '',
-      escalation_contact_level_1: 'Support Team: support@example.com | +1-555-0101',
-      escalation_contact_level_2: 'Escalation Manager: escalation@example.com | +1-555-0102',
-    });
-    setDialogMode('create');
+    navigate('/create-chat-agent');
   };
 
   const handleOpenEdit = (widget: WidgetConfig) => {
     setCurrentWidget(widget);
     setFormData(widget);
+    setDialogStep(0);
     setDialogMode('edit');
   };
 
   const handleOpenView = (widget: WidgetConfig) => {
     setCurrentWidget(widget);
     setFormData(widget);
+    setDialogStep(0);
     setDialogMode('view');
   };
 
   const handleCloseDialog = () => {
     setDialogMode(null);
     setCurrentWidget(null);
+    setDialogStep(0);
   };
 
   const handleSave = async () => {
@@ -226,6 +238,20 @@ const WidgetManagementPage: React.FC = () => {
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
+  };
+
+  const isViewMode = dialogMode === 'view';
+  const dialogLastStep = managementSteps.length - 1;
+  const whatsappConnectedForAgent = Boolean(
+    whatsappConfig.configured
+      && whatsappConfig.widget_id
+      && formData.widget_id
+      && whatsappConfig.widget_id === formData.widget_id
+      && whatsappConfig.is_active !== false
+  );
+
+  const moveDialogStep = (delta: number) => {
+    setDialogStep((prev) => Math.min(dialogLastStep, Math.max(0, prev + delta)));
   };
 
   if (loading) {
@@ -423,258 +449,261 @@ const WidgetManagementPage: React.FC = () => {
         </TableContainer>
       </Stack>
 
-      {/* Create/Edit Dialog */}
+      {/* Step-by-step Agent Journey Dialog (View/Edit) */}
       <Dialog
-        open={dialogMode === 'create' || dialogMode === 'edit'}
+        open={dialogMode === 'create' || dialogMode === 'edit' || dialogMode === 'view'}
         onClose={handleCloseDialog}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle>
-          {dialogMode === 'create' ? 'Create New Agent' : 'Edit Agent'}
+          {isViewMode ? 'Agent Journey' : dialogMode === 'create' ? 'Create Agent Journey' : 'Edit Agent Journey'}
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Widget Name"
-              name="name"
-              value={formData.name}
-              onChange={handleFormChange}
-              placeholder="e.g., Sales Support Widget"
-            />
-            <TextField
-              fullWidth
-              label="Welcome Message"
-              name="welcome_message"
-              value={formData.welcome_message}
-              onChange={handleFormChange}
-              multiline
-              rows={2}
-              placeholder="Hi! How can I help you?"
-            />
-            <TextField
-              fullWidth
-              label="System Prompt (Optional)"
-              name="system_prompt"
-              value={formData.system_prompt}
-              onChange={handleFormChange}
-              multiline
-              rows={4}
-              placeholder="Use this to customize assistant behavior for this agent"
-            />
-            <TextField
-              fullWidth
-              label="Logo URL"
-              name="logo_url"
-              value={formData.logo_url}
-              onChange={handleFormChange}
-              placeholder="https://example.com/logo.png"
-            />
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <Box>
-                <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-                  Primary Color
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Box
-                    component="input"
-                    type="color"
-                    name="primary_color"
-                    value={formData.primary_color}
-                    onChange={handleFormChange}
-                    sx={{ width: 50, height: 40, cursor: 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
-                  />
-                  <TextField
-                    size="small"
-                    name="primary_color"
-                    value={formData.primary_color}
-                    onChange={handleFormChange}
-                    sx={{ flex: 1 }}
-                  />
-                </Box>
-              </Box>
-              <Box>
-                <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-                  Secondary Color
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Box
-                    component="input"
-                    type="color"
-                    name="secondary_color"
-                    value={formData.secondary_color}
-                    onChange={handleFormChange}
-                    sx={{ width: 50, height: 40, cursor: 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
-                  />
-                  <TextField
-                    size="small"
-                    name="secondary_color"
-                    value={formData.secondary_color}
-                    onChange={handleFormChange}
-                    sx={{ flex: 1 }}
-                  />
-                </Box>
-              </Box>
-            </Box>
-            <TextField
-              fullWidth
-              label="Position"
-              name="position"
-              value={formData.position}
-              onChange={handleFormChange}
-              select
-              SelectProps={{
-                native: true,
-              }}
-            >
-              <option value="bottom-right">Bottom Right</option>
-              <option value="bottom-left">Bottom Left</option>
-              <option value="top-right">Top Right</option>
-              <option value="top-left">Top Left</option>
-            </TextField>
-            <Box>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="lead_capture_enabled"
-                    checked={formData.lead_capture_enabled}
-                    onChange={handleFormChange}
-                  />
-                }
-                label="Enable Lead Capture"
-              />
-            </Box>
-            <TextField
-              fullWidth
-              label="Escalation Contact - Level 1"
-              name="escalation_contact_level_1"
-              value={formData.escalation_contact_level_1 || ''}
-              onChange={handleFormChange}
-              placeholder="Support Team: support@example.com | +1-555-0101"
-            />
-            <TextField
-              fullWidth
-              label="Escalation Contact - Level 2"
-              name="escalation_contact_level_2"
-              value={formData.escalation_contact_level_2 || ''}
-              onChange={handleFormChange}
-              placeholder="Escalation Manager: escalation@example.com | +1-555-0102"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained">
-            {dialogMode === 'create' ? 'Create' : 'Update'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <Stack spacing={2.5}>
+            <Stepper activeStep={dialogStep} alternativeLabel>
+              {managementSteps.map((stepLabel) => (
+                <Step key={stepLabel}>
+                  <StepLabel>{stepLabel}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
 
-      {/* View Dialog */}
-      <Dialog open={dialogMode === 'view'} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Agent Details</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2}>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent ID</Typography>
-              <Typography sx={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
-                {formData.widget_id}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Name</Typography>
-              <Typography>{formData.name}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Welcome Message</Typography>
-              <Typography>{formData.welcome_message}</Typography>
-            </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Primary Color</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                  <Box
-                    sx={{
-                      width: '30px',
-                      height: '30px',
-                      backgroundColor: formData.primary_color,
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
-                      borderRadius: '4px',
-                    }}
-                  />
-                  <Typography sx={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                    {formData.primary_color}
-                  </Typography>
+            {dialogStep === 0 && (
+              <Stack spacing={2}>
+                {isViewMode ? (
+                  <>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent ID</Typography>
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
+                        {formData.widget_id}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Name</Typography>
+                      <Typography>{formData.name}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Welcome Message</Typography>
+                      <Typography>{formData.welcome_message}</Typography>
+                    </Box>
+                  </>
+                ) : (
+                  <>
+                    <TextField
+                      fullWidth
+                      label="Widget Name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleFormChange}
+                      placeholder="e.g., Sales Support Widget"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Welcome Message"
+                      name="welcome_message"
+                      value={formData.welcome_message}
+                      onChange={handleFormChange}
+                      multiline
+                      rows={2}
+                      placeholder="Hi! How can I help you?"
+                    />
+                    <TextField
+                      fullWidth
+                      label="System Prompt (Optional)"
+                      name="system_prompt"
+                      value={formData.system_prompt}
+                      onChange={handleFormChange}
+                      multiline
+                      rows={4}
+                      placeholder="Use this to customize assistant behavior for this agent"
+                    />
+                  </>
+                )}
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                  <Box>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+                      Primary Color
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Box
+                        component="input"
+                        type="color"
+                        name="primary_color"
+                        value={formData.primary_color}
+                        onChange={handleFormChange}
+                        disabled={isViewMode}
+                        sx={{ width: 50, height: 40, cursor: isViewMode ? 'default' : 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
+                      />
+                      <TextField
+                        size="small"
+                        name="primary_color"
+                        value={formData.primary_color}
+                        onChange={handleFormChange}
+                        disabled={isViewMode}
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+                      Secondary Color
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Box
+                        component="input"
+                        type="color"
+                        name="secondary_color"
+                        value={formData.secondary_color}
+                        onChange={handleFormChange}
+                        disabled={isViewMode}
+                        sx={{ width: 50, height: 40, cursor: isViewMode ? 'default' : 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
+                      />
+                      <TextField
+                        size="small"
+                        name="secondary_color"
+                        value={formData.secondary_color}
+                        onChange={handleFormChange}
+                        disabled={isViewMode}
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
+                  </Box>
                 </Box>
-              </Box>
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Secondary Color</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                  <Box
-                    sx={{
-                      width: '30px',
-                      height: '30px',
-                      backgroundColor: formData.secondary_color,
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
-                      borderRadius: '4px',
-                    }}
+
+                <TextField
+                  fullWidth
+                  label="Position"
+                  name="position"
+                  value={formData.position}
+                  onChange={handleFormChange}
+                  disabled={isViewMode}
+                  select
+                  SelectProps={{ native: true }}
+                >
+                  <option value="bottom-right">Bottom Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="top-left">Top Left</option>
+                </TextField>
+
+                <Box>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        name="lead_capture_enabled"
+                        checked={formData.lead_capture_enabled}
+                        onChange={handleFormChange}
+                        disabled={isViewMode}
+                      />
+                    }
+                    label="Enable Lead Capture"
                   />
-                  <Typography sx={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                    {formData.secondary_color}
-                  </Typography>
                 </Box>
-              </Box>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Position</Typography>
-              <Typography>{formData.position}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Lead Capture</Typography>
-              <Typography>{formData.lead_capture_enabled ? 'Enabled' : 'Disabled'}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 1</Typography>
-              <Typography>{formData.escalation_contact_level_1 || '-'}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 2</Typography>
-              <Typography>{formData.escalation_contact_level_2 || '-'}</Typography>
-            </Box>
-            {formData.created_at && (
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Created</Typography>
-                <Typography>{new Date(formData.created_at).toLocaleString()}</Typography>
-              </Box>
+
+                <TextField
+                  fullWidth
+                  label="Escalation Contact - Level 1"
+                  name="escalation_contact_level_1"
+                  value={formData.escalation_contact_level_1 || ''}
+                  onChange={handleFormChange}
+                  disabled={isViewMode}
+                  placeholder="Support Team: support@example.com | +1-555-0101"
+                />
+                <TextField
+                  fullWidth
+                  label="Escalation Contact - Level 2"
+                  name="escalation_contact_level_2"
+                  value={formData.escalation_contact_level_2 || ''}
+                  onChange={handleFormChange}
+                  disabled={isViewMode}
+                  placeholder="Escalation Manager: escalation@example.com | +1-555-0102"
+                />
+              </Stack>
             )}
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent Test URL</Typography>
-              <TextField
-                fullWidth
-                size="small"
-                value={formData.widget_id ? getAgentTestUrl(formData.widget_id) : ''}
-                InputProps={{ readOnly: true }}
-                sx={{ mt: 0.5 }}
-              />
-              <Button
-                size="small"
-                startIcon={<LinkIcon />}
-                onClick={() => handleCopyTestUrl(formData.widget_id)}
-                disabled={!formData.widget_id}
-                sx={{ mt: 1 }}
-              >
-                Copy Test URL
-              </Button>
-            </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Embed Code</Typography>
-              <TextField
-                fullWidth
-                size="small"
-                multiline
-                rows={6}
-                value={`<!-- AI Chatbot Widget -->
+
+            {dialogStep === 1 && (
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Knowledge Base Setup</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Step 2 in agent creation covers website crawl, document upload, and text knowledge. Use the Knowledge Base module to manage all sources for this agent.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Agent: <strong>{formData.name || 'Unnamed Agent'}</strong> ({formData.widget_id || 'No ID'})
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Button variant="outlined" onClick={() => navigate('/knowledge')}>
+                      Open Knowledge Base
+                    </Button>
+                    <Button variant="outlined" onClick={() => navigate('/create-chat-agent')}>
+                      Open Full Creation Wizard
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
+            {dialogStep === 2 && (
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Integration Setup</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2" color="text.secondary">WhatsApp (Meta):</Typography>
+                    <Chip
+                      size="small"
+                      color={whatsappConnectedForAgent ? 'success' : 'default'}
+                      label={whatsappConnectedForAgent ? 'Connected for this Agent' : 'Not Connected for this Agent'}
+                    />
+                  </Stack>
+                  {whatsappConnectedForAgent && (
+                    <Typography variant="body2" color="text.secondary">
+                      WABA: {whatsappConfig.waba_id || '-'} | Phone Number ID: {whatsappConfig.phone_number_id || '-'}
+                    </Typography>
+                  )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Button variant="outlined" onClick={() => navigate('/integrations/whatsapp')}>
+                      Manage WhatsApp Integration
+                    </Button>
+                    <Button variant="outlined" onClick={() => navigate('/create-chat-agent')}>
+                      Open Creation Wizard
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
+            {dialogStep === 3 && (
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent Test URL</Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={formData.widget_id ? getAgentTestUrl(formData.widget_id) : ''}
+                    InputProps={{ readOnly: true }}
+                    sx={{ mt: 0.5 }}
+                  />
+                  <Button
+                    size="small"
+                    startIcon={<LinkIcon />}
+                    onClick={() => handleCopyTestUrl(formData.widget_id)}
+                    disabled={!formData.widget_id}
+                    sx={{ mt: 1 }}
+                  >
+                    Copy Test URL
+                  </Button>
+                </Box>
+
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Embed Code</Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    multiline
+                    rows={6}
+                    value={`<!-- AI Chatbot Widget -->
 <link rel="stylesheet" href="https://your-domain.com/widget/dist/chatbot-widget.css" />
 <script>
   window.AIChatbot = {
@@ -682,32 +711,48 @@ const WidgetManagementPage: React.FC = () => {
     apiUrl: 'https://your-api-domain.com',
     name: 'AI Assistant',
     welcomeMessage: 'Hi! How can I help you today?',
-    primaryColor: '#007bff',
-    primaryColor: '#2f6bff',
-    position: 'bottom-right'
+    primaryColor: '${formData.primary_color || '#2f6bff'}',
+    position: '${formData.position || 'bottom-right'}'
   };
 </script>
 <script src="https://your-domain.com/widget/dist/chatbot-widget.iife.js"><\/script>`}
-                InputProps={{ readOnly: true }}
-                sx={{ mt: 0.5 }}
-              />
-              <Button
-                size="small"
-                startIcon={<CopyIcon />}
-                onClick={() => handleCopyEmbedCode(formData.widget_id)}
-                disabled={!formData.widget_id}
-                sx={{ mt: 1 }}
-              >
-                Copy Embed Code
-              </Button>
-            </Box>
+                    InputProps={{ readOnly: true }}
+                    sx={{ mt: 0.5 }}
+                  />
+                  <Button
+                    size="small"
+                    startIcon={<CopyIcon />}
+                    onClick={() => handleCopyEmbedCode(formData.widget_id)}
+                    disabled={!formData.widget_id}
+                    sx={{ mt: 1 }}
+                  >
+                    Copy Embed Code
+                  </Button>
+                </Box>
+              </Stack>
+            )}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Close</Button>
-          <Button onClick={() => handleOpenEdit(formData as WidgetConfig)} variant="contained" disabled={!formData.widget_id}>
-            Edit
-          </Button>
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          <Button onClick={handleCloseDialog}>{isViewMode ? 'Close' : 'Cancel'}</Button>
+          <Stack direction="row" spacing={1}>
+            <Button onClick={() => moveDialogStep(-1)} disabled={dialogStep === 0}>
+              Back
+            </Button>
+            {dialogStep < dialogLastStep ? (
+              <Button variant="contained" onClick={() => moveDialogStep(1)}>
+                Next
+              </Button>
+            ) : isViewMode ? (
+              <Button onClick={() => handleOpenEdit(formData as WidgetConfig)} variant="contained" disabled={!formData.widget_id}>
+                Edit Agent
+              </Button>
+            ) : (
+              <Button onClick={handleSave} variant="contained">
+                {dialogMode === 'create' ? 'Create' : 'Update'}
+              </Button>
+            )}
+          </Stack>
         </DialogActions>
       </Dialog>
     </Box>
