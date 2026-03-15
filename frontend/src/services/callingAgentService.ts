@@ -2,16 +2,77 @@ import api from './api';
 
 export interface CallingAgent {
     id?: number
+
+    // Basic Info
     type: 'Outbound' | 'Inbound'
     name: string
-    calling_no: string
-    status: 'Active' | 'Paused'
-    destination?: string[];
+    calling_no?: string
+    status: 'Active' | 'Paused' | 'Draft'
+
+    server_location?: "india" | "us"
+
+    destination?: string[]
+
+    // Campaign Stats
     active_campaigns: number
     allocated_calls: number
     pending_calls: number
     attempted_calls: number
-    created_at: Date
+
+    // Conversation
+    greeting?: string
+    prompt?: string
+    who_speaks_first?: "ai" | "user"
+
+    // Voice
+    gender?: "Male" | "Female"
+    accent?: string
+    voice?: string
+
+    // Timezone
+    enable_prompt_timezone?: boolean
+    prompt_timezone?: string
+
+    // Call Forwarding
+    enable_call_forwarding?: boolean
+    call_forwarding_number?: string
+    call_forwarding_role?: string
+    call_forwarding_action_desc?: string
+
+    // Call Behaviour
+    silence_timeout?: number
+    talking_speed?: number
+    max_call_duration?: number
+    calendar_sync?: boolean
+
+    enable_sentiment?: boolean
+    voice_mail_detection?: boolean
+    enable_call_recording?: boolean
+
+    // Call Success / Summary
+    success_parameters?: string
+    enable_call_summary?: boolean
+    summary_prompt?: string
+    follow_up_whatsapp?: boolean
+
+    // AI Behaviour
+    important_data_points?: string
+    enable_background_sound?: boolean
+    background_sound_url?: string
+    start_speaking_wait_seconds?: number
+    stop_speaking_voice_seconds?: number
+
+    // Transcriber
+    transcriber_provider?: "deepgram" | "azure"
+    transcriber_language?: string
+    transcriber_model?: string
+
+    // Files
+    training_doc?: string[]
+
+    // Metadata
+    created_at?: Date
+    updated_at?: Date
 }
 
 export interface CallingAgentLookup {
@@ -45,6 +106,13 @@ export const callingAgentService = {
     async updateCallingAgent(payload: FormData, agent_id?: number): Promise<CallingAgent> {
         const response = await api.post(`/api/calling-agent/update/${agent_id}`, payload);
         console.log(response);
+        return response.data;
+    },
+
+    async updateAgentStatus(agent_id: number, status: string): Promise<CallingAgent> {
+        const response = await api.patch(`/api/calling-agent/${agent_id}/status`, {
+            status
+        });
         return response.data;
     },
 

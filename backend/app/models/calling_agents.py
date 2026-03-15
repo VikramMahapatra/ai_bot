@@ -1,6 +1,6 @@
 # models.py
 import uuid
-from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, JSON, func
+from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -18,7 +18,8 @@ class CallingAgent(Base):
     type = Column(String, nullable=False, default="Outbound")  # 'Inbound' | 'Outbound'
     calling_no = Column(String, nullable=True)
     destination = Column(String, nullable=True)  # comma-separated list of countries
-    status = Column(String, default="Active")  # Active / Paused
+    status = Column(String, default="Draft")  # Active / Paused
+    server_location = Column(String)
 
     # Campaign & credits
     active_campaigns = Column(Integer, default=0)
@@ -37,6 +38,36 @@ class CallingAgent(Base):
     enable_call_summary = Column(Boolean, default=False)
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
+    
+    gender = Column(String, nullable=False)
+    accent = Column(String)
+    voice = Column(String, nullable=False)
+
+    who_speaks_first = Column(String, nullable=False)
+
+    enable_prompt_timezone = Column(Boolean)
+    prompt_timezone = Column(String)
+
+    enable_call_forwarding = Column(Boolean)
+    call_forwarding_number = Column(String)
+    call_forwarding_role = Column(String)
+    call_forwarding_action_desc = Column(Text)
+
+    silence_timeout = Column(Integer, nullable=False)
+    talking_speed = Column(Float, nullable=False)
+    max_call_duration = Column(Integer, nullable=False)
+    calendar_sync = Column(Boolean)
+
+    important_data_points = Column(Text)
+    enable_background_sound = Column(Boolean)
+    background_sound_url = Column(String)
+
+    start_speaking_wait_seconds = Column(Integer)
+    stop_speaking_voice_seconds = Column(Integer)
+
+    transcriber_provider = Column(String)
+    transcriber_language = Column(String)
+    transcriber_model = Column(String)
 
     # Meta
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -14,8 +14,14 @@ import {
     MenuItem,
     InputLabel,
     FormControl,
+    Radio,
+    Checkbox,
+    Slider,
+    Grid,
+    FormHelperText
 } from '@mui/material';
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import moment from 'moment';
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -26,6 +32,57 @@ interface AddAgentFormProps {
 }
 
 const destinationOptions = ['India', 'USA', 'UK', 'Canada', 'Australia'];
+const voiceOptions = [
+    { id: "sBFce9RYjwinEuw3T4sS", name: "Mayuri", accent: "en-IN" },
+    { id: "qNEtlFtvbX90lZZcDJ8X", name: "Neha", accent: "hi-IN" },
+    { id: "MmQVkVZnQ0dUbfWzcW6f", name: "Zara", accent: "en-IN" },
+    { id: "caMurMrvWp0v3NFJALhl", name: "Roopa", accent: "en-IN" },
+    { id: "90ipbRoKi4CpHXvKVtl0", name: "Anika", accent: "en-IN" },
+    { id: "QTKSa2Iyv0yoxvXY2V8a", name: "Neha P", accent: "hi-IN" },
+];
+
+const accentOptions = [
+    { label: "All Accents", value: "all" },
+    { label: "Mul-Hi-En-Te", value: "Mul-Hi-En-Te" },
+    { label: "US-en", value: "US-en" },
+    { label: "en-IN", value: "en-IN" },
+    { label: "hi-IN", value: "hi-IN" },
+];
+
+const timezoneOptions = moment.tz.names().map((tz) => ({
+    value: tz,
+    label: `(GMT${moment.tz(tz).format("Z")}) ${tz}`
+}));
+
+const transcriberProviders = [
+    { label: "Deepgram", value: "deepgram" },
+    { label: "Azure", value: "azure" }
+];
+
+const transcriberModels = [
+    { label: "Nova 2", value: "nova-2" },
+    { label: "Nova", value: "nova" }
+];
+
+const transcriberLanguages = [
+    { label: "English", value: "en" },
+    { label: "English (US)", value: "en-US" },
+    { label: "English (UK)", value: "en-GB" },
+    { label: "English (India)", value: "en-IN" },
+    { label: "English (Australia)", value: "en-AU" },
+    { label: "French", value: "fr" },
+    { label: "German", value: "de" },
+    { label: "Italian", value: "it" },
+    { label: "Spanish", value: "es" },
+    { label: "Spanish (Latin America)", value: "es-419" },
+    { label: "Portuguese", value: "pt" },
+    { label: "Portuguese (Brazil)", value: "pt-BR" },
+    { label: "Hindi", value: "hi" },
+    { label: "Japanese", value: "ja" },
+    { label: "Korean", value: "ko" },
+    { label: "Chinese", value: "zh" },
+    { label: "Auto Detect", value: "multi" }
+];
 
 export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave }) => {
     const [errors, setErrors] = useState<any>({});
@@ -35,14 +92,44 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         greeting: agent?.greeting || '',
         prompt: agent?.prompt || '',
         destination: agent?.destination || [],
+        server_location: agent?.server_location || "india",
+
+        gender: agent?.gender || "Male",
+        accent: agent?.accent || "",
+        voice: agent?.voice || "",
+
+        who_speaks_first: agent?.who_speaks_first || "ai",
+
+        enable_prompt_timezone: agent?.enable_prompt_timezone || false,
+        prompt_timezone: agent?.prompt_timezone || "",
+
+        enable_call_forwarding: agent?.enable_call_forwarding || false,
+        call_forwarding_number: agent?.call_forwarding_number || "",
+        call_forwarding_role: agent?.call_forwarding_role || "",
+        call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
+
+        silence_timeout: agent?.silence_timeout || 10,
+        talking_speed: agent?.talking_speed || 1.0,
+        max_call_duration: agent?.max_call_duration || 120,
+        calendar_sync: agent?.calendar_sync || false,
         enable_sentiment: agent?.enable_sentiment || false,
         voice_mail_detection: agent?.voice_mail_detection || false,
         enable_call_recording: agent?.enable_call_recording || false,
+
         success_parameters: agent?.success_parameters || '',
         enable_call_summary: agent?.enable_call_summary || false,
         summary_prompt: agent?.summary_prompt || '',
         follow_up_whatsapp: agent?.follow_up_whatsapp || false,
+        important_data_points: agent?.important_data_points || "",
+        enable_background_sound: agent?.enable_background_sound || false,
+        background_sound_url: agent?.background_sound_url || "",
+        start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || 1,
+        stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || 1,
+        transcriber_provider: agent?.transcriber_provider || "",
+        transcriber_language: agent?.transcriber_language || "",
+        transcriber_model: agent?.transcriber_model || "",
     });
+
     const [existingFiles, setExistingFiles] = useState<string[]>(
         agent?.training_doc ? agent.training_doc.split(",") : []
     );
@@ -51,6 +138,19 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSelectChange = (name: string, value: any) => {
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleProviderChange = (value: string) => {
+        setFormData({
+            ...formData,
+            transcriber_provider: value,
+            transcriber_language: "",
+            transcriber_model: ""
+        });
     };
 
     const handleToggleChange = (name: string, value: boolean) => {
@@ -83,12 +183,23 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             newErrors.prompt = "Agent prompt is required";
         }
 
-        if (formData.destination.length === 0) {
-            newErrors.destination = "Select at least one destination country";
+        // if (formData.destination.length === 0) {
+        //     newErrors.destination = "Select at least one destination country";
+        // }
+        if (!formData.server_location) {
+            newErrors.server_location = "Server location is required";
         }
 
         if (formData.enable_call_summary && !formData.summary_prompt.trim()) {
             newErrors.summary_prompt = "Summary prompt is required";
+        }
+
+        if (!formData.voice) {
+            newErrors.voice = "Voice selection required";
+        }
+
+        if (formData.enable_prompt_timezone && !formData.prompt_timezone) {
+            newErrors.prompt_timezone = "Timezone is required";
         }
 
         setErrors(newErrors);
@@ -97,7 +208,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     };
 
     const handleSubmit = () => {
-        if (!validate()) return;
+        if (!validate()) {
+            console.log("Form is invalid")
+            console.log("Validation Errors:", errors);
+            return;
+        }
 
         const data = new FormData();
 
@@ -185,6 +300,53 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 }
                             }}
                         />
+                        <Stack spacing={2}>
+
+                            {/* Enable Prompt Timezone */}
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={formData.enable_prompt_timezone}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                enable_prompt_timezone: e.target.checked
+                                            })
+                                        }
+                                    />
+                                }
+                                label="Enable Prompt Timezone"
+                            />
+
+                            {/* Timezone Select */}
+                            {formData.enable_prompt_timezone && (
+                                <FormControl fullWidth>
+                                    <InputLabel>Timezone</InputLabel>
+
+                                    <Select
+                                        value={formData.prompt_timezone}
+                                        label="Timezone"
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                prompt_timezone: e.target.value
+                                            })
+                                        }
+                                    >
+                                        <MenuItem value="">
+                                            Select a timezone
+                                        </MenuItem>
+
+                                        {timezoneOptions.map((tz) => (
+                                            <MenuItem key={tz.value} value={tz.value}>
+                                                {tz.label}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            )}
+
+                        </Stack>
                         {/* <Stack spacing={2}>
 
                             <Button variant="outlined" component="label">
@@ -232,7 +394,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             )}
 
                         </Stack> */}
-                        <FormControl error={!!errors.destination}>
+                        {/* <FormControl error={!!errors.destination}>
                             <InputLabel>Destination Country</InputLabel>
 
                             <Select
@@ -253,32 +415,251 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                     {errors.destination}
                                 </Typography>
                             )}
+                        </FormControl> */}
+                        <FormControl fullWidth error={!!errors.server_location}>
+                            <InputLabel>Server Location</InputLabel>
+
+                            <Select
+                                value={formData.server_location || ""}
+                                label="Server Location"
+                                onChange={(e) =>
+                                    setFormData({ ...formData, server_location: e.target.value })
+                                }
+                            >
+                                <MenuItem value="">
+                                    <em>Select Server Location</em>
+                                </MenuItem>
+
+                                <MenuItem value="india">India Server</MenuItem>
+                                <MenuItem value="us">US Server</MenuItem>
+
+                            </Select>
+
+                            {errors.server_location && (
+                                <Typography variant="caption" color="error">
+                                    {errors.server_location}
+                                </Typography>
+                            )}
                         </FormControl>
                     </Stack>
                 </Card >
 
-                {/* Analysis Options */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                    <Typography variant="subtitle1" mb={2}>Analysis Options</Typography>
-                    <Stack spacing={1}>
-                        <FormControlLabel
-                            control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
-                            label="Enable Sentiment Detection"
-                        />
-                        <FormControlLabel
-                            control={<Switch checked={formData.voice_mail_detection} onChange={(e) => handleToggleChange('voice_mail_detection', e.target.checked)} />}
-                            label="Voice Mail Detection"
-                        />
-                        <FormControlLabel
-                            control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
-                            label="Enable Call Recording"
-                        />
-                    </Stack>
-                </Card >
+                    <Typography variant="subtitle1" mb={2}>
+                        Who Speaks First?
+                    </Typography>
 
-                {/* Success Parameters */}
+                    <FormControl fullWidth>
+                        <Select
+                            value={formData.who_speaks_first}
+                            onChange={(e) =>
+                                handleSelectChange("who_speaks_first", e.target.value)
+                            }
+                            displayEmpty
+                        >
+                            <MenuItem value="ai">
+                                🤖 AI speaks first
+                            </MenuItem>
+
+                            <MenuItem value="user">
+                                👤 User speaks first
+                            </MenuItem>
+                        </Select>
+                    </FormControl>
+                </Card>
+
+                {/* Agent Voice Selection */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                    <Typography variant="subtitle1" mb={2}>Success Parameters</Typography>
+                    <Typography variant="subtitle1" mb={2}>
+                        Agent Voice Selection
+                    </Typography>
+
+                    <Stack spacing={3}>
+
+                        {/* Gender */}
+                        <FormControl>
+                            <Typography variant="body2" mb={1}>
+                                Select Gender
+                            </Typography>
+
+                            <Stack direction="row" spacing={3}>
+                                <FormControlLabel
+                                    value="Male"
+                                    control={
+                                        <Radio
+                                            checked={formData.gender === "Male"}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, gender: e.target.value })
+                                            }
+                                        />
+                                    }
+                                    label="Male"
+                                />
+
+                                <FormControlLabel
+                                    value="Female"
+                                    control={
+                                        <Radio
+                                            checked={formData.gender === "Female"}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, gender: e.target.value })
+                                            }
+                                        />
+                                    }
+                                    label="Female"
+                                />
+                            </Stack>
+                        </FormControl>
+
+                        {/* Accent */}
+                        <FormControl fullWidth>
+                            <InputLabel>Accent</InputLabel>
+
+                            <Select
+                                value={formData.accent || "all"}
+                                label="Accent"
+                                onChange={(e) =>
+                                    setFormData({ ...formData, accent: e.target.value })
+                                }
+                            >
+                                {accentOptions.map((accent) => (
+                                    <MenuItem key={accent.value} value={accent.value}>
+                                        {accent.label}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        {/* Voice */}
+                        <FormControl
+                            fullWidth
+                            required
+                            error={!!errors.voice}
+                        >
+                            <InputLabel>Select Voice</InputLabel>
+
+                            <Select
+                                required
+                                value={formData.voice}
+                                label="Select Voice"
+                                onChange={(e) =>
+                                    setFormData({ ...formData, voice: e.target.value })
+                                }
+                            >
+                                {voiceOptions.map((voice) => (
+                                    <MenuItem key={voice.id} value={voice.id}>
+                                        {voice.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            <FormHelperText>{errors.voice}</FormHelperText>
+                        </FormControl>
+
+                        {/* Preview */}
+                        {formData.voice && (
+                            <Card variant="outlined" sx={{ p: 2, background: "#f9fafb" }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+
+                                    <Box>
+                                        <Typography fontWeight={500}>
+                                            {voiceOptions.find(v => v.id === formData.voice)?.name}
+                                        </Typography>
+
+                                        <Typography variant="caption" color="text.secondary">
+                                            {voiceOptions.find(v => v.id === formData.voice)?.accent}
+                                        </Typography>
+                                    </Box>
+
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={() => {
+                                            // play preview audio
+                                            console.log("Play preview");
+                                        }}
+                                    >
+                                        Play Preview
+                                    </Button>
+
+                                </Stack>
+                            </Card>
+                        )}
+
+                    </Stack>
+                </Card>
+
+                {/* Call Forwarding */}
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle1" mb={2}>
+                        Call Forwarding
+                    </Typography>
+
+                    <Stack spacing={2}>
+
+                        {/* Enable Call Forwarding */}
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={formData.enable_call_forwarding}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            enable_call_forwarding: e.target.checked
+                                        })
+                                    }
+                                />
+                            }
+                            label="Enable Call Forwarding"
+                        />
+
+                        {formData.enable_call_forwarding && (
+                            <Stack spacing={2}>
+
+                                {/* Phone Number */}
+                                <TextField
+                                    label="Forwarding Phone Number"
+                                    name="call_forwarding_number"
+                                    placeholder="+1234567890"
+                                    value={formData.call_forwarding_number}
+                                    onChange={handleInputChange}
+                                    type="tel"
+                                    helperText="Phone number to forward calls to"
+                                    fullWidth
+                                />
+
+                                {/* Role */}
+                                <TextField
+                                    label="Role"
+                                    name="call_forwarding_role"
+                                    placeholder="e.g., Manager, Support Agent"
+                                    value={formData.call_forwarding_role}
+                                    onChange={handleInputChange}
+                                    helperText="Role or title of the person receiving forwarded calls"
+                                    fullWidth
+                                />
+
+                                {/* Action Description */}
+                                <TextField
+                                    label="Action Description"
+                                    name="call_forwarding_action_desc"
+                                    placeholder="Describe when calls should be forwarded"
+                                    value={formData.call_forwarding_action_desc}
+                                    onChange={handleInputChange}
+                                    multiline
+                                    rows={3}
+                                    helperText="Description of when and how call forwarding should be triggered"
+                                    fullWidth
+                                />
+
+                            </Stack>
+                        )}
+
+                    </Stack>
+                </Card>
+
+                {/* Additional Settings */}
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle1" mb={2}>Additional Settings</Typography>
                     <Stack spacing={2}>
                         <TextField
                             label="Success Parameters"
@@ -287,6 +668,21 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             onChange={handleInputChange}
                             multiline
                             rows={10} // taller textarea for success parameters
+                            inputProps={{
+                                style: {
+                                    overflow: "auto",
+                                    resize: "none"
+                                }
+                            }}
+                        />
+                        <TextField
+                            label="Important Data Points to Extract"
+                            name="important_data_points"
+                            value={formData.important_data_points}
+                            onChange={handleInputChange}
+                            multiline
+                            rows={6}
+                            placeholder="Example: name, email, interest_level, budget"
                             inputProps={{
                                 style: {
                                     overflow: "auto",
@@ -317,11 +713,272 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             />
                         )}
                         <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={formData.enable_background_sound}
+                                    onChange={(e) =>
+                                        handleToggleChange(
+                                            "enable_background_sound",
+                                            e.target.checked
+                                        )
+                                    }
+                                />
+                            }
+                            label="Enable Background Sound"
+                        />
+
+                        {/* Background Sound URL */}
+                        {formData.enable_background_sound && (
+                            <TextField
+                                label="Background Sound URL"
+                                name="background_sound_url"
+                                value={formData.background_sound_url}
+                                onChange={handleInputChange}
+                                placeholder="https://example.com/background.mp3"
+                                fullWidth
+                            />
+                        )}
+
+                        {/* Start Speaking Wait Seconds */}
+                        <TextField
+                            label="Start Speaking Wait Seconds"
+                            name="start_speaking_wait_seconds"
+                            type="number"
+                            value={formData.start_speaking_wait_seconds}
+                            onChange={handleInputChange}
+                            inputProps={{ min: 0, max: 10 }}
+                            helperText="How long AI waits before speaking"
+                        />
+
+                        {/* Stop Speaking Voice Seconds */}
+                        <TextField
+                            label="Stop Speaking Voice Seconds"
+                            name="stop_speaking_voice_seconds"
+                            type="number"
+                            value={formData.stop_speaking_voice_seconds}
+                            onChange={handleInputChange}
+                            inputProps={{ min: 0, max: 10 }}
+                            helperText="Silence threshold before AI stops speaking"
+                        />
+                        {/* <FormControlLabel
                             control={<Switch checked={formData.follow_up_whatsapp} onChange={(e) => handleToggleChange('follow_up_whatsapp', e.target.checked)} />}
                             label="After call completion, send follow-up WhatsApp message"
+                        /> */}
+
+                        <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3 }}>
+
+                            <Typography variant="h6" fontSize={16} fontWeight={600}>
+                                Transcriber
+                            </Typography>
+
+                            <Typography variant="body2" color="text.secondary" mb={2}>
+                                Configure the transcription provider and language settings.
+                            </Typography>
+
+                            <Grid container spacing={2}>
+
+                                {/* Provider */}
+                                <Grid item xs={12} md={4}>
+                                    <FormControl fullWidth>
+                                        <InputLabel>Provider</InputLabel>
+
+                                        <Select
+                                            value={formData.transcriber_provider}
+                                            label="Provider"
+                                            onChange={(e) => handleProviderChange(e.target.value)}
+                                        >
+                                            <MenuItem value="">Select Provider</MenuItem>
+                                            {transcriberProviders.map((lang) => (
+                                                <MenuItem key={lang.value} value={lang.value}>
+                                                    {lang.label}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+
+                                    </FormControl>
+                                </Grid>
+
+                                {/* Language (shown for both providers) */}
+                                {formData.transcriber_provider && (
+                                    <Grid item xs={12} md={4}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Language</InputLabel>
+
+                                            <Select
+                                                value={formData.transcriber_language}
+                                                label="Language"
+                                                onChange={(e) =>
+                                                    setFormData({
+                                                        ...formData,
+                                                        transcriber_language: e.target.value
+                                                    })
+                                                }
+                                            >
+                                                <MenuItem value="">Select Language</MenuItem>
+
+                                                {transcriberLanguages.map((lang) => (
+                                                    <MenuItem key={lang.value} value={lang.value}>
+                                                        {lang.label}
+                                                    </MenuItem>
+                                                ))}
+
+                                            </Select>
+
+                                        </FormControl>
+                                    </Grid>
+                                )}
+
+                                {/* Model (only for Deepgram) */}
+                                {formData.transcriber_provider === "deepgram" && (
+                                    <Grid item xs={12} md={4}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Model</InputLabel>
+
+                                            <Select
+                                                value={formData.transcriber_model}
+                                                label="Model"
+                                                onChange={(e) =>
+                                                    setFormData({
+                                                        ...formData,
+                                                        transcriber_model: e.target.value
+                                                    })
+                                                }
+                                            >
+                                                <MenuItem value="">Select Model</MenuItem>
+                                                {transcriberModels.map((lang) => (
+                                                    <MenuItem key={lang.value} value={lang.value}>
+                                                        {lang.label}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+
+                                        </FormControl>
+                                    </Grid>
+                                )}
+
+                            </Grid>
+
+                        </Box>
+                    </Stack>
+                </Card >
+
+                {/* Analysis Options */}
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle1" mb={2}>Analysis Options</Typography>
+                    <Box sx={{ mt: 2 }}>
+                        <Typography fontWeight={500} mb={1}>
+                            Timing Settings
+                        </Typography>
+
+                        <Typography variant="body2">
+                            Silence Timeout: <b>{formData.silence_timeout}</b> seconds
+                        </Typography>
+
+                        <Slider
+                            value={formData.silence_timeout}
+                            min={10}
+                            max={20}
+                            step={1}
+                            onChange={(e, value) =>
+                                setFormData({ ...formData, silence_timeout: value as number })
+                            }
+                        />
+
+                        <Typography variant="caption" color="text.secondary">
+                            How long to wait before AI speaks again after silence
+                        </Typography>
+                    </Box>
+                    <Box sx={{ mt: 2 }}>
+                        <Typography fontWeight={500} mb={1}>
+                            Talking Speed
+                        </Typography>
+
+                        <Typography variant="body2">
+                            Speed: <b>{formData.talking_speed}x</b>
+                        </Typography>
+
+                        <Slider
+                            value={formData.talking_speed}
+                            min={0.5}
+                            max={2}
+                            step={0.1}
+                            onChange={(e, value) =>
+                                setFormData({ ...formData, talking_speed: value as number })
+                            }
+                        />
+
+                        <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="caption">0.5x (Slow)</Typography>
+                            <Typography variant="caption">1.0x (Normal)</Typography>
+                            <Typography variant="caption">2.0x (Fast)</Typography>
+                        </Stack>
+
+                        <Typography variant="caption" color="text.secondary">
+                            Adjust the speaking speed of the AI agent voice
+                        </Typography>
+                    </Box>
+                    <Box sx={{ mt: 2 }}>
+                        <Typography fontWeight={500} mb={1}>
+                            Max Call Duration
+                        </Typography>
+
+                        <Typography variant="body2">
+                            Maximum Duration: <b>{Math.floor(formData.max_call_duration / 60)} min</b> ({formData.max_call_duration} seconds)
+                        </Typography>
+
+                        <Slider
+                            value={formData.max_call_duration}
+                            min={60}
+                            max={600}
+                            step={30}
+                            onChange={(e, value) =>
+                                setFormData({ ...formData, max_call_duration: value as number })
+                            }
+                        />
+
+                        <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="caption">1 min</Typography>
+                            <Typography variant="caption">3 min</Typography>
+                            <Typography variant="caption">5 min</Typography>
+                            <Typography variant="caption">7 min</Typography>
+                            <Typography variant="caption">10 min</Typography>
+                        </Stack>
+
+                        <Typography variant="caption" color="text.secondary">
+                            Maximum duration for a single call
+                        </Typography>
+                    </Box>
+                    <Stack spacing={1} sx={{ mt: 3 }}>
+                        {/* <FormControlLabel
+                            control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
+                            label="Enable Sentiment Detection"
+                        /> */}
+                        <FormControlLabel
+                            control={<Switch checked={formData.voice_mail_detection} onChange={(e) => handleToggleChange('voice_mail_detection', e.target.checked)} />}
+                            label="Voice Mail Detection"
+                        />
+                        {/* <FormControlLabel
+                            control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
+                            label="Enable Call Recording"
+                        /> */}
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={formData.calendar_sync}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            calendar_sync: e.target.checked
+                                        })
+                                    }
+                                />
+                            }
+                            label="Calendar Sync"
                         />
                     </Stack>
                 </Card >
+
+
 
                 {/* Save Button aligned right */}
                 <Box display="flex" justifyContent="flex-end" >

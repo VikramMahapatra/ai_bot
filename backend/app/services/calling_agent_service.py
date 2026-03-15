@@ -37,22 +37,64 @@ def create_agent(
             saved_files.append(file_path)
 
     db_agent = CallingAgent(
-        organization_id= organization_id,
+        organization_id=organization_id,
         name=agent.name,
+
         greeting=agent.greeting,
         prompt=agent.prompt,
+        server_location=agent.server_location,
 
-        # Save uploaded files
+        # Voice
+        gender=agent.gender,
+        accent=agent.accent,
+        voice=agent.voice,
+
+        # Conversation
+        who_speaks_first=agent.who_speaks_first,
+
+        # Files
         training_doc=",".join(saved_files) if saved_files else None,
 
+        # Destination
         destination=",".join(agent.destination) if agent.destination else None,
+
+        # Timezone
+        enable_prompt_timezone=agent.enable_prompt_timezone,
+        prompt_timezone=agent.prompt_timezone,
+
+        # Call Forwarding
+        enable_call_forwarding=agent.enable_call_forwarding,
+        call_forwarding_number=agent.call_forwarding_number,
+        call_forwarding_role=agent.call_forwarding_role,
+        call_forwarding_action_desc=agent.call_forwarding_action_desc,
+
+        # Analysis
+        silence_timeout=agent.silence_timeout,
+        talking_speed=agent.talking_speed,
+        max_call_duration=agent.max_call_duration,
+        calendar_sync=agent.calendar_sync,
+
         enable_sentiment=agent.enable_sentiment,
         voice_mail_detection=agent.voice_mail_detection,
         enable_call_recording=agent.enable_call_recording,
+
+        # Summary
         success_parameters=agent.success_parameters,
         enable_call_summary=agent.enable_call_summary,
         summary_prompt=agent.summary_prompt,
-        follow_up_whatsapp=agent.follow_up_whatsapp
+        follow_up_whatsapp=agent.follow_up_whatsapp,
+
+        # AI Config
+        important_data_points=agent.important_data_points,
+        enable_background_sound=agent.enable_background_sound,
+        background_sound_url=agent.background_sound_url,
+        start_speaking_wait_seconds=agent.start_speaking_wait_seconds,
+        stop_speaking_voice_seconds=agent.stop_speaking_voice_seconds,
+
+        # Transcriber
+        transcriber_provider=agent.transcriber_provider,
+        transcriber_language=agent.transcriber_language,
+        transcriber_model=agent.transcriber_model
     )
 
     db.add(db_agent)
@@ -96,20 +138,19 @@ def update_agent(
 
             saved_files.append(file_path)
 
-    # update fields
-    db_agent.name = agent.name
-    db_agent.greeting = agent.greeting
-    db_agent.prompt = agent.prompt
-    db_agent.destination = ",".join(agent.destination) if agent.destination else None
-    db_agent.enable_sentiment = agent.enable_sentiment
-    db_agent.voice_mail_detection = agent.voice_mail_detection
-    db_agent.enable_call_recording = agent.enable_call_recording
-    db_agent.success_parameters = agent.success_parameters
-    db_agent.enable_call_summary = agent.enable_call_summary
-    db_agent.summary_prompt = agent.summary_prompt
-    db_agent.follow_up_whatsapp = agent.follow_up_whatsapp
+    # Update fields dynamically
+    update_data = agent.dict(exclude_unset=True)
 
-    db_agent.training_doc = ",".join(saved_files) if saved_files else None
+    for key, value in update_data.items():
+
+        if key == "destination":
+            setattr(db_agent, key, ",".join(value) if value else None)
+        else:
+            setattr(db_agent, key, value)
+
+    # update training docs
+    if saved_files:
+        db_agent.training_doc = ",".join(saved_files)
 
     db.commit()
     db.refresh(db_agent)
@@ -118,7 +159,6 @@ def update_agent(
         **db_agent.__dict__,
         "destination": db_agent.destination.split(",") if db_agent.destination else []
     }
-
 
 # Read All Agents
 def read_agents(
