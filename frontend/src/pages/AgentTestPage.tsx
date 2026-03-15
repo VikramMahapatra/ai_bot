@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -23,6 +23,7 @@ import InsightsIcon from '@mui/icons-material/Insights';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import { useParams } from 'react-router-dom';
 import { appEnv } from '../config/env';
 
@@ -30,6 +31,45 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+interface WidgetPublicConfig {
+  name?: string;
+  welcome_message?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  lead_fields?: string;
+}
+
+const BOT_ICON_GLYPHS: Record<string, string> = {
+  'bot-robot': '🤖',
+  'bot-spark': '✨',
+  'bot-brain': '🧠',
+  'bot-guide': '🛰️',
+};
+
+const USER_ICON_GLYPHS: Record<string, string> = {
+  'user-person': '👤',
+  'user-smile': '🙂',
+  'user-chat': '💬',
+  'user-brief': '🧑‍💼',
+};
+
+const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string } => {
+  if (!leadFieldsRaw) return {};
+  try {
+    const parsed = JSON.parse(leadFieldsRaw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return {
+      botIcon: typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined,
+      userIcon: typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined,
+    };
+  } catch {
+    return {};
+  }
+};
 
 interface ProductTrack {
   title: string;
@@ -96,8 +136,9 @@ const deliveryFlow = [
 const AgentTestPage: React.FC = () => {
   const { widgetId = '' } = useParams();
   const [isOpen, setIsOpen] = useState(false);
+  const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: 'Hi! How can I help you today? I can also help you book an appointment.' },
+    { role: 'assistant', content: 'Hi! How can I help you today?' },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -111,6 +152,14 @@ const AgentTestPage: React.FC = () => {
   const [appointmentError, setAppointmentError] = useState('');
 
   const apiBaseUrl = appEnv.apiUrl;
+  const position = widgetConfig?.position || 'bottom-right';
+  const primaryColor = widgetConfig?.primary_color || '#2f6bff';
+  const secondaryColor = widgetConfig?.secondary_color || '#2d8ef0';
+  const assistantName = widgetConfig?.name?.trim() || 'AI Assistant';
+  const welcomeText = (widgetConfig?.welcome_message || 'Hi! How can I help you today?').trim() || 'Hi! How can I help you today?';
+  const iconSelection = useMemo(() => parseIconSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
+  const botIconGlyph = BOT_ICON_GLYPHS[iconSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
+  const userIconGlyph = USER_ICON_GLYPHS[iconSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
 
   const sessionId = useMemo(() => {
     const key = `public_agent_session_${widgetId || 'unknown'}`;
@@ -120,6 +169,43 @@ const AgentTestPage: React.FC = () => {
     localStorage.setItem(key, created);
     return created;
   }, [widgetId]);
+
+  useEffect(() => {
+    const loadWidgetConfig = async () => {
+      if (!widgetId) return;
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/admin/widget/config/${encodeURIComponent(widgetId)}`);
+        if (!response.ok) return;
+        const config = (await response.json()) as WidgetPublicConfig;
+        setWidgetConfig(config);
+        setMessages((prev) => {
+          if (prev.length === 1 && prev[0]?.role === 'assistant') {
+            const resolvedWelcome = (config.welcome_message || '').trim() || 'Hi! How can I help you today?';
+            return [{ role: 'assistant', content: resolvedWelcome }];
+          }
+          return prev;
+        });
+      } catch {
+        // Keep defaults when config fetch fails.
+      }
+    };
+
+    loadWidgetConfig();
+  }, [apiBaseUrl, widgetId]);
+
+  const launcherPositionSx = useMemo(() => {
+    if (position === 'bottom-left') return { left: 24, bottom: 24 };
+    if (position === 'top-right') return { right: 24, top: 24 };
+    if (position === 'top-left') return { left: 24, top: 24 };
+    return { right: 24, bottom: 24 };
+  }, [position]);
+
+  const panelPositionSx = useMemo(() => {
+    if (position === 'bottom-left') return { left: 16, bottom: 16 };
+    if (position === 'top-right') return { right: 16, top: 16 };
+    if (position === 'top-left') return { left: 16, top: 16 };
+    return { right: 16, bottom: 16 };
+  }, [position]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -398,8 +484,13 @@ const AgentTestPage: React.FC = () => {
                 {apiBaseUrl}
               </Typography>
               <Divider sx={{ my: 1 }} />
+              <Typography variant="body2" sx={{ color: '#64748b' }}>Welcome Message</Typography>
+              <Typography sx={{ color: '#0f172a', fontSize: '0.9rem' }}>
+                {welcomeText}
+              </Typography>
+              <Divider sx={{ my: 1 }} />
               <Typography variant="body2" sx={{ color: '#334155' }}>
-                Open the floating chat in the bottom-right corner to interact with the live assistant.
+                Open the floating chat to interact with the live assistant. Position is set to {position}.
               </Typography>
             </Stack>
           </Paper>
@@ -455,21 +546,20 @@ const AgentTestPage: React.FC = () => {
           variant="contained"
           sx={{
             position: 'fixed',
-            right: 24,
-            bottom: 24,
+            ...launcherPositionSx,
             borderRadius: '999px',
             minWidth: 64,
             height: 64,
             fontSize: 28,
-            background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
             boxShadow: '0 16px 30px rgba(2,132,199,0.35)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #2554cc 0%, #256fb8 100%)',
+              opacity: 0.92,
             },
             zIndex: 1200,
           }}
         >
-          AI
+          💬
         </Button>
       )}
 
@@ -478,29 +568,48 @@ const AgentTestPage: React.FC = () => {
           elevation={6}
           sx={{
             position: 'fixed',
-            right: 16,
-            bottom: 16,
-            width: { xs: 'calc(100vw - 32px)', sm: 380 },
-            height: 560,
+            ...panelPositionSx,
+            width: { xs: 'calc(100vw - 24px)', sm: 412 },
+            height: { xs: '72vh', sm: 620 },
             borderRadius: 4,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1300,
             border: '1px solid #cbd5e1',
+            boxShadow: '0 24px 52px rgba(15,23,42,0.24)',
           }}
         >
           <Box sx={{
-            background: 'linear-gradient(120deg, #2f6bff 0%, #2d8ef0 100%)',
+            background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
             color: '#fff',
-            p: 1.5,
+            p: 1.8,
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: 'flex-start',
           }}>
-            <Typography sx={{ fontWeight: 700 }}>AI Assistant</Typography>
+            <Box>
+              <Typography sx={{ fontWeight: 800, lineHeight: 1.2 }}>{assistantName}</Typography>
+              <Typography sx={{ fontSize: '0.76rem', opacity: 0.9, mt: 0.3 }}>
+                Live assistant preview
+              </Typography>
+            </Box>
             <Button size="small" sx={{ color: '#fff' }} onClick={() => setIsOpen(false)}>
               Close
+            </Button>
+          </Box>
+
+          <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
+            <Button
+              variant="outlined"
+              startIcon={<CalendarMonthIcon />}
+              onClick={openAppointmentDialog}
+              disabled={!widgetId || sending}
+              size="small"
+              fullWidth
+              sx={{ borderRadius: '10px' }}
+            >
+              Book Appointment
             </Button>
           </Box>
 
@@ -511,36 +620,82 @@ const AgentTestPage: React.FC = () => {
                   key={`${message.role}-${index}`}
                   sx={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '85%',
-                    px: 1.5,
-                    py: 1,
-                    borderRadius: 2,
-                    bgcolor: message.role === 'user' ? '#2d8ef0' : '#fff',
-                    color: message.role === 'user' ? '#fff' : '#0f172a',
-                    border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
-                    whiteSpace: 'pre-wrap',
-                    fontSize: '0.92rem',
+                    maxWidth: '92%',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    gap: 0.9,
+                    flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
                   }}
                 >
-                  {message.content}
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #d1d5db',
+                      bgcolor: '#fff',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.95rem',
+                      flex: '0 0 28px',
+                    }}
+                  >
+                    {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
+                  </Box>
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 2,
+                      bgcolor: message.role === 'user' ? primaryColor : '#fff',
+                      color: message.role === 'user' ? '#fff' : '#0f172a',
+                      border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
+                      whiteSpace: 'pre-wrap',
+                      fontSize: '0.92rem',
+                    }}
+                  >
+                    {message.content}
+                  </Box>
                 </Box>
               ))}
               {sending && (
-                <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1 }}>
+                <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 0.9 }}>
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #d1d5db',
+                      bgcolor: '#fff',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.95rem',
+                    }}
+                  >
+                    {botIconGlyph}
+                  </Box>
                   <CircularProgress size={18} />
                 </Box>
               )}
             </Stack>
           </Box>
 
-          <Box sx={{ p: 1.5, borderTop: '1px solid #e2e8f0' }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Box sx={{ p: 1.5, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
+            <Stack spacing={0.8}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9 }}>
               <TextField
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message..."
                 fullWidth
                 size="small"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '10px',
+                  },
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -548,24 +703,43 @@ const AgentTestPage: React.FC = () => {
                   }
                 }}
               />
-              <Button variant="contained" onClick={sendMessage} disabled={!input.trim() || sending || !widgetId}>
-                Send
-              </Button>
               <Button
-                variant="outlined"
-                startIcon={<CalendarMonthIcon />}
-                onClick={openAppointmentDialog}
-                disabled={!widgetId || sending}
+                variant="contained"
+                onClick={sendMessage}
+                disabled={!input.trim() || sending || !widgetId}
+                sx={{
+                  minWidth: 46,
+                  width: 46,
+                  height: 40,
+                  borderRadius: '10px',
+                  background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                }}
               >
-                Book Appointment
+                <SendRoundedIcon fontSize="small" />
               </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                Press Enter to send. Appointment booking is available anytime.
+              </Typography>
             </Stack>
           </Box>
         </Paper>
       )}
 
-      <Dialog open={appointmentOpen} onClose={() => setAppointmentOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Book Appointment</DialogTitle>
+      <Dialog
+        open={appointmentOpen}
+        onClose={() => setAppointmentOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            border: '1px solid #dbe3ef',
+            boxShadow: '0 20px 42px rgba(15,23,42,0.2)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1.2 }}>Book Appointment</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {appointmentError && <Alert severity="error">{appointmentError}</Alert>}
@@ -586,7 +760,16 @@ const AgentTestPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAppointmentOpen(false)} disabled={appointmentBusy}>Cancel</Button>
-          <Button variant="contained" onClick={bookAppointment} disabled={appointmentBusy}>
+          <Button
+            variant="contained"
+            onClick={bookAppointment}
+            disabled={appointmentBusy}
+            sx={{
+              borderRadius: '10px',
+              px: 1.8,
+              background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            }}
+          >
             {appointmentBusy ? 'Booking...' : 'Confirm'}
           </Button>
         </DialogActions>
