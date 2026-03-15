@@ -13,10 +13,27 @@ interface WidgetConfig {
   name?: string;
   welcomeMessage?: string;
   primaryColor?: string;
+  secondaryColor?: string;
   position?: string;
+  botIcon?: string;
+  userIcon?: string;
   shop?: any;
   user?: any;
 }
+
+const BOT_ICON_GLYPHS: Record<string, string> = {
+  'bot-robot': '🤖',
+  'bot-spark': '✨',
+  'bot-brain': '🧠',
+  'bot-guide': '🛰️',
+};
+
+const USER_ICON_GLYPHS: Record<string, string> = {
+  'user-person': '👤',
+  'user-smile': '🙂',
+  'user-chat': '💬',
+  'user-brief': '🧑‍💼',
+};
 
 const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
@@ -26,7 +43,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   name = 'AI Assistant',
   welcomeMessage = 'Hi! How can I help you?',
   primaryColor = '#269b9f',
+  secondaryColor = '#34d399',
   position = 'bottom-right',
+  botIcon = 'bot-robot',
+  userIcon = 'user-person',
   shop,
   user,
 }) => {
@@ -76,6 +96,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatAPI = useRef(new ChatAPI(apiUrl));
+  const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS['bot-robot'];
+  const userIconGlyph = USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS['user-person'];
 
   const shopDomain = useMemo(() => shop?.domain || shop?.shop_domain || undefined, [shop]);
   const customerId = useMemo(() => user?.id || user?.customer_id || undefined, [user]);
@@ -102,7 +124,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setMessages([
         {
           role: 'assistant',
-          content: `${welcomeMessage} I can also help you book an appointment.`,
+          content: welcomeMessage,
         },
       ]);
     }
@@ -132,7 +154,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setMessages([
       {
         role: 'assistant',
-        content: `${welcomeMessage} I can also help you book an appointment.`,
+        content: welcomeMessage,
       },
     ]);
     setInput('');
@@ -337,17 +359,21 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   return (
     <div
       className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
-      style={{ '--primary-color': primaryColor } as React.CSSProperties}
+      style={{ '--primary-color': primaryColor, '--secondary-color': secondaryColor } as React.CSSProperties}
     >
       {!isOpen && (
-        <button className="chatbot-widget-button chatbot-fade-in" onClick={() => setIsOpen(true)} style={{ background: primaryColor }}>
+        <button
+          className="chatbot-widget-button chatbot-fade-in"
+          onClick={() => setIsOpen(true)}
+          style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+        >
           💬
         </button>
       )}
 
       {isOpen && (
         <div className="chatbot-widget-window chatbot-slide-in">
-          <div className="chatbot-widget-header" style={{ background: primaryColor }}>
+          <div className="chatbot-widget-header" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}>
             <h3>{name}</h3>
             <div className="chatbot-widget-header-actions">
               <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>
@@ -386,12 +412,15 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
             {messages.map((message, index) => (
               <div key={index} className={`chatbot-message ${message.role} chatbot-fade-in`}>
+                {message.role === 'assistant' && <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>}
                 <div className="chatbot-message-bubble">{message.content}</div>
+                {message.role === 'user' && <div className="chatbot-message-avatar user">{userIconGlyph}</div>}
               </div>
             ))}
 
             {loading && (
               <div className="chatbot-message assistant chatbot-fade-in">
+                <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
                 <div className="chatbot-message-bubble">
                   <div className="chatbot-typing">
                     <div className="chatbot-typing-dot"></div>
@@ -419,7 +448,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               className="chatbot-widget-send"
               onClick={handleSend}
               disabled={loading || !input.trim()}
-              style={{ background: primaryColor }}
+              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
             >
               Send
             </button>
@@ -440,7 +469,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   className="chatbot-inline-button"
                   onClick={handleEmailSubmit}
                   disabled={emailSending || !emailValue.trim()}
-                  style={{ background: primaryColor }}
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
                 >
                   {emailSending ? 'Sending...' : 'Send'}
                 </button>
@@ -497,7 +526,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   className="chatbot-inline-button"
                   onClick={handleAppointmentSubmit}
                   disabled={appointmentSubmitting}
-                  style={{ background: primaryColor }}
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
                 >
                   {appointmentSubmitting ? 'Booking...' : 'Confirm'}
                 </button>
@@ -548,7 +577,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   className="chatbot-inline-button"
                   onClick={handleLeadSubmit}
                   disabled={leadSubmitting}
-                  style={{ background: primaryColor }}
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
                 >
                   {leadSubmitting ? 'Submitting...' : 'Submit'}
                 </button>

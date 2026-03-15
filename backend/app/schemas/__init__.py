@@ -3,6 +3,8 @@ from app.schemas.knowledge import (
     KnowledgeSourceResponse,
     WebCrawlRequest,
     WebCrawlResponse,
+    WebCrawlPreviewRequest,
+    WebCrawlPreviewResponse,
     DocumentUploadResponse,
 )
 from app.schemas.chat import (
@@ -50,6 +52,8 @@ __all__ = [
     "KnowledgeSourceResponse",
     "WebCrawlRequest",
     "WebCrawlResponse",
+    "WebCrawlPreviewRequest",
+    "WebCrawlPreviewResponse",
     "DocumentUploadResponse",
     "ChatMessage",
     "ChatResponse",
