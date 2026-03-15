@@ -23,6 +23,27 @@ export interface AppointmentFilters {
   end_date?: string;
 }
 
+export interface AppointmentReschedulePayload {
+  appointment_at: string;
+  timezone?: string;
+  notes?: string;
+  meeting_link?: string;
+}
+
+export interface AppointmentRescheduleResponse {
+  id: number;
+  appointment_at: string;
+  timezone?: string;
+  status: AppointmentItem['status'];
+  meeting_link?: string;
+  notification?: {
+    sent: boolean;
+    recipient_count: number;
+    errors: string[];
+  };
+  message?: string;
+}
+
 export const appointmentService = {
   async list(filters?: AppointmentFilters): Promise<AppointmentItem[]> {
     const response = await api.get('/api/admin/appointments', { params: filters });
@@ -31,5 +52,13 @@ export const appointmentService = {
 
   async updateStatus(appointmentId: number, status: AppointmentItem['status']): Promise<void> {
     await api.put(`/api/admin/appointments/${appointmentId}/status`, { status });
+  },
+
+  async reschedule(
+    appointmentId: number,
+    payload: AppointmentReschedulePayload
+  ): Promise<AppointmentRescheduleResponse> {
+    const response = await api.put(`/api/admin/appointments/${appointmentId}/reschedule`, payload);
+    return response.data;
   },
 };

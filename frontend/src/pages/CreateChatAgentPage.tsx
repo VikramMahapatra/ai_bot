@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -27,11 +27,20 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import GroupsIcon from '@mui/icons-material/Groups';
 import ForumIcon from '@mui/icons-material/Forum';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
 import { knowledgeService } from '../services/knowledgeService';
+import { launchWhatsAppEmbeddedSignup, loadFacebookSdk } from '../services/metaEmbeddedSignup';
 import { whatsappService } from '../services/whatsappService';
-import { buildApiUrl, buildPublicUrl, getMetaWhatsAppEmbeddedSignupUrl } from '../config/env';
+import {
+  buildApiUrl,
+  buildPublicUrl,
+  getMetaAppId,
+  getMetaEmbeddedSignupConfigId,
+  getMetaWhatsAppEmbeddedSignupUrl,
+} from '../config/env';
 
 interface WidgetConfig {
   widget_id: string;
@@ -65,6 +74,7 @@ const initialWhatsAppForm: WhatsAppFormState = {
 
 const CreateChatAgentPage: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -96,6 +106,9 @@ const CreateChatAgentPage: React.FC = () => {
   const [whatsappTesting, setWhatsappTesting] = useState(false);
   const [whatsappConfigured, setWhatsappConfigured] = useState(false);
   const [whatsappForm, setWhatsappForm] = useState<WhatsAppFormState>(initialWhatsAppForm);
+  const [metaConnecting, setMetaConnecting] = useState(false);
+  const [metaSdkReady, setMetaSdkReady] = useState(false);
+  const [metaSdkFailed, setMetaSdkFailed] = useState(false);
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
 
@@ -149,26 +162,168 @@ const CreateChatAgentPage: React.FC = () => {
   }, [createdWidgetId]);
 
   const webhookUrl = useMemo(() => buildApiUrl('/api/channels/whatsapp/webhook'), []);
+  const metaRedirectUri = useMemo(
+    () => buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`),
+    []
+  );
 
-  const openMetaWhatsAppWizard = () => {
-    const wizardUrl = getMetaWhatsAppEmbeddedSignupUrl() || 'https://business.facebook.com/wa/manage/phone-numbers/';
-
-    const popup = window.open(
-      wizardUrl,
-      'meta_whatsapp_wizard',
-      'width=980,height=760,resizable=yes,scrollbars=yes,noopener,noreferrer'
-    );
-
-    if (!popup) {
-      // Fallback to same-tab navigation when popup is blocked.
-      window.location.assign(wizardUrl);
-      setError('Popup blocked by browser. Opened Meta setup in the current tab instead.');
+  useEffect(() => {
+    const metaAppId = getMetaAppId();
+    if (!metaAppId) {
+      setMetaSdkReady(false);
+      setMetaSdkFailed(true);
       return;
     }
 
-    setError('');
-    setSuccess('Meta setup wizard opened. Complete onboarding and paste generated values here.');
+    let active = true;
+    setMetaSdkFailed(false);
+    loadFacebookSdk(metaAppId)
+      .then(() => {
+        if (active) {
+          setMetaSdkReady(true);
+          setMetaSdkFailed(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMetaSdkReady(false);
+          setMetaSdkFailed(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const openMetaOAuthFallback = (metaAppId: string, configId: string) => {
+    const state = `wa_${Date.now()}`;
+    const oauthUrl =
+      `https://www.facebook.com/v19.0/dialog/oauth` +
+      `?client_id=${encodeURIComponent(metaAppId)}` +
+      `&redirect_uri=${encodeURIComponent(metaRedirectUri)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}` +
+      `&config_id=${encodeURIComponent(configId)}` +
+      `&state=${encodeURIComponent(state)}`;
+
+    const popup = window.open(oauthUrl, 'meta_whatsapp_oauth', 'width=980,height=760,resizable=yes,scrollbars=yes');
+    if (!popup) {
+      window.location.assign(oauthUrl);
+      setError('Popup blocked. Opened Meta signup in current tab.');
+    } else {
+      setSuccess('Meta signup opened via OAuth fallback. Complete setup in popup.');
+    }
   };
+
+  const handleMetaAuthCode = useCallback(async (code: string, source: 'sdk' | 'redirect' = 'sdk') => {
+    if (!createdWidgetId) {
+      throw new Error('Create widget first before connecting WhatsApp.');
+    }
+
+    const verifyToken = (whatsappForm.verify_token || '').trim() || `wa_verify_${Date.now()}`;
+    const exchange = await whatsappService.exchangeEmbeddedSignupCode({
+      code,
+      redirect_uri: source === 'redirect' ? metaRedirectUri : undefined,
+      widget_id: createdWidgetId,
+      verify_token: verifyToken,
+      business_phone_number: (whatsappForm.business_phone_number || '').trim() || undefined,
+      is_active: true,
+      auto_save: true,
+    });
+
+    setWhatsappForm((prev) => ({
+      ...prev,
+      phone_number_id: exchange.phone_number_id || prev.phone_number_id,
+      waba_id: exchange.waba_id || prev.waba_id,
+      access_token: exchange.access_token || prev.access_token,
+      verify_token: verifyToken,
+      business_phone_number: exchange.business_phone_number || prev.business_phone_number,
+      is_active: true,
+    }));
+    setWhatsappConfigured(Boolean(exchange.saved || exchange.phone_number_id));
+    setSuccess(
+      exchange.saved
+        ? 'WhatsApp connected and saved successfully via Meta wizard.'
+        : 'Meta wizard completed. Review values and save configuration.'
+    );
+  }, [createdWidgetId, metaRedirectUri, whatsappForm.business_phone_number, whatsappForm.verify_token]);
+
+  const openMetaWhatsAppWizard = async () => {
+    if (!createdWidgetId) {
+      setError('Create widget first before connecting WhatsApp.');
+      return;
+    }
+
+    const metaAppId = getMetaAppId();
+    const configId = getMetaEmbeddedSignupConfigId();
+    const fallbackUrl = getMetaWhatsAppEmbeddedSignupUrl();
+
+    if (!metaAppId || !configId) {
+      if (fallbackUrl) {
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        setError('Meta SDK env is missing. Opened fallback URL from env. Set VITE_META_APP_ID and VITE_META_EMBEDDED_SIGNUP_CONFIG_ID.');
+        return;
+      }
+      setError('Set VITE_META_APP_ID and VITE_META_EMBEDDED_SIGNUP_CONFIG_ID in frontend .env.');
+      return;
+    }
+
+    try {
+      setMetaConnecting(true);
+      setError('');
+      if (metaSdkFailed) {
+        openMetaOAuthFallback(metaAppId, configId);
+        setError('Meta SDK failed to load. Opened fallback signup window.');
+        return;
+      }
+
+      if (!metaSdkReady) {
+        setError('Meta SDK is still loading. Please wait a moment and click Connect WhatsApp again.');
+        return;
+      }
+
+      const code = await launchWhatsAppEmbeddedSignup(configId);
+      await handleMetaAuthCode(code, 'sdk');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Meta signup failed.');
+    } finally {
+      setMetaConnecting(false);
+    }
+  };
+
+  useEffect(() => {
+    const onMetaMessage = async (event: MessageEvent) => {
+      const payload = event.data as any;
+      if (!payload || payload.type !== 'META_WHATSAPP_EMBEDDED_SIGNUP') {
+        return;
+      }
+
+      if (payload.error) {
+        setError(`Meta signup failed: ${payload.error}`);
+        return;
+      }
+
+      const code = (payload.code || '').trim();
+      const source = payload.source === 'redirect' ? 'redirect' : 'sdk';
+      if (!code) {
+        return;
+      }
+
+      try {
+        setMetaConnecting(true);
+        setError('');
+        await handleMetaAuthCode(code, source);
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || err?.message || 'Meta signup exchange failed.');
+      } finally {
+        setMetaConnecting(false);
+      }
+    };
+
+    window.addEventListener('message', onMetaMessage);
+    return () => window.removeEventListener('message', onMetaMessage);
+  }, [handleMetaAuthCode]);
 
   useEffect(() => {
     if (!createdWidgetId || activeStep !== 2) return;
@@ -719,9 +874,10 @@ const CreateChatAgentPage: React.FC = () => {
                           variant="outlined"
                           size="small"
                           onClick={openMetaWhatsAppWizard}
+                          disabled={metaConnecting}
                           sx={{ minWidth: { sm: 128 }, py: 0.55, px: 1.25, whiteSpace: 'nowrap' }}
                         >
-                          Launch Meta Wizard
+                          {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
                         </Button>
                         <Button
                           variant="contained"
@@ -838,6 +994,13 @@ const CreateChatAgentPage: React.FC = () => {
                   >
                     Open Test Page
                   </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<ArrowBackIcon />}
+                    onClick={() => navigate('/widgets')}
+                  >
+                    Back to Agent Management
+                  </Button>
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
                   Tip: If your backend is running on a different URL, set `VITE_API_URL` in frontend `.env` before sharing.
@@ -863,8 +1026,15 @@ const CreateChatAgentPage: React.FC = () => {
                 This popup lets you finish Meta setup directly from the wizard using the newly created agent.
               </Typography>
 
-              <Alert severity="info" action={<Button color="inherit" size="small" onClick={openMetaWhatsAppWizard}>Launch Wizard</Button>}>
-                Use Meta onboarding wizard to get Phone Number ID and token faster.
+              <Alert
+                severity="info"
+                action={
+                  <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard} disabled={metaConnecting}>
+                    {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect' : 'Loading SDK...'}
+                  </Button>
+                }
+              >
+                Use Meta onboarding wizard to auto-import Phone Number ID and access token.
               </Alert>
 
               <TextField label="Agent ID" value={createdWidgetId} fullWidth disabled />

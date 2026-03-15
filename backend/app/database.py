@@ -110,3 +110,11 @@ def init_db():
                     conn.execute(text("ALTER TABLE conversations ADD COLUMN outcome TEXT"))
             except Exception:
                 pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organizations')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "default_meet_link" not in col_names:
+                    conn.execute(text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT"))
+            except Exception:
+                pass

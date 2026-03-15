@@ -28,8 +28,6 @@ import GroupIcon from '@mui/icons-material/Group';
 import LockIcon from '@mui/icons-material/Lock';
 import WidgetsIcon from '@mui/icons-material/Widgets';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CampaignIcon from '@mui/icons-material/Campaign';
 
@@ -49,6 +47,7 @@ interface MenuItem {
 
 const allMenuItems: MenuItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin', requiredRole: 'ADMIN' },
+  { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
   { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
   { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN' },
   { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN' },
@@ -56,10 +55,7 @@ const allMenuItems: MenuItem[] = [
   { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN' },
-  { text: 'WhatsApp', icon: <WhatsAppIcon />, path: '/integrations/whatsapp', requiredRole: 'ADMIN' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN' },
-  { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
-  { text: 'Create Chat Agent', icon: <AutoAwesomeIcon />, path: '/create-chat-agent', requiredRole: 'ADMIN' },
   { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN' },
 ];
 
