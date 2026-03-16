@@ -96,7 +96,7 @@ class WebCrawler:
         normalized = " ".join(normalized.split())
         return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
-    def crawl_page(self, url: str, depth: int) -> List[str]:
+    def crawl_page(self, url: str, depth: int, extract_links: bool = True) -> List[str]:
         """Crawl a single page and return links"""
         url = self.normalize_url(url)
         self._track_discovered_url(url, depth)
@@ -162,6 +162,9 @@ class WebCrawler:
                             'last_modified': last_modified
                         })
             
+            if not extract_links:
+                return []
+
             # Extract links for further crawling
             links = []
             for link in soup.find_all('a', href=True):
@@ -223,11 +226,28 @@ class WebCrawler:
 
     def crawl_selected(self, selected_urls: List[str]) -> List[Dict[str, str]]:
         """Crawl only explicitly selected URLs."""
+        normalized_urls: List[str] = []
+        seen: Set[str] = set()
         for raw_url in selected_urls:
             normalized_url = self.normalize_url(raw_url)
-            self.crawl_page(normalized_url, 0)
-            if self.crawl_delay:
-                time.sleep(self.crawl_delay)
+            if normalized_url in seen:
+                continue
+            seen.add(normalized_url)
+            normalized_urls.append(normalized_url)
+
+        if self.max_workers <= 1 or len(normalized_urls) <= 1:
+            for normalized_url in normalized_urls:
+                self.crawl_page(normalized_url, 0, extract_links=False)
+                if self.crawl_delay:
+                    time.sleep(self.crawl_delay)
+        else:
+            with ThreadPoolExecutor(max_workers=min(self.max_workers, len(normalized_urls))) as executor:
+                futures = [executor.submit(self.crawl_page, url, 0, False) for url in normalized_urls]
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception:
+                        continue
 
         logger.info(f"Crawled {len(self.crawled_pages)} selected pages")
         return self.crawled_pages

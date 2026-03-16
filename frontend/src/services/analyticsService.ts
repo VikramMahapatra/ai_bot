@@ -21,6 +21,30 @@ interface MessageVolumeData {
   messages: number;
 }
 
+export interface RetrievalTraceChunk {
+  source_id?: number | null;
+  distance?: number | null;
+  chunk?: string;
+  content?: string;
+}
+
+export interface RetrievalTrace {
+  id: number;
+  conversation_id: number;
+  session_id: string;
+  widget_id: string | null;
+  user_query: string;
+  retrieval_query: string | null;
+  query_variants: string[];
+  retrieved_chunks: RetrievalTraceChunk[];
+  selected_chunks: RetrievalTraceChunk[];
+  source_ids: number[];
+  has_context: boolean;
+  escalation_triggered: boolean;
+  top_distance: number | null;
+  created_at: string | null;
+}
+
 export interface AnalyticsMetrics {
   total_sessions: number;
   total_messages: number;
@@ -217,6 +241,28 @@ export const analyticsService = {
   getKnowledgeGaps: async (days: number = 30, limit: number = 6, widgetId?: string) => {
     const response = await api.get<{ gaps: { keyword: string; count: number; sample_questions: string[]; widget_id: string | null; suggested_title: string }[] }>(
       `/api/analytics/knowledge-gaps?days=${days}&limit=${limit}${widgetId ? `&widget_id=${widgetId}` : ''}`
+    );
+    return response.data;
+  },
+
+  getRetrievalTraces: async (params?: {
+    sessionId?: string;
+    widgetId?: string;
+    days?: number;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.sessionId) {
+      search.set('session_id', params.sessionId);
+    }
+    if (params?.widgetId) {
+      search.set('widget_id', params.widgetId);
+    }
+    search.set('days', String(params?.days ?? 7));
+    search.set('limit', String(params?.limit ?? 25));
+
+    const response = await api.get<{ data: RetrievalTrace[]; count: number }>(
+      `/api/analytics/retrieval-traces?${search.toString()}`
     );
     return response.data;
   },

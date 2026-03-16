@@ -33,11 +33,72 @@ class OpenAIEmbeddingFunction(EmbeddingFunction):
         
         self.client = OpenAI(api_key=settings.OPENAPI_KEY2)
         self.model_name = settings.EMBEDDING_MODEL
+        self.max_tokens_per_request = 250000
+        self.max_items_per_request = 128
+
+        # Optional precise token counting when tiktoken is available.
+        self._token_encoder = None
+        try:
+            import tiktoken
+            self._token_encoder = tiktoken.encoding_for_model(self.model_name)
+        except Exception:
+            self._token_encoder = None
+
+    def _estimate_tokens(self, text: str) -> int:
+        if not text:
+            return 1
+        if self._token_encoder:
+            try:
+                return max(1, len(self._token_encoder.encode(text)))
+            except Exception:
+                pass
+        # Conservative approximation for fallback.
+        return max(1, len(text) // 4)
+
+    def _batch_inputs(self, texts: List[str]) -> List[List[str]]:
+        batches: List[List[str]] = []
+        current_batch: List[str] = []
+        current_tokens = 0
+
+        for text in texts:
+            estimated_tokens = self._estimate_tokens(text)
+
+            # Protect against pathological oversized single inputs.
+            if estimated_tokens > self.max_tokens_per_request:
+                text = text[: self.max_tokens_per_request * 3]
+                estimated_tokens = self._estimate_tokens(text)
+
+            should_flush = (
+                current_batch
+                and (
+                    len(current_batch) >= self.max_items_per_request
+                    or current_tokens + estimated_tokens > self.max_tokens_per_request
+                )
+            )
+
+            if should_flush:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+
+            current_batch.append(text)
+            current_tokens += estimated_tokens
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
     
     def __call__(self, input: List[str]) -> List[List[float]]:
         try:
-            response = self.client.embeddings.create(model=self.model_name, input=input)
-            return [item.embedding for item in response.data]
+            if not input:
+                return []
+
+            vectors: List[List[float]] = []
+            for batch in self._batch_inputs(input):
+                response = self.client.embeddings.create(model=self.model_name, input=batch)
+                vectors.extend(item.embedding for item in response.data)
+            return vectors
         except Exception as e:
             logger.error(f"Error generating OpenAI embeddings: {e}")
             raise

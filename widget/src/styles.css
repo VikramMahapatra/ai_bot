@@ -291,6 +291,103 @@
   border: 1px solid var(--divider);
 }
 
+.chatbot-message.assistant .chatbot-message-bubble.chatbot-appointment-bubble {
+  max-width: 88%;
+  width: min(304px, 100%);
+  padding: 12px;
+  border-radius: 16px;
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--primary-color, #007bff) 12%, #ffffff), #ffffff 40%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--secondary-color, #34d399) 22%, #ffffff), transparent 60%);
+  border: 1px solid color-mix(in srgb, var(--primary-color, #007bff) 24%, #cbd5e1);
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.14);
+}
+
+.chatbot-widget-container.dark .chatbot-message.assistant .chatbot-message-bubble.chatbot-appointment-bubble {
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--primary-color, #007bff) 24%, #1e293b), #273449 42%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--secondary-color, #34d399) 16%, #334155), transparent 62%);
+  border-color: color-mix(in srgb, var(--primary-color, #007bff) 35%, #334155);
+  color: #e2e8f0;
+}
+
+.chatbot-appointment-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.chatbot-appointment-subtitle {
+  font-size: 10.5px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.chatbot-widget-container.dark .chatbot-appointment-title {
+  color: #f8fafc;
+}
+
+.chatbot-widget-container.dark .chatbot-appointment-subtitle {
+  color: #cbd5e1;
+}
+
+.chatbot-appointment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.chatbot-appointment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chatbot-appointment-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chatbot-widget-container.dark .chatbot-appointment-label {
+  color: #cbd5e1;
+}
+
+.chatbot-appointment-input {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(100, 116, 139, 0.35);
+}
+
+.chatbot-appointment-input:focus {
+  border-color: var(--primary-color, #007bff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #007bff) 22%, transparent);
+}
+
+.chatbot-widget-container.dark .chatbot-appointment-input {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f1f5f9;
+}
+
+.chatbot-widget-container.dark .chatbot-appointment-input::placeholder {
+  color: #94a3b8;
+}
+
+.chatbot-appointment-actions {
+  margin-top: 6px;
+  gap: 6px;
+}
+
+.chatbot-appointment-actions .chatbot-inline-button {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 .chatbot-suggestions {
   margin: 4px 0 18px;
   padding: 14px;
@@ -367,6 +464,7 @@
   color: #1e293b;
   transition: background 0.3s, color 0.3s, border-color 0.3s;
 }
+
 .chatbot-widget-container.dark .chatbot-widget-input {
   background: var(--input-bg);
   color: var(--text-primary);
@@ -502,4 +600,28 @@
   text-align: center;
   color: #666;
   padding: 20px;
+}
+
+@media (max-width: 520px) {
+  .chatbot-widget-container.bottom-right,
+  .chatbot-widget-container.bottom-left,
+  .chatbot-widget-container.top-right,
+  .chatbot-widget-container.top-left {
+    right: 10px;
+    left: 10px;
+    bottom: 10px;
+    top: auto;
+  }
+
+  .chatbot-widget-window {
+    width: min(100vw - 20px, 420px);
+    height: min(78vh, 640px);
+    right: 0;
+    left: 0;
+    margin: 0 auto;
+  }
+
+  .chatbot-appointment-grid {
+    grid-template-columns: 1fr;
+  }
 }

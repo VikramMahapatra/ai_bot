@@ -1,19 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
 from app.models import User, UserRole, Organization, Appointment, WidgetConfig
 from app.services.limits_service import get_or_create_limits, get_effective_limits
-from app.services.email_service import send_appointment_rescheduled_notification
+from app.services.email_service import send_appointment_rescheduled_notification, send_widget_test_link_email
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from jose import jwt, JWTError, ExpiredSignatureError
 import logging
 import uuid
 import re
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,76 @@ def _format_datetime_with_timezone(value: datetime, timezone_name: Optional[str]
     return local_dt.strftime("%d %b %Y, %I:%M %p"), tz_label
 
 
+def _create_widget_test_link_token(widget_id: str, start_at: datetime, expires_at: datetime) -> str:
+    payload = {
+        "scope": "widget_test_link",
+        "widget_id": widget_id,
+        "start_at": start_at.isoformat(),
+        "exp": expires_at,
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return token
+
+
+def _to_utc(dt_value: datetime) -> datetime:
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=timezone.utc)
+    return dt_value.astimezone(timezone.utc)
+
+
+def _parse_iso_utc(value: Optional[str]) -> Optional[datetime]:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    return _to_utc(parsed)
+
+
+def _load_lead_fields_map(raw_lead_fields: Optional[str]) -> dict:
+    raw = (raw_lead_fields or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _resolve_widget_test_window_start(config: WidgetConfig) -> datetime:
+    metadata = _load_lead_fields_map(getattr(config, "lead_fields", None))
+    stored_start = _parse_iso_utc(metadata.get("test_link_start_at"))
+    if stored_start:
+        return stored_start
+
+    created_at = getattr(config, "created_at", None)
+    if isinstance(created_at, datetime):
+        return _to_utc(created_at)
+
+    return datetime.now(timezone.utc)
+
+
+def _set_widget_test_window_start(config: WidgetConfig, start_at: datetime) -> None:
+    metadata = _load_lead_fields_map(getattr(config, "lead_fields", None))
+    metadata["test_link_start_at"] = _to_utc(start_at).isoformat()
+    config.lead_fields = json.dumps(metadata)
+
+
+def _validate_widget_test_link_token(token: str, widget_id: str) -> None:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Test link has expired")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid test link")
+
+    if payload.get("scope") != "widget_test_link" or payload.get("widget_id") != widget_id:
+        raise HTTPException(status_code=401, detail="Invalid test link")
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -99,6 +171,13 @@ class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
+
+
+class WidgetTestLinkEmailRequest(BaseModel):
+    widget_id: str
+    to_email: EmailStr
+    subject: str
+    body: str
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -252,6 +331,98 @@ async def get_widget_config(
         db.refresh(config)
     
     return config
+
+
+@router.get("/widget/test-link/{widget_id}")
+async def generate_widget_test_link(
+    widget_id: str,
+    extra_hours: int = Query(0, ge=0, le=168),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Generate an expiring test-link token for a widget in the current organization."""
+    config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == widget_id,
+        WidgetConfig.organization_id == current_user.organization_id
+    ).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
+
+    if extra_hours > 0:
+        # +24 action resets the window anchor to now, then applies default 24h expiry.
+        start_at = datetime.now(timezone.utc)
+        _set_widget_test_window_start(config, start_at)
+        db.commit()
+        db.refresh(config)
+    else:
+        # Default link window starts at agent creation time (or previously reset anchor).
+        start_at = _resolve_widget_test_window_start(config)
+
+    expires_at = start_at + timedelta(hours=settings.TEST_LINK_EXPIRY_HOURS)
+    token = _create_widget_test_link_token(widget_id, start_at=start_at, expires_at=expires_at)
+
+    return {
+        "widget_id": widget_id,
+        "start_at": start_at.isoformat(),
+        "token": token,
+        "expires_at": expires_at.isoformat(),
+        "expires_in_hours": settings.TEST_LINK_EXPIRY_HOURS,
+    }
+
+
+@router.get("/widget/test/config/{widget_id}")
+async def get_widget_test_config(
+    widget_id: str,
+    token: str = Query(..., min_length=1),
+    db: Session = Depends(get_db)
+):
+    """Get widget config for public test pages using a signed expiring token."""
+    _validate_widget_test_link_token(token, widget_id)
+
+    config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Widget config not found")
+
+    if _ensure_widget_escalation_contacts(config):
+        db.commit()
+        db.refresh(config)
+
+    return config
+
+
+@router.post("/widget/test-link/email")
+async def send_widget_test_link_via_email(
+    payload: WidgetTestLinkEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Send a widget test-link email via configured SMTP service."""
+    widget_id = (payload.widget_id or "").strip()
+    if not widget_id:
+        raise HTTPException(status_code=400, detail="widget_id is required")
+
+    config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == widget_id,
+        WidgetConfig.organization_id == current_user.organization_id,
+    ).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
+
+    body = (payload.body or "").strip()
+    subject = (payload.subject or "").strip() or "Welcome from Zentrixel"
+    if not body:
+        raise HTTPException(status_code=400, detail="Email body cannot be empty")
+
+    success, error_message = send_widget_test_link_email(
+        recipient_email=str(payload.to_email),
+        subject=subject,
+        message_body=body,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+
+    return {"message": "Test link email sent successfully"}
 
 
 @router.post("/widget/config")

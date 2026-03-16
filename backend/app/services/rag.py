@@ -124,7 +124,14 @@ class ChromaDBClient:
             logger.error(f"Error deleting documents for source/url from ChromaDB: {str(e)}")
             raise
     
-    def get_documents(self, organization_id: int = None, user_id: int = None, widget_id: str = None) -> Dict:
+    def get_documents(
+        self,
+        organization_id: int = None,
+        user_id: int = None,
+        widget_id: str = None,
+        include_documents: bool = False,
+        limit: int = None,
+    ) -> Dict:
         """Get documents filtered by organization, widget, and/or user."""
         try:
             # Build where clause with proper ChromaDB syntax
@@ -144,12 +151,19 @@ class ChromaDBClient:
                 where_clause = conditions[0]
 
             logger.info(f"Querying ChromaDB with where_clause: {where_clause}")
-            
+
+            query_kwargs = {}
             if where_clause:
-                results = self.collection.get(where=where_clause)
+                query_kwargs["where"] = where_clause
+            if limit is not None and limit > 0:
+                query_kwargs["limit"] = int(limit)
+            query_kwargs["include"] = ["metadatas", "documents"] if include_documents else ["metadatas"]
+
+            if where_clause:
+                results = self.collection.get(**query_kwargs)
             else:
                 # If no filters, get all documents
-                results = self.collection.get()
+                results = self.collection.get(**query_kwargs)
             
             logger.info(f"ChromaDB query returned {len(results.get('ids', []))} documents")
             return results
