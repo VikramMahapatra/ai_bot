@@ -37,6 +37,18 @@ const USER_ICON_GLYPHS: Record<string, string> = {
 
 const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+const APPOINTMENT_FORM_PROMPT =
+  'If you would like to set a meeting, please fill this short form and I will set it up for you.';
+
+const getDefaultAppointmentDateTime = () => {
+  const seed = new Date(Date.now() + 60 * 60 * 1000);
+  const local = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000).toISOString();
+  return {
+    date: local.slice(0, 10),
+    time: local.slice(11, 16),
+  };
+};
+
 const ChatWidget: React.FC<WidgetConfig> = ({
   widgetId,
   apiUrl,
@@ -77,9 +89,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const [appointmentForm, setAppointmentForm] = useState({
     name: '',
     email: '',
-    phone: '',
-    appointment_at: '',
-    notes: '',
+    appointment_date: '',
+    appointment_time: '',
   });
 
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
@@ -117,7 +128,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, showAppointmentForm, loading]);
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -163,6 +174,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setShowEmailForm(false);
     setEmailValue('');
     setShowAppointmentForm(false);
+    setAppointmentForm({
+      name: '',
+      email: '',
+      appointment_date: '',
+      appointment_time: '',
+    });
   };
 
   const sendMessage = async (overrideText?: string) => {
@@ -184,13 +201,21 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         customerId ? String(customerId) : undefined
       );
 
+      const rawAssistantText = response?.response || 'I could not generate a response right now.';
+      const shouldOpenAppointmentForm = response?.ui_action === 'open_appointment_form';
+      const assistantText = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawAssistantText;
+
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: response?.response || 'I could not generate a response right now.',
+          content: assistantText,
         },
       ]);
+
+      if (shouldOpenAppointmentForm) {
+        openAppointmentForm();
+      }
 
       try {
         const shouldCapture = await chatAPI.current.shouldCaptureLead(sessionId, widgetId);
@@ -278,27 +303,41 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   };
 
   const openAppointmentForm = () => {
-    if (!appointmentForm.appointment_at) {
-      const seed = new Date(Date.now() + 60 * 60 * 1000);
-      const localDate = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-      setAppointmentForm((prev) => ({ ...prev, appointment_at: localDate, name: prev.name || leadForm.name }));
-    }
+    const defaults = getDefaultAppointmentDateTime();
+    setAppointmentForm((prev) => ({
+      name: prev.name || leadForm.name || '',
+      email: prev.email || leadForm.email || '',
+      appointment_date: prev.appointment_date || defaults.date,
+      appointment_time: prev.appointment_time || defaults.time,
+    }));
     setShowAppointmentForm(true);
   };
 
   const handleAppointmentSubmit = async () => {
     if (appointmentSubmitting) return;
-    if (!appointmentForm.name.trim() || !appointmentForm.appointment_at) {
+    if (
+      !appointmentForm.name.trim() ||
+      !appointmentForm.email.trim() ||
+      !appointmentForm.appointment_date ||
+      !appointmentForm.appointment_time
+    ) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Please share your name and preferred appointment time.' },
+        { role: 'assistant', content: 'Please complete name, email, date, and time to create the meeting.' },
       ]);
       return;
     }
 
-    const selectedDate = new Date(appointmentForm.appointment_at);
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(appointmentForm.email.trim())) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Please enter a valid email address so we can confirm the meeting.' },
+      ]);
+      return;
+    }
+
+    const selectedDate = new Date(`${appointmentForm.appointment_date}T${appointmentForm.appointment_time}`);
     if (Number.isNaN(selectedDate.getTime())) {
       setMessages((prev) => [
         ...prev,
@@ -314,20 +353,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         widget_id: widgetId,
         appointment_at: selectedDate.toISOString(),
         name: appointmentForm.name.trim(),
-        email: appointmentForm.email.trim() || undefined,
-        phone: appointmentForm.phone.trim() || undefined,
-        notes: appointmentForm.notes.trim() || undefined,
+        email: appointmentForm.email.trim(),
         timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
       });
 
       setShowAppointmentForm(false);
-      setAppointmentForm({
-        name: appointmentForm.name,
-        email: appointmentForm.email,
-        phone: appointmentForm.phone,
-        appointment_at: '',
-        notes: '',
-      });
+      setAppointmentForm((prev) => ({ ...prev, appointment_date: '', appointment_time: '' }));
 
       setMessages((prev) => [
         ...prev,
@@ -418,6 +449,72 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               </div>
             ))}
 
+            {showAppointmentForm && (
+              <div className="chatbot-message assistant chatbot-fade-in">
+                <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
+                <div className="chatbot-message-bubble chatbot-appointment-bubble">
+                  <div className="chatbot-appointment-title">Set up your meeting</div>
+                  <div className="chatbot-appointment-subtitle">Please fill this short form and I will set the meeting for you.</div>
+
+                  <input
+                    type="text"
+                    className="chatbot-inline-input chatbot-appointment-input"
+                    placeholder="Full name"
+                    value={appointmentForm.name}
+                    onChange={(e) => setAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+
+                  <input
+                    type="email"
+                    className="chatbot-inline-input chatbot-appointment-input"
+                    placeholder="Email address"
+                    value={appointmentForm.email}
+                    onChange={(e) => setAppointmentForm((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+
+                  <div className="chatbot-appointment-grid">
+                    <label className="chatbot-appointment-field">
+                      <span className="chatbot-appointment-label">📅 Date</span>
+                      <input
+                        type="date"
+                        className="chatbot-inline-input chatbot-appointment-input"
+                        value={appointmentForm.appointment_date}
+                        onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
+                      />
+                    </label>
+
+                    <label className="chatbot-appointment-field">
+                      <span className="chatbot-appointment-label">⏰ Time</span>
+                      <input
+                        type="time"
+                        className="chatbot-inline-input chatbot-appointment-input"
+                        value={appointmentForm.appointment_time}
+                        onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="chatbot-inline-actions chatbot-appointment-actions">
+                    <button
+                      className="chatbot-inline-button"
+                      onClick={handleAppointmentSubmit}
+                      disabled={appointmentSubmitting}
+                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                    >
+                      {appointmentSubmitting ? 'Creating...' : 'Create meeting'}
+                    </button>
+                    <button
+                      className="chatbot-inline-button secondary"
+                      onClick={() => setShowAppointmentForm(false)}
+                      disabled={appointmentSubmitting}
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {loading && (
               <div className="chatbot-message assistant chatbot-fade-in">
                 <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
@@ -477,63 +574,6 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   className="chatbot-inline-button secondary"
                   onClick={() => setShowEmailForm(false)}
                   disabled={emailSending}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {showAppointmentForm && (
-            <div className="chatbot-inline-card chatbot-fade-in">
-              <div className="chatbot-inline-title">Book Appointment</div>
-              <input
-                type="text"
-                className="chatbot-inline-input"
-                placeholder="Name"
-                value={appointmentForm.name}
-                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-              <input
-                type="email"
-                className="chatbot-inline-input"
-                placeholder="Email"
-                value={appointmentForm.email}
-                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, email: e.target.value }))}
-              />
-              <input
-                type="tel"
-                className="chatbot-inline-input"
-                placeholder="Phone"
-                value={appointmentForm.phone}
-                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, phone: e.target.value }))}
-              />
-              <input
-                type="datetime-local"
-                className="chatbot-inline-input"
-                value={appointmentForm.appointment_at}
-                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_at: e.target.value }))}
-              />
-              <input
-                type="text"
-                className="chatbot-inline-input"
-                placeholder="Notes"
-                value={appointmentForm.notes}
-                onChange={(e) => setAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
-              />
-              <div className="chatbot-inline-actions">
-                <button
-                  className="chatbot-inline-button"
-                  onClick={handleAppointmentSubmit}
-                  disabled={appointmentSubmitting}
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-                >
-                  {appointmentSubmitting ? 'Booking...' : 'Confirm'}
-                </button>
-                <button
-                  className="chatbot-inline-button secondary"
-                  onClick={() => setShowAppointmentForm(false)}
-                  disabled={appointmentSubmitting}
                 >
                   Cancel
                 </button>

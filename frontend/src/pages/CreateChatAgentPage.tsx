@@ -43,6 +43,7 @@ import {
   getMetaEmbeddedSignupConfigId,
   getMetaWhatsAppEmbeddedSignupUrl,
 } from '../config/env';
+import type { CrawlJobStatus } from '../types';
 
 interface WidgetConfig {
   widget_id: string;
@@ -145,6 +146,9 @@ const CreateChatAgentPage: React.FC = () => {
   });
 
   const [createdWidgetId, setCreatedWidgetId] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [shareLinkExpiresAt, setShareLinkExpiresAt] = useState('');
+  const [shareLinkLoading, setShareLinkLoading] = useState(false);
   const [knowledgeUrl, setKnowledgeUrl] = useState('');
   const [crawlMaxPages, setCrawlMaxPages] = useState(10);
   const [crawlMaxDepth, setCrawlMaxDepth] = useState(2);
@@ -152,6 +156,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [knowledgeText, setKnowledgeText] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [crawlPreviewItems, setCrawlPreviewItems] = useState<CrawlPreviewItem[]>([]);
+  const [crawlJobStatus, setCrawlJobStatus] = useState<CrawlJobStatus | null>(null);
   const [knowledgeActionsDone, setKnowledgeActionsDone] = useState(0);
 
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
@@ -193,6 +198,11 @@ const CreateChatAgentPage: React.FC = () => {
   const selectedPreviewCount = useMemo(
     () => crawlPreviewItems.filter((item) => item.selected).length,
     [crawlPreviewItems]
+  );
+
+  const crawlJobActive = useMemo(
+    () => Boolean(crawlJobStatus && (crawlJobStatus.status === 'queued' || crawlJobStatus.status === 'running')),
+    [crawlJobStatus]
   );
 
   const goBackStep = () => {
@@ -325,16 +335,50 @@ const CreateChatAgentPage: React.FC = () => {
     return createdWidgetId ? 100 : 70;
   }, [activeStep, widget.name, widget.welcome_message, widget.primary_color, widget.position, knowledgeActionsDone, whatsappConfigured, createdWidgetId]);
 
-  const shareLink = useMemo(() => {
-    if (!createdWidgetId) return '';
-    return buildPublicUrl(`/agent-test/${encodeURIComponent(createdWidgetId)}`);
-  }, [createdWidgetId]);
+  const fetchShareLink = useCallback(async (targetWidgetId: string): Promise<string> => {
+    if (!targetWidgetId) {
+      setShareLink('');
+      setShareLinkExpiresAt('');
+      return '';
+    }
+
+    setShareLinkLoading(true);
+    try {
+      const response = await api.get(`/api/admin/widget/test-link/${encodeURIComponent(targetWidgetId)}`);
+      const token = String(response?.data?.token || '').trim();
+      if (!token) {
+        throw new Error('Missing test link token');
+      }
+
+      const url = buildPublicUrl(`/agent-test/${encodeURIComponent(targetWidgetId)}?token=${encodeURIComponent(token)}`);
+      setShareLink(url);
+      setShareLinkExpiresAt(typeof response?.data?.expires_at === 'string' ? response.data.expires_at : '');
+      return url;
+    } catch (err: any) {
+      setShareLink('');
+      setShareLinkExpiresAt('');
+      setError(err?.response?.data?.detail || 'Failed to generate expiring test link.');
+      return '';
+    } finally {
+      setShareLinkLoading(false);
+    }
+  }, []);
 
   const webhookUrl = useMemo(() => buildApiUrl('/api/channels/whatsapp/webhook'), []);
   const metaRedirectUri = useMemo(
     () => buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`),
     []
   );
+
+  useEffect(() => {
+    if (!createdWidgetId) {
+      setShareLink('');
+      setShareLinkExpiresAt('');
+      return;
+    }
+
+    fetchShareLink(createdWidgetId);
+  }, [createdWidgetId, fetchShareLink]);
 
   useEffect(() => {
     if (!isEditMode || !routeWidgetId?.trim()) {
@@ -579,6 +623,38 @@ const CreateChatAgentPage: React.FC = () => {
     };
   }, [activeStep, createdWidgetId]);
 
+  useEffect(() => {
+    if (!crawlJobStatus?.job_id) return;
+    if (crawlJobStatus.status !== 'queued' && crawlJobStatus.status !== 'running') return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const nextStatus = await knowledgeService.getCrawlWebsiteJobStatus(crawlJobStatus.job_id);
+        if (cancelled) return;
+
+        setCrawlJobStatus(nextStatus);
+
+        if (nextStatus.status === 'completed') {
+          setKnowledgeActionsDone((v) => v + 1);
+          setSuccess(nextStatus.message || 'Website knowledge embedded successfully.');
+          setError('');
+        } else if (nextStatus.status === 'failed') {
+          setError(nextStatus.error || nextStatus.message || 'Background crawl/embed failed.');
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(err.response?.data?.detail || 'Failed to fetch crawl/embed progress.');
+        setCrawlJobStatus((prev) => (prev ? { ...prev } : prev));
+      }
+    }, 1800);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [crawlJobStatus]);
+
   const buildWidgetPayload = () => {
     let leadFieldMetadata: Record<string, any> = {};
     const rawLeadFields = (widget.lead_fields || '').trim();
@@ -663,6 +739,7 @@ const CreateChatAgentPage: React.FC = () => {
     try {
       setBusy(true);
       setError('');
+      setCrawlJobStatus(null);
       const result = await knowledgeService.previewWebsiteLinks({
         url: knowledgeUrl.trim(),
         max_pages: crawlMaxPages,
@@ -716,18 +793,23 @@ const CreateChatAgentPage: React.FC = () => {
       return;
     }
 
+    if (crawlJobActive) {
+      setError('A crawl/embed job is already running. Please wait for it to finish.');
+      return;
+    }
+
     try {
       setBusy(true);
       setError('');
-      const result = await knowledgeService.crawlWebsite({
+      const result = await knowledgeService.startCrawlWebsiteJob({
         widget_id: createdWidgetId,
         url: knowledgeUrl.trim(),
         max_pages: selectedUrls.length,
         max_depth: crawlMaxDepth,
         selected_urls: selectedUrls,
       });
-      setKnowledgeActionsDone((v) => v + 1);
-      setSuccess(result?.message || `Embedded selected website pages (${selectedUrls.length}).`);
+      setCrawlJobStatus(result);
+      setSuccess(result?.message || `Started embedding ${selectedUrls.length} selected pages in background.`);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to add website knowledge.');
     } finally {
@@ -784,9 +866,17 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const copyShareLink = async () => {
-    if (!shareLink) return;
+    let linkToCopy = shareLink;
+    if (!linkToCopy && createdWidgetId) {
+      linkToCopy = await fetchShareLink(createdWidgetId);
+    }
+    if (!linkToCopy) {
+      setError('Share link is not ready yet. Please try again.');
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(shareLink);
+      await navigator.clipboard.writeText(linkToCopy);
       setSuccess('Share link copied to clipboard.');
     } catch {
       setError('Could not copy link. Please copy it manually.');
@@ -1373,13 +1463,13 @@ const CreateChatAgentPage: React.FC = () => {
                         </Box>
 
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                          <Button variant="outlined" onClick={previewWebsiteLinks} disabled={busy}>
+                          <Button variant="outlined" onClick={previewWebsiteLinks} disabled={busy || crawlJobActive}>
                             Preview Crawled Links
                           </Button>
                           <Button
                             variant="contained"
                             onClick={addWebsiteKnowledge}
-                            disabled={busy || selectedPreviewCount < 1}
+                            disabled={busy || crawlJobActive || selectedPreviewCount < 1}
                             sx={{
                               background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
                             }}
@@ -1387,6 +1477,59 @@ const CreateChatAgentPage: React.FC = () => {
                             Embed Selected ({selectedPreviewCount})
                           </Button>
                         </Stack>
+
+                        {crawlJobStatus && (
+                          <Box
+                            sx={{
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                              borderRadius: '12px',
+                              p: 1.2,
+                              background: alpha(theme.palette.common.white, 0.76),
+                            }}
+                          >
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                              <Stack direction="row" spacing={0.8} alignItems="center">
+                                <Chip
+                                  size="small"
+                                  label={crawlJobStatus.status.toUpperCase()}
+                                  color={
+                                    crawlJobStatus.status === 'completed'
+                                      ? 'success'
+                                      : crawlJobStatus.status === 'failed'
+                                      ? 'error'
+                                      : 'primary'
+                                  }
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                  {crawlJobStatus.stage ? `Stage: ${crawlJobStatus.stage}` : 'Processing'}
+                                </Typography>
+                              </Stack>
+                              <Typography variant="caption" color="text.secondary">
+                                Job ID: {crawlJobStatus.job_id}
+                              </Typography>
+                            </Stack>
+
+                            <LinearProgress
+                              variant="determinate"
+                              value={Math.max(0, Math.min(100, crawlJobStatus.progress || 0))}
+                              sx={{ mt: 1, height: 8, borderRadius: 999 }}
+                            />
+
+                            <Typography variant="body2" sx={{ mt: 0.8 }}>
+                              {crawlJobStatus.message || 'Processing website embedding...'}
+                            </Typography>
+
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.45 }}>
+                              Pages {crawlJobStatus.pages_completed || 0}/{crawlJobStatus.pages_total || selectedPreviewCount} • Crawled {crawlJobStatus.pages_crawled || 0} • Scanned {crawlJobStatus.pages_scanned || 0} • Chunks {crawlJobStatus.chunks_embedded || 0}
+                            </Typography>
+
+                            {crawlJobStatus.error && (
+                              <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.6 }}>
+                                {crawlJobStatus.error}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
 
                         {crawlPreviewItems.length > 0 && (
                           <Box
@@ -1710,7 +1853,17 @@ const CreateChatAgentPage: React.FC = () => {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                     Agent Test URL
                   </Typography>
-                  <TextField value={shareLink} fullWidth InputProps={{ readOnly: true }} sx={fieldSx} />
+                  <TextField
+                    value={shareLinkLoading ? 'Generating expiring test link...' : shareLink}
+                    fullWidth
+                    InputProps={{ readOnly: true }}
+                    sx={fieldSx}
+                  />
+                  {shareLinkExpiresAt && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      This test link expires on {new Date(shareLinkExpiresAt).toLocaleString()}.
+                    </Typography>
+                  )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1.2, display: 'block' }}>
                     Tip: If your backend runs on a different host, set VITE_API_URL in frontend .env before sharing.
                   </Typography>
@@ -1725,6 +1878,7 @@ const CreateChatAgentPage: React.FC = () => {
                       variant="contained"
                       startIcon={<ContentCopyIcon />}
                       onClick={copyShareLink}
+                      disabled={shareLinkLoading || !createdWidgetId}
                       sx={{
                         borderRadius: '12px',
                         px: 2.4,
@@ -1738,6 +1892,7 @@ const CreateChatAgentPage: React.FC = () => {
                       variant="outlined"
                       startIcon={<LaunchIcon />}
                       onClick={() => window.open(shareLink, '_blank', 'noopener,noreferrer')}
+                      disabled={shareLinkLoading || !shareLink}
                     >
                       Open Test Page
                     </Button>

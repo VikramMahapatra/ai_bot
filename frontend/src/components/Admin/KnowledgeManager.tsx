@@ -512,7 +512,7 @@ const KnowledgeManager: React.FC = () => {
             <Box sx={{ mb: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>Step 3: Vector Index Explorer</Typography>
               <Typography variant="body2" color="text.secondary">
-                Inspect embedded chunks and verify what is available during retrieval.
+                Inspect chunk volume and source coverage for fast retrieval diagnostics.
               </Typography>
             </Box>
             <VectorizedDataViewer

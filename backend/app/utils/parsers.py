@@ -5,6 +5,7 @@ import openpyxl
 import pandas as pd
 from typing import List
 import io
+import re
 
 
 def parse_pdf(file_content: bytes) -> str:
@@ -58,46 +59,87 @@ def parse_xlsx(file_content: bytes) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
-    """Split text into chunks with overlap, favoring paragraph boundaries for better retrieval."""
+    """Split text into sentence-aware chunks with overlap for better retrieval precision."""
     if not text:
         return []
 
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    normalized_text = re.sub(r"\r\n?", "\n", text)
+    normalized_text = re.sub(r"\n{3,}", "\n\n", normalized_text)
+
+    paragraphs = [p.strip() for p in normalized_text.split("\n\n") if p.strip()]
     if not paragraphs:
-        paragraphs = [text.strip()]
+        paragraphs = [normalized_text.strip()]
 
     chunks: List[str] = []
-    current = ""
+    current_sentences: List[str] = []
+    current_len = 0
+
+    sentence_splitter = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"\(\[])")
 
     def _flush(chunk: str):
-        if chunk:
-            chunks.append(chunk)
+        compact = " ".join(chunk.split()).strip()
+        if compact:
+            chunks.append(compact)
+
+    def _flush_current() -> None:
+        nonlocal current_sentences, current_len
+        if not current_sentences:
+            return
+        _flush(" ".join(current_sentences))
+        current_sentences = []
+        current_len = 0
+
+    def _set_overlap_seed() -> None:
+        nonlocal current_sentences, current_len
+        if overlap <= 0 or not chunks:
+            current_sentences = []
+            current_len = 0
+            return
+
+        tail_text = chunks[-1][-overlap:]
+        current_sentences = [tail_text] if tail_text else []
+        current_len = len(tail_text)
+
+    def _split_sentence_long(sentence: str) -> List[str]:
+        if len(sentence) <= chunk_size:
+            return [sentence]
+        pieces: List[str] = []
+        start = 0
+        while start < len(sentence):
+            end = min(len(sentence), start + chunk_size)
+            pieces.append(sentence[start:end].strip())
+            if end >= len(sentence):
+                break
+            start = max(end - overlap, start + 1) if overlap > 0 else end
+        return [p for p in pieces if p]
 
     for paragraph in paragraphs:
-        if len(paragraph) > chunk_size:
-            if current:
-                _flush(current)
-                current = ""
-
-            start = 0
-            while start < len(paragraph):
-                end = start + chunk_size
-                chunk = paragraph[start:end]
-                _flush(chunk)
-                start = end - overlap if overlap > 0 else end
+        paragraph_clean = " ".join(paragraph.split()).strip()
+        if not paragraph_clean:
             continue
 
-        if not current:
-            current = paragraph
-        elif len(current) + 2 + len(paragraph) <= chunk_size:
-            current = f"{current}\n\n{paragraph}"
-        else:
-            _flush(current)
-            if overlap > 0:
-                tail = current[-overlap:]
-                current = f"{tail}\n\n{paragraph}" if tail else paragraph
-            else:
-                current = paragraph
+        sentences = [s.strip() for s in sentence_splitter.split(paragraph_clean) if s.strip()]
+        if not sentences:
+            sentences = [paragraph_clean]
 
-    _flush(current)
+        for sentence in sentences:
+            for piece in _split_sentence_long(sentence):
+                candidate_len = len(piece) + (1 if current_sentences else 0)
+                if current_len + candidate_len <= chunk_size:
+                    current_sentences.append(piece)
+                    current_len += candidate_len
+                    continue
+
+                _flush_current()
+                _set_overlap_seed()
+
+                candidate_len = len(piece) + (1 if current_sentences else 0)
+                if current_len + candidate_len <= chunk_size:
+                    current_sentences.append(piece)
+                    current_len += candidate_len
+                else:
+                    _flush(piece)
+                    _set_overlap_seed()
+
+    _flush_current()
     return chunks

@@ -2,11 +2,12 @@
 Analytics API endpoints for dashboard analytics and performance metrics.
 """
 import logging
+import json
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Conversation, Lead, User, KnowledgeSource, MessageFeedback, ConversationMetrics
+from app.models import Conversation, Lead, User, KnowledgeSource, MessageFeedback, ConversationMetrics, RetrievalTrace
 from app.services.rag import chroma_client
 from app.auth import get_current_user
 from app.models.user import UserRole
@@ -66,6 +67,18 @@ def _linear_forecast(series, steps=14):
         value = max(0, intercept + slope * i)
         forecasts.append(round(value, 2))
     return forecasts
+
+
+def _safe_json_loads(value, expected_type):
+    if not value:
+        return expected_type()
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, expected_type):
+            return parsed
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+    return expected_type()
 
 
 @router.get("/sessions-messages")
@@ -1041,6 +1054,73 @@ async def get_advanced_analytics(
         }
     except Exception as e:
         logger.error(f"Error fetching advanced analytics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/retrieval-traces")
+async def get_retrieval_traces(
+    session_id: str = None,
+    widget_id: str = None,
+    days: int = 7,
+    limit: int = 25,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Return retrieval traces for debugging why answers were selected."""
+    try:
+        if current_user.role != UserRole.ADMIN:
+            raise HTTPException(status_code=403, detail="Only admins can access retrieval traces")
+
+        org_id = current_user.organization_id
+        if not org_id:
+            raise HTTPException(status_code=401, detail="Organization not found")
+
+        limit = max(1, min(limit, 100))
+        days = max(1, min(days, 90))
+        end_at = datetime.utcnow()
+        start_at = end_at - timedelta(days=days)
+
+        query = db.query(RetrievalTrace).filter(
+            RetrievalTrace.organization_id == org_id,
+            RetrievalTrace.created_at >= start_at,
+            RetrievalTrace.created_at <= end_at,
+        )
+
+        if session_id:
+            query = query.filter(RetrievalTrace.session_id == session_id.strip())
+
+        if widget_id:
+            query = query.filter(RetrievalTrace.widget_id == widget_id.strip())
+
+        traces = query.order_by(RetrievalTrace.created_at.desc()).limit(limit).all()
+
+        data = []
+        for trace in traces:
+            data.append({
+                "id": trace.id,
+                "conversation_id": trace.conversation_id,
+                "session_id": trace.session_id,
+                "widget_id": trace.widget_id,
+                "user_query": trace.user_query,
+                "retrieval_query": trace.retrieval_query,
+                "query_variants": _safe_json_loads(trace.query_variants, list),
+                "retrieved_chunks": _safe_json_loads(trace.retrieved_chunks, list),
+                "selected_chunks": _safe_json_loads(trace.selected_chunks, list),
+                "source_ids": _safe_json_loads(trace.source_ids, list),
+                "has_context": bool(trace.has_context),
+                "escalation_triggered": bool(trace.escalation_triggered),
+                "top_distance": trace.top_distance,
+                "created_at": trace.created_at.isoformat() if trace.created_at else None,
+            })
+
+        return {
+            "data": data,
+            "count": len(data),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching retrieval traces: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

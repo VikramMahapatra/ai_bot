@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Card, CardContent, CircularProgress, Alert, LinearProgress, Paper } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CircularProgress,
+  Alert,
+  LinearProgress,
+  Paper,
+  TextField,
+  Button,
+  Stack,
+  Chip,
+  Divider,
+} from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import AdminLayout from '../components/Layout/AdminLayout';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { analyticsService } from '../services/analyticsService';
-import type { AnalyticsMetrics } from '../services/analyticsService';
+import type { AnalyticsMetrics, RetrievalTrace } from '../services/analyticsService';
 
 interface SessionMessageData {
   date: string;
@@ -31,6 +46,11 @@ const AnalyticsPage: React.FC = () => {
     total_leads: 0,
     plan_usage: null as any,
   });
+  const [traceSessionFilter, setTraceSessionFilter] = useState('');
+  const [traceWidgetFilter, setTraceWidgetFilter] = useState('');
+  const [tracesLoading, setTracesLoading] = useState(false);
+  const [tracesError, setTracesError] = useState<string | null>(null);
+  const [retrievalTraces, setRetrievalTraces] = useState<RetrievalTrace[]>([]);
 
   const panelSx = {
     borderRadius: '18px',
@@ -107,6 +127,59 @@ const AnalyticsPage: React.FC = () => {
       ]
     : [];
 
+  const getChunkPreview = (chunk: { chunk?: string; content?: string }) => {
+    const text = (chunk.chunk || chunk.content || '').trim();
+    if (!text) {
+      return 'No chunk text captured';
+    }
+    return text.length > 260 ? `${text.slice(0, 260)}...` : text;
+  };
+
+  const fetchRetrievalTraces = async (overrides?: { sessionId?: string; widgetId?: string }) => {
+    try {
+      setTracesLoading(true);
+      setTracesError(null);
+
+      const sessionId = typeof overrides?.sessionId !== 'undefined'
+        ? overrides.sessionId
+        : (traceSessionFilter.trim() || undefined);
+      const widgetId = typeof overrides?.widgetId !== 'undefined'
+        ? overrides.widgetId
+        : (traceWidgetFilter.trim() || undefined);
+
+      const response = await analyticsService.getRetrievalTraces({
+        sessionId,
+        widgetId,
+        days: 14,
+        limit: 30,
+      });
+
+      setRetrievalTraces(response.data || []);
+    } catch (err) {
+      console.error('Error fetching retrieval traces:', err);
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        setTracesError('Retrieval traces are available to admin users only.');
+      } else {
+        setTracesError('Failed to load retrieval traces.');
+      }
+      setRetrievalTraces([]);
+    } finally {
+      setTracesLoading(false);
+    }
+  };
+
+  const handleTraceSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    fetchRetrievalTraces();
+  };
+
+  const handleTraceReset = () => {
+    setTraceSessionFilter('');
+    setTraceWidgetFilter('');
+    fetchRetrievalTraces({ sessionId: undefined, widgetId: undefined });
+  };
+
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
@@ -136,6 +209,10 @@ const AnalyticsPage: React.FC = () => {
     };
 
     fetchAnalytics();
+  }, []);
+
+  useEffect(() => {
+    fetchRetrievalTraces({ sessionId: undefined, widgetId: undefined });
   }, []);
 
   if (error) {
@@ -383,6 +460,144 @@ const AnalyticsPage: React.FC = () => {
                   <Typography variant="body2" sx={{ color: 'text.secondary', py: 4 }}>
                     No data available
                   </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card sx={{ ...panelSx }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 700 }}>
+                  Retrieval Trace Explorer
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+                  Inspect why the assistant answered a question by reviewing selected context chunks.
+                </Typography>
+
+                <Box component="form" onSubmit={handleTraceSearch} sx={{ mb: 2 }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2}>
+                    <TextField
+                      size="small"
+                      label="Session ID"
+                      value={traceSessionFilter}
+                      onChange={(event) => setTraceSessionFilter(event.target.value)}
+                      sx={{ minWidth: { md: 280 } }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Widget ID"
+                      value={traceWidgetFilter}
+                      onChange={(event) => setTraceWidgetFilter(event.target.value)}
+                      sx={{ minWidth: { md: 220 } }}
+                    />
+                    <Button type="submit" variant="contained" disabled={tracesLoading}>
+                      Load Traces
+                    </Button>
+                    <Button type="button" variant="text" onClick={handleTraceReset} disabled={tracesLoading}>
+                      Reset
+                    </Button>
+                  </Stack>
+                </Box>
+
+                {tracesLoading && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, py: 1 }}>
+                    <CircularProgress size={18} />
+                    <Typography variant="body2" color="text.secondary">
+                      Loading retrieval traces...
+                    </Typography>
+                  </Box>
+                )}
+
+                {!tracesLoading && tracesError && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }}>
+                    {tracesError}
+                  </Alert>
+                )}
+
+                {!tracesLoading && !tracesError && retrievalTraces.length === 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary', py: 1 }}>
+                    No traces found for this filter set.
+                  </Typography>
+                )}
+
+                {!tracesLoading && !tracesError && retrievalTraces.length > 0 && (
+                  <Box sx={{ display: 'grid', gap: 1.3 }}>
+                    {retrievalTraces.map((trace) => (
+                      <Paper
+                        key={trace.id}
+                        elevation={0}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: '12px',
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                          bgcolor: alpha(theme.palette.common.white, 0.72),
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          spacing={0.8}
+                          sx={{ alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', mb: 0.8 }}
+                        >
+                          <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap' }}>
+                            <Chip size="small" label={`Session: ${trace.session_id}`} />
+                            {trace.widget_id && <Chip size="small" label={`Widget: ${trace.widget_id}`} variant="outlined" />}
+                            {trace.has_context ? (
+                              <Chip size="small" color="success" label="Context Found" />
+                            ) : (
+                              <Chip size="small" color="warning" label="No Context" />
+                            )}
+                            {trace.escalation_triggered && <Chip size="small" color="error" label="Escalation" />}
+                          </Stack>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {trace.created_at ? new Date(trace.created_at).toLocaleString() : 'Unknown time'}
+                          </Typography>
+                        </Stack>
+
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          User Query
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.primary', mb: 0.8 }}>
+                          {trace.user_query}
+                        </Typography>
+
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          Retrieval Query
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.8 }}>
+                          {trace.retrieval_query || 'Used raw user query'}
+                        </Typography>
+
+                        <Stack direction="row" spacing={1.2} sx={{ mb: 1 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            Selected chunks: {trace.selected_chunks.length}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            Retrieved chunks: {trace.retrieved_chunks.length}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            Top distance: {typeof trace.top_distance === 'number' ? trace.top_distance.toFixed(4) : 'n/a'}
+                          </Typography>
+                        </Stack>
+
+                        <Divider sx={{ mb: 1 }} />
+
+                        {trace.selected_chunks.length > 0 ? (
+                          <Box sx={{ display: 'grid', gap: 0.75 }}>
+                            {trace.selected_chunks.slice(0, 3).map((chunk, index) => (
+                              <Typography key={`${trace.id}-chunk-${index}`} variant="body2" sx={{ color: 'text.primary' }}>
+                                {index + 1}. {getChunkPreview(chunk)}
+                              </Typography>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            No selected chunk payload was captured for this trace.
+                          </Typography>
+                        )}
+                      </Paper>
+                    ))}
+                  </Box>
                 )}
               </CardContent>
             </Card>
