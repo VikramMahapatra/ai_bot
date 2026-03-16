@@ -11,14 +11,14 @@ class CampaignCreate(BaseModel):
 
     contacts: List[int]
 
-    start_datetime: str
-    timezone: str
+    start_datetime: Optional[str] = None
+    timezone: Optional[str] = None
 
-    call_start_time: str
-    call_end_time: str
-    call_interval: int
+    call_start_time: Optional[str] = None
+    call_end_time: Optional[str] = None
+    call_interval: Optional[int] = None
 
-    active_days: List[str]
+    active_days: Optional[List[str]] = None
 
     max_retry_attempts: Optional[int] = None
     retry_interval: Optional[int] = None

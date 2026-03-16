@@ -33,6 +33,18 @@ class WebCrawler:
         self.max_workers = max(1, min(max_workers, 12))
         self.crawl_delay = max(0.0, crawl_delay)
         self._lock = threading.Lock()
+        self.discovered_urls: Dict[str, int] = {self.normalize_url(start_url): 0}
+
+    def _track_discovered_url(self, url: str, depth: int) -> None:
+        with self._lock:
+            previous_depth = self.discovered_urls.get(url)
+            if previous_depth is None or depth < previous_depth:
+                self.discovered_urls[url] = depth
+
+    def get_discovered_urls(self) -> List[Dict[str, object]]:
+        with self._lock:
+            items = [{"url": url, "depth": depth} for url, depth in self.discovered_urls.items()]
+        return sorted(items, key=lambda item: (item["depth"], item["url"]))
     
     def normalize_url(self, url: str) -> str:
         parsed = urlparse(url)
@@ -86,6 +98,9 @@ class WebCrawler:
 
     def crawl_page(self, url: str, depth: int) -> List[str]:
         """Crawl a single page and return links"""
+        url = self.normalize_url(url)
+        self._track_discovered_url(url, depth)
+
         with self._lock:
             if depth > self.max_depth or len(self.crawled_pages) >= self.max_pages:
                 return []
@@ -94,7 +109,6 @@ class WebCrawler:
             self.visited_urls.add(url)
         
         try:
-            url = self.normalize_url(url)
             logger.info(f"Crawling: {url} (depth: {depth})")
             headers = {
                 'User-Agent': 'Mozilla/5.0 (compatible; Chatbot/1.0)'
@@ -156,6 +170,7 @@ class WebCrawler:
                 absolute_url = absolute_url.split('#')[0]
                 absolute_url = self.normalize_url(absolute_url)
                 if self.is_valid_url(absolute_url):
+                    self._track_discovered_url(absolute_url, depth + 1)
                     links.append(absolute_url)
             
             return links
@@ -204,4 +219,15 @@ class WebCrawler:
                         time.sleep(self.crawl_delay)
         
         logger.info(f"Crawled {len(self.crawled_pages)} pages")
+        return self.crawled_pages
+
+    def crawl_selected(self, selected_urls: List[str]) -> List[Dict[str, str]]:
+        """Crawl only explicitly selected URLs."""
+        for raw_url in selected_urls:
+            normalized_url = self.normalize_url(raw_url)
+            self.crawl_page(normalized_url, 0)
+            if self.crawl_delay:
+                time.sleep(self.crawl_delay)
+
+        logger.info(f"Crawled {len(self.crawled_pages)} selected pages")
         return self.crawled_pages

@@ -1,7 +1,12 @@
 import api from './api';
-import { KnowledgeSource, WebCrawlRequest, WebCrawlResponse } from '../types';
+import { KnowledgeSource, WebCrawlRequest, WebCrawlResponse, WebCrawlPreviewRequest, WebCrawlPreviewResponse } from '../types';
 
 export const knowledgeService = {
+  async previewWebsiteLinks(request: WebCrawlPreviewRequest): Promise<WebCrawlPreviewResponse> {
+    const response = await api.post<WebCrawlPreviewResponse>('/api/admin/knowledge/crawl/preview', request);
+    return response.data;
+  },
+
   async crawlWebsite(request: WebCrawlRequest): Promise<WebCrawlResponse> {
     const response = await api.post<WebCrawlResponse>('/api/admin/knowledge/crawl', request);
     return response.data;

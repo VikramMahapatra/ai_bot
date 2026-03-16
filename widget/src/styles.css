@@ -58,6 +58,16 @@
   left: 20px;
 }
 
+.chatbot-widget-container.top-right {
+  top: 20px;
+  right: 20px;
+}
+
+.chatbot-widget-container.top-left {
+  top: 20px;
+  left: 20px;
+}
+
 .chatbot-widget-button {
   width: 60px;
   height: 60px;
@@ -98,6 +108,25 @@
   border: 1px solid rgba(148, 163, 184, 0.35);
   transition: background 0.3s, color 0.3s;
 }
+
+.chatbot-widget-container.bottom-left .chatbot-widget-window {
+  left: 0;
+  right: auto;
+}
+
+.chatbot-widget-container.top-right .chatbot-widget-window {
+  top: 80px;
+  bottom: auto;
+  right: 0;
+}
+
+.chatbot-widget-container.top-left .chatbot-widget-window {
+  top: 80px;
+  bottom: auto;
+  left: 0;
+  right: auto;
+}
+
 .chatbot-widget-container.dark .chatbot-widget-window {
   background: linear-gradient(180deg, #1e293b 0%, #273449 100%);
   border: 1px solid var(--divider);
@@ -179,6 +208,8 @@
 .chatbot-message {
   margin-bottom: 12px;
   display: flex;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .chatbot-message.user {
@@ -187,6 +218,41 @@
 
 .chatbot-message.assistant {
   justify-content: flex-start;
+}
+
+.chatbot-message.user {
+  flex-direction: row;
+}
+
+.chatbot-message.assistant {
+  flex-direction: row;
+}
+
+.chatbot-message-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  flex: 0 0 24px;
+}
+
+.chatbot-message-avatar.user {
+  order: 2;
+}
+
+.chatbot-message-avatar.assistant {
+  order: 0;
+}
+
+.chatbot-widget-container.dark .chatbot-message-avatar {
+  background: #334155;
+  border-color: #475569;
 }
 
 .chatbot-message-bubble {
@@ -318,7 +384,7 @@
   cursor: pointer;
   font-weight: 500;
   color: white;
-  background: linear-gradient(135deg, var(--primary-color, #007bff), #34d399);
+  background: linear-gradient(135deg, var(--primary-color, #007bff), var(--secondary-color, #34d399));
 }
 
 .chatbot-widget-send:hover {

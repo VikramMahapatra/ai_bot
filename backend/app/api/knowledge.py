@@ -8,10 +8,12 @@ from app.models import User, KnowledgeSource, SourceType
 from app.schemas import (
     KnowledgeSourceResponse,
     WebCrawlRequest,
+    WebCrawlPreviewRequest,
+    WebCrawlPreviewResponse,
     DocumentUploadResponse,
     WebCrawlResponse
 )
-from app.services import ingest_web_content, ingest_document, ingest_text_content, delete_knowledge_source
+from app.services import ingest_web_content, ingest_document, ingest_text_content, delete_knowledge_source, discover_web_links
 from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, increment_usage
 from app.services.rag import chroma_client
 import logging
@@ -50,8 +52,11 @@ async def crawl_website(
                 detail=f"Max crawl depth exceeded. Limit is {limits['max_crawl_depth']}",
             )
 
+        selected_urls_count = len(request.selected_urls or [])
+        effective_pages = selected_urls_count if selected_urls_count > 0 else request.max_pages
+
         remaining_pages = limits["monthly_crawl_pages_limit"] - usage.crawl_pages_count
-        if request.max_pages > remaining_pages:
+        if effective_pages > remaining_pages:
             raise HTTPException(
                 status_code=403,
                 detail=f"Monthly crawl page limit exceeded. Remaining pages: {remaining_pages}",
@@ -64,6 +69,7 @@ async def crawl_website(
             current_user.id,
             request.widget_id,
             db,
+            selected_urls=request.selected_urls,
         )
 
         increment_usage(db, current_user.organization_id, crawl_pages_count=pages_crawled)
@@ -76,8 +82,41 @@ async def crawl_website(
             unchanged=unchanged,
             message=message
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error crawling website: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/crawl/preview", response_model=WebCrawlPreviewResponse)
+async def preview_crawl_links(
+    request: WebCrawlPreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Discover crawlable links before embedding, so user can choose pages."""
+    try:
+        limits = get_effective_limits(db, current_user.organization_id)
+        if not limits.get("subscription_active"):
+            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+
+        if request.max_depth > limits["max_crawl_depth"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Max crawl depth exceeded. Limit is {limits['max_crawl_depth']}",
+            )
+
+        discovered_urls, pages_scanned = discover_web_links(request.url, request.max_pages, request.max_depth)
+        return WebCrawlPreviewResponse(
+            discovered_urls=discovered_urls,
+            pages_scanned=pages_scanned,
+            message=f"Discovered {len(discovered_urls)} links. Select which pages to embed.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error previewing crawl links: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

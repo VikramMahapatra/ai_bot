@@ -71,6 +71,13 @@ def update_agent_status(
 ):
     return service.update_agent_status(db, agent_id, data)
 
+@router.post("/{agent_id:int}/publish")
+def publish_agent(
+    agent_id: int,
+    db: Session = Depends(get_db)
+):
+    return service.publish_agent(db, agent_id)
+
 
 @router.get("/lookup")
 def get_agent_lookup(
@@ -79,3 +86,11 @@ def get_agent_lookup(
     current_user: User = Depends(get_current_user)
 ):
     return service.agent_lookup(db, current_user.organization_id, search)
+
+@router.get("/voices")
+def get_voices(db: Session= Depends(get_db), current_user: User = Depends(get_current_user)) :
+    return service.get_voices(db)
+
+@router.post("/sync-call-logs")
+def sync_call_logs(db: Session = Depends(get_db)):
+    return service.sync_call_logs(db)

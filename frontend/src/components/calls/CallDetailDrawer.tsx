@@ -7,7 +7,8 @@ import {
     Typography,
     IconButton,
     Stack,
-    Button
+    Button,
+    Tooltip
 } from '@mui/material';
 
 import CloseIcon from '@mui/icons-material/Close';
@@ -53,7 +54,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
                 sx={{ borderBottom: '1px solid #eee', backgroundColor: 'background.paper' }}
             >
                 <Typography variant="h6" fontWeight={700}>
-                    Conversation ID: {selectedCall.id}
+                    Phone No: {selectedCall.phone}
                 </Typography>
                 <IconButton onClick={onClose}>
                     <CloseIcon />
@@ -72,23 +73,27 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
                         <Stack spacing={1}>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">Start: {selectedCall.startTime}</Typography>
+                                <Typography variant="body2">Start: {selectedCall.startTime
+                                    ? new Date(selectedCall.startTime).toLocaleString()
+                                    : "-"}</Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">End: {selectedCall.endTime}</Typography>
+                                <Typography variant="body2">End: {selectedCall.endTime
+                                    ? new Date(selectedCall.endTime).toLocaleString()
+                                    : "-"}</Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Agent: {selectedCall.agent}</Typography>
+                                <Typography variant="body2">Agent: {selectedCall.agent || "N/A"}</Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Contact: {selectedCall.contact}</Typography>
+                                <Typography variant="body2">Contact: {selectedCall.contact || "N/A"}</Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <BusinessIcon fontSize="small" />
-                                <Typography variant="body2">Industry: {selectedCall.industry}</Typography>
+                                <Typography variant="body2">Industry: {selectedCall.industry || "N/A"}</Typography>
                             </Box>
                         </Stack>
                     </Stack>
@@ -98,35 +103,49 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
                 <Grid item xs={12} md={7} sx={{ p: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {/* Action Buttons */}
                     <Box display="flex" gap={2}>
-                        <Button
-                            variant="outlined"
-                            startIcon={<PlayArrowIcon />}
-                            onClick={() => {
-                                const link = document.createElement('a');
-                                link.href = selectedCall.audioUrl;
-                                link.download = `${selectedCall.id}.mp3`;
-                                link.click();
-                            }}
-                        >
-                            Download Recording
-                        </Button>
+                        <Tooltip title={!selectedCall?.audioUrl ? "Recording not available" : ""}>
+                            <span>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<PlayArrowIcon />}
+                                    disabled={!selectedCall?.audioUrl}
+                                    onClick={() => {
+                                        const link = document.createElement('a');
+                                        link.href = selectedCall.audioUrl;
+                                        link.download = `${selectedCall.id}.mp3`;
+                                        link.click();
+                                    }}
+                                >
+                                    Download Recording
+                                </Button>
+                            </span>
+                        </Tooltip>
 
-                        <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() => {
-                                const text = selectedCall.transcript.map((msg: any) => `${msg.speaker}: ${msg.text}`).join('\n');
-                                const blob = new Blob([text], { type: 'text/plain' });
-                                const link = document.createElement('a');
-                                link.href = URL.createObjectURL(blob);
-                                link.download = `${selectedCall.id}_transcript.txt`;
-                                link.click();
-                            }}
-                        >
-                            Export Transcript
-                        </Button>
+                        <Tooltip title={!selectedCall?.audioUrl ? "Recording not available" : ""}>
+                            <span>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<DescriptionIcon />}
+                                    disabled={!selectedCall?.transcript || selectedCall.transcript.length === 0}
+                                    onClick={() => {
+                                        const text = selectedCall.transcript
+                                            .map((msg: any) => `${msg.speaker}: ${msg.text}`)
+                                            .join('\n');
+
+                                        const blob = new Blob([text], { type: 'text/plain' });
+                                        const link = document.createElement('a');
+                                        link.href = URL.createObjectURL(blob);
+                                        link.download = `${selectedCall.id}_transcript.txt`;
+                                        link.click();
+                                    }}
+                                >
+                                    Export Transcript
+                                </Button>
+                            </span>
+                        </Tooltip>
+
+
                     </Box>
-
                     {/* Audio Player */}
                     <Box sx={{ border: '1px solid #eee', borderRadius: 2, p: 1 }}>
                         <audio controls style={{ width: '100%' }}>

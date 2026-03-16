@@ -8,7 +8,7 @@ import logging
 import os
 import json
 from datetime import datetime
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from urllib.parse import urlparse
 import hashlib
 
@@ -42,7 +42,47 @@ def _normalize_url(url: str) -> str:
     return normalized
 
 
-def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, widget_id: str, db: Session) -> Tuple[KnowledgeSource, int, int]:
+def discover_web_links(url: str, max_pages: int, max_depth: int) -> Tuple[List[Dict[str, object]], int]:
+    """Crawl website and return discovered links with depth, without embedding."""
+    if max_pages < 1:
+        raise Exception("max_pages must be 1 or greater")
+    if max_depth < 1:
+        raise Exception("max_depth must be 1 or greater")
+
+    if max_pages >= 100:
+        max_workers = 10
+        crawl_delay = 0.1
+    elif max_pages >= 50:
+        max_workers = 8
+        crawl_delay = 0.15
+    elif max_pages >= 20:
+        max_workers = 6
+        crawl_delay = 0.2
+    else:
+        max_workers = 4
+        crawl_delay = 0.3
+
+    crawler = WebCrawler(
+        url,
+        max_pages,
+        max_depth,
+        page_cache={},
+        max_workers=max_workers,
+        crawl_delay=crawl_delay,
+    )
+    crawler.crawl()
+    return crawler.get_discovered_urls(), crawler.pages_scanned
+
+
+def ingest_web_content(
+    url: str,
+    max_pages: int,
+    max_depth: int,
+    user_id: int,
+    widget_id: str,
+    db: Session,
+    selected_urls: Optional[List[str]] = None,
+) -> Tuple[KnowledgeSource, int, int]:
     """Crawl website and ingest content into knowledge base. Returns (source, pages_crawled)."""
     try:
         organization_id = _get_org_id(user_id, db)
@@ -80,13 +120,30 @@ def ingest_web_content(url: str, max_pages: int, max_depth: int, user_id: int, w
 
         crawler = WebCrawler(
             url,
-            max_pages,
+            max(max_pages, len(selected_urls or [])),
             max_depth,
             page_cache=page_cache,
             max_workers=max_workers,
             crawl_delay=crawl_delay,
         )
-        pages = crawler.crawl()
+        if selected_urls:
+            normalized_selected: List[str] = []
+            for selected_url in selected_urls:
+                try:
+                    normalized = _normalize_url(selected_url)
+                except Exception:
+                    continue
+                if urlparse(normalized).netloc != crawler.base_domain:
+                    continue
+                if normalized not in normalized_selected:
+                    normalized_selected.append(normalized)
+
+            if not normalized_selected:
+                raise Exception("No valid selected URLs found for embedding")
+
+            pages = crawler.crawl_selected(normalized_selected)
+        else:
+            pages = crawler.crawl()
         
         # If no pages changed, still update metadata and return
         if pages is None:

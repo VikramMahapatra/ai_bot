@@ -130,7 +130,7 @@ class CallingAgentRead(CallingAgentCreate):
         
 class TestCallRequest(BaseModel):
     phone_no: str
-    name: str
+    name: Optional[str] = None
     
 
 class AgentStatusUpdate(BaseModel):

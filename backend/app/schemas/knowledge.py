@@ -29,6 +29,24 @@ class WebCrawlRequest(BaseModel):
     url: str
     max_pages: int = 10
     max_depth: int = 3
+    selected_urls: Optional[List[str]] = None
+
+
+class WebCrawlPreviewRequest(BaseModel):
+    url: str
+    max_pages: int = 10
+    max_depth: int = 3
+
+
+class CrawlDiscoveredUrl(BaseModel):
+    url: str
+    depth: int
+
+
+class WebCrawlPreviewResponse(BaseModel):
+    discovered_urls: List[CrawlDiscoveredUrl]
+    pages_scanned: int
+    message: str
 
 
 class WebCrawlResponse(BaseModel):

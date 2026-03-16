@@ -80,6 +80,16 @@ export interface CallingAgentLookup {
     name: string
 }
 
+export interface Voice {
+    id?: number;
+    caller_name: string;
+    voice_id: string;
+    gender: string;
+    language: string;
+    accent: string;
+    recording_url: string;
+}
+
 export interface CallingAgentFilters {
     search?: string
     skip?: number
@@ -96,6 +106,12 @@ export interface CallingAgentListResponse {
     };
 }
 
+export interface CallingAgentStatusResponse {
+    message: string;
+    agent_id: string;
+    status: string;
+}
+
 
 export const callingAgentService = {
     async createCallingAgent(payload: FormData): Promise<CallingAgent> {
@@ -109,9 +125,21 @@ export const callingAgentService = {
         return response.data;
     },
 
-    async updateAgentStatus(agent_id: number, status: string): Promise<CallingAgent> {
-        const response = await api.patch(`/api/calling-agent/${agent_id}/status`, {
+    async publishAgent(agent_id: number): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(`/api/calling-agent/${agent_id}/publish`);
+        return response.data;
+    },
+
+    async updateAgentStatus(agent_id: number, status: string): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(`/api/calling-agent/${agent_id}/status`, {
             status
+        });
+        return response.data;
+    },
+
+    async testCall(agent_id: number, phone_no: string): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, {
+            phone_no
         });
         return response.data;
     },
@@ -123,6 +151,11 @@ export const callingAgentService = {
 
     async agentLookup(): Promise<CallingAgentLookup[]> {
         const response = await api.get<CallingAgentLookup[]>('/api/calling-agent/lookup');
+        return response.data;
+    },
+
+    async allVoices(): Promise<Voice[]> {
+        const response = await api.get<Voice[]>('/api/calling-agent/voices');
         return response.data;
     },
 

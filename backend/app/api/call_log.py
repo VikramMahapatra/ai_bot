@@ -27,3 +27,8 @@ def get_call_logs(
     db: Session = Depends(get_db)
 ):
     return service.get_call_logs(db, search, skip, limit, from_date, end_date)
+
+
+@router.post("/sync-call-logs")
+def sync_call_logs(db: Session = Depends(get_db)):
+    return service.sync_call_logs(db)

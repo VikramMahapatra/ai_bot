@@ -22,6 +22,24 @@ export interface WebCrawlRequest {
   url: string;
   max_pages: number;
   max_depth: number;
+  selected_urls?: string[];
+}
+
+export interface WebCrawlPreviewRequest {
+  url: string;
+  max_pages: number;
+  max_depth: number;
+}
+
+export interface CrawlDiscoveredUrl {
+  url: string;
+  depth: number;
+}
+
+export interface WebCrawlPreviewResponse {
+  discovered_urls: CrawlDiscoveredUrl[];
+  pages_scanned: number;
+  message: string;
 }
 
 export interface WebCrawlResponse {

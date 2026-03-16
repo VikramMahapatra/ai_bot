@@ -509,6 +509,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/widgets/edit/:widgetId"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <CreateChatAgentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/campaigns"
         element={
           <ProtectedRoute requiredRole="ADMIN">

@@ -15,7 +15,7 @@ class CallingAgent(Base):
     
     # Agent info
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False, default="Outbound")  # 'Inbound' | 'Outbound'
+    type = Column(String, nullable=False, default="outbound")  # 'inbound' | 'outbound'
     calling_no = Column(String, nullable=True)
     destination = Column(String, nullable=True)  # comma-separated list of countries
     status = Column(String, default="Draft")  # Active / Paused
@@ -73,6 +73,9 @@ class CallingAgent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
+    external_agent_id = Column(String, nullable=True) 
+    external_agent_a_id = Column(String, nullable=True)
+    
     campaigns = relationship("CallCampaign", back_populates="agent")
     
     
@@ -86,3 +89,4 @@ class CallingAgentTestCall(Base):
     name = Column(String)
     status = Column(String, default="Triggered")
     created_at = Column(DateTime, default=datetime.utcnow)
+    external_call_id = Column(String, nullable=True)  # NEW COLUMN
