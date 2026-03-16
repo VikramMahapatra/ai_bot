@@ -11,20 +11,65 @@ declare global {
       name?: string;
       welcomeMessage?: string;
       primaryColor?: string;
+      secondaryColor?: string;
       position?: string;
+      botIcon?: string;
+      userIcon?: string;
     };
   }
 }
 
+interface WidgetPublicConfig {
+  name?: string;
+  welcome_message?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  position?: string;
+  lead_fields?: string;
+}
+
+interface IconSelection {
+  botIcon?: string;
+  userIcon?: string;
+}
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+
+const loadWidgetConfig = async (apiUrl: string, widgetId: string): Promise<WidgetPublicConfig | null> => {
+  try {
+    const response = await fetch(`${trimTrailingSlash(apiUrl)}/api/admin/widget/config/${encodeURIComponent(widgetId)}`);
+    if (!response.ok) return null;
+    return (await response.json()) as WidgetPublicConfig;
+  } catch {
+    return null;
+  }
+};
+
+const parseIconSelection = (leadFieldsRaw?: string): IconSelection => {
+  if (!leadFieldsRaw) return {};
+  try {
+    const parsed = JSON.parse(leadFieldsRaw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    const botIcon = typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined;
+    const userIcon = typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined;
+    return { botIcon, userIcon };
+  } catch {
+    return {};
+  }
+};
+
 // Initialize the widget when the script loads
-function initWidget() {
+async function initWidget() {
   if (!window.AIChatbot) {
     console.error('AIChatbot configuration not found');
     return;
   }
 
   const config = window.AIChatbot;
-
+  const remoteConfig = await loadWidgetConfig(config.apiUrl, config.widgetId);
+  const iconSelection = parseIconSelection(remoteConfig?.lead_fields);
 
   const globalConfig = (window as any).AIChatbot || {};
 
@@ -43,10 +88,13 @@ function initWidget() {
       <ChatWidget
         widgetId={config.widgetId}
         apiUrl={config.apiUrl}
-        name={config.name}
-        welcomeMessage={config.welcomeMessage}
-        primaryColor={config.primaryColor}
-        position={config.position}
+        name={config.name || remoteConfig?.name}
+        welcomeMessage={config.welcomeMessage || remoteConfig?.welcome_message}
+        primaryColor={config.primaryColor || remoteConfig?.primary_color}
+        secondaryColor={config.secondaryColor || remoteConfig?.secondary_color}
+        position={config.position || remoteConfig?.position}
+        botIcon={config.botIcon || iconSelection.botIcon}
+        userIcon={config.userIcon || iconSelection.userIcon}
         shop={shopifyShop}
         user={shopifyUser}
       />

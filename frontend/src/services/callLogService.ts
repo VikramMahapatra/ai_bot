@@ -6,16 +6,20 @@ export interface CallTranscript {
 }
 export interface CallLog {
     id: string;
-    contact: string;
-    agent: string;
+    phone: string;
+    agent?: string;
+    campaign?: string;
+    testCall: boolean;
     type: "Inbound" | "Outbound";
     mode: "Voice" | "Chat" | "Video";
-    status: "Completed" | "Missed" | "Failed" | "In Progress";
+    status: string;
     date: string;
     startTime: string;
     endTime: string;
     industry: string;
-    audioUrl: string;
+    audioUrl?: string;
+    duration?: string;
+    cost?: string;
     transcript: CallTranscript[];
 }
 
@@ -36,11 +40,21 @@ export interface CallLogListResponse {
     };
 }
 
+export interface SyncCallResponse {
+    message: string;
+    count?: number;
+}
+
 
 export const callLogService = {
 
     async allLogs(params: CallLogFilters = {}): Promise<CallLogListResponse> {
         const response = await api.get('/api/call-log/all', { params });
+        return response.data;
+    },
+
+    async syncCallLogs(): Promise<SyncCallResponse> {
+        const response = await api.post(`/api/call-log/sync-call-logs`);
         return response.data;
     },
 

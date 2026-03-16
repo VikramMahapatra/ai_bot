@@ -18,6 +18,7 @@ class CallCampaign(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)
+    external_campaign_id = Column(Integer, nullable=True) 
 
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")

@@ -17,6 +17,8 @@ import {
     Stack,
     Alert,
     TablePagination,
+    Button,
+    CircularProgress,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -25,6 +27,8 @@ import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import PhoneIcon from '@mui/icons-material/Phone';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import CallDetailDrawer from './CallDetailDrawer';
+import SyncIcon from "@mui/icons-material/Sync";
+import CloseIcon from "@mui/icons-material/Close";
 import { CallLog, callLogService } from '../../services/callLogService';
 
 
@@ -75,6 +79,8 @@ export const CallLogsTab = () => {
     const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [syncing, setSyncing] = useState(false);
+    const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
     const showError = (message: string) => {
         setSuccess('');
@@ -99,6 +105,19 @@ export const CallLogsTab = () => {
         setCallLogTotal(data.pagination?.total || 0);
     };
 
+    const handleSyncCalls = async () => {
+        setSyncing(true);
+        try {
+            await callLogService.syncCallLogs();
+            setLastSynced(new Date());
+            loadCallLogs(); // refresh table
+        } catch (error) {
+            showError("Syncing failed")
+        } finally {
+            setSyncing(false);
+        }
+    };
+
     useEffect(() => {
         loadCallLogs();
     }, []);
@@ -108,7 +127,7 @@ export const CallLogsTab = () => {
             try {
                 await loadCallLogs();
             } catch (err: any) {
-                showError(err?.response?.data?.detail || 'Failed to load contact lists');
+                showError(err?.response?.data?.detail || 'Failed to load call logs');
             }
         };
         run();
@@ -119,6 +138,22 @@ export const CallLogsTab = () => {
         <Box>
             {/* Filters */}
             <Grid container spacing={2} mb={2} alignItems="center">
+                <Grid item xs={12} md={4}>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        label="Search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <SearchIcon />
+                                </InputAdornment>
+                            )
+                        }}
+                    />
+                </Grid>
                 <Grid item xs={12} md={3}>
                     <TextField
                         label="From"
@@ -142,31 +177,59 @@ export const CallLogsTab = () => {
                         InputLabelProps={{ shrink: true }}
                     />
                 </Grid>
-                <Grid item xs={12} md={6}>
-                    <TextField
-                        fullWidth
-                        size="small"
-                        label="Search"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        InputProps={{
-                            endAdornment: (
-                                <InputAdornment position="end">
-                                    <IconButton>
-                                        <SearchIcon />
-                                    </IconButton>
-                                </InputAdornment>
-                            )
-                        }}
-                    />
+
+
+
+                <Grid item xs={12} md={2}>
+                    <Stack
+                        spacing={0.5}
+                        justifyContent="center"
+                        alignItems="flex-start"
+                        height="100%"
+                    >
+                        <Button
+                            variant="contained"
+                            startIcon={
+                                syncing ? (
+                                    <CircularProgress size={18} color="inherit" />
+                                ) : (
+                                    <SyncIcon />
+                                )
+                            }
+                            onClick={handleSyncCalls}
+                            disabled={syncing}
+                        >
+                            {syncing ? "Syncing..." : "Sync Logs"}
+                        </Button>
+                        {/* 
+                        {lastSynced && (
+                            <Typography variant="caption" color="text.secondary">
+                                Last synced: {lastSynced.toLocaleTimeString()}
+                            </Typography>
+                        )} */}
+                    </Stack>
                 </Grid>
+
             </Grid>
 
             <Stack
                 mb={2}
             >
                 {error && (
-                    <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
+                    <Alert
+                        severity="error"
+                        sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}
+                        action={
+                            <IconButton
+                                aria-label="close"
+                                color="inherit"
+                                size="small"
+                                onClick={() => setError("")} // clears the error
+                            >
+                                <CloseIcon fontSize="inherit" />
+                            </IconButton>
+                        }
+                    >
                         {error}
                     </Alert>
                 )}
@@ -182,12 +245,14 @@ export const CallLogsTab = () => {
                 <Table>
                     <TableHead>
                         <TableRow>
-                            <TableCell>Conversation ID</TableCell>
-                            <TableCell>Contact Name</TableCell>
-                            <TableCell>Agent Name</TableCell>
+                            <TableCell>Phone</TableCell>
+                            <TableCell>Campaign</TableCell>
+                            <TableCell>Agent</TableCell>
                             <TableCell>Call Type</TableCell>
-                            <TableCell>Mode</TableCell>
+                            <TableCell>Test Call</TableCell>
                             <TableCell>Status</TableCell>
+                            <TableCell>Duration</TableCell>
+                            <TableCell>Cost</TableCell>
                             <TableCell>Date</TableCell>
                             <TableCell>View</TableCell>
                         </TableRow>
@@ -220,23 +285,31 @@ export const CallLogsTab = () => {
                         ) : (
                             callLogs.map(log => (
                                 <TableRow key={log.id} hover>
-                                    <TableCell>{log.id}</TableCell>
-                                    <TableCell>{log.contact}</TableCell>
-                                    <TableCell>{log.agent}</TableCell>
+                                    <TableCell>{log.phone}</TableCell>
+                                    <TableCell>{log.campaign || "-"}</TableCell>
+                                    <TableCell>{log.agent || "-"}</TableCell>
                                     <TableCell>
                                         <Box display="flex" alignItems="center" gap={0.5}>
                                             {getTypeIcon(log.type)} <Typography variant="body2">{log.type}</Typography>
                                         </Box>
                                     </TableCell>
                                     <TableCell>
-                                        <Box display="flex" alignItems="center" gap={0.5}>
-                                            {getModeIcon(log.mode)} <Typography variant="body2">{log.mode}</Typography>
-                                        </Box>
+                                        {log.testCall ? "Yes" : "No"}
                                     </TableCell>
                                     <TableCell>
                                         <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
                                     </TableCell>
-                                    <TableCell>{log.date}</TableCell>
+                                    <TableCell>{log.duration || "N/A"}</TableCell>
+                                    <TableCell>{log.cost || "0.00"}</TableCell>
+                                    <TableCell>
+                                        {log.date ? new Date(log.date).toLocaleString("en-IN", {
+                                            day: "2-digit",
+                                            month: "short",
+                                            year: "numeric",
+                                            hour: "2-digit",
+                                            minute: "2-digit"
+                                        }) : "-"}
+                                    </TableCell>
                                     <TableCell>
                                         <IconButton size="small" onClick={() => setSelectedCall(log)}>
                                             <VisibilityIcon />

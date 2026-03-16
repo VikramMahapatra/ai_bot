@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Box,
     Card,
@@ -21,7 +21,12 @@ import {
     FormHelperText
 } from '@mui/material';
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
+import StopIcon from "@mui/icons-material/Stop";
+import IconButton from "@mui/material/IconButton";
 import moment from 'moment';
+import { callingAgentService, Voice } from '../../services/callingAgentService';
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -31,23 +36,27 @@ interface AddAgentFormProps {
     onSave: (data: any) => void;
 }
 
-const destinationOptions = ['India', 'USA', 'UK', 'Canada', 'Australia'];
-const voiceOptions = [
-    { id: "sBFce9RYjwinEuw3T4sS", name: "Mayuri", accent: "en-IN" },
-    { id: "qNEtlFtvbX90lZZcDJ8X", name: "Neha", accent: "hi-IN" },
-    { id: "MmQVkVZnQ0dUbfWzcW6f", name: "Zara", accent: "en-IN" },
-    { id: "caMurMrvWp0v3NFJALhl", name: "Roopa", accent: "en-IN" },
-    { id: "90ipbRoKi4CpHXvKVtl0", name: "Anika", accent: "en-IN" },
-    { id: "QTKSa2Iyv0yoxvXY2V8a", name: "Neha P", accent: "hi-IN" },
-];
+// const destinationOptions = ['India', 'USA', 'UK', 'Canada', 'Australia'];
 
-const accentOptions = [
-    { label: "All Accents", value: "all" },
-    { label: "Mul-Hi-En-Te", value: "Mul-Hi-En-Te" },
-    { label: "US-en", value: "US-en" },
-    { label: "en-IN", value: "en-IN" },
-    { label: "hi-IN", value: "hi-IN" },
-];
+// const voiceOptions = [
+//     { id: "sBFce9RYjwinEuw3T4sS", name: "Mayuri", accent: "en-IN", gender: "Female" },
+//     { id: "qNEtlFtvbX90lZZcDJ8X", name: "Neha", accent: "hi-IN", gender: "Female" },
+//     { id: "MmQVkVZnQ0dUbfWzcW6f", name: "Zara", accent: "en-IN", gender: "Female" },
+//     { id: "caMurMrvWp0v3NFJALhl", name: "Roopa", accent: "en-IN", gender: "Female" },
+//     { id: "90ipbRoKi4CpHXvKVtl0", name: "Anika", accent: "en-IN", gender: "Female" },
+//     { id: "QTKSa2Iyv0yoxvXY2V8a", name: "Neha P", accent: "hi-IN", gender: "Female" },
+//     { id: "wJ5MX7uuKXZwFqGdWM4N", name: "Raj", accent: "en-IN", gender: "Male" },
+//     { id: "6TcvxMZXgg9AlJrd8iCl", name: "Harshit", accent: "en-IN", gender: "Male" },
+//     { id: "mCQMfsqGDT6IDkEKR20a", name: "Jeevan", accent: "en-IN", gender: "Male" },
+// ];
+
+// const accentOptions = [
+//     { label: "All Accents", value: "all" },
+//     { label: "Mul-Hi-En-Te", value: "Mul-Hi-En-Te" },
+//     { label: "US-en", value: "US-en" },
+//     { label: "en-IN", value: "en-IN" },
+//     { label: "hi-IN", value: "hi-IN" },
+// ];
 
 const timezoneOptions = moment.tz.names().map((tz) => ({
     value: tz,
@@ -87,6 +96,11 @@ const transcriberLanguages = [
 export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave }) => {
     const [errors, setErrors] = useState<any>({});
     const [files, setFiles] = useState<File[]>([]);
+    const [voiceOptions, setVoiceOptions] = useState<Voice[]>([]);
+
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+
     const [formData, setFormData] = useState({
         name: agent?.name || '',
         greeting: agent?.greeting || '',
@@ -130,10 +144,39 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         transcriber_model: agent?.transcriber_model || "",
     });
 
+    useEffect(() => {
+        const fetchVoices = async () => {
+            try {
+                const voices = await callingAgentService.allVoices();
+                setVoiceOptions(voices);
+
+            } catch (err) {
+                console.error("Failed to load voices", err);
+            }
+        };
+
+        fetchVoices();
+    }, []);
+
+    const filteredVoices = useMemo(() => {
+
+        let filtered = [...voiceOptions];
+
+        if (formData.gender) {
+            filtered = filtered.filter(v => v.gender === formData.gender);
+        }
+
+        if (formData.accent && formData.accent !== "all") {
+            filtered = filtered.filter(v => v.accent === formData.accent);
+        }
+
+        return filtered;
+
+    }, [voiceOptions, formData.gender, formData.accent]);
+
     const [existingFiles, setExistingFiles] = useState<string[]>(
         agent?.training_doc ? agent.training_doc.split(",") : []
     );
-
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -233,9 +276,60 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         onSave(data);
     };
 
+    const selectedVoice = voiceOptions.find(v => v.voice_id === formData.voice);
+
+
+    const togglePreview = (url: string) => {
+
+        if (!audioRef.current) {
+            const audio = new Audio(url);
+
+            audio.addEventListener("ended", () => {
+                setIsPlaying(false);
+            });
+
+            audioRef.current = audio;
+        }
+
+        const audio = audioRef.current;
+
+        if (isPlaying) {
+            audio.pause();
+            setIsPlaying(false);
+        } else {
+
+            if (audio.src !== url) {
+                audio.src = url;
+            }
+
+            audio.play();
+            setIsPlaying(true);
+        }
+    };
+
+    const stopPreview = () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            setIsPlaying(false);
+        }
+    };
+
+    useEffect(() => {
+        stopPreview();
+    }, [formData.voice]);
+
+    const accentOptions = [
+        { label: "All Accents", value: "all" },
+        ...Array.from(new Set(voiceOptions.map(v => v.accent)))
+            .map(accent => ({
+                label: accent,
+                value: accent
+            }))
+    ];
 
     return (
-        <Card sx={{ mb: 3, p: 3, borderRadius: 2, boxShadow: 2, position: 'sticky', top: 16, zIndex: 1 }}>
+        <Card sx={{ mb: 3, p: 3, borderRadius: 2, boxShadow: 2, position: 'sticky', zIndex: 1 }}>
             <Stack spacing={3}>
                 {/* Header */}
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -251,9 +345,14 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         />
                     </Stack>
 
-                    <Button color="error" onClick={onCancel}>
-                        Cancel
-                    </Button>
+                    <Box display="flex" justifyContent="flex-end" >
+                        <Button color="error" variant='outlined' onClick={onCancel}>
+                            Cancel
+                        </Button>
+                        <Button variant="contained" onClick={handleSubmit} sx={{ ml: 1 }}>
+                            {mode === "create" ? "Save" : "Update"}
+                        </Button>
+                    </Box>
                 </Stack>
 
                 {/* Agent Information */}
@@ -546,9 +645,9 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                     setFormData({ ...formData, voice: e.target.value })
                                 }
                             >
-                                {voiceOptions.map((voice) => (
-                                    <MenuItem key={voice.id} value={voice.id}>
-                                        {voice.name}
+                                {filteredVoices.map((voice) => (
+                                    <MenuItem key={voice.voice_id} value={voice.voice_id}>
+                                        {voice.caller_name}
                                     </MenuItem>
                                 ))}
                             </Select>
@@ -556,30 +655,42 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         </FormControl>
 
                         {/* Preview */}
-                        {formData.voice && (
+                        {selectedVoice && (
                             <Card variant="outlined" sx={{ p: 2, background: "#f9fafb" }}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
 
                                     <Box>
                                         <Typography fontWeight={500}>
-                                            {voiceOptions.find(v => v.id === formData.voice)?.name}
+                                            {selectedVoice.caller_name}
                                         </Typography>
 
                                         <Typography variant="caption" color="text.secondary">
-                                            {voiceOptions.find(v => v.id === formData.voice)?.accent}
+                                            {selectedVoice.accent}
                                         </Typography>
                                     </Box>
 
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => {
-                                            // play preview audio
-                                            console.log("Play preview");
-                                        }}
-                                    >
-                                        Play Preview
-                                    </Button>
+                                    <Stack direction="row" spacing={1}>
+
+                                        <Button
+                                            variant="contained"
+                                            size="small"
+                                            startIcon={isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+                                            onClick={() => togglePreview(selectedVoice.recording_url)}
+                                        >
+                                            {isPlaying ? "Pause" : "Play"}
+                                        </Button>
+
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            color="error"
+                                            startIcon={<StopIcon />}
+                                            onClick={stopPreview}
+                                        >
+                                            Stop
+                                        </Button>
+
+                                    </Stack>
 
                                 </Stack>
                             </Card>
@@ -983,7 +1094,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                 {/* Save Button aligned right */}
                 <Box display="flex" justifyContent="flex-end" >
                     <Button variant="contained" onClick={handleSubmit}>
-                        {mode === "create" ? "Save Agent" : "Update Agent"}
+                        {mode === "create" ? "Save" : "Update"}
                     </Button>
                 </Box >
             </Stack >

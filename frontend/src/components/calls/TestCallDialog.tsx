@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     Dialog,
     DialogContent,
@@ -14,20 +14,17 @@ import {
     Chip,
     InputAdornment,
     CircularProgress,
-    Grid
+    Grid,
+    Alert,
+    IconButton
 } from "@mui/material";
-
+import CloseIcon from "@mui/icons-material/Close";
 import MicIcon from "@mui/icons-material/Mic";
 import PhoneIcon from "@mui/icons-material/Phone";
 import CallIcon from "@mui/icons-material/Call";
 import PublicIcon from "@mui/icons-material/Public";
-
-interface CallingAgent {
-    id?: number;
-    name: string;
-    calling_no?: string;
-    server_location?: string;
-}
+import { CallingAgent, callingAgentService } from "../../services/callingAgentService";
+import { alpha, useTheme } from '@mui/material/styles';
 
 interface Props {
     open: boolean;
@@ -36,12 +33,21 @@ interface Props {
 }
 
 export default function TestCallDialog({ open, onClose, agent }: Props) {
-
+    if (!agent) return null;
+    const theme = useTheme();
+    const [callError, setCallError] = useState('');
     const [countryCode, setCountryCode] = useState("+91");
     const [phoneNumber, setPhoneNumber] = useState("");
     const [calling, setCalling] = useState(false);
 
+    useEffect(() => {
+        setCallError('');
+        setPhoneNumber('');
+    }, [open]);
+
     const handleStartCall = async () => {
+        if (!agent.id) return;
+        setCallError("");
 
         const fullNumber = `${countryCode}${phoneNumber}`;
 
@@ -50,13 +56,21 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
         console.log("Starting call:", fullNumber);
 
         // API CALL
-        // await callAgentService.testCall(agent?.id, fullNumber)
-
-        setTimeout(() => {
-            setCalling(false);
-            onClose();
-            setPhoneNumber("");
-        }, 2000);
+        try {
+            await callingAgentService.testCall(agent.id, fullNumber)
+            setTimeout(() => {
+                onClose();
+                setPhoneNumber("");
+            }, 2000);
+        }
+        catch (err: any) {
+            setCallError("Failed to initiate the call. Please try again")
+        }
+        finally {
+            setTimeout(() => {
+                setCalling(false);
+            }, 2000);
+        }
     };
 
     return (
@@ -215,6 +229,32 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                 <Typography variant="caption" color="text.secondary" mt={1} display="block">
                     Enter the destination phone number you want the AI agent to call
                 </Typography>
+                {callError && (
+                    <Stack
+                        mb={2}
+                    >
+                        <Alert
+                            severity="error"
+                            sx={{
+                                borderRadius: "14px",
+                                boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
+                            }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setCallError("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {callError}
+                        </Alert>
+                    </Stack>
+                )
+                }
 
             </DialogContent>
 

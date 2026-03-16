@@ -9,6 +9,8 @@ from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
 from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCreate
 from app.models.campaign import Contact, ContactList
+from app.utils.echoleads_client import EcholeadsClient
+from app.models.calling_agents import CallingAgent
 
 
 def get_campaign_stats(db: Session, organization_id: int):
@@ -152,15 +154,55 @@ def get_campaign(db: Session, campaign_id: int):
         "retry_on_voicemail": schedule.retry_voicemail if schedule else None
     }
     
-def create_campaign(db: Session, organization_id:int, data: CampaignCreate):
+def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
+
+    if data.start_datetime:
+        status = "scheduled"
+        send_option = "schedule"
+    else:
+        status = "active"
+        send_option = "instant"
+        
+    agent = db.query(CallingAgent).filter(
+            CallingAgent.external_agent_a_id == data.agent_id
+        ).first()
+
+    external_contact_ids = get_external_contact_ids(db, data.contacts)
+    
+    payload = {
+        "campaign_name": data.name,
+        "agent_id": agent.external_agent_id,
+        "from_number": data.from_number,
+        "send_option": send_option,
+        "schedule_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
+        "schedule_time": data.start_datetime.split("T")[1][:5] if data.start_datetime else None,
+        "timezone": data.timezone,
+        "concurrency_reserved": 2,
+        "concurrency_allocated": 5,
+        "contact_ids": external_contact_ids,
+        "retries": data.max_retry_attempts,
+        "retry_after": data.retry_interval
+    }
+
+    client = EcholeadsClient()
+
+    response = client.create_campaign(payload)
+
+    if not response.get("success"):
+        raise HTTPException(status_code=400, detail="Failed to create campaign in Echoleads")
+
+    echoleads_campaign_id = response["campaign"]["id"]
+    echoleads_campaign_status = response["campaign"]["status"]
 
     campaign = CallCampaign(
-        organization_id= organization_id,
+        organization_id=organization_id,
         name=data.name,
         description=data.description,
         category=data.category,
         priority=data.priority,
-        agent_id=data.agent_id
+        agent_id=data.agent_id,
+        status= echoleads_campaign_status if echoleads_campaign_status else status,
+        external_campaign_id=echoleads_campaign_id
     )
 
     db.add(campaign)
@@ -168,16 +210,17 @@ def create_campaign(db: Session, organization_id:int, data: CampaignCreate):
 
     # contacts
     for contact_id in data.contacts:
-        cc = CampaignContact(
-            campaign_id=campaign.id,
-            contact_id=contact_id
+        db.add(
+            CampaignContact(
+                campaign_id=campaign.id,
+                contact_id=contact_id
+            )
         )
-        db.add(cc)
 
     # schedule
     schedule = CampaignSchedule(
         campaign_id=campaign.id,
-        start_datetime=datetime.fromisoformat(data.start_datetime),
+        start_datetime=datetime.fromisoformat(data.start_datetime) if data.start_datetime else None,
         timezone=data.timezone,
         call_start_time=data.call_start_time,
         call_end_time=data.call_end_time,
@@ -191,12 +234,12 @@ def create_campaign(db: Session, organization_id:int, data: CampaignCreate):
     )
 
     db.add(schedule)
-
     db.commit()
 
     return {
         "message": "Campaign created",
-        "campaign_id": campaign.id
+        "campaign_id": campaign.id,
+        "echoleads_campaign_id": echoleads_campaign_id
     }
 
 def update_campaign(
@@ -214,6 +257,12 @@ def update_campaign(
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     update_data = data.dict(exclude_unset=True)
+    
+    # Determine campaign status
+    if data.start_datetime:
+        campaign.status = "scheduled"
+    else:
+        campaign.status = "active"  # Send Now
 
     # update basic fields
     for field in ["name", "description", "category", "priority", "agent_id"]:
@@ -401,7 +450,11 @@ def create_contact(db: Session, data: ContactCreate):
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    return contact
+   
+    return {
+        **contact.__dict__,
+       "label": f"{contact.name} ({contact.phone})"
+    }
 
 
 def update_contact(db: Session, contact_id: int, data: ContactCreate):
@@ -412,3 +465,45 @@ def update_contact(db: Session, contact_id: int, data: ContactCreate):
 
     db.commit()
     return contact
+
+
+def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
+
+    client = EcholeadsClient()
+    external_contact_ids = []
+
+    contacts = db.query(Contact).filter(Contact.id.in_(contact_ids)).all()
+
+    contact_map = {c.id: c for c in contacts}
+
+    for cid in contact_ids:
+
+        contact = contact_map.get(cid)
+
+        if not contact:
+            raise HTTPException(status_code=404, detail=f"Contact {cid} not found")
+
+        # Already synced
+        if contact.external_contact_id:
+            external_contact_ids.append(contact.external_contact_id)
+            continue
+
+        # Create contact in EchoLeads
+        payload = {
+            "firstName": contact.first_name,
+            "phone": contact.phone
+        }
+
+        response = client.create_contact(payload)
+
+        if not response.get("success"):
+            raise HTTPException(status_code=400, detail="Failed to create contact in Echoleads")
+
+        external_id = response["contact"]["id"]
+
+        contact.external_contact_id = external_id
+        external_contact_ids.append(external_id)
+
+    db.commit()
+
+    return external_contact_ids

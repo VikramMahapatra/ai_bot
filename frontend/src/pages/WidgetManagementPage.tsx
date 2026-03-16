@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -20,11 +20,10 @@ import {
   Chip,
   Stack,
   Typography,
-  Checkbox,
-  FormControlLabel,
   Stepper,
   Step,
   StepLabel,
+  LinearProgress,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import {
@@ -67,7 +66,7 @@ interface WhatsAppConfigSummary {
   is_active?: boolean;
 }
 
-type DialogMode = 'create' | 'edit' | 'view' | null;
+type DialogMode = 'view' | null;
 
 const normalizeWidget = (widget: Partial<WidgetConfig>): WidgetConfig => ({
   id: widget.id,
@@ -99,7 +98,6 @@ const WidgetManagementPage: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
   const [dialogStep, setDialogStep] = useState(0);
-  const [currentWidget, setCurrentWidget] = useState<WidgetConfig | null>(null);
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfigSummary>({ configured: false });
   const [formData, setFormData] = useState<WidgetConfig>({
     widget_id: '',
@@ -149,14 +147,15 @@ const WidgetManagementPage: React.FC = () => {
   };
 
   const handleOpenEdit = (widget: WidgetConfig) => {
-    setCurrentWidget(widget);
-    setFormData(widget);
-    setDialogStep(0);
-    setDialogMode('edit');
+    const widgetId = widget.widget_id?.trim();
+    if (!widgetId) {
+      setError('Widget ID is missing. Cannot edit this agent.');
+      return;
+    }
+    navigate(`/widgets/edit/${encodeURIComponent(widgetId)}`);
   };
 
   const handleOpenView = (widget: WidgetConfig) => {
-    setCurrentWidget(widget);
     setFormData(widget);
     setDialogStep(0);
     setDialogMode('view');
@@ -164,28 +163,7 @@ const WidgetManagementPage: React.FC = () => {
 
   const handleCloseDialog = () => {
     setDialogMode(null);
-    setCurrentWidget(null);
     setDialogStep(0);
-  };
-
-  const handleSave = async () => {
-    try {
-      if (dialogMode === 'create') {
-        await api.post('/api/admin/widget/config', formData);
-        setSuccess('Widget created successfully');
-      } else if (dialogMode === 'edit' && currentWidget?.widget_id) {
-        await api.put(`/api/admin/widget/config/${currentWidget.widget_id}`, formData);
-        setSuccess('Widget updated successfully');
-      } else if (dialogMode === 'edit') {
-        setError('Widget ID is missing. Cannot update this widget.');
-        return;
-      }
-      setError('');
-      handleCloseDialog();
-      fetchWidgets();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save widget');
-    }
   };
 
   const handleDelete = async (widgetId: string) => {
@@ -232,15 +210,6 @@ const WidgetManagementPage: React.FC = () => {
     }
   };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target as HTMLInputElement;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
-    }));
-  };
-
-  const isViewMode = dialogMode === 'view';
   const dialogLastStep = managementSteps.length - 1;
   const whatsappConnectedForAgent = Boolean(
     whatsappConfig.configured
@@ -249,6 +218,64 @@ const WidgetManagementPage: React.FC = () => {
       && whatsappConfig.widget_id === formData.widget_id
       && whatsappConfig.is_active !== false
   );
+
+  const dialogStepDescriptions = useMemo(
+    () => [
+      'Review and refine identity, messaging, and visual style.',
+      'Manage website/docs/text sources for grounded responses.',
+      'Verify channel connectivity and operational readiness.',
+      'Copy test URL and embed code for rollout and QA.',
+    ],
+    []
+  );
+
+  const dialogProgress = useMemo(
+    () => ((dialogStep + 1) / managementSteps.length) * 100,
+    [dialogStep]
+  );
+
+  const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '12px',
+      backgroundColor: alpha(theme.palette.common.white, 0.74),
+    },
+  } as const;
+
+  const dialogPanelSx = {
+    borderRadius: '18px',
+    border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+    background: `linear-gradient(150deg, ${alpha(theme.palette.common.white, 0.7)} 0%, ${alpha(
+      theme.palette.background.paper,
+      0.82
+    )} 68%, ${alpha('#dce8f8', 0.78)} 100%)`,
+    boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.14)}`,
+  } as const;
+
+  const modernStepCardSx = {
+    ...dialogPanelSx,
+    borderRadius: '20px',
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+    background: `linear-gradient(152deg, ${alpha(theme.palette.common.white, 0.82)} 0%, ${alpha(
+      theme.palette.background.paper,
+      0.9
+    )} 64%, ${alpha('#d7e7fb', 0.84)} 100%)`,
+    boxShadow: `0 16px 30px ${alpha(theme.palette.primary.dark, 0.16)}`,
+  } as const;
+
+  const accentPanelSx = {
+    borderRadius: '14px',
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+    background: `linear-gradient(145deg, ${alpha('#ffffff', 0.86)} 0%, ${alpha('#ecf3ff', 0.92)} 100%)`,
+    p: 1.5,
+  } as const;
+
+  const stepActionBarSx = {
+    borderRadius: '14px',
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+    background: `linear-gradient(145deg, ${alpha('#ffffff', 0.8)} 0%, ${alpha('#eaf2ff', 0.86)} 100%)`,
+    px: 1.3,
+    py: 1,
+  } as const;
 
   const moveDialogStep = (delta: number) => {
     setDialogStep((prev) => Math.min(dialogLastStep, Math.max(0, prev + delta)));
@@ -451,188 +478,159 @@ const WidgetManagementPage: React.FC = () => {
 
       {/* Step-by-step Agent Journey Dialog (View/Edit) */}
       <Dialog
-        open={dialogMode === 'create' || dialogMode === 'edit' || dialogMode === 'view'}
+        open={dialogMode === 'view'}
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            ...dialogPanelSx,
+            borderRadius: '20px',
+            overflow: 'hidden',
+          },
+        }}
       >
-        <DialogTitle>
-          {isViewMode ? 'Agent Journey' : dialogMode === 'create' ? 'Create Agent Journey' : 'Edit Agent Journey'}
+        <DialogTitle sx={{ pb: 1.1 }}>
+          <Stack spacing={1.2}>
+            <Box>
+              <Typography variant="overline" sx={{ letterSpacing: '0.08em', color: 'text.secondary' }}>
+                Agent Wizard
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                Agent Journey
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Step {dialogStep + 1} of {managementSteps.length}: {managementSteps[dialogStep]}
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={dialogProgress}
+              sx={{
+                height: 9,
+                borderRadius: 999,
+                backgroundColor: alpha(theme.palette.primary.main, 0.14),
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 999,
+                  background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                },
+              }}
+            />
+          </Stack>
         </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2.5}>
-            <Stepper activeStep={dialogStep} alternativeLabel>
-              {managementSteps.map((stepLabel) => (
-                <Step key={stepLabel}>
-                  <StepLabel>{stepLabel}</StepLabel>
-                </Step>
-              ))}
-            </Stepper>
+        <DialogContent sx={{ pt: 1.2 }}>
+          <Stack spacing={2}>
+            <Paper sx={{ ...dialogPanelSx, p: 1.3 }}>
+              <Stack spacing={1.2}>
+                <Typography variant="body2" color="text.secondary">
+                  {dialogStepDescriptions[dialogStep]}
+                </Typography>
+                <Stepper
+                  activeStep={dialogStep}
+                  alternativeLabel
+                  sx={{
+                    '& .MuiStepLabel-label': { fontWeight: 600 },
+                    '& .MuiStepIcon-root': { color: alpha(theme.palette.primary.main, 0.24) },
+                    '& .MuiStepIcon-root.Mui-active': { color: theme.palette.primary.main },
+                    '& .MuiStepIcon-root.Mui-completed': { color: theme.palette.success.main },
+                  }}
+                >
+                  {managementSteps.map((stepLabel) => (
+                    <Step key={stepLabel}>
+                      <StepLabel>{stepLabel}</StepLabel>
+                    </Step>
+                  ))}
+                </Stepper>
+              </Stack>
+            </Paper>
 
             {dialogStep === 0 && (
-              <Stack spacing={2}>
-                {isViewMode ? (
-                  <>
-                    <Box>
+              <Paper sx={{ ...modernStepCardSx, p: 2 }}>
+                <Stack spacing={1.8}>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.4 }}>Agent Profile</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Update identity, welcome tone, colors, and routing preferences.
+                    </Typography>
+                  </Box>
+
+                  <Stack spacing={1.3}>
+                    <Box sx={accentPanelSx}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent ID</Typography>
                       <Typography sx={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
                         {formData.widget_id}
                       </Typography>
                     </Box>
-                    <Box>
+                    <Box sx={accentPanelSx}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>Name</Typography>
                       <Typography>{formData.name}</Typography>
                     </Box>
-                    <Box>
+                    <Box sx={accentPanelSx}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>Welcome Message</Typography>
-                      <Typography>{formData.welcome_message}</Typography>
+                      <Typography>{formData.welcome_message || '-'}</Typography>
                     </Box>
-                  </>
-                ) : (
-                  <>
-                    <TextField
-                      fullWidth
-                      label="Widget Name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleFormChange}
-                      placeholder="e.g., Sales Support Widget"
-                    />
-                    <TextField
-                      fullWidth
-                      label="Welcome Message"
-                      name="welcome_message"
-                      value={formData.welcome_message}
-                      onChange={handleFormChange}
-                      multiline
-                      rows={2}
-                      placeholder="Hi! How can I help you?"
-                    />
-                    <TextField
-                      fullWidth
-                      label="System Prompt (Optional)"
-                      name="system_prompt"
-                      value={formData.system_prompt}
-                      onChange={handleFormChange}
-                      multiline
-                      rows={4}
-                      placeholder="Use this to customize assistant behavior for this agent"
-                    />
-                  </>
-                )}
-
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                  <Box>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-                      Primary Color
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Box
-                        component="input"
-                        type="color"
-                        name="primary_color"
-                        value={formData.primary_color}
-                        onChange={handleFormChange}
-                        disabled={isViewMode}
-                        sx={{ width: 50, height: 40, cursor: isViewMode ? 'default' : 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
-                      />
-                      <TextField
-                        size="small"
-                        name="primary_color"
-                        value={formData.primary_color}
-                        onChange={handleFormChange}
-                        disabled={isViewMode}
-                        sx={{ flex: 1 }}
-                      />
+                    <Box sx={accentPanelSx}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>System Prompt</Typography>
+                      <Typography sx={{ whiteSpace: 'pre-wrap' }}>{formData.system_prompt || '-'}</Typography>
                     </Box>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-                      Secondary Color
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Box
-                        component="input"
-                        type="color"
-                        name="secondary_color"
-                        value={formData.secondary_color}
-                        onChange={handleFormChange}
-                        disabled={isViewMode}
-                        sx={{ width: 50, height: 40, cursor: isViewMode ? 'default' : 'pointer', border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`, borderRadius: 1, p: 0 }}
-                      />
-                      <TextField
-                        size="small"
-                        name="secondary_color"
-                        value={formData.secondary_color}
-                        onChange={handleFormChange}
-                        disabled={isViewMode}
-                        sx={{ flex: 1 }}
-                      />
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.2 }}>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>Primary Color</Typography>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                          <Box sx={{ width: 18, height: 18, borderRadius: '4px', border: `1px solid ${alpha(theme.palette.divider, 0.8)}`, bgcolor: formData.primary_color || '#2f6bff' }} />
+                          <Typography>{formData.primary_color || '-'}</Typography>
+                        </Stack>
+                      </Box>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>Secondary Color</Typography>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                          <Box sx={{ width: 18, height: 18, borderRadius: '4px', border: `1px solid ${alpha(theme.palette.divider, 0.8)}`, bgcolor: formData.secondary_color || '#36c4ff' }} />
+                          <Typography>{formData.secondary_color || '-'}</Typography>
+                        </Stack>
+                      </Box>
                     </Box>
-                  </Box>
-                </Box>
-
-                <TextField
-                  fullWidth
-                  label="Position"
-                  name="position"
-                  value={formData.position}
-                  onChange={handleFormChange}
-                  disabled={isViewMode}
-                  select
-                  SelectProps={{ native: true }}
-                >
-                  <option value="bottom-right">Bottom Right</option>
-                  <option value="bottom-left">Bottom Left</option>
-                  <option value="top-right">Top Right</option>
-                  <option value="top-left">Top Left</option>
-                </TextField>
-
-                <Box>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        name="lead_capture_enabled"
-                        checked={formData.lead_capture_enabled}
-                        onChange={handleFormChange}
-                        disabled={isViewMode}
-                      />
-                    }
-                    label="Enable Lead Capture"
-                  />
-                </Box>
-
-                <TextField
-                  fullWidth
-                  label="Escalation Contact - Level 1"
-                  name="escalation_contact_level_1"
-                  value={formData.escalation_contact_level_1 || ''}
-                  onChange={handleFormChange}
-                  disabled={isViewMode}
-                  placeholder="Support Team: support@example.com | +1-555-0101"
-                />
-                <TextField
-                  fullWidth
-                  label="Escalation Contact - Level 2"
-                  name="escalation_contact_level_2"
-                  value={formData.escalation_contact_level_2 || ''}
-                  onChange={handleFormChange}
-                  disabled={isViewMode}
-                  placeholder="Escalation Manager: escalation@example.com | +1-555-0102"
-                />
-              </Stack>
+                    <Box sx={accentPanelSx}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>Position:</Typography>
+                        <Chip size="small" variant="outlined" label={formData.position || 'bottom-right'} />
+                      </Stack>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>Lead Capture:</Typography>
+                        <Chip
+                          size="small"
+                          color={formData.lead_capture_enabled ? 'success' : 'default'}
+                          variant={formData.lead_capture_enabled ? 'filled' : 'outlined'}
+                          label={formData.lead_capture_enabled ? 'Enabled' : 'Disabled'}
+                        />
+                      </Stack>
+                    </Box>
+                    <Box sx={accentPanelSx}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 1</Typography>
+                      <Typography>{formData.escalation_contact_level_1 || '-'}</Typography>
+                    </Box>
+                    <Box sx={accentPanelSx}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Escalation Contact - Level 2</Typography>
+                      <Typography>{formData.escalation_contact_level_2 || '-'}</Typography>
+                    </Box>
+                  </Stack>
+                </Stack>
+              </Paper>
             )}
 
             {dialogStep === 1 && (
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Knowledge Base Setup</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Step 2 in agent creation covers website crawl, document upload, and text knowledge. Use the Knowledge Base module to manage all sources for this agent.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Agent: <strong>{formData.name || 'Unnamed Agent'}</strong> ({formData.widget_id || 'No ID'})
-                  </Typography>
+              <Paper sx={{ ...modernStepCardSx, p: 2 }}>
+                <Stack spacing={1.6}>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Knowledge Base Setup</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.6 }}>
+                      Manage website crawl, document upload, and text knowledge from the dedicated module.
+                    </Typography>
+                  </Box>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="body2" color="text.secondary">
+                      Agent: <strong>{formData.name || 'Unnamed Agent'}</strong> ({formData.widget_id || 'No ID'})
+                    </Typography>
+                  </Box>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                     <Button variant="outlined" onClick={() => navigate('/knowledge')}>
                       Open Knowledge Base
@@ -646,22 +644,24 @@ const WidgetManagementPage: React.FC = () => {
             )}
 
             {dialogStep === 2 && (
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Integration Setup</Typography>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" color="text.secondary">WhatsApp (Meta):</Typography>
-                    <Chip
-                      size="small"
-                      color={whatsappConnectedForAgent ? 'success' : 'default'}
-                      label={whatsappConnectedForAgent ? 'Connected for this Agent' : 'Not Connected for this Agent'}
-                    />
-                  </Stack>
-                  {whatsappConnectedForAgent && (
-                    <Typography variant="body2" color="text.secondary">
-                      WABA: {whatsappConfig.waba_id || '-'} | Phone Number ID: {whatsappConfig.phone_number_id || '-'}
-                    </Typography>
-                  )}
+              <Paper sx={{ ...modernStepCardSx, p: 2 }}>
+                <Stack spacing={1.6}>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Integration Setup</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.8 }}>
+                      <Typography variant="body2" color="text.secondary">WhatsApp (Meta):</Typography>
+                      <Chip
+                        size="small"
+                        color={whatsappConnectedForAgent ? 'success' : 'default'}
+                        label={whatsappConnectedForAgent ? 'Connected for this Agent' : 'Not Connected for this Agent'}
+                      />
+                    </Stack>
+                    {whatsappConnectedForAgent && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>
+                        WABA: {whatsappConfig.waba_id || '-'} | Phone Number ID: {whatsappConfig.phone_number_id || '-'}
+                      </Typography>
+                    )}
+                  </Box>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                     <Button variant="outlined" onClick={() => navigate('/integrations/whatsapp')}>
                       Manage WhatsApp Integration
@@ -675,35 +675,36 @@ const WidgetManagementPage: React.FC = () => {
             )}
 
             {dialogStep === 3 && (
-              <Stack spacing={2}>
-                <Box>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Agent Test URL</Typography>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={formData.widget_id ? getAgentTestUrl(formData.widget_id) : ''}
-                    InputProps={{ readOnly: true }}
-                    sx={{ mt: 0.5 }}
-                  />
-                  <Button
-                    size="small"
-                    startIcon={<LinkIcon />}
-                    onClick={() => handleCopyTestUrl(formData.widget_id)}
-                    disabled={!formData.widget_id}
-                    sx={{ mt: 1 }}
-                  >
-                    Copy Test URL
-                  </Button>
-                </Box>
+              <Paper sx={{ ...modernStepCardSx, p: 2 }}>
+                <Stack spacing={1.8}>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.8 }}>Agent Test URL</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={formData.widget_id ? getAgentTestUrl(formData.widget_id) : ''}
+                      InputProps={{ readOnly: true }}
+                      sx={fieldSx}
+                    />
+                    <Button
+                      size="small"
+                      startIcon={<LinkIcon />}
+                      onClick={() => handleCopyTestUrl(formData.widget_id)}
+                      disabled={!formData.widget_id}
+                      sx={{ mt: 1 }}
+                    >
+                      Copy Test URL
+                    </Button>
+                  </Box>
 
-                <Box>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Embed Code</Typography>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    multiline
-                    rows={6}
-                    value={`<!-- AI Chatbot Widget -->
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.8 }}>Embed Code</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      multiline
+                      rows={6}
+                      value={`<!-- AI Chatbot Widget -->
 <link rel="stylesheet" href="https://your-domain.com/widget/dist/chatbot-widget.css" />
 <script>
   window.AIChatbot = {
@@ -716,42 +717,59 @@ const WidgetManagementPage: React.FC = () => {
   };
 </script>
 <script src="https://your-domain.com/widget/dist/chatbot-widget.iife.js"><\/script>`}
-                    InputProps={{ readOnly: true }}
-                    sx={{ mt: 0.5 }}
-                  />
-                  <Button
-                    size="small"
-                    startIcon={<CopyIcon />}
-                    onClick={() => handleCopyEmbedCode(formData.widget_id)}
-                    disabled={!formData.widget_id}
-                    sx={{ mt: 1 }}
-                  >
-                    Copy Embed Code
-                  </Button>
-                </Box>
-              </Stack>
+                      InputProps={{ readOnly: true }}
+                      sx={fieldSx}
+                    />
+                    <Button
+                      size="small"
+                      startIcon={<CopyIcon />}
+                      onClick={() => handleCopyEmbedCode(formData.widget_id)}
+                      disabled={!formData.widget_id}
+                      sx={{ mt: 1 }}
+                    >
+                      Copy Embed Code
+                    </Button>
+                  </Box>
+                </Stack>
+              </Paper>
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button onClick={handleCloseDialog}>{isViewMode ? 'Close' : 'Cancel'}</Button>
-          <Stack direction="row" spacing={1}>
-            <Button onClick={() => moveDialogStep(-1)} disabled={dialogStep === 0}>
-              Back
-            </Button>
-            {dialogStep < dialogLastStep ? (
-              <Button variant="contained" onClick={() => moveDialogStep(1)}>
-                Next
+        <DialogActions sx={{ p: 2, pt: 1.2 }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            justifyContent="space-between"
+            sx={{ ...stepActionBarSx, width: '100%' }}
+          >
+            <Button onClick={handleCloseDialog}>Close</Button>
+            <Stack direction="row" spacing={1}>
+              <Button onClick={() => moveDialogStep(-1)} disabled={dialogStep === 0}>
+                Back
               </Button>
-            ) : isViewMode ? (
-              <Button onClick={() => handleOpenEdit(formData as WidgetConfig)} variant="contained" disabled={!formData.widget_id}>
-                Edit Agent
-              </Button>
-            ) : (
-              <Button onClick={handleSave} variant="contained">
-                {dialogMode === 'create' ? 'Create' : 'Update'}
-              </Button>
-            )}
+              {dialogStep < dialogLastStep ? (
+                <Button
+                  variant="contained"
+                  onClick={() => moveDialogStep(1)}
+                  sx={{
+                    background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                  }}
+                >
+                  Next
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => handleOpenEdit(formData as WidgetConfig)}
+                  variant="contained"
+                  disabled={!formData.widget_id}
+                  sx={{
+                    background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                  }}
+                >
+                  Edit Agent
+                </Button>
+              )}
+            </Stack>
           </Stack>
         </DialogActions>
       </Dialog>

@@ -26,6 +26,31 @@ const steps = [
     "Schedule"
 ];
 
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+const emptyCampaignForm: CallCampaign = {
+    // CAMPAIGN INFO
+    name: "",
+    description: "",
+    category: "",
+    priority: "",
+    agent_id: "",
+    contacts: [],
+    start_datetime: "",
+    timezone: browserTimezone,
+    call_start_time: "09:00",
+    call_end_time: "21:00",
+    call_interval: 5,
+    active_days: [],
+
+    max_retry_attempts: "",
+    retry_interval: "",
+
+    retry_on_no_answer: false,
+    retry_on_busy: false,
+    retry_on_voicemail: false
+};
+
 const CampaignBuilder = () => {
     const [view, setView] = useState<"list" | "form">("list");
     const [mode, setMode] = useState<"create" | "edit">("create");
@@ -36,30 +61,7 @@ const CampaignBuilder = () => {
     const theme = useTheme();
     const nextStep = () => setActiveStep((prev) => prev + 1);
     const prevStep = () => setActiveStep((prev) => prev - 1);
-    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-    const [campaignForm, setCampaignForm] = useState<CallCampaign>({
-        // CAMPAIGN INFO
-        name: "",
-        description: "",
-        category: "",
-        priority: "",
-        agent_id: "",
-        contacts: [],
-        start_datetime: "",
-        timezone: browserTimezone,
-        call_start_time: "09:00",
-        call_end_time: "21:00",
-        call_interval: 5,
-        active_days: [],
-
-        max_retry_attempts: "",
-        retry_interval: "",
-
-        retry_on_no_answer: false,
-        retry_on_busy: false,
-        retry_on_voicemail: false
-    });
+    const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
 
     const showError = (message: string) => {
         setError(message);
@@ -69,7 +71,8 @@ const CampaignBuilder = () => {
         setView("form");
         setError('');
         setCampaignId(null);
-        setCampaignForm(campaignForm);
+        setCampaignForm(emptyCampaignForm);
+        setCampaignContacts([]);
         setActiveStep(0);
     };
 
@@ -142,6 +145,9 @@ const CampaignBuilder = () => {
 
     const handleBackToList = () => {
         setView("list");
+        setCampaignId(null);
+        setCampaignForm(emptyCampaignForm);
+        setCampaignContacts([]);
     };
 
     const renderStep = () => {
@@ -195,7 +201,7 @@ const CampaignBuilder = () => {
                     Create Campaign
                 </Typography>
 
-                <Button variant="outlined" onClick={handleBackToList}>
+                <Button variant="outlined" color="error" onClick={handleBackToList}>
                     Cancel
                 </Button>
             </Box>

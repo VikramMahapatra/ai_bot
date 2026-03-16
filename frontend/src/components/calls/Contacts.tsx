@@ -127,7 +127,18 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         if (!validate()) return;
 
         try {
-            await callCampaignService.createContact(contactForm);
+            const newContact = await callCampaignService.createContact(contactForm);
+
+            // Add the new contact to selected campaignContacts
+            setCampaignContacts(prev => [...prev, newContact]);
+
+            // Update form.contacts with the new contact's id
+            setForm((prev: any) => ({
+                ...prev,
+                contacts: [...prev.contacts, newContact.id]
+            }));
+
+            loadExistingContacts();
             resetForm();
         } catch (err: any) {
             console.log(err?.response?.data?.detail || 'Something went wrong');

@@ -18,6 +18,7 @@ import {
     Chip,
     Select
 } from '@mui/material';
+import CloseIcon from "@mui/icons-material/Close";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PublishIcon from "@mui/icons-material/Publish";
 import AddIcon from '@mui/icons-material/Add';
@@ -65,11 +66,8 @@ export const CallingAgentTab: React.FC = () => {
     );
     const [selectedAgent, setSelectedAgent] = useState<CallingAgent | null>(null);
 
-
     // CALL TEST DIALOG
     const [openTestDialog, setOpenTestDialog] = useState(false);
-    const [phoneNumber, setPhoneNumber] = useState("");
-    const [countryCode, setCountryCode] = useState("+91");
 
     const showError = (message: string) => {
         setSuccess('');
@@ -109,17 +107,17 @@ export const CallingAgentTab: React.FC = () => {
 
     const handleSaveAgent = async (data: FormData) => {
         setLoading(true);
+        setError("");
+        setSuccess("");
+        window.scrollTo({ top: 0, behavior: "smooth" });
         try {
-
-            for (let pair of data.entries()) {
-                console.log(pair[0], pair[1]);
-            }
             if (formMode === "create") {
                 await callingAgentService.createCallingAgent(data);
             } else {
                 await callingAgentService.updateCallingAgent(data, selectedAgent?.id);
             }
-
+            setError("")
+            showSuccess(`Agent ${formMode === "create" ? "created" : "updated"} successfully`)
             setShowForm(false);
             loadCallingAgents();
 
@@ -135,8 +133,9 @@ export const CallingAgentTab: React.FC = () => {
     const handlePublish = async (agent: CallingAgent) => {
         setLoading(true);
         try {
-            await callingAgentService.updateAgentStatus(agent.id!, "Active");
+            await callingAgentService.publishAgent(agent.id!);
             loadCallingAgents();
+            showSuccess(`Agent published successfully`)
         } catch (error) {
             showError(`Failed to publish agent`);
         } finally {
@@ -168,11 +167,13 @@ export const CallingAgentTab: React.FC = () => {
         setFormMode("edit");
         setShowForm(true);
         setError('');
+        setSuccess('');
     }
     const handleAddAgent = () => {
         setShowTypeDialog(true);
         setFormMode("create");
         setError('');
+        setSuccess('');
     }
 
     return (
@@ -224,29 +225,74 @@ export const CallingAgentTab: React.FC = () => {
                     </Box>
                 </Stack>
             )}
-            {/* Inline AddAgentForm */}
-            {showForm && <AddAgentForm agent={selectedAgent} mode={formMode} agentType={agentType} onCancel={() => setShowForm(false)} onSave={handleSaveAgent} />}
 
-            <Stack
-                mb={2}
-            >
-                {error && (
-                    <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
-                        {error}
-                    </Alert>
-                )}
-                {success && (
-                    <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
-                        {success}
-                    </Alert>
-                )}
-            </Stack>
+            {(error || success) && (
+                <Stack
+                    mb={2}
+                >
+                    {error && (
+                        <Alert
+                            severity="error"
+                            sx={{
+                                borderRadius: "14px",
+                                boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
+                            }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setError("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {error}
+                        </Alert>
+                    )}
+                    {success && (
+                        <Alert
+                            severity="success"
+                            sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setSuccess("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {success}
+                        </Alert>
+                    )}
+                </Stack>
+            )}
 
             {loading && (
                 <Box mb={3}>
                     <LinearProgress sx={{ borderRadius: 1.2 }} />
                 </Box>
             )}
+
+
+            {/* Inline AddAgentForm */}
+            {showForm &&
+                <AddAgentForm
+                    agent={selectedAgent}
+                    mode={formMode}
+                    agentType={agentType}
+                    onCancel={() => {
+                        setShowForm(false);
+                        setError("");
+                    }}
+                    onSave={handleSaveAgent}
+                />
+            }
+
 
             {/* Agent Cards */}
             {
@@ -348,29 +394,31 @@ export const CallingAgentTab: React.FC = () => {
                                                                 </IconButton>
                                                             </Tooltip>
                                                         )}
-                                                        <Tooltip title="Test Call">
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={() => handleTestCall(agent)}
-                                                            >
-                                                                <CallIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
 
                                                         {/* Pause / Resume */}
                                                         {agent.status !== "Draft" && (
-                                                            <Tooltip title={agent.status === "Active" ? "Pause Agent" : "Resume Agent"}>
-                                                                <IconButton
-                                                                    size="small"
-                                                                    onClick={() => handlePause(agent)}
-                                                                >
-                                                                    {agent.status === "Active" ? (
-                                                                        <PauseIcon />
-                                                                    ) : (
-                                                                        <PlayArrowIcon />
-                                                                    )}
-                                                                </IconButton>
-                                                            </Tooltip>
+                                                            <>
+                                                                <Tooltip title="Test Call">
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        onClick={() => handleTestCall(agent)}
+                                                                    >
+                                                                        <CallIcon />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                                <Tooltip title={agent.status === "Active" ? "Pause Agent" : "Resume Agent"}>
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        onClick={() => handlePause(agent)}
+                                                                    >
+                                                                        {agent.status === "Active" ? (
+                                                                            <PauseIcon />
+                                                                        ) : (
+                                                                            <PlayArrowIcon />
+                                                                        )}
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            </>
                                                         )}
 
                                                         <Tooltip title="Settings">
@@ -569,11 +617,13 @@ export const CallingAgentTab: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-            <TestCallDialog
-                open={openTestDialog}
-                onClose={() => setOpenTestDialog(false)}
-                agent={selectedAgent}
-            />
+            {selectedAgent && (
+                <TestCallDialog
+                    open={openTestDialog}
+                    onClose={() => setOpenTestDialog(false)}
+                    agent={selectedAgent}
+                />
+            )}
         </Box >
     );
 };
