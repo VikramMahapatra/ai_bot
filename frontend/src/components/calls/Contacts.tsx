@@ -18,10 +18,14 @@ import {
     Autocomplete,
     MenuItem,
     Alert,
-    Stack
+    Stack,
+    FormControl,
+    InputLabel,
+    Select
 } from "@mui/material";
 import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
-
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import { campaignService } from "../../services/campaignService";
 interface ContactsProps {
     form: any;
     setForm: any;
@@ -45,9 +49,14 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         phone: "",
         contact_list_id: ""
     });
+    const [csvFile, setCsvFile] = useState<File | null>(null);
+    const [uploadListId, setUploadListId] = useState<number | ''>('');
 
     const [errors, setErrors] = useState<any>({});
     const [contactError, setContactError] = useState("");
+    const [success, setSuccess] = useState('');
+    const [mapContactError, setMapContactError] = useState("");
+    const [loading, setLoading] = useState(false);
     const theme = useTheme();
     const [dialogContacts, setDialogContacts] = useState<Contact[]>([]);
 
@@ -172,10 +181,46 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         setOpenNewContact(false);
     };
 
+    const showMapContactError = (message: string) => {
+        setMapContactError(message);
+    };
+
+
+    const showSuccess = (message: string) => {
+        setMapContactError('');
+        setSuccess(message);
+    };
+
+
     const handleOpenAddContacts = () => {
         setDialogContacts(campaignContacts); // preload selected contacts
         setOpenAdd(true);
         setMode(null);
+        setCsvFile(null);
+        setUploadListId('');
+    };
+
+    const handleCsvUpload = async () => {
+        if (!uploadListId) {
+            showMapContactError('Select a contact list before CSV upload');
+            return;
+        }
+        if (!csvFile) {
+            showMapContactError('Choose a CSV file first');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const result = await campaignService.uploadContactsCsv(Number(uploadListId), csvFile);
+            setCsvFile(null);
+            showSuccess(`CSV upload complete: ${result.created} created, ${result.failed} failed`);
+            await loadContactLists();
+        } catch (err: any) {
+            showMapContactError(err?.response?.data?.detail || 'Failed to upload CSV contacts');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -316,20 +361,57 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                     )}
 
                     {mode === "csv" && (
-                        <Box mt={2}>
+                        <>
+                            <Box mt={2}>
+                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Upload Contacts</Typography>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} md={6}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Target Contact List</InputLabel>
+                                            <Select
+                                                value={uploadListId}
+                                                label="Target Contact List"
+                                                onChange={(e) => setUploadListId(Number(e.target.value))}
+                                            >
+                                                {contactLists.map((list) => (
+                                                    <MenuItem key={list.id} value={list.id}>{list.list_name}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} md={6}>
+                                        <Alert severity="info">CSV format: name,email,phone</Alert>
+                                    </Grid>
+                                </Grid>
+                            </Box>
+                            <Box mt={2}>
 
-                            <Button variant="outlined" component="label">
-                                Upload CSV
-                                <input hidden type="file" accept=".csv" />
-                            </Button>
+                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>CSV Upload</Typography>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                                    <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+                                        Choose CSV
+                                        <input
+                                            hidden
+                                            type="file"
+                                            accept=".csv"
+                                            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                                        />
+                                    </Button>
+                                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                        {csvFile ? csvFile.name : 'No file selected'}
+                                    </Typography>
+                                    <Button variant="contained" onClick={handleCsvUpload}>Upload CSV</Button>
+                                </Stack>
 
-                        </Box>
+                            </Box>
+                        </>
+
                     )}
 
                 </DialogContent>
 
                 <DialogActions>
-                    <Button onClick={handleCloseDialog}>Back</Button>
+                    <Button variant="outlined" onClick={handleCloseDialog} color="error">Cancel</Button>
                     <Button variant="contained" onClick={handleAddContacts}>
                         Done
                     </Button>

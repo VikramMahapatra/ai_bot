@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/calling-agent", tags=["calling-agent"])
 
-@router.post("/create", response_model=CallingAgentRead)
+@router.post("/create", response_model=None)
 def create_agent(
     agent: str = Form(...), 
     attachments: Optional[List[UploadFile]] = File(None),
@@ -26,7 +26,7 @@ def create_agent(
     return service.create_agent(db, current_user.organization_id,  agent_data, attachments)
 
 
-@router.post("/update/{agent_id:int}", response_model=CallingAgentRead)
+@router.post("/update/{agent_id:int}", response_model=None)
 def update_agent(
     agent_id: int,
     agent: str = Form(...),
@@ -78,6 +78,13 @@ def publish_agent(
 ):
     return service.publish_agent(db, agent_id)
 
+@router.delete("/{agent_id:int}/delete")
+def delete_agent(
+    agent_id: int,
+    db: Session = Depends(get_db)
+):
+    return service.delete_agent(db, agent_id)
+
 
 @router.get("/lookup")
 def get_agent_lookup(
@@ -90,7 +97,3 @@ def get_agent_lookup(
 @router.get("/voices")
 def get_voices(db: Session= Depends(get_db), current_user: User = Depends(get_current_user)) :
     return service.get_voices(db)
-
-@router.post("/sync-call-logs")
-def sync_call_logs(db: Session = Depends(get_db)):
-    return service.sync_call_logs(db)

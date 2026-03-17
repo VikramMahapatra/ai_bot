@@ -67,6 +67,31 @@ class EcholeadsClient:
             print("==============================")
             raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
         
+    def _delete(self, endpoint: str):
+        try:
+            response = requests.delete(
+                f"{self.base_url}{endpoint}",
+                headers=self.headers,
+                timeout=15
+            )
+
+            print("====== ECHOLEADS API RESPONSE ======")
+            print("URL:", f"{self.base_url}{endpoint}")
+            print("Status Code:", response.status_code)
+            print("Response Text:", response.text)
+            print("====================================")
+
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            print("====== ECHOLEADS ERROR ======")
+            if e.response is not None:
+                print("Status:", e.response.status_code)
+                print("Body:", e.response.text)
+            print("==============================")
+            raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
+        
     def _get(self, endpoint: str):
         try:
             response = requests.get(
@@ -106,5 +131,11 @@ class EcholeadsClient:
     def create_campaign(self, payload: dict):
         return self._post("/campaigns", payload)
     
+    def update_campaign(self, campaign_id: int, payload: dict):
+        return self._put(f"/campaigns/{campaign_id}", payload)
+    
     def create_contact(self, payload: dict):
         return self._post("/contact", payload)
+    
+    def delete_agent(self, agent_id: str):
+        return self._delete(f"/agent-tables/{agent_id}")

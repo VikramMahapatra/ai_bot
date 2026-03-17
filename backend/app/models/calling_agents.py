@@ -62,8 +62,8 @@ class CallingAgent(Base):
     enable_background_sound = Column(Boolean)
     background_sound_url = Column(String)
 
-    start_speaking_wait_seconds = Column(Integer)
-    stop_speaking_voice_seconds = Column(Integer)
+    start_speaking_wait_seconds = Column(Float)
+    stop_speaking_voice_seconds = Column(Float)
 
     transcriber_provider = Column(String)
     transcriber_language = Column(String)
@@ -72,6 +72,7 @@ class CallingAgent(Base):
     # Meta
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False)
     
     external_agent_id = Column(String, nullable=True) 
     external_agent_a_id = Column(String, nullable=True)

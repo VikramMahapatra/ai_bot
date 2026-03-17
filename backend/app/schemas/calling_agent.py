@@ -1,7 +1,9 @@
 # schemas.py
-from pydantic import BaseModel
+
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from datetime import datetime
+from sqlalchemy import Float
 
 class CallingAgentCreate(BaseModel):
     name: str
@@ -57,14 +59,14 @@ class CallingAgentCreate(BaseModel):
     important_data_points: Optional[str] = None
     enable_background_sound: bool = False
     background_sound_url: Optional[str] = None
-    start_speaking_wait_seconds: int = 1
-    stop_speaking_voice_seconds: int = 1
+    start_speaking_wait_seconds: Optional[str] = "0.1"
+    stop_speaking_voice_seconds: Optional[str] = "0.3"
 
     # Transcriber
     transcriber_provider: Optional[str] = None
     transcriber_language: Optional[str] = None
     transcriber_model: Optional[str] = None
-
+    
 class CallingAgentUpdate(BaseModel):
 
     type: Optional[str] = None
@@ -112,13 +114,14 @@ class CallingAgentUpdate(BaseModel):
     important_data_points: Optional[str] = None
     enable_background_sound: Optional[bool] = None
     background_sound_url: Optional[str] = None
-    start_speaking_wait_seconds: Optional[int] = None
-    stop_speaking_voice_seconds: Optional[int] = None
+    start_speaking_wait_seconds: Optional[str] = None
+    stop_speaking_voice_seconds: Optional[str] = None
 
     # Transcriber
     transcriber_provider: Optional[str] = None
     transcriber_language: Optional[str] = None
     transcriber_model: Optional[str] = None
+  
     
 class CallingAgentRead(CallingAgentCreate):
     id: int

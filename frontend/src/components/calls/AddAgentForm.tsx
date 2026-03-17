@@ -106,7 +106,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         greeting: agent?.greeting || '',
         prompt: agent?.prompt || '',
         destination: agent?.destination || [],
-        server_location: agent?.server_location || "india",
+        server_location: agent?.server_location || "US",
 
         gender: agent?.gender || "Male",
         accent: agent?.accent || "",
@@ -137,8 +137,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         important_data_points: agent?.important_data_points || "",
         enable_background_sound: agent?.enable_background_sound || false,
         background_sound_url: agent?.background_sound_url || "",
-        start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || 1,
-        stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || 1,
+        start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
+        stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
         transcriber_provider: agent?.transcriber_provider || "",
         transcriber_language: agent?.transcriber_language || "",
         transcriber_model: agent?.transcriber_model || "",
@@ -180,6 +180,16 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+
+        // if (["start_speaking_wait_seconds", "stop_speaking_voice_seconds"].includes(name)) {
+        //     setFormData((prev) => ({
+        //         ...prev,
+        //         [name]: value === "" ? "" : parseFloat(value),  // <-- convert to float
+        //     }));
+        // }
+        // else {
+
+        // }
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -243,6 +253,18 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
         if (formData.enable_prompt_timezone && !formData.prompt_timezone) {
             newErrors.prompt_timezone = "Timezone is required";
+        }
+
+        if (!formData.transcriber_provider) {
+            newErrors.transcriber_provider = "Provider is required";
+        }
+
+        if (formData.transcriber_provider && !formData.transcriber_language) {
+            newErrors.transcriber_language = "Language is required";
+        }
+
+        if (formData.transcriber_provider && formData.transcriber_provider == "deepgram" && !formData.transcriber_model) {
+            newErrors.transcriber_model = "Model is required";
         }
 
         setErrors(newErrors);
@@ -529,8 +551,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                     <em>Select Server Location</em>
                                 </MenuItem>
 
-                                <MenuItem value="india">India Server</MenuItem>
-                                <MenuItem value="us">US Server</MenuItem>
+                                <MenuItem value="IN">India Server</MenuItem>
+                                <MenuItem value="US">US Server</MenuItem>
 
                             </Select>
 
@@ -857,7 +879,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             type="number"
                             value={formData.start_speaking_wait_seconds}
                             onChange={handleInputChange}
-                            inputProps={{ min: 0, max: 10 }}
+                            inputProps={{ min: 0, max: 1, step: 0.1 }}
                             helperText="How long AI waits before speaking"
                         />
 
@@ -868,7 +890,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             type="number"
                             value={formData.stop_speaking_voice_seconds}
                             onChange={handleInputChange}
-                            inputProps={{ min: 0, max: 10 }}
+                            inputProps={{ min: 0, max: 1, step: 0.1 }}
                             helperText="Silence threshold before AI stops speaking"
                         />
                         {/* <FormControlLabel
@@ -890,7 +912,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                                 {/* Provider */}
                                 <Grid item xs={12} md={4}>
-                                    <FormControl fullWidth>
+                                    <FormControl
+                                        fullWidth
+                                        required
+                                        error={!!errors.transcriber_provider}
+                                    >
                                         <InputLabel>Provider</InputLabel>
 
                                         <Select
@@ -912,7 +938,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 {/* Language (shown for both providers) */}
                                 {formData.transcriber_provider && (
                                     <Grid item xs={12} md={4}>
-                                        <FormControl fullWidth>
+                                        <FormControl
+                                            fullWidth
+                                            required
+                                            error={!!errors.transcriber_language}
+                                        >
                                             <InputLabel>Language</InputLabel>
 
                                             <Select
@@ -942,7 +972,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 {/* Model (only for Deepgram) */}
                                 {formData.transcriber_provider === "deepgram" && (
                                     <Grid item xs={12} md={4}>
-                                        <FormControl fullWidth>
+                                        <FormControl
+                                            fullWidth
+                                            required
+                                            error={!!errors.transcriber_language}
+                                        >
                                             <InputLabel>Model</InputLabel>
 
                                             <Select

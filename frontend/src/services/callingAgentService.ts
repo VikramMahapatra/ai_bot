@@ -4,12 +4,12 @@ export interface CallingAgent {
     id?: number
 
     // Basic Info
-    type: 'Outbound' | 'Inbound'
+    type: 'outbound' | 'inbound'
     name: string
     calling_no?: string
     status: 'Active' | 'Paused' | 'Draft'
 
-    server_location?: "india" | "us"
+    server_location?: "IN" | "US"
 
     destination?: string[]
 
@@ -127,6 +127,11 @@ export const callingAgentService = {
 
     async publishAgent(agent_id: number): Promise<CallingAgentStatusResponse> {
         const response = await api.post(`/api/calling-agent/${agent_id}/publish`);
+        return response.data;
+    },
+
+    async deleteAgent(agent_id: number): Promise<CallingAgentStatusResponse> {
+        const response = await api.delete(`/api/calling-agent/${agent_id}/delete`);
         return response.data;
     },
 

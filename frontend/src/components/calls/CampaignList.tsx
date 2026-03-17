@@ -24,7 +24,9 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SearchIcon from "@mui/icons-material/Search";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import PhoneIcon from "@mui/icons-material/Phone";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import GroupIcon from "@mui/icons-material/Group";
 import AddIcon from "@mui/icons-material/Add";
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
@@ -132,6 +134,40 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
         };
         run();
     }, [search, campaignPage, campaignRowsPerPage]);
+
+    const getStatusBg = (status: string) => {
+        switch (status) {
+            case "active":
+                return "#dcfce7";
+            case "paused":
+                return "#fef3c7";
+            case "completed":
+                return "#dbeafe";
+            default:
+                return "#f3f4f6";
+        }
+    };
+
+    const getStatusText = (status: string) => {
+        switch (status) {
+            case "active":
+                return "#15803d";
+            case "paused":
+                return "#b45309";
+            case "completed":
+                return "#1d4ed8";
+            default:
+                return "#374151";
+        }
+    };
+
+    const formatDate = (date: string) => {
+        return new Date(date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+        });
+    };
 
 
     return (
@@ -284,12 +320,14 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
 
                 <Table>
 
-                    <TableHead>
+                    <TableHead sx={{ backgroundColor: "#f9fafb" }}>
                         <TableRow>
-                            <TableCell>Campaign</TableCell>
+                            <TableCell>Campaign Name</TableCell>
+                            <TableCell>From Number</TableCell>
+                            <TableCell>Agent</TableCell>
+                            <TableCell>Total Contacts</TableCell>
                             <TableCell>Status</TableCell>
-                            <TableCell>Contacts</TableCell>
-                            <TableCell>Progress</TableCell>
+                            <TableCell>Created At</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>
                     </TableHead>
@@ -297,86 +335,80 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                     <TableBody>
                         {campaigns.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} sx={{ py: 8 }}>
-                                    <Box
-                                        display="flex"
-                                        flexDirection="column"
-                                        alignItems="center"
-                                        justifyContent="center"
-                                        textAlign="center"
-                                        gap={1}
-                                    >
-                                        <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
-
-                                        <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
-                                            No campaigns found
-                                        </Typography>
-
-                                        <Typography variant="body2" sx={{ color: "text.disabled" }}>
-                                            Try adjusting your search or add a new campaign
-                                        </Typography>
-                                    </Box>
+                                <TableCell colSpan={7} sx={{ py: 8, textAlign: "center" }}>
+                                    <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+                                    <Typography>No campaigns found</Typography>
                                 </TableCell>
                             </TableRow>
-
                         ) : (
                             campaigns.map((campaign) => (
                                 <TableRow key={campaign.id} hover>
 
-                                    {/* CAMPAIGN */}
-
+                                    {/* CAMPAIGN NAME */}
                                     <TableCell>
-                                        <Box>
-                                            <Typography fontWeight={600}>
-                                                {campaign.name}
+                                        <Box display="flex" alignItems="center" gap={2}>
+                                            <Box>
+                                                <Typography fontWeight={600}>
+                                                    {campaign.name}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </TableCell>
+
+                                    {/* FROM NUMBER */}
+                                    <TableCell>
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            <PhoneIcon fontSize="small" color="disabled" />
+                                            <Typography variant="body2">
+                                                {campaign.from_number}
                                             </Typography>
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                            >
-                                                {campaign.category}
+                                        </Box>
+                                    </TableCell>
+
+                                    {/* AGENT */}
+                                    <TableCell>
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            <SmartToyIcon fontSize="small" color="disabled" />
+                                            <Typography variant="body2">
+                                                {campaign.agent_name}
+                                            </Typography>
+                                        </Box>
+                                    </TableCell>
+
+                                    {/* CONTACTS */}
+                                    <TableCell>
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            <GroupIcon fontSize="small" color="disabled" />
+                                            <Typography variant="body2">
+                                                {campaign.contacts}
                                             </Typography>
                                         </Box>
                                     </TableCell>
 
                                     {/* STATUS */}
-
                                     <TableCell>
                                         <Chip
                                             label={campaign.status}
-                                            color={getStatusColor(campaign.status) as any}
                                             size="small"
+                                            sx={{
+                                                borderRadius: "999px",
+                                                fontWeight: 600,
+                                                backgroundColor: getStatusBg(campaign.status),
+                                                color: getStatusText(campaign.status)
+                                            }}
+                                            variant="outlined"
                                         />
                                     </TableCell>
 
-                                    {/* CONTACTS */}
-
+                                    {/* CREATED AT */}
                                     <TableCell>
-                                        {campaign.contacts}
-                                    </TableCell>
-
-                                    {/* PROGRESS */}
-
-                                    <TableCell width={200}>
-                                        <Stack spacing={1}>
-                                            <LinearProgress
-                                                variant="determinate"
-                                                value={campaign.progress}
-                                            />
-                                            <Typography variant="caption">
-                                                {campaign.progress}% completed
-                                            </Typography>
-                                        </Stack>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {formatDate(campaign.created_at)}
+                                        </Typography>
                                     </TableCell>
 
                                     {/* ACTIONS */}
-
                                     <TableCell align="right">
-
-                                        {/* <IconButton size="small">
-                                            <VisibilityIcon />
-                                        </IconButton> */}
-
                                         <IconButton
                                             size="small"
                                             onClick={() => onEditCampaign(campaign.id)}
@@ -387,14 +419,12 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                                         <IconButton size="small" color="error">
                                             <DeleteIcon />
                                         </IconButton>
-
                                     </TableCell>
 
                                 </TableRow>
-                            )))}
-
+                            ))
+                        )}
                     </TableBody>
-
                 </Table>
                 <TablePagination
                     component="div"

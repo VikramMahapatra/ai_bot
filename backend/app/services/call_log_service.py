@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import or_
@@ -154,14 +154,14 @@ def sync_call_logs(db: Session):
     
     calls = response.get("calls", [])
 
+    # Only consider calls from last 30 minutes
+    thirty_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=30)
+
     for call in calls:
+        call_start = parse_datetime(call.get("created_at"))
 
-        # Skip if already exists
-        existing = db.query(CallLog).filter(
-            CallLog.external_call_id == call["id"]
-        ).first()
-
-        if existing:
+        if not call_start or call_start < thirty_minutes_ago:
+            # Skip old calls
             continue
 
         # Find agent mapping
@@ -170,30 +170,51 @@ def sync_call_logs(db: Session):
         ).first()
 
         if not agent:
-            # If agent not found skip or handle separately
-            continue
+            continue  # skip if agent not found
 
         organization_id = agent.organization_id
 
-        call_log = CallLog(
-            external_call_id=call["id"],
-            organization_id=organization_id,
-            agent_id=agent.id,  # local agent id
-            campaign_id=call.get("campaign_id"),
-            type=agent.type,
-            mode="Voice",
-            phone=call.get("phone"),
-            status=call.get("status"),
-            start_time=parse_datetime(call.get("call_started_at")),
-            end_time=parse_datetime(call.get("call_ended_at")),
-            audio_url=call.get("recording_url"),
-            cost=float(call.get("cost")) if call.get("cost") else None
-        )
+        # Check if call exists
+        existing = db.query(CallLog).filter(
+            CallLog.external_call_id == call["id"]
+        ).first()
 
-        db.add(call_log)
-        db.flush()
+        if existing:
+            # Update existing record
+            existing.organization_id = organization_id
+            existing.agent_id = agent.id
+            existing.campaign_id = call.get("campaign_id")
+            existing.type = agent.type
+            existing.mode = "Voice"
+            existing.phone = call.get("phone")
+            existing.status = call.get("status")
+            existing.start_time = call_start
+            existing.end_time = parse_datetime(call.get("call_ended_at"))
+            existing.audio_url = call.get("recording_url")
+            existing.cost = float(call.get("cost")) if call.get("cost") else None
 
-        save_transcripts(db, call_log.id, call.get("transcript"))
+            db.flush()
+            save_transcripts(db, existing.id, call.get("transcript"))
+        else:
+            # Add new record
+            call_log = CallLog(
+                external_call_id=call["id"],
+                organization_id=organization_id,
+                agent_id=agent.id,
+                campaign_id=call.get("campaign_id"),
+                type=agent.type,
+                mode="Voice",
+                phone=call.get("phone"),
+                status=call.get("status"),
+                start_time=call_start,
+                end_time=parse_datetime(call.get("call_ended_at")),
+                audio_url=call.get("recording_url"),
+                cost=float(call.get("cost")) if call.get("cost") else None
+            )
+
+            db.add(call_log)
+            db.flush()
+            save_transcripts(db, call_log.id, call.get("transcript"))
 
     db.commit()
     

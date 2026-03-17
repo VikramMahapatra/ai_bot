@@ -18,6 +18,7 @@ import {
     Chip,
     Select
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from "@mui/icons-material/Close";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PublishIcon from "@mui/icons-material/Publish";
@@ -169,12 +170,27 @@ export const CallingAgentTab: React.FC = () => {
         setError('');
         setSuccess('');
     }
+
     const handleAddAgent = () => {
         setShowTypeDialog(true);
         setFormMode("create");
         setError('');
         setSuccess('');
     }
+
+    const handleDelete = async (agent: CallingAgent) => {
+        setError('');
+        setSuccess('');
+        setLoading(true);
+        try {
+            await callingAgentService.deleteAgent(agent.id!);
+            loadCallingAgents();
+        } catch (error) {
+            showError(`Failed to delete the agent`);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <Box>
@@ -350,12 +366,12 @@ export const CallingAgentTab: React.FC = () => {
                                                     <Stack direction="row" spacing={1} alignItems="center">
                                                         <Tooltip
                                                             title={
-                                                                agent.type === "Outbound"
+                                                                agent.type == "outbound"
                                                                     ? "Outbound Call"
                                                                     : "Inbound Call"
                                                             }
                                                         >
-                                                            {agent.type === "Outbound" ? (
+                                                            {agent.type == "outbound" ? (
                                                                 <CallMadeIcon color="primary" />
                                                             ) : (
                                                                 <CallReceivedIcon color="secondary" />
@@ -429,6 +445,15 @@ export const CallingAgentTab: React.FC = () => {
                                                                 <EditIcon />
                                                             </IconButton>
                                                         </Tooltip>
+                                                        <Tooltip title="Delete Agent">
+                                                            <IconButton
+                                                                size="small"
+                                                                color="error"
+                                                                onClick={() => handleDelete(agent)}
+                                                            >
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                     </Stack>
                                                 </Stack>
 
@@ -437,17 +462,17 @@ export const CallingAgentTab: React.FC = () => {
                                                         size="small"
                                                         icon={<PhoneIcon color='primary' />}
                                                         label={agent.calling_no || "Not Assigned"}
-                                                        color={agent.calling_no ? "success" : "default"}
-                                                        variant={agent.calling_no ? "filled" : "outlined"}
+                                                        color="default"
+                                                        variant="outlined"
                                                     />
 
                                                     <Chip
                                                         size="small"
                                                         icon={<PublicIcon color="primary" />}
                                                         label={
-                                                            agent.server_location === "india"
+                                                            agent.server_location?.toLowerCase() === "in"
                                                                 ? "India Server"
-                                                                : agent.server_location === "us"
+                                                                : agent.server_location?.toLowerCase() === "us"
                                                                     ? "US Server"
                                                                     : agent.server_location
                                                         }
