@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from app.database import get_db
-from app.models import Conversation, WidgetConfig, User, Appointment, AppointmentIntake
+from app.models import Conversation, WidgetConfig, User, Appointment, AppointmentIntake, ContactList, Contact
 from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, SuggestedQuestionsResponse
 from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation, get_suggested_questions, append_appointment_cta_if_needed
 from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, get_or_create_usage, increment_usage
@@ -358,6 +358,87 @@ def _has_booked_appointment(db: Session, session_id: str, widget_id: str, organi
     return existing is not None
 
 
+def _normalize_phone(phone: Optional[str]) -> str:
+    return re.sub(r"\D", "", phone or "")
+
+
+def _agent_contact_list_name(widget_config: WidgetConfig) -> str:
+    base_name = (widget_config.name or widget_config.widget_id or "Agent").strip() or "Agent"
+    # Keep names readable while avoiding overly long values in DB.
+    if len(base_name) > 80:
+        base_name = f"{base_name[:77]}..."
+    return f"{base_name} - Appointment Contacts"
+
+
+def _agent_contact_list_marker(widget_config: WidgetConfig) -> str:
+    return f"AUTO_AGENT_APPOINTMENT_LIST::{widget_config.widget_id}"
+
+
+def _get_or_create_agent_contact_list(db: Session, widget_config: WidgetConfig) -> Optional[ContactList]:
+    if not widget_config.organization_id:
+        return None
+
+    marker = _agent_contact_list_marker(widget_config)
+    contact_list = db.query(ContactList).filter(
+        ContactList.organization_id == widget_config.organization_id,
+        ContactList.description == marker,
+    ).first()
+
+    if contact_list:
+        return contact_list
+
+    list_name = _agent_contact_list_name(widget_config)
+    contact_list = db.query(ContactList).filter(
+        ContactList.organization_id == widget_config.organization_id,
+        ContactList.list_name == list_name,
+    ).first()
+
+    if contact_list:
+        if (contact_list.description or "") != marker:
+            contact_list.description = marker
+        return contact_list
+
+    contact_list = ContactList(
+        organization_id=widget_config.organization_id,
+        list_name=list_name,
+        description=marker,
+    )
+    db.add(contact_list)
+    db.flush()
+    return contact_list
+
+
+def _sync_appointment_contact_to_agent_list(db: Session, widget_config: WidgetConfig, appointment: Appointment) -> None:
+    cleaned_email = (appointment.email or "").strip().lower()
+    cleaned_phone = (appointment.phone or "").strip()
+    normalized_phone = _normalize_phone(cleaned_phone)
+
+    if not cleaned_email and not normalized_phone:
+        return
+
+    contact_list = _get_or_create_agent_contact_list(db, widget_config)
+    if not contact_list:
+        return
+
+    existing_contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    for existing in existing_contacts:
+        existing_email = (existing.email or "").strip().lower()
+        existing_phone_normalized = _normalize_phone((existing.phone or "").strip())
+
+        if cleaned_email and existing_email and existing_email == cleaned_email:
+            return
+        if normalized_phone and existing_phone_normalized and existing_phone_normalized == normalized_phone:
+            return
+
+    cleaned_name = (appointment.name or "").strip() or None
+    db.add(Contact(
+        contact_list_id=contact_list.id,
+        name=cleaned_name,
+        email=cleaned_email or None,
+        phone=cleaned_phone or None,
+    ))
+
+
 def _handle_appointment_intake_flow(
     db: Session,
     user: User,
@@ -532,6 +613,7 @@ def _handle_appointment_intake_flow(
             status="booked",
         )
         db.add(appointment)
+        _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
 
         active.status = "completed"
         active.next_field = "completed"
@@ -1124,6 +1206,7 @@ async def book_appointment(
         status="booked",
     )
     db.add(appointment)
+    _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
     db.commit()
     db.refresh(appointment)
 
