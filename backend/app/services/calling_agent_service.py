@@ -5,7 +5,7 @@ import shutil
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from app.config import settings
 from fastapi import File, HTTPException, UploadFile, requests
 
@@ -16,6 +16,7 @@ from app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, Cal
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
+from app.models.call_campaigns import CallCampaign
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
@@ -27,34 +28,61 @@ def create_agent(
 ):
     #CREATE REQUEST TO ECHO LEADS
     echoleads = EcholeadsClient()
-    echo_payload = {
+    echo_payload ={
         "name": agent.name,
         "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",
+        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
         "firstMessage": agent.greeting,
         "prompt": agent.prompt,
-        "voice_id": agent.voice,
-        "language": agent.transcriber_language or "en",
-        "data_extract": agent.important_data_points,
-        "summary": agent.summary_prompt,
-        "prompt_timezone": agent.prompt_timezone,
+        "google_sheet_id": "",
+        "success_parameters": agent.success_parameters,
+        "data_extract": None,
+        "summary_capturing": agent.summary_prompt,
+        "summary":  "1" if agent.summary_prompt else "0",
+        "sentiment_detection": "1" if agent.enable_sentiment else "0",
+        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
+        "call_recording": "0",
+        "automated_follow_ups": "0",
         "calendar_sync": agent.calendar_sync,
-        "voice_mail_detection": agent.voice_mail_detection,
-        "talking_speed": agent.talking_speed,
-        "max_duration_seconds": agent.max_call_duration,
-        "sentiment_detection": agent.enable_sentiment,
-        "automated_follow_ups": agent.follow_up_whatsapp,
-        "background_sound": agent.enable_background_sound,
-        "background_sound_url": agent.background_sound_url,
-        "start_speaking_wait_seconds": agent.start_speaking_wait_seconds,
-        "stop_speaking_voice_seconds": agent.stop_speaking_voice_seconds,
+        "temperature": "10",
+        "agent_status": "draft",
+        "remaning_call_count": None,
+        "voice_id": agent.voice,
+        "speaks_first":agent.who_speaks_first,
         "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
+        "silence_timeout": str(agent.silence_timeout),
+        "talking_speed": str(agent.talking_speed),
+        "max_duration_seconds": str(agent.max_call_duration),
+        "voice_mail_detection_enabled": "0",
+        "voicemail_provider": "vapi",
+        "voicemail_beep_max_await_seconds": "0",
+        "voicemail_max_retries": "10",
+        "voicemail_start_at_seconds": "5",
+        "voicemail_frequency_seconds": "5",
+        "background_sound": "" if agent.enable_background_sound else "off",
+        "background_sound_url": agent.background_sound_url,
+        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
+        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
+        "analysis_plan": None,
+        "plan_id": None,
+        "transaction_id": None,
+        "prompt_timezone": None,
+        "tool_ids": [],
+        "phone": None,
+        "transcriber": {
+            "provider": agent.transcriber_provider,
+            "language": agent.transcriber_language,
+            "model": agent.transcriber_model
+        },
         "transcriber_provider": agent.transcriber_provider,
         "transcriber_language": agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model,
+        "transcriber_model": agent.transcriber_model,       
+        "punctuation_boundaries": [],
         "server_location": agent.server_location,
-        "plan_id": 1,
-        "agent_status": "draft"
+        "speech_to_speech": False
     }
+    
+    print(echo_payload)
     echo_response = echoleads.create_agent(echo_payload)
     external_agent_id = None
     external_agent_a_id = None
@@ -81,6 +109,7 @@ def create_agent(
 
     db_agent = CallingAgent(
         organization_id=organization_id,
+        calling_no = "+918046733457", ##### HARDCODED TO BE CHANGE ####
         name=agent.name,
         type=agent.type.lower(),
         greeting=agent.greeting,
@@ -148,8 +177,8 @@ def create_agent(
     db.refresh(db_agent)
 
     return {
-        **db_agent.__dict__,
-        "destination": db_agent.destination.split(",") if db_agent.destination else []
+        "message": "Agent created successfully",
+        "agent_id": db_agent.id
     }
 
 def update_agent(
@@ -169,33 +198,40 @@ def update_agent(
 
     # 🔹 Update Echoleads
     echoleads = EcholeadsClient()
+    
     echo_payload = {
         "name": agent.name if agent.name else db_agent.name,
         "agent_call_type":  "outgoing" if db_agent.type.lower() == "outbound" else "incoming",
-        "prompt": agent.prompt if agent.prompt else db_agent.prompt,
-        "firstMessage": agent.greeting if agent.greeting else db_agent.greeting,
-        "voice_id": agent.voice if agent.voice else db_agent.voice,
         "language": agent.transcriber_language or db_agent.transcriber_language,
+        "firstMessage": agent.greeting if agent.greeting else db_agent.greeting,
+        "prompt": agent.prompt if agent.prompt else db_agent.prompt,
+        "prompt_timezone": agent.prompt_timezone,
+        "voice_id": agent.voice if agent.voice else db_agent.voice,
         "data_extract": agent.important_data_points or db_agent.important_data_points,
-        "summary": agent.summary_prompt or db_agent.summary_prompt,
+        "summary_capturing": agent.summary_prompt,
+        "summary":  "1" if agent.summary_prompt else "0",
+        "sentiment_detection": "1" if agent.enable_sentiment else "0",
+        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
+        "calendar_sync": agent.calendar_sync,
         "prompt_timezone": agent.prompt_timezone or db_agent.prompt_timezone,
-        "calendar_sync": agent.calendar_sync if agent.calendar_sync is not None else db_agent.calendar_sync,
-        "voice_mail_detection": agent.voice_mail_detection if agent.voice_mail_detection is not None else db_agent.voice_mail_detection,
-        "talking_speed": agent.talking_speed or db_agent.talking_speed,
-        "max_duration_seconds": agent.max_call_duration or db_agent.max_call_duration,
-        "sentiment_detection": agent.enable_sentiment if agent.enable_sentiment is not None else db_agent.enable_sentiment,
-        "automated_follow_ups": agent.follow_up_whatsapp if agent.follow_up_whatsapp is not None else db_agent.follow_up_whatsapp,
-        "background_sound": agent.enable_background_sound if agent.enable_background_sound is not None else db_agent.enable_background_sound,
-        "background_sound_url": agent.background_sound_url or db_agent.background_sound_url,
-        "start_speaking_wait_seconds": agent.start_speaking_wait_seconds or db_agent.start_speaking_wait_seconds,
-        "stop_speaking_voice_seconds": agent.stop_speaking_voice_seconds or db_agent.stop_speaking_voice_seconds,
-        "agent_speaks_first": True if (agent.who_speaks_first or db_agent.who_speaks_first) == "ai" else False,
-        "transcriber_provider": agent.transcriber_provider or db_agent.transcriber_provider,
-        "transcriber_language": agent.transcriber_language or db_agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model or db_agent.transcriber_model,
-        "server_location": agent.server_location or db_agent.server_location,
+        "speaks_first":agent.who_speaks_first,
+        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
+        "silence_timeout": str(agent.silence_timeout),
+        "talking_speed": str(agent.talking_speed),
+        "max_duration_seconds": str(agent.max_call_duration),
+        "background_sound": "" if agent.enable_background_sound else "off",
+        "background_sound_url": agent.background_sound_url,
+        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
+        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
+        "transcriber": {
+            "provider": agent.transcriber_provider,
+            "language": agent.transcriber_language,
+            "model": agent.transcriber_model
+        },
+        "transcriber_provider": agent.transcriber_provider,
+        "transcriber_language": agent.transcriber_language,
+        "transcriber_model": agent.transcriber_model,       
         "agent_status": db_agent.status,
-        "plan_id": 1
     }
     # 🔹 Call Echoleads update
     if db_agent.external_agent_id:
@@ -234,8 +270,8 @@ def update_agent(
     db.refresh(db_agent)
 
     return {
-        **db_agent.__dict__,
-        "destination": db_agent.destination.split(",") if db_agent.destination else []
+        "message": "Agent updated successfully",
+        "agent_id": db_agent.id
     }
 
 # Read All Agents
@@ -246,28 +282,55 @@ def read_agents(
     limit: int = 10,
     sort_by: str = "newest"
 ):
-    query = db.query(CallingAgent)
+    query = (
+        db.query(
+            CallingAgent,
+            func.count(
+                case(
+                    (CallCampaign.status == "active", 1)
+                )
+            ).label("active_campaigns")
+        )
+        .outerjoin(
+            CallCampaign,
+            CallingAgent.id == CallCampaign.agent_id
+        )
+        .filter(CallingAgent.is_deleted == False)
+        .group_by(CallingAgent.id)
+    )
 
+    # SEARCH
     if search:
-        query = query.filter(CallingAgent.name.ilike(f"%{search}%"))
+        query = query.filter(
+            CallingAgent.name.ilike(f"%{search}%")
+        )
 
+    # SORT
     if sort_by == "oldest":
         query = query.order_by(CallingAgent.created_at.asc())
     else:
         query = query.order_by(CallingAgent.created_at.desc())
 
+    # TOTAL (⚠️ correct way with group_by)
     total = query.count()
 
     rows = query.offset(skip).limit(limit).all()
 
     items = []
-    for agent in rows:
+
+    for agent, active_campaigns in rows:
         data = agent.__dict__.copy()
 
         # convert destination string → list
         data["destination"] = (
             agent.destination.split(",") if agent.destination else []
         )
+
+        data["start_speaking_wait_seconds"] = str(agent.start_speaking_wait_seconds)
+        data["stop_speaking_voice_seconds"] = str(agent.stop_speaking_voice_seconds)
+
+        # ✅ NEW FIELD
+        data["active_campaigns"] = active_campaigns
 
         items.append(data)
 
@@ -427,6 +490,34 @@ def update_agent_status(
         "status": agent.status
     }
     
+def delete_agent(db: Session, agent_id: int):
+    agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
+    if not agent:
+        raise Exception("Agent not found")
+
+    # 3️⃣ Soft delete in Echoleads
+    try:
+        
+        echoleads = EcholeadsClient()
+        response = echoleads.delete_agent(agent.external_agent_id)
+        
+        if response.get("success"):
+            agent.is_deleted = True
+            db.commit()
+            db.refresh(agent)
+        else:
+            raise HTTPException(status_code=404, detail="Failed to delete the Agent")
+        
+    except Exception as e:
+        # Handle API failure: log or rollback DB if needed
+        raise HTTPException(status_code=404, detail="Failed to delete the Agent")
+   
+    return {
+        "message": "Agent deleted",
+        "agent_id": agent.id,
+        "status": agent.status
+    }
+    
     
 # Agent Lookup
 def agent_lookup(
@@ -437,7 +528,7 @@ def agent_lookup(
     query = db.query(
         CallingAgent.id,
         CallingAgent.name
-    ).filter(CallingAgent.organization_id == organization_id)
+    ).filter(CallingAgent.organization_id == organization_id, CallingAgent.is_deleted == False)
 
     if search:
         query = query.filter(

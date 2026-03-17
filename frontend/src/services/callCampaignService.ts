@@ -34,10 +34,13 @@ export interface CampaignContactListResponse {
 export interface Campaign {
     id?: number;
     name: string;
+    agent_name: string;
+    from_number: string;
     category: string;
     status: "Active" | "Paused" | "Completed";
     contacts: number;
     progress: number;
+    created_at: string;
 }
 
 

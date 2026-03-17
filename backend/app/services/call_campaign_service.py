@@ -54,6 +54,9 @@ def list_campaigns(
             CallCampaign.name,
             CallCampaign.category,
             CallCampaign.status,
+            CallCampaign.created_at,
+            CallingAgent.name.label("agent_name"),
+            CallingAgent.calling_no.label("from_number"),
             func.count(CampaignContact.id).label("contacts"),
             func.sum(
                 case(
@@ -63,6 +66,7 @@ def list_campaigns(
             ).label("completed_contacts")
         )
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
+        .join(CallingAgent, CallCampaign.agent_id == CallingAgent.id)
         .group_by(CallCampaign.id)
     )
 
@@ -89,14 +93,17 @@ def list_campaigns(
         progress = 0
         if r.contacts:
             progress = int((r.completed_contacts or 0) / r.contacts * 100)
-
+            
         rows.append({
             "id": r.id,
             "name": r.name,
             "category": r.category,
+            "agent_name": r.agent_name,
+            "from_number": r.from_number,
             "status": r.status,
             "contacts": r.contacts,
-            "progress": progress
+            "progress": progress,
+            "created_at": r.created_at
         })
 
     return {
@@ -164,7 +171,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         send_option = "instant"
         
     agent = db.query(CallingAgent).filter(
-            CallingAgent.external_agent_a_id == data.agent_id
+            CallingAgent.id == data.agent_id
         ).first()
 
     external_contact_ids = get_external_contact_ids(db, data.contacts)
@@ -172,7 +179,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     payload = {
         "campaign_name": data.name,
         "agent_id": agent.external_agent_id,
-        "from_number": data.from_number,
+        "from_number": agent.calling_no,
         "send_option": send_option,
         "schedule_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
         "schedule_time": data.start_datetime.split("T")[1][:5] if data.start_datetime else None,
@@ -257,19 +264,28 @@ def update_campaign(
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     update_data = data.dict(exclude_unset=True)
-    
+
     # Determine campaign status
     if data.start_datetime:
         campaign.status = "scheduled"
+        send_option = "schedule"
     else:
-        campaign.status = "active"  # Send Now
+        campaign.status = "active"
+        send_option = "instant"
 
-    # update basic fields
-    for field in ["name", "description", "category", "priority", "agent_id"]:
-        if field in update_data:
-            setattr(campaign, field, update_data[field])
-
-    # update contacts
+    # Fetch agent external id if agent updated
+    agent = None
+    if "agent_id" in update_data:
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == update_data["agent_id"]
+        ).first()
+    else:
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == campaign.agent_id
+        ).first()
+        
+    # update contacts (DB + external)
+    external_contact_ids = None
     if data.contacts is not None:
 
         db.query(CampaignContact).filter(
@@ -277,11 +293,56 @@ def update_campaign(
         ).delete()
 
         for contact_id in data.contacts:
-            cc = CampaignContact(
-                campaign_id=campaign_id,
-                contact_id=contact_id
+            db.add(
+                CampaignContact(
+                    campaign_id=campaign_id,
+                    contact_id=contact_id
+                )
             )
-            db.add(cc)
+
+        # get external ids
+        external_contact_ids = get_external_contact_ids(db, data.contacts)
+        
+    payload = {
+        "campaign_name": campaign.name,
+        "agent_id": agent.external_agent_id if agent else None,
+        "send_option": send_option,
+        "schedule_date": (
+            data.start_datetime.split("T")[0]
+            if data.start_datetime else None
+        ),
+        "schedule_time": (
+            data.start_datetime.split("T")[1][:5]
+            if data.start_datetime else None
+        ),
+        "timezone": data.timezone,
+        "concurrency_reserved": 2,
+        "concurrency_allocated": 5,
+        "contact_ids": external_contact_ids,
+        "retries": data.max_retry_attempts,
+        "retry_after": data.retry_interval
+    }
+
+    if external_contact_ids is not None:
+        payload["contact_ids"] = external_contact_ids
+
+    client = EcholeadsClient()
+
+    response = client.update_campaign(
+        campaign.external_campaign_id,
+        payload
+    )
+
+    if not response.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to update campaign in Echoleads"
+        )
+
+    # update basic fields
+    for field in ["name", "description", "category", "priority", "agent_id"]:
+        if field in update_data:
+            setattr(campaign, field, update_data[field])
 
     # update schedule
     schedule = db.query(CampaignSchedule).filter(
@@ -325,6 +386,11 @@ def update_campaign(
     if data.retry_on_voicemail is not None:
         schedule.retry_voicemail = data.retry_on_voicemail
 
+    
+
+    # sync status from Echoleads
+    campaign.status = response["campaign"].get("status", campaign.status)
+
     db.commit()
 
     return {
@@ -344,6 +410,16 @@ def delete_campaign(
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    echoleads = EcholeadsClient()
+    
+    echo_payload = {
+        "status": "paused"
+    }
+
+    # Update Echoleads agent
+    if campaign.external_campaign_id:
+        echoleads.update_agent(campaign.external_campaign_id, echo_payload)
 
     campaign.is_deleted = True
 
@@ -355,7 +431,20 @@ def delete_campaign(
 #### Campaign Contacts
 
 def get_contacts_by_ids(db: Session, ids: list[int]):
-    return db.query(Contact).filter(Contact.id.in_(ids)).all()
+    contacts = db.query(Contact).filter(Contact.id.in_(ids)).all()
+    
+    return [
+            {
+                "id": row.id,
+                "label": f"{row.name} ({row.phone})",
+                "name": row.name,
+                "email": row.email,
+                "phone": row.phone,
+                "contact_list_id": row.contact_list_id,
+                "created_at": row.created_at,
+            }
+            for row in contacts
+        ]
 
 def get_contacts(
     db: Session,
@@ -406,6 +495,7 @@ def get_contacts(
         "items": [
             {
                 "id": row.id,
+                "label": f"{row.name} ({row.phone})",
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
@@ -490,7 +580,7 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
 
         # Create contact in EchoLeads
         payload = {
-            "firstName": contact.first_name,
+            "firstName": contact.name,
             "phone": contact.phone
         }
 

@@ -9,7 +9,8 @@ import {
     Button,
     Stack,
     Alert,
-    IconButton
+    IconButton,
+    LinearProgress
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from '@mui/material/styles';
@@ -58,18 +59,29 @@ const CampaignBuilder = () => {
     const [activeStep, setActiveStep] = useState(0);
     const [campaignContacts, setCampaignContacts] = useState<Contact[]>([]);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
     const theme = useTheme();
     const nextStep = () => setActiveStep((prev) => prev + 1);
     const prevStep = () => setActiveStep((prev) => prev - 1);
     const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
 
     const showError = (message: string) => {
+        setSuccess('');
         setError(message);
+
     };
+
+    const showSuccess = (message: string) => {
+        setError('');
+        setSuccess(message);
+    };
+
 
     const handleAddCampaign = () => {
         setView("form");
         setError('');
+        setSuccess('');
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
@@ -79,6 +91,7 @@ const CampaignBuilder = () => {
     const handleEditCampaign = async (id?: number) => {
         if (id === undefined) return;
         setError('');
+        setSuccess('');
         setActiveStep(0);
 
         try {
@@ -127,6 +140,9 @@ const CampaignBuilder = () => {
 
     const handleSaveCampaign = async () => {
         console.log("Campaign Data", campaignForm);
+        setError('');
+        setSuccess('');
+        setLoading(true);
         try {
 
             if (mode == "edit" && campaignId) {
@@ -135,11 +151,15 @@ const CampaignBuilder = () => {
             else {
                 await callCampaignService.createCampaign(campaignForm);
             }
+            showSuccess("Campaign saved successfully")
             setView("list");
         }
         catch (err: any) {
             showError(err?.response?.data?.detail || 'Failed to save the campaign data');
             window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        finally {
+            setLoading(false);
         }
     };
 
@@ -195,53 +215,82 @@ const CampaignBuilder = () => {
     }
 
     return (
-        <Paper sx={{ p: 4 }}>
-            <Box display="flex" justifyContent="space-between" mb={2}>
-                <Typography variant="h5">
-                    Create Campaign
-                </Typography>
+        <>
+            {loading && (
+                <Box mb={3}>
+                    <LinearProgress sx={{ borderRadius: 1.2 }} />
+                </Box>
+            )}
+            {(error || success) && (
+                <Stack
+                    mb={2}
+                >
+                    {error && (
+                        <Alert
+                            severity="error"
+                            sx={{
+                                borderRadius: "14px",
+                                boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
+                            }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setError("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {error}
+                        </Alert>
+                    )}
+                    {success && (
+                        <Alert
+                            severity="success"
+                            sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setSuccess("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {success}
+                        </Alert>
+                    )}
+                </Stack>
+            )}
+            <Paper sx={{ p: 4 }}>
+                <Box display="flex" justifyContent="space-between" mb={2}>
+                    <Typography variant="h5">
+                        Create Campaign
+                    </Typography>
 
-                <Button variant="outlined" color="error" onClick={handleBackToList}>
-                    Cancel
-                </Button>
-            </Box>
-            {/* Error Alert */}
-            <Stack mb={2}>
-                {error && (
-                    <Alert
-                        severity="error"
-                        sx={{
-                            borderRadius: "14px",
-                            boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
-                        }}
-                        action={
-                            <IconButton
-                                aria-label="close"
-                                color="inherit"
-                                size="small"
-                                onClick={() => setError("")} // clears the error
-                            >
-                                <CloseIcon fontSize="inherit" />
-                            </IconButton>
-                        }
-                    >
-                        {error}
-                    </Alert>
-                )}
-            </Stack>
+                    <Button variant="outlined" color="error" onClick={handleBackToList}>
+                        Cancel
+                    </Button>
+                </Box>
 
-            <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-                {steps.map((label) => (
-                    <Step key={label}>
-                        <StepLabel>{label}</StepLabel>
-                    </Step>
-                ))}
-            </Stepper>
 
-            <Box>
-                {renderStep()}
-            </Box>
-        </Paper>
+                <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+                    {steps.map((label) => (
+                        <Step key={label}>
+                            <StepLabel>{label}</StepLabel>
+                        </Step>
+                    ))}
+                </Stepper>
+
+                <Box>
+                    {renderStep()}
+                </Box>
+            </Paper>
+        </>
     );
 };
 
