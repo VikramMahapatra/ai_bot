@@ -1,10 +1,10 @@
 import smtplib
 from email.mime.text import MIMEText
 
-SMTP_HOST = "smtp.gmail.com"
+SMTP_HOST = "XXXXXXX"
 SMTP_PORT = 587
-SMTP_USERNAME="patil.rohit14@gmail.com"
-SMTP_PASSWORD="erpd hpvi qcel mohx"
+SMTP_USERNAME="XXXXXXX"
+SMTP_PASSWORD="XXXXXXX"
 
 sender = SMTP_USERNAME
 receiver = "patil.rohit14@gmail.com"
