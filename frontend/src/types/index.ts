@@ -50,6 +50,34 @@ export interface WebCrawlResponse {
   message: string;
 }
 
+export interface CrawlJobStatus {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  stage?: string | null;
+  progress: number;
+  message?: string | null;
+  error?: string | null;
+  url?: string | null;
+  widget_id?: string | null;
+  pages_total: number;
+  pages_completed: number;
+  pages_crawled: number;
+  pages_scanned: number;
+  chunks_embedded: number;
+  unchanged: boolean;
+  source?: {
+    id: number;
+    name: string;
+    source_type: string;
+    status: string;
+    widget_id: string;
+  } | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  updated_at?: string | null;
+  finished_at?: string | null;
+}
+
 export interface ChatMessage {
   message: string;
   session_id: string;

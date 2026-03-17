@@ -17,6 +17,9 @@ class CallCampaign(Base):
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    total_calls = Column(Integer, default=0)        
+    completed_calls = Column(Integer, default=0)    
+
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
 

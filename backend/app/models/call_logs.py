@@ -17,7 +17,7 @@ class CallLog(Base):
 
     contact_id = Column(Integer, ForeignKey("leads.id"))
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
-    campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
     type = Column(String)       # Inbound / Outbound
     mode = Column(String)       # Voice / WhatsApp / etc

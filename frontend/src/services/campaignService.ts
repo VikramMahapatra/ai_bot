@@ -52,6 +52,8 @@ export interface ContactListItem {
   id: number;
   list_name: string;
   description?: string;
+  is_agent_auto_list?: boolean;
+  agent_widget_id?: string | null;
   created_at: string;
   contact_count: number;
 }

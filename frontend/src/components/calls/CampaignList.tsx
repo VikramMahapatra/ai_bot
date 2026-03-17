@@ -78,7 +78,7 @@ const getStatusColor = (status: string) => {
 };
 
 const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
-
+    const [loading, setLoading] = useState(false);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [campaignTotal, setCampaignTotal] = useState(0);
     const [campaignPage, setCampaignPage] = useState(0);
@@ -105,6 +105,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
     };
 
     const loadCampaigns = async () => {
+        setLoading(true);
         const data = await callCampaignService.allCampaigns({
             search: search || undefined,
             skip: campaignPage * campaignRowsPerPage,
@@ -112,6 +113,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
         });
         setCampaigns(data.items || []);
         setCampaignTotal(data.pagination?.total || 0);
+        setLoading(false);
     };
 
     const loadCampaignStats = async () => {
@@ -174,6 +176,11 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
         <Box>
 
             {/* SUMMARY CARDS */}
+            {loading && (
+                <Box mb={3}>
+                    <LinearProgress sx={{ borderRadius: 1.2 }} />
+                </Box>
+            )}
 
             <Grid container spacing={3} mb={3}>
 

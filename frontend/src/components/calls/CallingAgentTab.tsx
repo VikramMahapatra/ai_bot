@@ -36,6 +36,8 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import GroupIcon from '@mui/icons-material/Group';
 import PhoneIcon from "@mui/icons-material/Phone";
 import PublicIcon from "@mui/icons-material/Public";
+import PendingIcon from "@mui/icons-material/Pending";
+import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import InputAdornment from "@mui/material/InputAdornment";
 import { AddAgentForm } from './AddAgentForm';
 import { CallingAgent, callingAgentService } from '../../services/callingAgentService';
@@ -353,7 +355,7 @@ export const CallingAgentTab: React.FC = () => {
                                             {/* Header */}
                                             <CardContent
                                                 sx={{
-                                                    backgroundColor: "#f5f5f5",
+                                                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
                                                     mb: 1,
                                                     borderRadius: 1
                                                 }}
@@ -485,14 +487,38 @@ export const CallingAgentTab: React.FC = () => {
                                             <CardContent>
                                                 <Stack
                                                     direction="row"
-                                                    spacing={2}
                                                     alignItems="center"
-                                                    mb={1}
+                                                    spacing={2}
+                                                    flexWrap="wrap"
+                                                    sx={{
+                                                        mb: 2
+                                                    }}
                                                 >
-                                                    <CampaignIcon color="primary" />
-                                                    <Typography>
-                                                        Active Campaigns: {agent.active_campaigns}
-                                                    </Typography>
+                                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                                        <CampaignIcon color="primary" />
+                                                        <Typography fontWeight={600}>Campaigns</Typography>
+                                                    </Stack>
+
+                                                    <Chip
+                                                        icon={<PendingIcon />}
+                                                        label={`Pending: ${agent.pending_campaigns}`}
+                                                        color="warning"
+                                                        variant="outlined"
+                                                    />
+
+                                                    <Chip
+                                                        icon={<PlayCircleIcon />}
+                                                        label={`Active: ${agent.active_campaigns}`}
+                                                        color="secondary"
+                                                        variant="outlined"
+                                                    />
+
+                                                    <Chip
+                                                        icon={<CheckCircleIcon />}
+                                                        label={`Completed: ${agent.completed_campaigns}`}
+                                                        color="primary"
+                                                        variant="outlined"
+                                                    />
                                                 </Stack>
 
                                                 <Typography variant="subtitle2" mb={1}>

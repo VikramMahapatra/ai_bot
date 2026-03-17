@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp"}
 ALLOWED_CAMPAIGN_STATUSES = {"draft", "scheduled", "running", "completed", "paused", "failed"}
 ALLOWED_LOG_STATUSES = {"sent", "failed", "pending"}
+AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX = "AUTO_AGENT_APPOINTMENT_LIST::"
 
 
 class ContactListCreateRequest(BaseModel):
@@ -58,6 +59,15 @@ def _validate_contact_payload(name: Optional[str], email: Optional[str], phone: 
         raise ValueError("Either email or phone is required")
 
     return cleaned_name, cleaned_email, cleaned_phone
+
+
+def _parse_auto_agent_marker(description: Optional[str]) -> tuple[bool, Optional[str]]:
+    raw = (description or "").strip()
+    if not raw.startswith(AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX):
+        return False, None
+
+    widget_id = raw[len(AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX):].strip() or None
+    return True, widget_id
 
 
 def _serialize_campaign(campaign: Campaign, contact_list_name: Optional[str] = None) -> dict:
@@ -194,6 +204,8 @@ async def create_contact_list(
         "id": contact_list.id,
         "list_name": contact_list.list_name,
         "description": contact_list.description,
+        "is_agent_auto_list": False,
+        "agent_widget_id": None,
         "created_at": contact_list.created_at,
     }
 
@@ -230,11 +242,14 @@ async def list_contact_lists(
             {
                 "id": row.id,
                 "list_name": row.list_name,
-                "description": row.description,
+                "description": (None if is_auto else row.description),
                 "created_at": row.created_at,
                 "contact_count": int(counts.get(row.id, 0)),
+                "is_agent_auto_list": is_auto,
+                "agent_widget_id": widget_id,
             }
             for row in rows
+            for is_auto, widget_id in [_parse_auto_agent_marker(row.description)]
         ],
         "pagination": {
             "total": total,

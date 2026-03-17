@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_
@@ -11,6 +11,21 @@ from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCre
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
+from app.models.call_logs import CallLog
+from app.services.call_log_service import save_transcripts
+
+
+STALE_MINUTES = 1
+SYNC_STATUSES = ["active", "pending"] 
+
+def should_sync(campaign):
+    if campaign.status not in SYNC_STATUSES:
+        return False
+
+    if not campaign.updated_at:
+        return True
+
+    return campaign.updated_at < datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
 
 
 def get_campaign_stats(db: Session, organization_id: int):
@@ -47,6 +62,25 @@ def list_campaigns(
     skip: int = 0,
     limit: int = 10
 ):
+    ###SYNC FROM ECHOLEAD
+    campaign_models = db.query(CallCampaign).filter(
+        CallCampaign.is_deleted == False
+    )
+
+    if search:
+        campaign_models = campaign_models.filter(
+            CallCampaign.name.ilike(f"%{search}%")
+        )
+
+    campaign_models = campaign_models.offset(skip).limit(limit).all()
+    
+    echolead_client = EcholeadsClient()
+
+    for campaign in campaign_models:
+        if should_sync(campaign):
+            sync_campaign_from_echoleads(db, echolead_client, campaign)
+
+    db.commit()
 
     base_query = (
         db.query(
@@ -57,16 +91,10 @@ def list_campaigns(
             CallCampaign.created_at,
             CallingAgent.name.label("agent_name"),
             CallingAgent.calling_no.label("from_number"),
-            func.count(CampaignContact.id).label("contacts"),
-            func.sum(
-                case(
-                    (CampaignContact.status == "Completed", 1),
-                    else_=0
-                )
-            ).label("completed_contacts")
+            CallCampaign.total_calls,
+            CallCampaign.completed_calls
         )
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
-        .join(CallingAgent, CallCampaign.agent_id == CallingAgent.id)
         .group_by(CallCampaign.id)
     )
 
@@ -80,7 +108,7 @@ def list_campaigns(
     total = base_query.count()
 
     # PAGINATION
-    results = (
+    campaigns = (
         base_query
         .offset(skip)
         .limit(limit)
@@ -88,22 +116,24 @@ def list_campaigns(
     )
 
     rows = []
+    
+    echolead_client = EcholeadsClient()
 
-    for r in results:
+    for campaign in campaigns:
         progress = 0
-        if r.contacts:
-            progress = int((r.completed_contacts or 0) / r.contacts * 100)
+        if campaign.total_calls:
+            progress = int((campaign.completed_calls / campaign.total_calls) * 100)
             
         rows.append({
-            "id": r.id,
-            "name": r.name,
-            "category": r.category,
-            "agent_name": r.agent_name,
-            "from_number": r.from_number,
-            "status": r.status,
-            "contacts": r.contacts,
+            "id": campaign.id,
+            "name": campaign.name,
+            "category": campaign.category,
+            "agent_name": campaign.agent_name,
+            "from_number": campaign.from_number,
+            "status": campaign.status,
+            "contacts": campaign.total_calls,
             "progress": progress,
-            "created_at": r.created_at
+            "created_at": campaign.created_at
         })
 
     return {
@@ -597,3 +627,74 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
     db.commit()
 
     return external_contact_ids
+
+
+def sync_campaign_from_echoleads(db: Session, echolead_client : EcholeadsClient, campaign: CallCampaign):
+    if not campaign.external_campaign_id:
+        return
+
+    try:
+        response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
+
+        if not response or not response.get("campaign"):
+            return
+
+        data = response["campaign"]
+
+        # ✅ Update campaign fields
+        campaign.status = data.get("status", campaign.status)
+        campaign.updated_at = datetime.utcnow()
+
+        # OPTIONAL: store metrics if you want faster listing later
+        total_calls = data.get("total_calls", 0)
+        completed_calls = data.get("completed_calls", 0)
+
+        # You can store these in DB if needed
+        campaign.total_calls = total_calls
+        campaign.completed_calls = completed_calls
+
+        db.add(campaign)
+
+        # ✅ Sync call logs (IMPORTANT)
+        for call in data.get("calls", []):
+            existing_call = db.query(CallLog).filter(
+                CallLog.external_call_id == call["id"]
+            ).first()
+
+            if existing_call:
+                continue
+            
+            agent = db.query(CallingAgent).filter(
+                CallingAgent.external_agent_id == call.get("agent_id")
+            ).first()
+
+            new_call = CallLog(
+                external_call_id=call["id"],
+                organization_id=campaign.organization_id,
+                campaign_id=campaign.id,
+                agent_id=agent.id,
+                type=agent.type,
+                phone=call.get("phone"),
+                mode="Voice",
+                status=call.get("status"),
+                start_time=parse_datetime(call.get("call_started_at")),
+                end_time=parse_datetime(call.get("call_ended_at")),
+                audio_url=call.get("recording_url"),
+                cost=call.get("cost"),
+            )
+
+            db.add(new_call)
+            db.flush()
+            save_transcripts(db, new_call.id, call.get("transcript"))
+
+        db.commit()
+
+    except Exception as e:
+        print("Sync failed:", str(e))
+        db.rollback()
+        
+        
+def parse_datetime(dt):
+    if not dt:
+        return None
+    return datetime.fromisoformat(dt.replace("Z", "+00:00"))

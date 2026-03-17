@@ -289,7 +289,17 @@ def read_agents(
                 case(
                     (CallCampaign.status == "active", 1)
                 )
-            ).label("active_campaigns")
+            ).label("active_campaigns"),
+            func.count(
+                case(
+                    (CallCampaign.status == "completed", 1)
+                )
+            ).label("completed_campaigns"),
+            func.count(
+                case(
+                    (CallCampaign.status == "pending", 1)
+                )
+            ).label("pending_campaigns")
         )
         .outerjoin(
             CallCampaign,
@@ -318,7 +328,7 @@ def read_agents(
 
     items = []
 
-    for agent, active_campaigns in rows:
+    for agent, active_campaigns, completed_campaigns, pending_campaigns in rows:
         data = agent.__dict__.copy()
 
         # convert destination string → list
@@ -331,7 +341,8 @@ def read_agents(
 
         # ✅ NEW FIELD
         data["active_campaigns"] = active_campaigns
-
+        data["completed_campaigns"] = completed_campaigns
+        data["pending_campaigns"] = pending_campaigns
         items.append(data)
 
     return {
@@ -394,6 +405,7 @@ def test_call(
     payload = {
     "a_id": agent.external_agent_a_id,
     "phone": data.phone_no,
+    "from_number": agent.calling_no,
     "firstMessage": agent.greeting.format(name=customer_name),
     "dynamicFieldValues": [
             {

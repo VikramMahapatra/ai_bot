@@ -1,12 +1,13 @@
 from openai import OpenAI
 from app.config import settings
 from app.services.rag import chroma_client
-from app.models import Conversation, KnowledgeSource, WidgetConfig
+from app.models import Conversation, KnowledgeSource, WidgetConfig, RetrievalTrace
 from app.services.report_service import sync_conversation_metrics
 from sqlalchemy.orm import Session
 import logging
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Optional, Set
 import re
+import json
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,165 @@ def _keyword_query(text: str) -> str:
     return " ".join(keywords[:12])
 
 
+def _extract_year_token(text: str) -> Optional[str]:
+    if not text:
+        return None
+    match = re.search(r"\b(19\d{2}|20\d{2})\b", text)
+    return match.group(1) if match else None
+
+
+def _token_set(text: str) -> Set[str]:
+    return set(_keyword_query(text).split())
+
+
+def _semantic_rerank_candidates(candidates: List[Dict], raw_message: str) -> List[Dict]:
+    if not candidates:
+        return []
+
+    query_tokens = _token_set(raw_message)
+    reranked: List[Dict] = []
+    for candidate in candidates:
+        doc_tokens = _token_set(candidate.get("doc", ""))
+        overlap = 0.0
+        if query_tokens and doc_tokens:
+            overlap = len(query_tokens & doc_tokens) / max(len(query_tokens | doc_tokens), 1)
+
+        distance = candidate.get("distance")
+        if distance is None:
+            semantic_score = 0.45
+        else:
+            semantic_score = 1.0 - min(max(float(distance), 0.0), 1.5) / 1.5
+
+        stage = candidate.get("stage") or "fallback"
+        stage_boost = {"primary": 0.04, "expanded": 0.02, "fallback": 0.0}.get(stage, 0.0)
+
+        rerank_score = (0.68 * semantic_score) + (0.28 * overlap) + stage_boost
+
+        enriched = dict(candidate)
+        enriched["overlap"] = overlap
+        enriched["rerank_score"] = rerank_score
+        reranked.append(enriched)
+
+    reranked.sort(
+        key=lambda item: (
+            item.get("rerank_score", 0.0),
+            -float(item.get("distance") or 999.0),
+            -int(item.get("rank") or 0),
+        ),
+        reverse=True,
+    )
+    return reranked
+
+
+def _is_count_or_time_question(message: str) -> bool:
+    lower = (message or "").lower()
+    tokens = set(re.findall(r"[a-zA-Z0-9]+", lower))
+    count_tokens = {"how", "many", "count", "number", "total", "published", "posts", "post", "blog", "blogpost", "blogs"}
+    time_tokens = {"year", "month", "day", "date", "when", "timeline"}
+    return bool(tokens & count_tokens and (tokens & time_tokens or _extract_year_token(lower)))
+
+
+def _extract_numeric_evidence(doc: str, target_year: Optional[str]) -> List[int]:
+    if not doc:
+        return []
+
+    values: List[int] = []
+    compact = " ".join(doc.split())
+
+    if target_year:
+        patterns = [
+            rf"\b{target_year}\b\s*[\(\[\{{:\-]?\s*(\d{{1,5}})\b",
+            rf"(\d{{1,5}})\s+(?:blog\s+)?posts?\b[^\n\.\r]{{0,40}}\b(?:in|for)\b[^\n\.\r]{{0,12}}\b{target_year}\b",
+            rf"\b(?:in|for)\b[^\n\.\r]{{0,12}}\b{target_year}\b[^\n\.\r]{{0,40}}\b(\d{{1,5}})\s+(?:blog\s+)?posts?\b",
+        ]
+    else:
+        patterns = [
+            r"\b(\d{1,5})\s+(?:blog\s+)?posts?\b",
+        ]
+
+    for pattern in patterns:
+        for raw in re.findall(pattern, compact, flags=re.IGNORECASE):
+            try:
+                number = int(raw)
+            except Exception:
+                continue
+            if number <= 0:
+                continue
+            if target_year and number == int(target_year):
+                continue
+            values.append(number)
+
+    return values
+
+
+def _build_clarifying_question(message: str, target_year: Optional[str], conflicting_values: List[int]) -> str:
+    if conflicting_values:
+        sampled = ", ".join(str(v) for v in conflicting_values[:3])
+        if target_year:
+            return (
+                f"I found multiple possible counts for {target_year} ({sampled}) in the current context. "
+                f"Do you want the total number of posts from the blog archive for {target_year}?"
+            )
+        return (
+            f"I found multiple possible counts ({sampled}) in the current context. "
+            "Could you clarify what exact count you want?"
+        )
+
+    if target_year:
+        return (
+            f"I found related information, but I need one quick clarification to answer reliably: "
+            f"do you want the total number of posts published in calendar year {target_year}?"
+        )
+
+    return (
+        "I found related information, but I need one quick clarification to answer reliably: "
+        "what exact period or post type should I count?"
+    )
+
+
+def _try_structured_fact_answer(message: str, selected_candidates: List[Dict]) -> Tuple[Optional[str], List[int]]:
+    if not _is_count_or_time_question(message):
+        return None, []
+
+    target_year = _extract_year_token(message)
+    extracted_values: List[int] = []
+
+    for candidate in selected_candidates[:10]:
+        extracted_values.extend(_extract_numeric_evidence(candidate.get("doc", ""), target_year))
+
+    unique_values = sorted(set(extracted_values))
+    if len(unique_values) != 1:
+        return None, unique_values
+
+    answer_value = unique_values[0]
+    if target_year:
+        return f"In {target_year}, there were {answer_value} blog posts published on the site.", unique_values
+
+    return f"I found {answer_value} posts in the retrieved context.", unique_values
+
+
+def _should_include_previous_message(current_message: str, previous_message: str) -> bool:
+    if not current_message or not previous_message:
+        return False
+
+    current_keywords = set(_keyword_query(current_message).split())
+    previous_keywords = set(_keyword_query(previous_message).split())
+    if not current_keywords or not previous_keywords:
+        return False
+
+    overlap_ratio = len(current_keywords & previous_keywords) / max(len(current_keywords), 1)
+    if overlap_ratio >= 0.35:
+        return True
+
+    lower_current = current_message.lower().strip()
+    followup_pattern = re.search(
+        r"^(and|also|then|same for|what about|how about)\b|\b(it|that|those|them|same|again|previous|earlier)\b",
+        lower_current,
+    )
+    short_query = len(current_keywords) <= 5
+    return bool(followup_pattern and short_query)
+
+
 def _expand_queries(base_query: str, raw_message: str) -> List[str]:
     queries = [base_query]
     raw_tokens = set(re.findall(r"[a-zA-Z0-9]+", raw_message.lower()))
@@ -177,18 +337,78 @@ def _expand_queries(base_query: str, raw_message: str) -> List[str]:
     if keyword_query and keyword_query not in base_query:
         queries.append(keyword_query)
 
-    # limit to avoid latency spikes
-    return queries[:3]
+    target_year = _extract_year_token(raw_message)
+    asks_for_count = bool(raw_tokens & {"how", "many", "count", "number", "published", "posts", "post", "blog", "blogpost"})
+    if target_year and asks_for_count:
+        queries.append(f"blog archive {target_year} posts count")
+        queries.append(f"posts published {target_year} site archive")
+
+    deduped: List[str] = []
+    seen = set()
+    for query in queries:
+        normalized = " ".join((query or "").split()).strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(query)
+
+    # keep bounded variants to avoid latency spikes
+    return deduped[:5]
 
 
 def _build_escalation_message(level_1: str, level_2: str) -> str:
     return (
-        "Sorry—I don’t have a reliable answer for this right now. "
-        "If you’d like, I can connect you with our escalation contacts:\n"
+        "That sounds exciting, and I love the creativity. "
+        "I’m sorry—I don’t have reliable expertise on this specific topic in my current knowledge base. "
+        "If you’d like, I can still help with topics covered here (for example: our services, setup, pricing, or support). "
+        "Or I can connect you with our escalation contacts:\n"
         f"• Level 1: {level_1}\n"
         f"• Level 2: {level_2}\n"
-        "Would you like me to help you reach them?"
+        "Would you like me to connect you?"
     )
+
+
+def _build_soft_fallback_message() -> str:
+    return (
+        "That is a really creative idea. "
+        "I do not have reliable expertise on this topic in my current knowledge base yet. "
+        "I would still be happy to help with topics covered here, like our services, setup, pricing, or support."
+    )
+
+
+def _is_escalation_contacts_message(text: Optional[str]) -> bool:
+    if not text:
+        return False
+    lower = text.lower()
+    markers = [
+        "escalation contacts",
+        "level 1:",
+        "level 2:",
+        "would you like me to connect you",
+    ]
+    return all(marker in lower for marker in ("level 1:", "level 2:")) or any(marker in lower for marker in markers)
+
+
+def _has_prior_escalation_contacts(db: Session, session_id: str, widget_id: str) -> bool:
+    recent = db.query(Conversation.response).filter(
+        Conversation.session_id == session_id,
+        Conversation.widget_id == widget_id,
+    ).order_by(Conversation.created_at.desc(), Conversation.id.desc()).limit(12).all()
+    for row in recent:
+        response_text = None
+        if isinstance(row, tuple):
+            response_text = row[0] if row else None
+        else:
+            response_text = getattr(row, "response", None)
+            if response_text is None:
+                try:
+                    response_text = row[0]
+                except Exception:
+                    response_text = None
+
+        if _is_escalation_contacts_message(response_text):
+            return True
+    return False
 
 
 def _looks_like_no_answer(text: Optional[str]) -> bool:
@@ -239,7 +459,7 @@ def _prepare_chat_payload(
     language_code: Optional[str] = None,
     language_label: Optional[str] = None,
     retrieval_message: Optional[str] = None
-) -> Tuple[List[Dict], List[Dict], bool, str]:
+) -> Tuple[List[Dict], List[Dict], bool, str, Dict]:
     history = db.query(Conversation).filter(
         Conversation.session_id == session_id,
         Conversation.widget_id == widget_id,
@@ -248,31 +468,96 @@ def _prepare_chat_payload(
     query_text = retrieval_message or message
     if history:
         recent_user_message = history[0].message
-        if recent_user_message and recent_user_message.strip() and recent_user_message.strip() != message.strip():
+        if (
+            recent_user_message
+            and recent_user_message.strip()
+            and recent_user_message.strip() != message.strip()
+            and _should_include_previous_message(message, recent_user_message)
+        ):
             query_text = f"{query_text}\n\nPrevious user message: {recent_user_message.strip()}"
 
     context_parts = []
     source_ids = set()
     seen_chunks = set()
+    target_year = _extract_year_token(message)
+    query_variants = _expand_queries(query_text, message)
+    candidate_pool: List[Dict] = []
 
-    def _add_results(results: Dict, max_chunks: int = 12, apply_threshold: bool = True) -> None:
-        nonlocal context_parts
+    retrieval_trace = {
+        "user_query": message,
+        "retrieval_query": query_text,
+        "query_variants": query_variants,
+        "retrieved_chunks": [],
+        "selected_chunks": [],
+        "source_ids": [],
+        "has_context": False,
+        "escalation_triggered": False,
+        "top_distance": None,
+    }
+
+    def _snippet(text: str, limit: int = 240) -> str:
+        compact = " ".join((text or "").split()).strip()
+        if len(compact) <= limit:
+            return compact
+        return f"{compact[:limit - 3]}..."
+
+    def _add_results(results: Dict, query_used: str, stage: str, max_chunks: int = 12, apply_threshold: bool = True) -> None:
         distances = None
         if results and results.get('distances') and results['distances'][0]:
             distances = results['distances'][0]
-        min_distance = min(distances) if distances else None
+        valid_distances = [d for d in (distances or []) if d is not None]
+        min_distance = min(valid_distances) if valid_distances else None
         distance_threshold = None
         if apply_threshold and min_distance is not None:
             distance_threshold = min(0.6, min_distance + 0.2)
 
+        top_distance = retrieval_trace.get("top_distance")
+        if min_distance is not None and (top_distance is None or min_distance < top_distance):
+            retrieval_trace["top_distance"] = min_distance
+
         if results and results.get('documents') and results['documents'][0]:
-            for idx, doc in enumerate(results['documents'][0]):
-                if len(context_parts) >= max_chunks:
-                    break
+            docs = results['documents'][0]
+            for idx, doc in enumerate(docs):
                 if not doc:
                     continue
+
+                metadata = None
+                if results.get('metadatas') and results['metadatas'][0] and idx < len(results['metadatas'][0]):
+                    metadata = results['metadatas'][0][idx]
+                distance_value = distances[idx] if distances and idx < len(distances) else None
+
+                source_id = None
+                source_label = None
+                url = None
+                chunk_index = None
+                if isinstance(metadata, dict):
+                    raw_source_id = metadata.get('source_id')
+                    try:
+                        source_id = int(raw_source_id) if raw_source_id is not None else None
+                    except Exception:
+                        source_id = None
+                    source_label = metadata.get('title') or metadata.get('filename') or metadata.get('url')
+                    url = metadata.get('url')
+                    chunk_index = metadata.get('chunk_index')
+
+                if len(retrieval_trace["retrieved_chunks"]) < 80:
+                    retrieval_trace["retrieved_chunks"].append({
+                        "stage": stage,
+                        "query": query_used,
+                        "rank": idx,
+                        "distance": distance_value,
+                        "source_id": source_id,
+                        "source_label": source_label,
+                        "url": url,
+                        "chunk_index": chunk_index,
+                        "snippet": _snippet(doc),
+                    })
+
                 if distances and distance_threshold is not None and idx < len(distances):
-                    if distances[idx] is not None and distances[idx] > distance_threshold:
+                    threshold = distance_threshold
+                    if target_year and target_year in doc:
+                        threshold = min(0.8, threshold + 0.12)
+                    if distances[idx] is not None and distances[idx] > threshold:
                         continue
 
                 normalized = " ".join(doc.split()).strip().lower()
@@ -280,16 +565,18 @@ def _prepare_chat_payload(
                     continue
                 seen_chunks.add(normalized)
 
-                context_parts.append(doc)
-                if results.get('metadatas') and results['metadatas'][0] and idx < len(results['metadatas'][0]):
-                    metadata = results['metadatas'][0][idx]
-                    if isinstance(metadata, dict) and 'source_id' in metadata:
-                        source_ids.add(int(metadata['source_id']))
-
-                    if isinstance(metadata, dict):
-                        label = metadata.get('title') or metadata.get('filename') or metadata.get('url')
-                        if label:
-                            context_parts[-1] = f"Source: {label}\n{context_parts[-1]}"
+                candidate_pool.append({
+                    "stage": stage,
+                    "query": query_used,
+                    "rank": idx,
+                    "distance": distance_value,
+                    "source_id": source_id,
+                    "source_label": source_label,
+                    "url": url,
+                    "chunk_index": chunk_index,
+                    "doc": doc,
+                    "snippet": _snippet(doc),
+                })
 
     primary_results = chroma_client.query(
         query_text,
@@ -297,10 +584,9 @@ def _prepare_chat_payload(
         organization_id=organization_id,
         widget_id=widget_id,
     )
-    _add_results(primary_results, apply_threshold=True)
+    _add_results(primary_results, query_used=query_variants[0], stage="primary", apply_threshold=True)
 
     if not context_parts:
-        query_variants = _expand_queries(query_text, message)
         for q in query_variants[1:]:
             if len(context_parts) >= 12:
                 break
@@ -310,19 +596,79 @@ def _prepare_chat_payload(
                 organization_id=organization_id,
                 widget_id=widget_id,
             )
-            _add_results(results, apply_threshold=False)
+            _add_results(results, query_used=q, stage="expanded", apply_threshold=False)
 
-    if not context_parts:
+    if not candidate_pool:
         fallback_results = chroma_client.query(
             query_text,
             n_results=15,
             organization_id=organization_id,
             widget_id=widget_id,
         )
-        _add_results(fallback_results, max_chunks=12, apply_threshold=False)
+        _add_results(fallback_results, query_used=query_text, stage="fallback", max_chunks=12, apply_threshold=False)
+
+    reranked_candidates = _semantic_rerank_candidates(candidate_pool, message)
+    selected_candidates = reranked_candidates[:12]
+
+    for candidate in selected_candidates:
+        doc = candidate.get("doc") or ""
+        label = candidate.get("source_label")
+        context_entry = f"Source: {label}\n{doc}" if label else doc
+        context_parts.append(context_entry)
+
+        source_id = candidate.get("source_id")
+        if source_id is not None:
+            source_ids.add(source_id)
+
+        if len(retrieval_trace["selected_chunks"]) < 24:
+            retrieval_trace["selected_chunks"].append({
+                "stage": candidate.get("stage"),
+                "query": candidate.get("query"),
+                "rank": candidate.get("rank"),
+                "distance": candidate.get("distance"),
+                "source_id": candidate.get("source_id"),
+                "source_label": candidate.get("source_label"),
+                "url": candidate.get("url"),
+                "chunk_index": candidate.get("chunk_index"),
+                "snippet": candidate.get("snippet"),
+                "rerank_score": round(float(candidate.get("rerank_score", 0.0)), 6),
+                "overlap": round(float(candidate.get("overlap", 0.0)), 6),
+            })
+
+    top_score = float(selected_candidates[0].get("rerank_score", 0.0)) if selected_candidates else 0.0
+    top_distance = selected_candidates[0].get("distance") if selected_candidates else None
+    top_distance = float(top_distance) if top_distance is not None else None
+    avg_overlap = 0.0
+    if selected_candidates:
+        top_subset = selected_candidates[:3]
+        avg_overlap = sum(float(c.get("overlap", 0.0)) for c in top_subset) / len(top_subset)
+
+    weak_evidence = (
+        not selected_candidates
+        or top_score < 0.33
+        or ((top_distance is None or top_distance > 0.32) and avg_overlap < 0.08)
+    )
+
+    structured_answer, conflicting_values = _try_structured_fact_answer(message, selected_candidates)
+    contradictory_evidence = len(conflicting_values) > 1
+    needs_clarification = bool(not structured_answer and (weak_evidence or contradictory_evidence) and bool(selected_candidates))
+
+    if needs_clarification:
+        retrieval_trace["clarifying_question"] = _build_clarifying_question(message, target_year, conflicting_values)
+    else:
+        retrieval_trace["clarifying_question"] = None
+
+    retrieval_trace["structured_answer"] = structured_answer
+    retrieval_trace["weak_evidence"] = weak_evidence
+    retrieval_trace["contradictory_evidence"] = contradictory_evidence
+    retrieval_trace["needs_clarification"] = needs_clarification
+    retrieval_trace["rerank_top_score"] = round(top_score, 6)
+    retrieval_trace["rerank_avg_overlap_top3"] = round(avg_overlap, 6)
 
     context = "\n\n".join(context_parts) if context_parts else ""
     has_context = bool(context_parts)
+    retrieval_trace["has_context"] = has_context
+    retrieval_trace["source_ids"] = sorted(source_ids)
 
     widget_config = db.query(WidgetConfig).filter(
         WidgetConfig.widget_id == widget_id,
@@ -393,7 +739,7 @@ Context:
 
     messages.append({"role": "user", "content": message})
 
-    return messages, sources, has_context, escalation_message
+    return messages, sources, has_context, escalation_message, retrieval_trace
 
 
 def persist_conversation(
@@ -404,7 +750,8 @@ def persist_conversation(
     organization_id: int,
     message: str,
     response_text: str,
-    token_usage: Dict
+    token_usage: Dict,
+    retrieval_trace: Optional[Dict] = None,
 ) -> None:
     conversation = Conversation(
         session_id=session_id,
@@ -417,6 +764,25 @@ def persist_conversation(
     )
     db.add(conversation)
     db.flush()
+
+    if retrieval_trace:
+        trace_record = RetrievalTrace(
+            conversation_id=conversation.id,
+            session_id=session_id,
+            widget_id=widget_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            user_query=retrieval_trace.get("user_query") or message,
+            retrieval_query=retrieval_trace.get("retrieval_query"),
+            query_variants=json.dumps(retrieval_trace.get("query_variants", [])),
+            retrieved_chunks=json.dumps(retrieval_trace.get("retrieved_chunks", [])),
+            selected_chunks=json.dumps(retrieval_trace.get("selected_chunks", [])),
+            source_ids=json.dumps(retrieval_trace.get("source_ids", [])),
+            has_context=bool(retrieval_trace.get("has_context")),
+            escalation_triggered=bool(retrieval_trace.get("escalation_triggered")),
+            top_distance=float(retrieval_trace["top_distance"]) if retrieval_trace.get("top_distance") is not None else None,
+        )
+        db.add(trace_record)
 
     sync_conversation_metrics(db, conversation.id, organization_id, session_id, token_usage=token_usage)
     db.commit()
@@ -437,7 +803,7 @@ def generate_chat_response(
     try:
         is_first_turn = not _has_prior_turns(db, session_id, widget_id)
 
-        messages, sources, has_context, escalation_message = _prepare_chat_payload(
+        messages, sources, has_context, escalation_message, retrieval_trace = _prepare_chat_payload(
             message,
             session_id,
             widget_id,
@@ -447,26 +813,42 @@ def generate_chat_response(
             language_label=language_label,
             retrieval_message=retrieval_message
         )
-        
-        # Generate response
-        response = client.chat.completions.create(
-            model=settings.OPENAI_CHAT_MODEL,
-            messages=messages,
-            max_tokens=500,
-            temperature=0.3
-        )
-        
-        ai_response = response.choices[0].message.content
-        if not has_context or _looks_like_no_answer(ai_response):
-            ai_response = escalation_message
-        ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn)
 
-        usage = getattr(response, "usage", None)
-        token_usage = {
-            "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
-            "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
-            "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
-        }
+        override_response = retrieval_trace.get("structured_answer")
+        if not override_response and retrieval_trace.get("needs_clarification"):
+            override_response = retrieval_trace.get("clarifying_question")
+
+        if override_response:
+            ai_response = str(override_response)
+            escalation_triggered = False
+            token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        else:
+            # Generate response
+            response = client.chat.completions.create(
+                model=settings.OPENAI_CHAT_MODEL,
+                messages=messages,
+                max_tokens=500,
+                temperature=0.3
+            )
+
+            ai_response = response.choices[0].message.content
+            escalation_triggered = not has_context or _looks_like_no_answer(ai_response)
+            if escalation_triggered:
+                if _has_prior_escalation_contacts(db, session_id, widget_id):
+                    ai_response = escalation_message
+                else:
+                    ai_response = _build_soft_fallback_message()
+                    escalation_triggered = False
+
+            usage = getattr(response, "usage", None)
+            token_usage = {
+                "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
+            }
+
+        ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn)
+        retrieval_trace["escalation_triggered"] = escalation_triggered
         
         persist_conversation(
             db,
@@ -476,7 +858,8 @@ def generate_chat_response(
             organization_id=organization_id,
             message=message,
             response_text=ai_response,
-            token_usage=token_usage
+            token_usage=token_usage,
+            retrieval_trace=retrieval_trace,
         )
 
         return ai_response, sources, token_usage
@@ -497,7 +880,7 @@ def stream_chat_response(
     language_label: Optional[str] = None,
     retrieval_message: Optional[str] = None
 ):
-    messages, sources, has_context, escalation_message = _prepare_chat_payload(
+    messages, sources, has_context, escalation_message, retrieval_trace = _prepare_chat_payload(
         message,
         session_id,
         widget_id,
@@ -508,8 +891,21 @@ def stream_chat_response(
         retrieval_message=retrieval_message
     )
 
+    override_response = retrieval_trace.get("structured_answer")
+    if not override_response and retrieval_trace.get("needs_clarification"):
+        override_response = retrieval_trace.get("clarifying_question")
+
+    if override_response:
+        retrieval_trace["escalation_triggered"] = False
+        return None, sources, str(override_response), retrieval_trace
+
     if not has_context:
-        return None, sources, escalation_message
+        if _has_prior_escalation_contacts(db, session_id, widget_id):
+            retrieval_trace["escalation_triggered"] = True
+            return None, sources, escalation_message, retrieval_trace
+
+        retrieval_trace["escalation_triggered"] = False
+        return None, sources, _build_soft_fallback_message(), retrieval_trace
 
     stream = client.chat.completions.create(
         model=settings.OPENAI_CHAT_MODEL,
@@ -520,7 +916,7 @@ def stream_chat_response(
         stream_options={"include_usage": True}
     )
 
-    return stream, sources, escalation_message
+    return stream, sources, escalation_message, retrieval_trace
 
 
 def translate_text(text: str, target_language_code: Optional[str] = None, target_language_label: Optional[str] = None) -> str:
