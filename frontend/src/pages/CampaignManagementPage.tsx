@@ -88,6 +88,20 @@ const buildEmailStarterTemplate = (campaignName?: string) => `
 
 const CAMPAIGN_EMAIL_MERGE_TAG_HELP = 'Merge tags: {{name}}, {{first_name}}, {{campaign_name}}';
 
+const getContactListLabel = (list: ContactListItem) => {
+  const autoTag = list.is_agent_auto_list ? ' • Auto' : '';
+  return `${list.list_name}${autoTag} (${list.contact_count})`;
+};
+
+const getContactListDescription = (list: ContactListItem) => {
+  if (list.description) return list.description;
+  if (list.is_agent_auto_list) {
+    const widgetSuffix = list.agent_widget_id ? ` for agent ${list.agent_widget_id}` : '';
+    return `Auto-created from appointment bookings${widgetSuffix}`;
+  }
+  return '-';
+};
+
 const CampaignManagementPage: React.FC = () => {
   const theme = useTheme();
   const [tab, setTab] = useState(0);
@@ -1052,7 +1066,7 @@ const CampaignManagementPage: React.FC = () => {
                   >
                     {contactLists.map((list) => (
                       <MenuItem key={list.id} value={list.id}>
-                        {list.list_name} ({list.contact_count})
+                        {getContactListLabel(list)}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1290,8 +1304,15 @@ const CampaignManagementPage: React.FC = () => {
                     {contactLists.length ? (
                       contactLists.map((list) => (
                         <TableRow key={list.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
-                          <TableCell>{list.list_name}</TableCell>
-                          <TableCell>{list.description || '-'}</TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                              <Typography>{list.list_name}</Typography>
+                              {list.is_agent_auto_list && (
+                                <Chip size="small" color="info" variant="outlined" label="Auto-created" />
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>{getContactListDescription(list)}</TableCell>
                           <TableCell>{list.contact_count}</TableCell>
                           <TableCell>{formatDate(list.created_at)}</TableCell>
                           <TableCell>
@@ -1408,7 +1429,7 @@ const CampaignManagementPage: React.FC = () => {
                       onChange={(e) => setUploadListId(Number(e.target.value))}
                     >
                       {contactLists.map((list) => (
-                        <MenuItem key={list.id} value={list.id}>{list.list_name}</MenuItem>
+                        <MenuItem key={list.id} value={list.id}>{getContactListLabel(list)}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>

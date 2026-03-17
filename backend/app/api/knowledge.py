@@ -67,6 +67,25 @@ def _get_crawl_job(job_id: str) -> Dict[str, object]:
         return dict(job) if job else {}
 
 
+def _get_latest_active_crawl_job(organization_id: int, widget_id: str) -> Dict[str, object]:
+    now_ts = time.time()
+    with _crawl_jobs_lock:
+        _cleanup_crawl_jobs(now_ts)
+        candidates = [
+            dict(job)
+            for job in _crawl_jobs.values()
+            if job.get("organization_id") == organization_id
+            and job.get("widget_id") == widget_id
+            and job.get("status") in {"queued", "running"}
+        ]
+
+    if not candidates:
+        return {}
+
+    candidates.sort(key=lambda item: float(item.get("updated_at_ts") or 0.0), reverse=True)
+    return candidates[0]
+
+
 def _job_public_payload(job: Dict[str, object]) -> Dict[str, object]:
     if not job:
         return {}
@@ -253,6 +272,23 @@ async def start_crawl_website_job(
     except Exception as e:
         logger.error(f"Error starting crawl background job: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/crawl/async/latest")
+async def get_latest_active_crawl_website_job(
+    widget_id: str,
+    current_user: User = Depends(require_admin)
+):
+    """Get the latest active (queued/running) crawl/embed job for a widget."""
+    widget = (widget_id or "").strip()
+    if not widget:
+        raise HTTPException(status_code=400, detail="widget_id is required")
+
+    job = _get_latest_active_crawl_job(current_user.organization_id, widget)
+    if not job:
+        raise HTTPException(status_code=404, detail="No active crawl job found")
+
+    return _job_public_payload(job)
 
 
 @router.get("/crawl/async/{job_id}")

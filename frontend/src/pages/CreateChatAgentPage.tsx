@@ -30,6 +30,7 @@ import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import GroupsIcon from '@mui/icons-material/Groups';
 import ForumIcon from '@mui/icons-material/Forum';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../components/Layout/AdminLayout';
 import api from '../services/api';
@@ -157,6 +158,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [crawlPreviewItems, setCrawlPreviewItems] = useState<CrawlPreviewItem[]>([]);
   const [crawlJobStatus, setCrawlJobStatus] = useState<CrawlJobStatus | null>(null);
+  const [refreshingCrawlStatus, setRefreshingCrawlStatus] = useState(false);
   const [knowledgeActionsDone, setKnowledgeActionsDone] = useState(0);
 
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
@@ -624,6 +626,36 @@ const CreateChatAgentPage: React.FC = () => {
   }, [activeStep, createdWidgetId]);
 
   useEffect(() => {
+    if (!createdWidgetId || activeStep !== 1) return;
+    if (crawlJobStatus?.job_id) return;
+
+    let active = true;
+
+    const hydrateLatestActiveCrawlJob = async () => {
+      try {
+        const latestJob = await knowledgeService.getLatestActiveCrawlWebsiteJob(createdWidgetId);
+        if (!active) return;
+        if (latestJob?.job_id) {
+          setCrawlJobStatus(latestJob);
+        }
+      } catch (err: any) {
+        // Ignore when there is no active crawl job (404) and avoid noisy errors during edit flow.
+        if (!active) return;
+        const statusCode = err?.response?.status;
+        if (statusCode && statusCode !== 404) {
+          setError(err.response?.data?.detail || 'Failed to load active crawl/embed progress.');
+        }
+      }
+    };
+
+    hydrateLatestActiveCrawlJob();
+
+    return () => {
+      active = false;
+    };
+  }, [activeStep, createdWidgetId, crawlJobStatus?.job_id]);
+
+  useEffect(() => {
     if (!crawlJobStatus?.job_id) return;
     if (crawlJobStatus.status !== 'queued' && crawlJobStatus.status !== 'running') return;
 
@@ -814,6 +846,56 @@ const CreateChatAgentPage: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to add website knowledge.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const refreshCrawlProgress = async () => {
+    if (!createdWidgetId) {
+      setError('Save agent profile first.');
+      return;
+    }
+
+    try {
+      setRefreshingCrawlStatus(true);
+      setError('');
+
+      const previousStatus = crawlJobStatus?.status;
+      let nextStatus: CrawlJobStatus | null = null;
+
+      if (crawlJobStatus?.job_id) {
+        try {
+          nextStatus = await knowledgeService.getCrawlWebsiteJobStatus(crawlJobStatus.job_id);
+        } catch (err: any) {
+          if (err?.response?.status !== 404) {
+            throw err;
+          }
+        }
+      }
+
+      if (!nextStatus) {
+        nextStatus = await knowledgeService.getLatestActiveCrawlWebsiteJob(createdWidgetId);
+      }
+
+      setCrawlJobStatus(nextStatus);
+
+      if (nextStatus.status === 'completed') {
+        if (previousStatus !== 'completed') {
+          setKnowledgeActionsDone((v) => v + 1);
+        }
+        setSuccess(nextStatus.message || 'Website knowledge embedding completed.');
+      } else if (nextStatus.status === 'failed') {
+        setError(nextStatus.error || nextStatus.message || 'Crawl/embed job failed.');
+      } else {
+        setSuccess(nextStatus.message || 'Crawl/embed progress refreshed.');
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        setError('No active crawl/embed job found for this agent.');
+      } else {
+        setError(err.response?.data?.detail || 'Failed to refresh crawl/embed progress.');
+      }
+    } finally {
+      setRefreshingCrawlStatus(false);
     }
   };
 
@@ -1475,6 +1557,14 @@ const CreateChatAgentPage: React.FC = () => {
                             }}
                           >
                             Embed Selected ({selectedPreviewCount})
+                          </Button>
+                          <Button
+                            variant="text"
+                            onClick={refreshCrawlProgress}
+                            disabled={refreshingCrawlStatus || !createdWidgetId}
+                            startIcon={refreshingCrawlStatus ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
+                          >
+                            {refreshingCrawlStatus ? 'Refreshing...' : 'Refresh Progress'}
                           </Button>
                         </Stack>
 

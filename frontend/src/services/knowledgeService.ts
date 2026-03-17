@@ -29,6 +29,13 @@ export const knowledgeService = {
     return response.data;
   },
 
+  async getLatestActiveCrawlWebsiteJob(widgetId: string): Promise<CrawlJobStatus> {
+    const response = await api.get<CrawlJobStatus>('/api/admin/knowledge/crawl/async/latest', {
+      params: { widget_id: widgetId },
+    });
+    return response.data;
+  },
+
   async uploadDocument(file: File, widgetId: string): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
