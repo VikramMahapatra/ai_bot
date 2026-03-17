@@ -15,6 +15,8 @@ export interface CallingAgent {
 
     // Campaign Stats
     active_campaigns: number
+    completed_campaigns: number
+    pending_campaigns: number
     allocated_calls: number
     pending_calls: number
     attempted_calls: number

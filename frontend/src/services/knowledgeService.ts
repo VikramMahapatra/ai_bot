@@ -1,5 +1,12 @@
 import api from './api';
-import { KnowledgeSource, WebCrawlRequest, WebCrawlResponse, WebCrawlPreviewRequest, WebCrawlPreviewResponse } from '../types';
+import {
+  KnowledgeSource,
+  WebCrawlRequest,
+  WebCrawlResponse,
+  WebCrawlPreviewRequest,
+  WebCrawlPreviewResponse,
+  CrawlJobStatus,
+} from '../types';
 
 export const knowledgeService = {
   async previewWebsiteLinks(request: WebCrawlPreviewRequest): Promise<WebCrawlPreviewResponse> {
@@ -9,6 +16,23 @@ export const knowledgeService = {
 
   async crawlWebsite(request: WebCrawlRequest): Promise<WebCrawlResponse> {
     const response = await api.post<WebCrawlResponse>('/api/admin/knowledge/crawl', request);
+    return response.data;
+  },
+
+  async startCrawlWebsiteJob(request: WebCrawlRequest): Promise<CrawlJobStatus> {
+    const response = await api.post<CrawlJobStatus>('/api/admin/knowledge/crawl/async', request);
+    return response.data;
+  },
+
+  async getCrawlWebsiteJobStatus(jobId: string): Promise<CrawlJobStatus> {
+    const response = await api.get<CrawlJobStatus>(`/api/admin/knowledge/crawl/async/${encodeURIComponent(jobId)}`);
+    return response.data;
+  },
+
+  async getLatestActiveCrawlWebsiteJob(widgetId: string): Promise<CrawlJobStatus> {
+    const response = await api.get<CrawlJobStatus>('/api/admin/knowledge/crawl/async/latest', {
+      params: { widget_id: widgetId },
+    });
     return response.data;
   },
 
@@ -36,9 +60,13 @@ export const knowledgeService = {
     await api.delete(`/api/admin/knowledge/sources/${sourceId}`);
   },
 
-  async getVectorizedData(widgetId: string): Promise<any> {
+  async getVectorizedData(widgetId: string, options?: { includeDocuments?: boolean; limit?: number }): Promise<any> {
     const response = await api.get('/api/admin/knowledge/vectorized-data', {
-      params: { widget_id: widgetId },
+      params: {
+        widget_id: widgetId,
+        include_documents: options?.includeDocuments ?? false,
+        limit: options?.limit ?? 200,
+      },
     });
     return response.data;
   },

@@ -1093,19 +1093,19 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             Maximum duration for a single call
                         </Typography>
                     </Box>
-                    <Stack spacing={1} sx={{ mt: 3 }}>
-                        {/* <FormControlLabel
+                    {/* <Stack spacing={1} sx={{ mt: 3 }}>
+                        <FormControlLabel
                             control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
                             label="Enable Sentiment Detection"
-                        /> */}
+                        /> 
                         <FormControlLabel
                             control={<Switch checked={formData.voice_mail_detection} onChange={(e) => handleToggleChange('voice_mail_detection', e.target.checked)} />}
                             label="Voice Mail Detection"
                         />
-                        {/* <FormControlLabel
+                         <FormControlLabel
                             control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
                             label="Enable Call Recording"
-                        /> */}
+                        /> 
                         <FormControlLabel
                             control={
                                 <Switch
@@ -1120,7 +1120,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             }
                             label="Calendar Sync"
                         />
-                    </Stack>
+                    </Stack> */}
                 </Card >
 
 

@@ -575,6 +575,104 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
         return False, str(e)
 
 
+def send_widget_test_link_email(
+    recipient_email: str,
+    subject: str,
+    message_body: str,
+) -> tuple[bool, str | None]:
+    """Send a simple Zentrixel-branded widget test-link email."""
+    normalized_email, validation_error = _validate_email_address(recipient_email)
+    if not normalized_email:
+        return False, validation_error or "Missing or invalid email"
+
+    if _is_reserved_test_email(normalized_email):
+        return False, "Recipient email uses a placeholder/test domain"
+
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email)
+    if rcpt_ok is False:
+        return False, rcpt_error or "Recipient mailbox rejected"
+    if rcpt_ok is None and rcpt_error:
+        logger.warning("Widget test-link precheck inconclusive for %s: %s", normalized_email, rcpt_error)
+
+    sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
+    envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+    if not sender_email or not envelope_sender:
+        return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
+
+    safe_subject = (subject or "Welcome from Zentrixel").strip() or "Welcome from Zentrixel"
+    safe_body = (message_body or "").strip()
+    if not safe_body:
+        return False, "Email content cannot be empty"
+
+    # Keep formatting simple: preserve line breaks and auto-link URLs in HTML.
+    escaped_lines = [_escape_html(line) for line in safe_body.splitlines()]
+    html_body = "<br>".join(escaped_lines)
+    html_body = re.sub(r"(https?://[^\s<]+)", r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', html_body)
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset=\"UTF-8\" />
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+      </head>
+      <body style=\"margin:0;padding:0;background:#f4f8ff;font-family:Segoe UI,Arial,sans-serif;color:#0f172a;\">
+        <div style=\"max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dbe7ff;\">
+          <div style=\"padding:20px 24px;background:linear-gradient(135deg,#2f6bff 0%,#2d8ef0 100%);color:#ffffff;\">
+            <h2 style=\"margin:0;font-size:20px;line-height:1.25;\">Welcome from Zentrixel</h2>
+          </div>
+          <div style=\"padding:22px 24px;font-size:14px;line-height:1.7;color:#1e293b;\">
+            {html_body}
+          </div>
+          <div style=\"padding:14px 24px;border-top:1px solid #e5edff;font-size:12px;color:#64748b;\">
+            Sent via Zentrixel AI Platform
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    plain_content = safe_body
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = safe_subject
+        msg["From"] = sender_email
+        msg["Reply-To"] = sender_email
+        msg["To"] = normalized_email
+        msg["Date"] = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid(domain=sender_email.split("@", 1)[1] if "@" in sender_email else None)
+
+        msg.attach(MIMEText(plain_content, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        with _open_smtp_server() as server:
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+            refused = server.send_message(
+                msg,
+                from_addr=envelope_sender,
+                to_addrs=[normalized_email],
+            )
+
+        if refused:
+            refusal = refused.get(normalized_email) or next(iter(refused.values()))
+            if isinstance(refusal, tuple) and len(refusal) >= 2:
+                code, message = refusal[0], _decode_smtp_message(refusal[1])
+                return False, f"SMTP recipient refused ({code}): {message}"
+            return False, "SMTP recipient refused"
+
+        logger.info(
+            "Widget test-link email accepted by SMTP for %s (message_id=%s)",
+            normalized_email,
+            msg.get("Message-ID"),
+        )
+        return True, None
+    except Exception as exc:
+        logger.error("Failed widget test-link email to %s: %s", normalized_email, str(exc), exc_info=True)
+        return False, str(exc)
+
+
 def send_appointment_rescheduled_notification(
     recipients: Iterable[str],
     participant_name: str,

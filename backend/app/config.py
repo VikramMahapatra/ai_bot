@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     JWT_ALGORITHM: str
     JWT_EXPIRATION_MINUTES: int
+    TEST_LINK_EXPIRY_HOURS: int = 24
     
     # CORS Configuration
     CORS_ORIGINS: str

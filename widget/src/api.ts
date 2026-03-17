@@ -1,6 +1,7 @@
 interface ChatResponse {
   response: string;
   session_id: string;
+  ui_action?: string;
 }
 
 interface SuggestedQuestionsResponse {

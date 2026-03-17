@@ -128,6 +128,9 @@ class EcholeadsClient:
     def fetch_echolead_calls(self):
         return self._get("/call-logs")
     
+    def get_campaign_by_id(self, campaign_id: int):
+        return self._get(f"/campaigns/{campaign_id}")
+    
     def create_campaign(self, payload: dict):
         return self._post("/campaigns", payload)
     

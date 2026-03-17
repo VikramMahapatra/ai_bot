@@ -14,28 +14,27 @@ import {
   CircularProgress,
   Chip,
   LinearProgress,
-  Tooltip,
 } from '@mui/material';
 import StorageIcon from '@mui/icons-material/Storage';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
+import LayersIcon from '@mui/icons-material/Layers';
 import { knowledgeService } from '../../services/knowledgeService';
 
-interface VectorizedDocument {
-  id: string;
+interface VectorizedSourceSummary {
   source_id: string;
   source_type: string;
-  filename: string | null;
+  name: string;
   url: string | null;
-  title: string | null;
-  chunk_index: number;
-  created_at: string;
-  preview: string;
+  chunks: number;
 }
 
 interface VectorizedData {
   user_id: number;
   total_chunks: number;
-  documents: VectorizedDocument[];
+  total_sources: number;
+  source_summary: VectorizedSourceSummary[];
+  include_documents: boolean;
+  documents: Array<unknown>;
 }
 
 interface VectorizedDataViewerProps {
@@ -53,7 +52,7 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, r
   const loadVectorizedData = async () => {
     try {
       setLoading(true);
-      const result = await knowledgeService.getVectorizedData(widgetId);
+      const result = await knowledgeService.getVectorizedData(widgetId, { includeDocuments: false });
       setData(result);
       setError('');
       onLoaded && onLoaded(result);
@@ -86,7 +85,7 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, r
     return colors[type] || 'default';
   };
 
-  const uniqueSources = new Set((data?.documents || []).map((doc) => doc.source_id)).size;
+  const uniqueSources = data?.total_sources || 0;
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 2 }}>
@@ -107,6 +106,7 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, r
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip icon={<TravelExploreIcon />} label={`${data?.total_chunks || 0} chunks`} size="small" variant="outlined" />
             <Chip label={`${uniqueSources} sources`} size="small" variant="outlined" />
+            <Chip icon={<LayersIcon />} label="Preview text disabled for performance" size="small" variant="outlined" />
           </Stack>
         </Box>
 
@@ -128,7 +128,7 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, r
         ) : data ? (
           <>
             <Typography variant="body2" color="text.secondary">
-              Each chunk is a piece of text vectorized for semantic retrieval.
+              Showing vector index counts and source-level chunk totals. Embedding text previews are intentionally disabled to keep the page fast.
             </Typography>
 
             {data.total_chunks === 0 ? (
@@ -142,47 +142,31 @@ const VectorizedDataViewer: React.FC<VectorizedDataViewerProps> = ({ widgetId, r
                     <TableRow>
                       <TableCell>Source</TableCell>
                       <TableCell>Type</TableCell>
-                      <TableCell>Chunk #</TableCell>
-                      <TableCell>Preview</TableCell>
-                      <TableCell>Created</TableCell>
+                      <TableCell>Chunks</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {data.documents.map((doc) => {
-                      const previewText = (doc.preview || '').trim();
-                      const shortPreview = previewText.length > 90 ? `${previewText.slice(0, 90)}...` : previewText;
+                    {data.source_summary.map((source) => {
                       return (
-                        <TableRow key={doc.id} hover>
+                        <TableRow key={`${source.source_id}-${source.source_type}`} hover>
                           <TableCell>
                             <Typography variant="body2" noWrap sx={{ maxWidth: 220 }}>
-                              {doc.filename || doc.url || doc.title || 'Unknown'}
+                              {source.name || 'Unknown'}
                             </Typography>
-                            {doc.url && (
+                            {source.url && (
                               <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 220, display: 'block' }}>
-                                {doc.url}
+                                {source.url}
                               </Typography>
                             )}
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={doc.source_type}
+                              label={source.source_type}
                               size="small"
-                              color={getSourceTypeColor(doc.source_type)}
+                              color={getSourceTypeColor(source.source_type)}
                             />
                           </TableCell>
-                          <TableCell>{doc.chunk_index}</TableCell>
-                          <TableCell sx={{ maxWidth: 360 }}>
-                            <Tooltip title={previewText || 'No preview available'} placement="top-start">
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                {shortPreview || 'No preview available'}
-                              </Typography>
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption">
-                              {new Date(doc.created_at).toLocaleDateString()}
-                            </Typography>
-                          </TableCell>
+                          <TableCell>{source.chunks}</TableCell>
                         </TableRow>
                       );
                     })}

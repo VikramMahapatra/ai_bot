@@ -6,10 +6,6 @@ import {
   Chip,
   CircularProgress,
   Divider,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Paper,
   Stack,
   TextField,
@@ -24,12 +20,17 @@ import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { appEnv } from '../config/env';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface ChatApiResponse {
+  response?: string;
+  ui_action?: string;
 }
 
 interface WidgetPublicConfig {
@@ -69,6 +70,47 @@ const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIco
   } catch {
     return {};
   }
+};
+
+const APPOINTMENT_FORM_PROMPT =
+  'If you would like to set a meeting, please fill this short form and I will set it up for you.';
+
+const getDefaultAppointmentDateTime = () => {
+  const seed = new Date(Date.now() + 60 * 60 * 1000);
+  const local = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000).toISOString();
+  return {
+    date: local.slice(0, 10),
+    time: local.slice(11, 16),
+  };
+};
+
+const parseJwtExpiryMs = (token: string): number | null => {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const base64 = base64Url.padEnd(base64Url.length + ((4 - (base64Url.length % 4)) % 4), '=');
+    const payloadRaw = window.atob(base64);
+    const payload = JSON.parse(payloadRaw);
+    const exp = Number(payload?.exp);
+    if (!Number.isFinite(exp) || exp <= 0) return null;
+    return exp * 1000;
+  } catch {
+    return null;
+  }
+};
+
+const formatTimeRemaining = (ms: number): string => {
+  if (ms <= 0) return 'Expired';
+
+  const totalMinutes = Math.floor(ms / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 };
 
 interface ProductTrack {
@@ -135,21 +177,24 @@ const deliveryFlow = [
 
 const AgentTestPage: React.FC = () => {
   const { widgetId = '' } = useParams();
+  const [searchParams] = useSearchParams();
+  const testToken = (searchParams.get('token') || '').trim();
   const [isOpen, setIsOpen] = useState(false);
   const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(null);
+  const [accessError, setAccessError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: 'Hi! How can I help you today?' },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [appointmentName, setAppointmentName] = useState('');
   const [appointmentEmail, setAppointmentEmail] = useState('');
-  const [appointmentPhone, setAppointmentPhone] = useState('');
-  const [appointmentDateTime, setAppointmentDateTime] = useState('');
-  const [appointmentNotes, setAppointmentNotes] = useState('');
+  const [appointmentDate, setAppointmentDate] = useState('');
+  const [appointmentTime, setAppointmentTime] = useState('');
   const [appointmentBusy, setAppointmentBusy] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const apiBaseUrl = appEnv.apiUrl;
   const position = widgetConfig?.position || 'bottom-right';
@@ -160,6 +205,13 @@ const AgentTestPage: React.FC = () => {
   const iconSelection = useMemo(() => parseIconSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
   const botIconGlyph = BOT_ICON_GLYPHS[iconSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
   const userIconGlyph = USER_ICON_GLYPHS[iconSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
+  const testTokenExpiryMs = useMemo(() => parseJwtExpiryMs(testToken), [testToken]);
+  const testTokenRemainingMs = useMemo(
+    () => (testTokenExpiryMs ? testTokenExpiryMs - nowMs : null),
+    [testTokenExpiryMs, nowMs]
+  );
+  const testTokenExpired = typeof testTokenRemainingMs === 'number' && testTokenRemainingMs <= 0;
+  const canUseChat = Boolean(widgetId && testToken && !accessError && !testTokenExpired);
 
   const sessionId = useMemo(() => {
     const key = `public_agent_session_${widgetId || 'unknown'}`;
@@ -171,11 +223,39 @@ const AgentTestPage: React.FC = () => {
   }, [widgetId]);
 
   useEffect(() => {
+    if (!testTokenExpiryMs) return;
+
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [testTokenExpiryMs]);
+
+  useEffect(() => {
     const loadWidgetConfig = async () => {
       if (!widgetId) return;
+      if (!testToken) {
+        setAccessError('Missing test access token. Please request a new share link.');
+        return;
+      }
+
       try {
-        const response = await fetch(`${apiBaseUrl}/api/admin/widget/config/${encodeURIComponent(widgetId)}`);
-        if (!response.ok) return;
+        const response = await fetch(
+          `${apiBaseUrl}/api/admin/widget/test/config/${encodeURIComponent(widgetId)}?token=${encodeURIComponent(testToken)}`
+        );
+        if (!response.ok) {
+          if (response.status === 401) {
+            setAccessError('This test link is invalid or has expired. Please request a new one.');
+          } else if (response.status === 404) {
+            setAccessError('This test link points to a widget that no longer exists.');
+          } else {
+            setAccessError('Unable to validate this test link right now. Please try again later.');
+          }
+          return;
+        }
+
+        setAccessError('');
         const config = (await response.json()) as WidgetPublicConfig;
         setWidgetConfig(config);
         setMessages((prev) => {
@@ -186,12 +266,13 @@ const AgentTestPage: React.FC = () => {
           return prev;
         });
       } catch {
+        setAccessError('Unable to validate this test link right now. Please try again later.');
         // Keep defaults when config fetch fails.
       }
     };
 
     loadWidgetConfig();
-  }, [apiBaseUrl, widgetId]);
+  }, [apiBaseUrl, testToken, widgetId]);
 
   const launcherPositionSx = useMemo(() => {
     if (position === 'bottom-left') return { left: 24, bottom: 24 };
@@ -209,7 +290,7 @@ const AgentTestPage: React.FC = () => {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || sending || !widgetId) return;
+    if (!text || sending || !canUseChat) return;
 
     setInput('');
     setSending(true);
@@ -230,9 +311,15 @@ const AgentTestPage: React.FC = () => {
         throw new Error('Failed to get response from chatbot');
       }
 
-      const data = await response.json();
-      const reply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
+      const data = (await response.json()) as ChatApiResponse;
+      const rawReply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
+      const shouldOpenAppointmentForm = data?.ui_action === 'open_appointment_form';
+      const reply = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawReply;
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+
+      if (shouldOpenAppointmentForm) {
+        openAppointmentDialog();
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -247,30 +334,36 @@ const AgentTestPage: React.FC = () => {
   };
 
   const openAppointmentDialog = () => {
-    if (!widgetId) return;
-    if (!appointmentDateTime) {
-      const seed = new Date(Date.now() + 60 * 60 * 1000);
-      const localDate = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-      setAppointmentDateTime(localDate);
-    }
+    if (!canUseChat) return;
+    const defaults = getDefaultAppointmentDateTime();
+    if (!appointmentDate) setAppointmentDate(defaults.date);
+    if (!appointmentTime) setAppointmentTime(defaults.time);
     setAppointmentError('');
-    setAppointmentOpen(true);
+    setShowAppointmentForm(true);
   };
 
   const bookAppointment = async () => {
-    if (!widgetId) return;
+    if (!canUseChat) return;
     if (!appointmentName.trim()) {
       setAppointmentError('Please enter your name.');
       return;
     }
-    if (!appointmentDateTime) {
+    if (!appointmentEmail.trim()) {
+      setAppointmentError('Please enter your email.');
+      return;
+    }
+    if (!appointmentDate || !appointmentTime) {
       setAppointmentError('Please select date/time.');
       return;
     }
 
-    const dateValue = new Date(appointmentDateTime);
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(appointmentEmail.trim())) {
+      setAppointmentError('Please enter a valid email.');
+      return;
+    }
+
+    const dateValue = new Date(`${appointmentDate}T${appointmentTime}`);
     if (Number.isNaN(dateValue.getTime())) {
       setAppointmentError('Invalid date/time.');
       return;
@@ -287,9 +380,7 @@ const AgentTestPage: React.FC = () => {
           widget_id: widgetId,
           appointment_at: dateValue.toISOString(),
           name: appointmentName.trim(),
-          email: appointmentEmail.trim() || undefined,
-          phone: appointmentPhone.trim() || undefined,
-          notes: appointmentNotes.trim() || undefined,
+          email: appointmentEmail.trim(),
           timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
         }),
       });
@@ -306,11 +397,7 @@ const AgentTestPage: React.FC = () => {
         { role: 'user', content: `Please book an appointment for ${dateValue.toLocaleString()}.` },
         { role: 'assistant', content: confirmation },
       ]);
-      setAppointmentOpen(false);
-      setAppointmentName('');
-      setAppointmentEmail('');
-      setAppointmentPhone('');
-      setAppointmentNotes('');
+      setShowAppointmentForm(false);
     } catch (err: any) {
       setAppointmentError(err?.message || 'Failed to book appointment');
     } finally {
@@ -415,6 +502,7 @@ const AgentTestPage: React.FC = () => {
                 size="large"
                 startIcon={<RocketLaunchIcon />}
                 onClick={() => setIsOpen(true)}
+                disabled={!canUseChat}
                 sx={{
                   bgcolor: '#f8fafc',
                   color: '#0f172a',
@@ -430,7 +518,13 @@ const AgentTestPage: React.FC = () => {
 
         {!widgetId && (
           <Alert severity="warning" sx={{ mb: 3 }}>
-            Missing widget ID in URL. Share links should look like `/agent-test/&lt;widgetId&gt;`.
+            Missing widget ID in URL. Share links should look like `/agent-test/&lt;widgetId&gt;?token=&lt;signedToken&gt;`.
+          </Alert>
+        )}
+
+        {accessError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {accessError}
           </Alert>
         )}
 
@@ -482,6 +576,24 @@ const AgentTestPage: React.FC = () => {
               <Typography variant="body2" sx={{ color: '#64748b' }}>API URL</Typography>
               <Typography sx={{ fontFamily: 'Consolas, Menlo, monospace', wordBreak: 'break-all', color: '#0f172a' }}>
                 {apiBaseUrl}
+              </Typography>
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="body2" sx={{ color: '#64748b' }}>Link Expiry</Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                <Chip
+                  size="small"
+                  color={testTokenExpired ? 'error' : 'success'}
+                  label={
+                    testTokenExpiryMs
+                      ? testTokenExpired
+                        ? 'Expired'
+                        : `Expires in ${formatTimeRemaining(testTokenRemainingMs || 0)}`
+                      : 'Unknown expiry'
+                  }
+                />
+              </Stack>
+              <Typography sx={{ color: '#0f172a', fontSize: '0.82rem' }}>
+                {testTokenExpiryMs ? new Date(testTokenExpiryMs).toLocaleString() : 'Could not read token expiry'}
               </Typography>
               <Divider sx={{ my: 1 }} />
               <Typography variant="body2" sx={{ color: '#64748b' }}>Welcome Message</Typography>
@@ -543,6 +655,7 @@ const AgentTestPage: React.FC = () => {
       {!isOpen && (
         <Button
           onClick={() => setIsOpen(true)}
+          disabled={!canUseChat}
           variant="contained"
           sx={{
             position: 'fixed',
@@ -604,7 +717,7 @@ const AgentTestPage: React.FC = () => {
               variant="outlined"
               startIcon={<CalendarMonthIcon />}
               onClick={openAppointmentDialog}
-              disabled={!widgetId || sending}
+              disabled={!canUseChat || sending}
               size="small"
               fullWidth
               sx={{ borderRadius: '10px' }}
@@ -659,6 +772,130 @@ const AgentTestPage: React.FC = () => {
                   </Box>
                 </Box>
               ))}
+              {showAppointmentForm && (
+                <Box
+                  sx={{
+                    alignSelf: 'flex-start',
+                    maxWidth: '92%',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    gap: 0.9,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #d1d5db',
+                      bgcolor: '#fff',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.95rem',
+                      flex: '0 0 28px',
+                    }}
+                  >
+                    {botIconGlyph}
+                  </Box>
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 2,
+                      bgcolor: '#ffffff',
+                      border: '1px solid #dbeafe',
+                      boxShadow: '0 12px 30px rgba(15,23,42,0.08)',
+                      width: '100%',
+                      maxWidth: 308,
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700, color: '#0f172a', fontSize: '0.82rem', mb: 0.2 }}>
+                      Set up your meeting
+                    </Typography>
+                    <Typography sx={{ color: '#64748b', fontSize: '0.7rem', mb: 0.9 }}>
+                      Please fill this short form and I will set the meeting for you.
+                    </Typography>
+
+                    {appointmentError && (
+                      <Alert severity="error" sx={{ mb: 1, py: 0.2 }}>
+                        {appointmentError}
+                      </Alert>
+                    )}
+
+                    <Stack spacing={0.75}>
+                      <TextField
+                        placeholder="Full name"
+                        value={appointmentName}
+                        onChange={(e) => setAppointmentName(e.target.value)}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.85rem', py: 0.9 } }}
+                      />
+                      <TextField
+                        placeholder="Email address"
+                        type="email"
+                        value={appointmentEmail}
+                        onChange={(e) => setAppointmentEmail(e.target.value)}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.85rem', py: 0.9 } }}
+                      />
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.9 }}>
+                        <Box>
+                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Date</Typography>
+                          <TextField
+                            type="date"
+                            value={appointmentDate}
+                            onChange={(e) => setAppointmentDate(e.target.value)}
+                            size="small"
+                            fullWidth
+                            sx={{ '& .MuiInputBase-input': { fontSize: '0.83rem', py: 0.75 } }}
+                          />
+                        </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Time</Typography>
+                          <TextField
+                            type="time"
+                            value={appointmentTime}
+                            onChange={(e) => setAppointmentTime(e.target.value)}
+                            size="small"
+                            fullWidth
+                            sx={{ '& .MuiInputBase-input': { fontSize: '0.83rem', py: 0.75 } }}
+                          />
+                        </Box>
+                      </Box>
+                      <Stack direction="row" spacing={0.75}>
+                        <Button
+                          variant="contained"
+                          onClick={bookAppointment}
+                          disabled={appointmentBusy}
+                          fullWidth
+                          size="small"
+                          sx={{
+                            borderRadius: '10px',
+                            minHeight: 34,
+                            fontSize: '0.82rem',
+                            background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                          }}
+                        >
+                          {appointmentBusy ? 'Creating...' : 'Create meeting'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => setShowAppointmentForm(false)}
+                          disabled={appointmentBusy}
+                          fullWidth
+                          size="small"
+                          sx={{ borderRadius: '10px', minHeight: 34, fontSize: '0.82rem' }}
+                        >
+                          Cancel
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                </Box>
+              )}
               {sending && (
                 <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 0.9 }}>
                   <Box
@@ -706,7 +943,7 @@ const AgentTestPage: React.FC = () => {
               <Button
                 variant="contained"
                 onClick={sendMessage}
-                disabled={!input.trim() || sending || !widgetId}
+                disabled={!input.trim() || sending || !canUseChat}
                 sx={{
                   minWidth: 46,
                   width: 46,
@@ -725,55 +962,6 @@ const AgentTestPage: React.FC = () => {
           </Box>
         </Paper>
       )}
-
-      <Dialog
-        open={appointmentOpen}
-        onClose={() => setAppointmentOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        PaperProps={{
-          sx: {
-            borderRadius: '16px',
-            border: '1px solid #dbe3ef',
-            boxShadow: '0 20px 42px rgba(15,23,42,0.2)',
-          },
-        }}
-      >
-        <DialogTitle sx={{ pb: 1.2 }}>Book Appointment</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {appointmentError && <Alert severity="error">{appointmentError}</Alert>}
-            <TextField label="Name" value={appointmentName} onChange={(e) => setAppointmentName(e.target.value)} fullWidth required />
-            <TextField label="Email" type="email" value={appointmentEmail} onChange={(e) => setAppointmentEmail(e.target.value)} fullWidth />
-            <TextField label="Phone" value={appointmentPhone} onChange={(e) => setAppointmentPhone(e.target.value)} fullWidth />
-            <TextField
-              label="Appointment Date & Time"
-              type="datetime-local"
-              value={appointmentDateTime}
-              onChange={(e) => setAppointmentDateTime(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-              required
-            />
-            <TextField label="Notes" value={appointmentNotes} onChange={(e) => setAppointmentNotes(e.target.value)} multiline minRows={3} fullWidth />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAppointmentOpen(false)} disabled={appointmentBusy}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={bookAppointment}
-            disabled={appointmentBusy}
-            sx={{
-              borderRadius: '10px',
-              px: 1.8,
-              background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            }}
-          >
-            {appointmentBusy ? 'Booking...' : 'Confirm'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };
