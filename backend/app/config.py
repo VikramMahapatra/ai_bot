@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # Frontend URLs used in notifications
     FRONTEND_DASHBOARD_LEADS_URL: str
     
+    # Echo Lead Keys
+    ECHOL_API_BASE_URL: str
+    ECHOL_API_KEY: str
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
@@ -85,7 +89,7 @@ class Settings(BaseSettings):
         return [header.strip() for header in self.CORS_ALLOW_HEADERS.split(",") if header.strip()]
 
     model_config = SettingsConfigDict(
-        env_file=(".env",),
+        env_file=(".env.example",),
         case_sensitive=True,
         extra="ignore",
     )
