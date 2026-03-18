@@ -188,7 +188,7 @@ def send_conversation_email(recipient_email: str, conversation_data: list) -> bo
     Send conversation transcript via email
     """
     try:
-
+        print("EMAIL FUNCTION TRIGGERED")
         html_content = _create_html_email(conversation_data)
         plain_content = _html_to_plain_text(html_content)
 
@@ -201,11 +201,13 @@ def send_conversation_email(recipient_email: str, conversation_data: list) -> bo
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
         with _open_smtp_server() as server:
-
+            print("SMTP CONNECTED")
             if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                print("Logging into SMTP")
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-
+            print("Sending email...")
             refused = server.send_message(msg)
+            print("Send response:", refused)
 
         if refused:
             logger.error(f"SMTP refused recipients: {refused}")

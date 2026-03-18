@@ -65,14 +65,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         }}
       />
       <Sidebar mobileOpen={mobileOpen} onMobileClose={handleDrawerToggle} />
-      
+
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
         {/* Top Bar */}
-        <AppBar 
-          position="sticky" 
-          color="default" 
+        <AppBar
+          position="sticky"
+          color="default"
           elevation={0}
-          sx={{ 
+          sx={{
             background: 'transparent',
             border: 'none',
             boxShadow: 'none',
@@ -112,7 +112,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
               <Box sx={{ flexGrow: 1, minWidth: 0 }} />
 
               {organizationName && (
-                <Chip 
+                <Chip
                   label={organizationName}
                   color="primary"
                   variant="outlined"
