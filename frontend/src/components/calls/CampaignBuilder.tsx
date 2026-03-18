@@ -20,6 +20,7 @@ import Contacts from "./Contacts";
 import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
+import CampaignDetails from "./CampaignDetails";
 
 const steps = [
     "Campaign Info",
@@ -53,7 +54,7 @@ const emptyCampaignForm: CallCampaign = {
 };
 
 const CampaignBuilder = () => {
-    const [view, setView] = useState<"list" | "form">("list");
+    const [view, setView] = useState<"list" | "form" | "details">("list");
     const [mode, setMode] = useState<"create" | "edit">("create");
     const [campaignId, setCampaignId] = useState<number | null>(null);
     const [activeStep, setActiveStep] = useState(0);
@@ -168,6 +169,14 @@ const CampaignBuilder = () => {
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const handleViewCampaign = (id?: number) => {
+        if (id === undefined) return;
+        setCampaignId(id);
+        setView("details");
+        window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const renderStep = () => {
@@ -210,7 +219,20 @@ const CampaignBuilder = () => {
 
     if (view === "list") {
         return (
-            <CampaignList onAddCampaign={handleAddCampaign} onEditCampaign={handleEditCampaign} />
+            <CampaignList onAddCampaign={handleAddCampaign} onEditCampaign={handleEditCampaign} onViewCampaign={handleViewCampaign} />
+        );
+    }
+
+    if (view === "details" && campaignId) {
+        return (
+            <CampaignDetails
+                campaignId={campaignId}
+                onBack={handleBackToList}
+                onEdit={(id) => {
+                    handleEditCampaign(id);
+                    setView("form");
+                }}
+            />
         );
     }
 
@@ -269,7 +291,7 @@ const CampaignBuilder = () => {
             <Paper sx={{ p: 4 }}>
                 <Box display="flex" justifyContent="space-between" mb={2}>
                     <Typography variant="h5">
-                        Create Campaign
+                        {mode === "edit" ? "Edit Campaign" : "Create Campaign"}
                     </Typography>
 
                     <Button variant="outlined" color="error" onClick={handleBackToList}>

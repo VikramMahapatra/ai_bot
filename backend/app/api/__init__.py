@@ -11,7 +11,7 @@ from app.api.calling_agent import router as calling_agent_router
 from app.api.call_campaign import router as call_campaign_router
 from app.api.campaigns import router as campaigns_router
 from app.api.call_log import router as call_log_router
-
+from app.api.calls import router as calls_router
 
 
 __all__ = [

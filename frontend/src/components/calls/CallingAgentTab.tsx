@@ -384,19 +384,18 @@ export const CallingAgentTab: React.FC = () => {
                                                             {agent.name}
                                                         </Typography>
 
-                                                        <Tooltip title={agent.status}>
-                                                            <FiberManualRecordIcon
-                                                                sx={{
-                                                                    fontSize: 12,
-                                                                    color:
-                                                                        agent.status === "Active"
-                                                                            ? "green"
-                                                                            : agent.status === "Paused"
-                                                                                ? "orange"
-                                                                                : "gray"
-                                                                }}
-                                                            />
-                                                        </Tooltip>
+                                                        <Chip
+                                                            label={agent.status}
+                                                            size="small"
+                                                            sx={{
+                                                                color: agent.status === "Active" ? "green" :
+                                                                    agent.status === "Paused" ? "orange" : "gray",
+                                                                backgroundColor: agent.status === "Active" ? "rgba(72, 187, 120, 0.15)" :
+                                                                    agent.status === "Paused" ? "rgba(255, 165, 0, 0.15)" :
+                                                                        "rgba(128, 128, 128, 0.15)",
+                                                                fontWeight: 600
+                                                            }}
+                                                        />
                                                     </Stack>
 
                                                     <Stack direction="row" spacing={1}>
@@ -499,26 +498,20 @@ export const CallingAgentTab: React.FC = () => {
                                                         <Typography fontWeight={600}>Campaigns</Typography>
                                                     </Stack>
 
-                                                    <Chip
-                                                        icon={<PendingIcon />}
-                                                        label={`Pending: ${agent.pending_campaigns}`}
-                                                        color="warning"
-                                                        variant="outlined"
-                                                    />
+                                                    <Box display="flex" alignItems="center" gap={0.5}>
+                                                        <PendingIcon color="warning" />
+                                                        <Typography color="text.primary">Pending: {agent.pending_campaigns}</Typography>
+                                                    </Box>
 
-                                                    <Chip
-                                                        icon={<PlayCircleIcon />}
-                                                        label={`Active: ${agent.active_campaigns}`}
-                                                        color="secondary"
-                                                        variant="outlined"
-                                                    />
+                                                    <Box display="flex" alignItems="center" gap={0.5}>
+                                                        <PlayCircleIcon color="secondary" />
+                                                        <Typography color="text.primary">Active: {agent.active_campaigns}</Typography>
+                                                    </Box>
 
-                                                    <Chip
-                                                        icon={<CheckCircleIcon />}
-                                                        label={`Completed: ${agent.completed_campaigns}`}
-                                                        color="primary"
-                                                        variant="outlined"
-                                                    />
+                                                    <Box display="flex" alignItems="center" gap={0.5}>
+                                                        <CheckCircleIcon color="primary" />
+                                                        <Typography color="text.primary">Completed: {agent.completed_campaigns}</Typography>
+                                                    </Box>
                                                 </Stack>
 
                                                 <Typography variant="subtitle2" mb={1}>

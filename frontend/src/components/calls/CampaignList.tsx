@@ -28,6 +28,7 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import GroupIcon from "@mui/icons-material/Group";
 import AddIcon from "@mui/icons-material/Add";
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
@@ -35,34 +36,8 @@ import { useEffect, useState } from "react";
 interface Props {
     onAddCampaign: () => void;
     onEditCampaign: (id?: number) => void;
+    onViewCampaign: (id?: number) => void;
 }
-
-const campaigns = [
-    {
-        id: 1,
-        name: "Real Estate Leads",
-        category: "Sales",
-        status: "Active",
-        contacts: 120,
-        progress: 65
-    },
-    {
-        id: 2,
-        name: "Loan Follow-up",
-        category: "Paused",
-        contacts: 50,
-        status: "Paused",
-        progress: 20
-    },
-    {
-        id: 3,
-        name: "Insurance Renewal",
-        category: "Reminder",
-        status: "Completed",
-        contacts: 200,
-        progress: 100
-    }
-];
 
 const getStatusColor = (status: string) => {
     switch (status) {
@@ -77,7 +52,7 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
+const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCampaign }) => {
     const [loading, setLoading] = useState(false);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [campaignTotal, setCampaignTotal] = useState(0);
@@ -93,6 +68,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
     const [search, setSearch] = useState("");
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    const [detailOpen, setDetailOpen] = useState(false);
 
     const showError = (message: string) => {
         setSuccess('');
@@ -416,6 +394,12 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => onViewCampaign(campaign.id)}
+                                        >
+                                            <VisibilityIcon />
+                                        </IconButton>
                                         <IconButton
                                             size="small"
                                             onClick={() => onEditCampaign(campaign.id)}

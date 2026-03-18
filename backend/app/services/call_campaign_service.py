@@ -1,5 +1,6 @@
 
 from datetime import datetime, timedelta
+import json
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_
@@ -11,8 +12,8 @@ from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCre
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
-from app.models.call_logs import CallLog
-from app.services.call_log_service import save_transcripts
+from app.models.call_logs import CallLog, CallTranscript
+from app.services.call_log_service import process_call, save_transcripts
 
 
 STALE_MINUTES = 1
@@ -189,6 +190,42 @@ def get_campaign(db: Session, campaign_id: int):
         "retry_on_no_answer": schedule.retry_no_answer if schedule else None,
         "retry_on_busy": schedule.retry_busy if schedule else None,
         "retry_on_voicemail": schedule.retry_voicemail if schedule else None
+    }
+    
+def get_campaign_detail(db: Session, campaign_id: int):
+    campaign = db.query(CallCampaign).filter(
+        CallCampaign.id == campaign_id,
+        CallCampaign.is_deleted == False
+    ).first()
+
+    if not campaign:
+        return None
+
+    # Total contacts
+    total_contacts = db.query(CampaignContact).filter(
+        CampaignContact.campaign_id == campaign_id
+    ).count()
+
+    # ✅ Scheduled calls (future calls)
+    scheduled_calls = db.query(CallLog).filter(
+        CallLog.campaign_id == campaign_id,
+        CallLog.status == "Scheduled"
+    ).count()
+
+    
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "agent_name": campaign.agent.name,
+        "calling_no": campaign.agent.calling_no,
+        "status": campaign.status,
+        "created_at": campaign.created_at,
+        "total_calls": campaign.total_calls,
+        "completed_calls": campaign.completed_calls,
+        "success_rate": campaign.success_rate,
+        "response_rate": campaign.response_rate,
+        "total_contacts": total_contacts,
+        "scheduled_calls": scheduled_calls,
     }
     
 def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
@@ -629,7 +666,7 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
     return external_contact_ids
 
 
-def sync_campaign_from_echoleads(db: Session, echolead_client : EcholeadsClient, campaign: CallCampaign):
+def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, campaign: CallCampaign):
     if not campaign.external_campaign_id:
         return
 
@@ -641,51 +678,27 @@ def sync_campaign_from_echoleads(db: Session, echolead_client : EcholeadsClient,
 
         data = response["campaign"]
 
-        # ✅ Update campaign fields
+        # ✅ Update campaign
         campaign.status = data.get("status", campaign.status)
         campaign.updated_at = datetime.utcnow()
-
-        # OPTIONAL: store metrics if you want faster listing later
-        total_calls = data.get("total_calls", 0)
-        completed_calls = data.get("completed_calls", 0)
-
-        # You can store these in DB if needed
-        campaign.total_calls = total_calls
-        campaign.completed_calls = completed_calls
+        campaign.total_calls = data.get("total_calls", 0)
+        campaign.completed_calls = data.get("completed_calls", 0)
+        campaign.success_rate = data.get("success_rate", 0.0)
+        campaign.response_rate = data.get("response_rate", 0.0)
 
         db.add(campaign)
 
-        # ✅ Sync call logs (IMPORTANT)
+        # ✅ Reuse process_call
         for call in data.get("calls", []):
-            existing_call = db.query(CallLog).filter(
-                CallLog.external_call_id == call["id"]
-            ).first()
-
-            if existing_call:
-                continue
             
             agent = db.query(CallingAgent).filter(
                 CallingAgent.external_agent_id == call.get("agent_id")
             ).first()
 
-            new_call = CallLog(
-                external_call_id=call["id"],
-                organization_id=campaign.organization_id,
-                campaign_id=campaign.id,
-                agent_id=agent.id,
-                type=agent.type,
-                phone=call.get("phone"),
-                mode="Voice",
-                status=call.get("status"),
-                start_time=parse_datetime(call.get("call_started_at")),
-                end_time=parse_datetime(call.get("call_ended_at")),
-                audio_url=call.get("recording_url"),
-                cost=call.get("cost"),
-            )
+            if not agent:
+                continue
 
-            db.add(new_call)
-            db.flush()
-            save_transcripts(db, new_call.id, call.get("transcript"))
+            process_call(db, call, agent)
 
         db.commit()
 

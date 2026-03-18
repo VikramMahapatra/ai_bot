@@ -85,6 +85,8 @@ export interface CallCampaign {
     retry_on_no_answer: boolean;
     retry_on_busy: boolean;
     retry_on_voicemail: boolean;
+
+    call_logs?: [];
 }
 
 export interface CreateCampaignResponse {
@@ -109,6 +111,11 @@ export const callCampaignService = {
 
     async getCampaign(campaign_id?: number): Promise<CallCampaign> {
         const response = await api.get(`/api/call-campaigns/${campaign_id}`);
+        return response.data;
+    },
+
+    async getCampaignDetails(campaign_id?: number): Promise<CallCampaign> {
+        const response = await api.get(`/api/call-campaigns/${campaign_id}/detail`);
         return response.data;
     },
 

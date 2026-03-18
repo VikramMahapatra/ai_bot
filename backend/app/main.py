@@ -4,7 +4,8 @@ from app.config import settings
 from app.database import init_db
 from app.api import (
     admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, 
-    superadmin_router, whatsapp_router, campaigns_router, calling_agent_router, call_campaign_router, call_log_router
+    superadmin_router, whatsapp_router, campaigns_router, calling_agent_router, call_campaign_router, call_log_router,
+    calls_router
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -56,6 +57,7 @@ app.include_router(campaigns_router)
 app.include_router(calling_agent_router)
 app.include_router(call_campaign_router)
 app.include_router(call_log_router)
+app.include_router(calls_router)
 
 
 # Handle OPTIONS requests for CORS preflight

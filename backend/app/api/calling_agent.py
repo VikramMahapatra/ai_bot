@@ -12,7 +12,11 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/calling-agent", tags=["calling-agent"])
+router = APIRouter(
+    prefix="/api/calling-agent", 
+    tags=["calling-agent"],
+    dependencies=[Depends(get_current_user)]
+)
 
 @router.post("/create", response_model=None)
 def create_agent(

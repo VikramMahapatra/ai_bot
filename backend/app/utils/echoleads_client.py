@@ -1,3 +1,5 @@
+from datetime import date
+
 import requests
 from fastapi import HTTPException
 from app.config import settings
@@ -6,7 +8,6 @@ class EcholeadsClient:
 
     def __init__(self):
         self.base_url = settings.ECHOL_API_BASE_URL
-        print(settings.ECHOL_API_KEY)        
         self.headers = {
             "Authorization": f"{settings.ECHOL_API_KEY}",
             "Content-Type": "application/json"
@@ -22,11 +23,11 @@ class EcholeadsClient:
             )
             
             # Print full response
-            print("====== ECHOLEADS API RESPONSE ======")
-            print("URL:", f"{self.base_url}{endpoint}")
-            print("Status Code:", response.status_code)
-            print("Response Text:", response.text)
-            print("====================================")
+            # print("====== ECHOLEADS API RESPONSE ======")
+            # print("URL:", f"{self.base_url}{endpoint}")
+            # print("Status Code:", response.status_code)
+            # print("Response Text:", response.text)
+            # print("====================================")
 
             response.raise_for_status()
             return response.json()
@@ -50,11 +51,11 @@ class EcholeadsClient:
             )
             
             # Print full response
-            print("====== ECHOLEADS API RESPONSE ======")
-            print("URL:", f"{self.base_url}{endpoint}")
-            print("Status Code:", response.status_code)
-            print("Response Text:", response.text)
-            print("====================================")
+            # print("====== ECHOLEADS API RESPONSE ======")
+            # print("URL:", f"{self.base_url}{endpoint}")
+            # print("Status Code:", response.status_code)
+            # print("Response Text:", response.text)
+            # print("====================================")
 
             response.raise_for_status()
             return response.json()
@@ -75,11 +76,11 @@ class EcholeadsClient:
                 timeout=15
             )
 
-            print("====== ECHOLEADS API RESPONSE ======")
-            print("URL:", f"{self.base_url}{endpoint}")
-            print("Status Code:", response.status_code)
-            print("Response Text:", response.text)
-            print("====================================")
+            # print("====== ECHOLEADS API RESPONSE ======")
+            # print("URL:", f"{self.base_url}{endpoint}")
+            # print("Status Code:", response.status_code)
+            # print("Response Text:", response.text)
+            # print("====================================")
 
             response.raise_for_status()
             return response.json()
@@ -92,19 +93,20 @@ class EcholeadsClient:
             print("==============================")
             raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
         
-    def _get(self, endpoint: str):
+    def _get(self, endpoint: str, params=None):
         try:
             response = requests.get(
                 f"{self.base_url}{endpoint}",
                 headers=self.headers,
+                params=params,
                 timeout=15
             )
 
-            print("====== ECHOLEADS API RESPONSE ======")
-            print("URL:", f"{self.base_url}{endpoint}")
-            print("Status Code:", response.status_code)
-            print("Response Text:", response.text)
-            print("====================================")
+            # print("====== ECHOLEADS API RESPONSE ======")
+            # print("URL:", f"{self.base_url}{endpoint}")
+            # print("Status Code:", response.status_code)
+            # print("Response Text:", response.text)
+            # print("====================================")
 
             response.raise_for_status()
             return response.json()
@@ -125,8 +127,27 @@ class EcholeadsClient:
     def fetch_voices(self):
         return self._get("/admin/voice")
     
-    def fetch_echolead_calls(self):
-        return self._get("/call-logs")
+    def fetch_campaign_calls(self, campaign_id):
+        params = {
+            "campaign_id": campaign_id
+        }
+
+        return self._get("/call-logs", params=params)
+    
+    def fetch_calls(self, agent_id, from_date, to_date):
+        if hasattr(from_date, "isoformat"):
+            from_date = from_date.isoformat()
+
+        if hasattr(to_date, "isoformat"):
+            to_date = to_date.isoformat()
+
+        params = {
+            "agent_id": agent_id,
+            "from_date": from_date,
+            "to_date": to_date
+        }
+
+        return self._get("/call-logs", params=params)
     
     def get_campaign_by_id(self, campaign_id: int):
         return self._get(f"/campaigns/{campaign_id}")
