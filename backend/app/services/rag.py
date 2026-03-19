@@ -9,6 +9,23 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _empty_query_result() -> Dict:
+    return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+
+def _is_embedding_auth_or_config_error(error_text: str) -> bool:
+    normalized = (error_text or "").lower()
+    markers = (
+        "incorrect api key provided",
+        "invalid_api_key",
+        '"http/1.1 401 unauthorized"',
+        "error code: 401",
+        "authenticationerror",
+        "api key",
+    )
+    return any(marker in normalized for marker in markers)
+
+
 class ChromaDBClient:
     _instance = None
     
@@ -91,7 +108,16 @@ class ChromaDBClient:
                     "Returning empty results to avoid request failure. Error: %s",
                     error_text,
                 )
-                return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+                return _empty_query_result()
+
+            if _is_embedding_auth_or_config_error(error_text):
+                logger.error(
+                    "OpenAI embeddings are unavailable during Chroma query. "
+                    "Set backend/.env OPENAPI_KEY2 to a valid key or enable local embeddings. "
+                    "Returning empty retrieval results to keep the request alive. Error: %s",
+                    error_text,
+                )
+                return _empty_query_result()
 
             logger.error(f"Error querying ChromaDB: {error_text}")
             raise

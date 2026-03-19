@@ -600,7 +600,7 @@ def _prepare_chat_payload(
     history = db.query(Conversation).filter(
         Conversation.session_id == session_id,
         Conversation.widget_id == widget_id,
-    ).order_by(Conversation.created_at.desc()).limit(5).all()
+    ).order_by(Conversation.created_at.desc()).limit(3).all()
 
     query_text = retrieval_message or message
     if history:
@@ -677,7 +677,7 @@ def _prepare_chat_payload(
                     url = metadata.get('url')
                     chunk_index = metadata.get('chunk_index')
 
-                if len(retrieval_trace["retrieved_chunks"]) < 80:
+                if len(retrieval_trace["retrieved_chunks"]) < 40:
                     retrieval_trace["retrieved_chunks"].append({
                         "stage": stage,
                         "query": query_used,
@@ -717,20 +717,20 @@ def _prepare_chat_payload(
 
     primary_results = chroma_client.query(
         query_text,
-        n_results=8,
+        n_results=6,
         organization_id=organization_id,
         widget_id=widget_id,
     )
     _add_results(primary_results, query_used=query_variants[0], stage="primary", apply_threshold=True)
 
     # Expand query variants only when primary retrieval is sparse.
-    if len(candidate_pool) < 4:
-        for q in query_variants[1:]:
-            if len(context_parts) >= 12:
+    if len(candidate_pool) < 2:
+        for q in query_variants[1:3]:
+            if len(candidate_pool) >= 6:
                 break
             results = chroma_client.query(
                 q,
-                n_results=8,
+                n_results=6,
                 organization_id=organization_id,
                 widget_id=widget_id,
             )
@@ -739,14 +739,14 @@ def _prepare_chat_payload(
     if not candidate_pool:
         fallback_results = chroma_client.query(
             query_text,
-            n_results=15,
+            n_results=8,
             organization_id=organization_id,
             widget_id=widget_id,
         )
         _add_results(fallback_results, query_used=query_text, stage="fallback", max_chunks=12, apply_threshold=False)
 
     reranked_candidates = _semantic_rerank_candidates(candidate_pool, message)
-    selected_candidates = reranked_candidates[:12]
+    selected_candidates = reranked_candidates[:8]
 
     for candidate in selected_candidates:
         doc = candidate.get("doc") or ""
@@ -758,7 +758,7 @@ def _prepare_chat_payload(
         if source_id is not None:
             source_ids.add(source_id)
 
-        if len(retrieval_trace["selected_chunks"]) < 24:
+        if len(retrieval_trace["selected_chunks"]) < 16:
             retrieval_trace["selected_chunks"].append({
                 "stage": candidate.get("stage"),
                 "query": candidate.get("query"),
@@ -974,7 +974,7 @@ def generate_chat_response(
             response = client.chat.completions.create(
                 model=settings.OPENAI_CHAT_MODEL,
                 messages=messages,
-                max_tokens=500,
+                max_tokens=220,
                 temperature=0.3
             )
 
@@ -1062,7 +1062,7 @@ def stream_chat_response(
     stream = client.chat.completions.create(
         model=settings.OPENAI_CHAT_MODEL,
         messages=messages,
-        max_tokens=500,
+        max_tokens=220,
         temperature=0.3,
         stream=True,
         stream_options={"include_usage": True}

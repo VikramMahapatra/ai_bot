@@ -59,7 +59,7 @@ interface Message {
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
 const createSessionId = () => `session_${Date.now()}_${Math.random()}`;
-const STREAM_FALLBACK_TIMEOUT_MS = 3000;
+const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const formatCountdownClock = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
