@@ -367,10 +367,12 @@ const CreateChatAgentPage: React.FC = () => {
   }, []);
 
   const webhookUrl = useMemo(() => buildApiUrl('/api/channels/whatsapp/webhook'), []);
-  const metaRedirectUri = useMemo(
-    () => buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`),
-    []
-  );
+  // const metaRedirectUri = useMemo(
+  //   () => buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`),
+  //   []
+  // );
+
+  const metaRedirectUri = "https://thomasina-mesogleal-alarmingly.ngrok-free.dev/api/admin/whatsapp/embedded/callback"
 
   useEffect(() => {
     if (!createdWidgetId) {
@@ -472,7 +474,7 @@ const CreateChatAgentPage: React.FC = () => {
       `&redirect_uri=${encodeURIComponent(metaRedirectUri)}` +
       `&response_type=code` +
       `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}` +
-      `&config_id=${encodeURIComponent(configId)}` +
+      // `&config_id=${encodeURIComponent(configId)}` +
       `&state=${encodeURIComponent(state)}`;
 
     const popup = window.open(oauthUrl, 'meta_whatsapp_oauth', 'width=980,height=760,resizable=yes,scrollbars=yes');
@@ -540,7 +542,7 @@ const CreateChatAgentPage: React.FC = () => {
     try {
       setMetaConnecting(true);
       setError('');
-      if (metaSdkFailed) {
+      if (!metaSdkFailed) {
         openMetaOAuthFallback(metaAppId, configId);
         setError('Meta SDK failed to load. Opened fallback signup window.');
         return;
@@ -1079,685 +1081,831 @@ const CreateChatAgentPage: React.FC = () => {
           }}
         />
 
-      <Stack spacing={3} sx={{ position: 'relative', zIndex: 1 }}>
-        <Card sx={{ ...sectionPanelSx, borderRadius: '24px' }}>
-          <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-              <Box>
-                <Typography
-                  variant="h4"
+        <Stack spacing={3} sx={{ position: 'relative', zIndex: 1 }}>
+          <Card sx={{ ...sectionPanelSx, borderRadius: '24px' }}>
+            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+                <Box>
+                  <Typography
+                    variant="h4"
+                    sx={{
+                      fontWeight: 800,
+                      color: 'text.primary',
+                      mb: 0.8,
+                      letterSpacing: '-0.025em',
+                      fontSize: { xs: '1.7rem', md: '2.15rem' },
+                      lineHeight: 1.14,
+                    }}
+                  >
+                    {isEditMode ? 'Edit Chat Agent' : 'Create Chat Agent'}
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary">
+                    {isEditMode
+                      ? 'Guided editing flow to refine your existing AI agent with updated profile, knowledge, and integrations.'
+                      : 'Guided setup flow to launch a polished AI agent with knowledge, integrations, and share-ready testing.'}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Chip label="4-Step Wizard" color="primary" variant="outlined" />
+                  <Chip label={isEditMode ? 'Edit Mode' : 'Knowledge Ready'} color="secondary" variant="outlined" />
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card sx={{ ...sectionPanelSx, borderRadius: '20px' }}>
+            <CardContent>
+              <Stack spacing={2.1}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                >
+                  <Box>
+                    <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                      Wizard Progress
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      Step {activeStep + 1} of {integrationSteps.length}: {integrationSteps[activeStep]}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {stepDescriptions[activeStep]}
+                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                      <Chip
+                        size="small"
+                        label={`Readiness ${stepReadiness}%`}
+                        color={stepReadiness >= 80 ? 'success' : 'primary'}
+                        variant="outlined"
+                      />
+                      <Chip
+                        size="small"
+                        label={activeStep === integrationSteps.length - 1 ? 'Final Step' : 'In Progress'}
+                        variant="outlined"
+                      />
+                    </Stack>
+                  </Box>
+                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>
+                    Exit Wizard
+                  </Button>
+                </Stack>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={stepProgress}
                   sx={{
-                    fontWeight: 800,
-                    color: 'text.primary',
-                    mb: 0.8,
-                    letterSpacing: '-0.025em',
-                    fontSize: { xs: '1.7rem', md: '2.15rem' },
-                    lineHeight: 1.14,
+                    height: 10,
+                    borderRadius: 999,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.14),
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 999,
+                      background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(
+                        theme.palette.primary.dark,
+                        0.94
+                      )} 100%)`,
+                    },
+                  }}
+                />
+
+                <Stepper
+                  activeStep={activeStep}
+                  alternativeLabel
+                  sx={{
+                    '& .MuiStepLabel-label': { fontWeight: 600 },
+                    '& .MuiStepIcon-root': {
+                      color: alpha(theme.palette.primary.main, 0.24),
+                    },
+                    '& .MuiStepIcon-root.Mui-active': {
+                      color: theme.palette.primary.main,
+                    },
+                    '& .MuiStepIcon-root.Mui-completed': {
+                      color: theme.palette.success.main,
+                    },
                   }}
                 >
-                  {isEditMode ? 'Edit Chat Agent' : 'Create Chat Agent'}
-                </Typography>
-                <Typography variant="body1" color="text.secondary">
-                  {isEditMode
-                    ? 'Guided editing flow to refine your existing AI agent with updated profile, knowledge, and integrations.'
-                    : 'Guided setup flow to launch a polished AI agent with knowledge, integrations, and share-ready testing.'}
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Chip label="4-Step Wizard" color="primary" variant="outlined" />
-                <Chip label={isEditMode ? 'Edit Mode' : 'Knowledge Ready'} color="secondary" variant="outlined" />
+                  {integrationSteps.map((label) => (
+                    <Step key={label}>
+                      <StepLabel>{label}</StepLabel>
+                    </Step>
+                  ))}
+                </Stepper>
               </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card sx={{ ...sectionPanelSx, borderRadius: '20px' }}>
-          <CardContent>
-            <Stack spacing={2.1}>
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={1.2}
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', md: 'center' }}
-              >
-                <Box>
-                  <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                    Wizard Progress
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                    Step {activeStep + 1} of {integrationSteps.length}: {integrationSteps[activeStep]}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {stepDescriptions[activeStep]}
-                  </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                    <Chip
-                      size="small"
-                      label={`Readiness ${stepReadiness}%`}
-                      color={stepReadiness >= 80 ? 'success' : 'primary'}
-                      variant="outlined"
-                    />
-                    <Chip
-                      size="small"
-                      label={activeStep === integrationSteps.length - 1 ? 'Final Step' : 'In Progress'}
-                      variant="outlined"
-                    />
-                  </Stack>
-                </Box>
-                <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>
-                  Exit Wizard
-                </Button>
-              </Stack>
+          {error && (
+            <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
+              {error}
+            </Alert>
+          )}
+          {success && (
+            <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
+              {success}
+            </Alert>
+          )}
 
-              <LinearProgress
-                variant="determinate"
-                value={stepProgress}
-                sx={{
-                  height: 10,
-                  borderRadius: 999,
-                  backgroundColor: alpha(theme.palette.primary.main, 0.14),
-                  '& .MuiLinearProgress-bar': {
-                    borderRadius: 999,
-                    background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(
-                      theme.palette.primary.dark,
-                      0.94
-                    )} 100%)`,
-                  },
-                }}
-              />
-
-              <Stepper
-                activeStep={activeStep}
-                alternativeLabel
-                sx={{
-                  '& .MuiStepLabel-label': { fontWeight: 600 },
-                  '& .MuiStepIcon-root': {
-                    color: alpha(theme.palette.primary.main, 0.24),
-                  },
-                  '& .MuiStepIcon-root.Mui-active': {
-                    color: theme.palette.primary.main,
-                  },
-                  '& .MuiStepIcon-root.Mui-completed': {
-                    color: theme.palette.success.main,
-                  },
-                }}
-              >
-                {integrationSteps.map((label) => (
-                  <Step key={label}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-            </Stack>
-          </CardContent>
-        </Card>
-
-        {error && (
-          <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
-            {error}
-          </Alert>
-        )}
-        {success && (
-          <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
-            {success}
-          </Alert>
-        )}
-
-        {activeStep === 0 && (
-          <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-              <Grid container spacing={2.2}>
-                <Grid item xs={12} md={7}>
-                  <Stack spacing={2}>
-                    <Box sx={accentPanelSx}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.2}>
-                        <Box>
-                          <Typography variant="overline" sx={{ letterSpacing: '0.08em', color: 'text.secondary' }}>
-                            Step 1
-                          </Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
-                            {isEditMode ? 'Update Widget Identity' : 'Create Widget Identity'}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {isEditMode
-                              ? 'Refine voice, visuals, and placement for this live agent.'
-                              : 'Set voice, visuals, and placement before creating the live agent.'}
-                          </Typography>
-                        </Box>
-                        <Chip size="small" label={`Readiness ${stepReadiness}%`} color={stepReadiness >= 80 ? 'success' : 'primary'} />
-                      </Stack>
-                    </Box>
-
-                    <TextField
-                      label="Agent Name"
-                      value={widget.name}
-                      onChange={(e) => setWidget((prev) => ({ ...prev, name: e.target.value }))}
-                      placeholder="Sales Assistant"
-                      fullWidth
-                      sx={fieldSx}
-                    />
-                    <TextField
-                      label="Welcome Message"
-                      value={widget.welcome_message || ''}
-                      onChange={(e) => setWidget((prev) => ({ ...prev, welcome_message: e.target.value }))}
-                      fullWidth
-                      sx={fieldSx}
-                    />
-                    <TextField
-                      label="System Prompt (Optional)"
-                      value={widget.system_prompt || ''}
-                      onChange={(e) => setWidget((prev) => ({ ...prev, system_prompt: e.target.value }))}
-                      fullWidth
-                      multiline
-                      minRows={4}
-                      placeholder="Example: You are a concise sales assistant. Ask discovery questions before recommending solutions."
-                      helperText="Override the default prompt for this specific agent."
-                      sx={fieldSx}
-                    />
-
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
-                      <TextField
-                        label="Primary Color"
-                        value={widget.primary_color}
-                        onChange={(e) => setWidget((prev) => ({ ...prev, primary_color: e.target.value }))}
-                        sx={fieldSx}
-                      />
-                      <TextField
-                        label="Secondary Color"
-                        value={widget.secondary_color}
-                        onChange={(e) => setWidget((prev) => ({ ...prev, secondary_color: e.target.value }))}
-                        sx={fieldSx}
-                      />
-                      <TextField
-                        label="Position"
-                        value={widget.position}
-                        onChange={(e) => setWidget((prev) => ({ ...prev, position: e.target.value }))}
-                        select
-                        SelectProps={{ native: true }}
-                        sx={fieldSx}
-                      >
-                        <option value="bottom-right">Bottom Right</option>
-                        <option value="bottom-left">Bottom Left</option>
-                        <option value="top-right">Top Right</option>
-                        <option value="top-left">Top Left</option>
-                      </TextField>
-                    </Box>
-
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+          {activeStep === 0 && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+                <Grid container spacing={2.2}>
+                  <Grid item xs={12} md={7}>
+                    <Stack spacing={2}>
                       <Box sx={accentPanelSx}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
-                          Primary Color Picker
-                        </Typography>
-                        <Box
-                          component="input"
-                          type="color"
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.2}>
+                          <Box>
+                            <Typography variant="overline" sx={{ letterSpacing: '0.08em', color: 'text.secondary' }}>
+                              Step 1
+                            </Typography>
+                            <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
+                              {isEditMode ? 'Update Widget Identity' : 'Create Widget Identity'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {isEditMode
+                                ? 'Refine voice, visuals, and placement for this live agent.'
+                                : 'Set voice, visuals, and placement before creating the live agent.'}
+                            </Typography>
+                          </Box>
+                          <Chip size="small" label={`Readiness ${stepReadiness}%`} color={stepReadiness >= 80 ? 'success' : 'primary'} />
+                        </Stack>
+                      </Box>
+
+                      <TextField
+                        label="Agent Name"
+                        value={widget.name}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Sales Assistant"
+                        fullWidth
+                        sx={fieldSx}
+                      />
+                      <TextField
+                        label="Welcome Message"
+                        value={widget.welcome_message || ''}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, welcome_message: e.target.value }))}
+                        fullWidth
+                        sx={fieldSx}
+                      />
+                      <TextField
+                        label="System Prompt (Optional)"
+                        value={widget.system_prompt || ''}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, system_prompt: e.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={4}
+                        placeholder="Example: You are a concise sales assistant. Ask discovery questions before recommending solutions."
+                        helperText="Override the default prompt for this specific agent."
+                        sx={fieldSx}
+                      />
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
+                        <TextField
+                          label="Primary Color"
                           value={widget.primary_color}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setWidget((prev) => ({ ...prev, primary_color: e.target.value }))
-                          }
-                          sx={{
-                            width: '100%',
-                            height: 44,
-                            borderRadius: '10px',
-                            border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
-                            backgroundColor: alpha(theme.palette.common.white, 0.86),
-                            p: 0.4,
-                          }}
+                          onChange={(e) => setWidget((prev) => ({ ...prev, primary_color: e.target.value }))}
+                          sx={fieldSx}
                         />
-                      </Box>
-                      <Box sx={accentPanelSx}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
-                          Secondary Color Picker
-                        </Typography>
-                        <Box
-                          component="input"
-                          type="color"
+                        <TextField
+                          label="Secondary Color"
                           value={widget.secondary_color}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setWidget((prev) => ({ ...prev, secondary_color: e.target.value }))
-                          }
-                          sx={{
-                            width: '100%',
-                            height: 44,
-                            borderRadius: '10px',
-                            border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
-                            backgroundColor: alpha(theme.palette.common.white, 0.86),
-                            p: 0.4,
-                          }}
+                          onChange={(e) => setWidget((prev) => ({ ...prev, secondary_color: e.target.value }))}
+                          sx={fieldSx}
                         />
-                      </Box>
-                    </Box>
-
-                    <Box sx={accentPanelSx}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        Bot Icon (Predefined)
-                      </Typography>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {BOT_ICON_OPTIONS.map((option) => (
-                          <Button
-                            key={option.id}
-                            variant={botIcon === option.id ? 'contained' : 'outlined'}
-                            onClick={() => setBotIcon(option.id)}
-                            sx={{ minWidth: 56, height: 44, borderRadius: '12px', fontSize: '1.2rem' }}
-                            title={option.label}
-                          >
-                            {option.glyph}
-                          </Button>
-                        ))}
-                      </Stack>
-
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, mt: 1.5 }}>
-                        User Icon (Predefined)
-                      </Typography>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {USER_ICON_OPTIONS.map((option) => (
-                          <Button
-                            key={option.id}
-                            variant={userIcon === option.id ? 'contained' : 'outlined'}
-                            onClick={() => setUserIcon(option.id)}
-                            sx={{ minWidth: 56, height: 44, borderRadius: '12px', fontSize: '1.2rem' }}
-                            title={option.label}
-                          >
-                            {option.glyph}
-                          </Button>
-                        ))}
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </Grid>
-
-                <Grid item xs={12} md={5}>
-                  <Stack spacing={1.8}>
-                    <Box sx={{ ...accentPanelSx, p: 1.5 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                          Live Widget Preview
-                        </Typography>
-                        <Button size="small" variant="outlined" onClick={() => setShowWidgetPreview((prev) => !prev)}>
-                          {showWidgetPreview ? 'Hide' : 'Show'}
-                        </Button>
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.2 }}>
-                        Instantly see how your style choices look for real users.
-                      </Typography>
-
-                      {showWidgetPreview && (
-                        <Box
-                          sx={{
-                            position: 'relative',
-                            height: { xs: 300, md: 360 },
-                            borderRadius: '12px',
-                            border: `1px dashed ${alpha(theme.palette.primary.main, 0.26)}`,
-                            background:
-                              'radial-gradient(circle at 18% 14%, rgba(111,165,229,0.16) 0%, transparent 32%), radial-gradient(circle at 82% 84%, rgba(79,182,241,0.16) 0%, transparent 34%), linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%)',
-                            overflow: 'hidden',
-                          }}
+                        <TextField
+                          label="Position"
+                          value={widget.position}
+                          onChange={(e) => setWidget((prev) => ({ ...prev, position: e.target.value }))}
+                          select
+                          SelectProps={{ native: true }}
+                          sx={fieldSx}
                         >
-                          <Box sx={{ position: 'absolute', ...previewPositionSx }}>
-                            <Box
-                              sx={{
-                                width: { xs: 252, md: 300 },
-                                height: { xs: 222, md: 260 },
-                                borderRadius: '14px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(148,163,184,0.38)',
-                                boxShadow: '0 20px 32px rgba(15,23,42,0.24)',
-                                bgcolor: '#ffffff',
-                                display: 'flex',
-                                flexDirection: 'column',
-                              }}
+                          <option value="bottom-right">Bottom Right</option>
+                          <option value="bottom-left">Bottom Left</option>
+                          <option value="top-right">Top Right</option>
+                          <option value="top-left">Top Left</option>
+                        </TextField>
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
+                            Primary Color Picker
+                          </Typography>
+                          <Box
+                            component="input"
+                            type="color"
+                            value={widget.primary_color}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              setWidget((prev) => ({ ...prev, primary_color: e.target.value }))
+                            }
+                            sx={{
+                              width: '100%',
+                              height: 44,
+                              borderRadius: '10px',
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+                              backgroundColor: alpha(theme.palette.common.white, 0.86),
+                              p: 0.4,
+                            }}
+                          />
+                        </Box>
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
+                            Secondary Color Picker
+                          </Typography>
+                          <Box
+                            component="input"
+                            type="color"
+                            value={widget.secondary_color}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              setWidget((prev) => ({ ...prev, secondary_color: e.target.value }))
+                            }
+                            sx={{
+                              width: '100%',
+                              height: 44,
+                              borderRadius: '10px',
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+                              backgroundColor: alpha(theme.palette.common.white, 0.86),
+                              p: 0.4,
+                            }}
+                          />
+                        </Box>
+                      </Box>
+
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                          Bot Icon (Predefined)
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          {BOT_ICON_OPTIONS.map((option) => (
+                            <Button
+                              key={option.id}
+                              variant={botIcon === option.id ? 'contained' : 'outlined'}
+                              onClick={() => setBotIcon(option.id)}
+                              sx={{ minWidth: 56, height: 44, borderRadius: '12px', fontSize: '1.2rem' }}
+                              title={option.label}
                             >
-                              <Box sx={{ background: previewGradient, color: '#fff', py: 1, px: 1.25, fontWeight: 700, fontSize: '0.9rem' }}>
-                                {widget.name.trim() || 'AI Assistant'}
-                              </Box>
-                              <Box sx={{ flex: 1, p: { xs: 0.85, md: 1.1 }, bgcolor: '#f8fafc' }}>
-                                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.8, mb: 1 }}>
-                                  <Box sx={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #cbd5e1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#ffffff', fontSize: '0.95rem' }}>
-                                    {getIconGlyph(botIcon, 'bot')}
+                              {option.glyph}
+                            </Button>
+                          ))}
+                        </Stack>
+
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, mt: 1.5 }}>
+                          User Icon (Predefined)
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          {USER_ICON_OPTIONS.map((option) => (
+                            <Button
+                              key={option.id}
+                              variant={userIcon === option.id ? 'contained' : 'outlined'}
+                              onClick={() => setUserIcon(option.id)}
+                              sx={{ minWidth: 56, height: 44, borderRadius: '12px', fontSize: '1.2rem' }}
+                              title={option.label}
+                            >
+                              {option.glyph}
+                            </Button>
+                          ))}
+                        </Stack>
+                      </Box>
+                    </Stack>
+                  </Grid>
+
+                  <Grid item xs={12} md={5}>
+                    <Stack spacing={1.8}>
+                      <Box sx={{ ...accentPanelSx, p: 1.5 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                            Live Widget Preview
+                          </Typography>
+                          <Button size="small" variant="outlined" onClick={() => setShowWidgetPreview((prev) => !prev)}>
+                            {showWidgetPreview ? 'Hide' : 'Show'}
+                          </Button>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.2 }}>
+                          Instantly see how your style choices look for real users.
+                        </Typography>
+
+                        {showWidgetPreview && (
+                          <Box
+                            sx={{
+                              position: 'relative',
+                              height: { xs: 300, md: 360 },
+                              borderRadius: '12px',
+                              border: `1px dashed ${alpha(theme.palette.primary.main, 0.26)}`,
+                              background:
+                                'radial-gradient(circle at 18% 14%, rgba(111,165,229,0.16) 0%, transparent 32%), radial-gradient(circle at 82% 84%, rgba(79,182,241,0.16) 0%, transparent 34%), linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <Box sx={{ position: 'absolute', ...previewPositionSx }}>
+                              <Box
+                                sx={{
+                                  width: { xs: 252, md: 300 },
+                                  height: { xs: 222, md: 260 },
+                                  borderRadius: '14px',
+                                  overflow: 'hidden',
+                                  border: '1px solid rgba(148,163,184,0.38)',
+                                  boxShadow: '0 20px 32px rgba(15,23,42,0.24)',
+                                  bgcolor: '#ffffff',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                }}
+                              >
+                                <Box sx={{ background: previewGradient, color: '#fff', py: 1, px: 1.25, fontWeight: 700, fontSize: '0.9rem' }}>
+                                  {widget.name.trim() || 'AI Assistant'}
+                                </Box>
+                                <Box sx={{ flex: 1, p: { xs: 0.85, md: 1.1 }, bgcolor: '#f8fafc' }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.8, mb: 1 }}>
+                                    <Box sx={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #cbd5e1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#ffffff', fontSize: '0.95rem' }}>
+                                      {getIconGlyph(botIcon, 'bot')}
+                                    </Box>
+                                    <Box sx={{ maxWidth: '82%', p: { xs: 0.85, md: 1 }, borderRadius: 1.5, border: '1px solid #e2e8f0', bgcolor: '#ffffff', color: '#1e293b', fontSize: { xs: '0.76rem', md: '0.84rem' } }}>
+                                      {(widget.welcome_message || 'Hi! How can I help you?').trim() || 'Hi! How can I help you?'}
+                                    </Box>
                                   </Box>
-                                  <Box sx={{ maxWidth: '82%', p: { xs: 0.85, md: 1 }, borderRadius: 1.5, border: '1px solid #e2e8f0', bgcolor: '#ffffff', color: '#1e293b', fontSize: { xs: '0.76rem', md: '0.84rem' } }}>
-                                    {(widget.welcome_message || 'Hi! How can I help you?').trim() || 'Hi! How can I help you?'}
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 0.8 }}>
+                                    <Box sx={{ maxWidth: '74%', p: { xs: 0.8, md: 1 }, borderRadius: 1.5, bgcolor: alpha(widget.primary_color || '#2f6bff', 0.95), color: '#fff', fontSize: { xs: '0.74rem', md: '0.82rem' } }}>
+                                      Tell me about your pricing plans.
+                                    </Box>
+                                    <Box sx={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #cbd5e1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#ffffff', fontSize: '0.95rem' }}>
+                                      {getIconGlyph(userIcon, 'user')}
+                                    </Box>
                                   </Box>
                                 </Box>
-                                <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 0.8 }}>
-                                  <Box sx={{ maxWidth: '74%', p: { xs: 0.8, md: 1 }, borderRadius: 1.5, bgcolor: alpha(widget.primary_color || '#2f6bff', 0.95), color: '#fff', fontSize: { xs: '0.74rem', md: '0.82rem' } }}>
-                                    Tell me about your pricing plans.
+                                <Box sx={{ p: { xs: 0.8, md: 1 }, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff', display: 'flex', gap: 0.8 }}>
+                                  <Box sx={{ flex: 1, px: 1, py: { xs: 0.65, md: 0.85 }, borderRadius: 1.2, border: '1px solid #cbd5e1', color: '#94a3b8', fontSize: { xs: '0.7rem', md: '0.78rem' } }}>
+                                    Type your message...
                                   </Box>
-                                  <Box sx={{ width: 26, height: 26, borderRadius: '50%', border: '1px solid #cbd5e1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#ffffff', fontSize: '0.95rem' }}>
-                                    {getIconGlyph(userIcon, 'user')}
+                                  <Box sx={{ px: { xs: 1.1, md: 1.4 }, py: { xs: 0.65, md: 0.85 }, borderRadius: 1.2, color: '#fff', fontSize: { xs: '0.7rem', md: '0.78rem' }, background: previewGradient }}>
+                                    Send
                                   </Box>
-                                </Box>
-                              </Box>
-                              <Box sx={{ p: { xs: 0.8, md: 1 }, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff', display: 'flex', gap: 0.8 }}>
-                                <Box sx={{ flex: 1, px: 1, py: { xs: 0.65, md: 0.85 }, borderRadius: 1.2, border: '1px solid #cbd5e1', color: '#94a3b8', fontSize: { xs: '0.7rem', md: '0.78rem' } }}>
-                                  Type your message...
-                                </Box>
-                                <Box sx={{ px: { xs: 1.1, md: 1.4 }, py: { xs: 0.65, md: 0.85 }, borderRadius: 1.2, color: '#fff', fontSize: { xs: '0.7rem', md: '0.78rem' }, background: previewGradient }}>
-                                  Send
                                 </Box>
                               </Box>
                             </Box>
                           </Box>
-                        </Box>
-                      )}
-                    </Box>
+                        )}
+                      </Box>
 
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
+                          Quick Checklist
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">1. Name and welcome tone are clear.</Typography>
+                        <Typography variant="body2" color="text.secondary">2. Colors match your brand and dashboard.</Typography>
+                        <Typography variant="body2" color="text.secondary">3. Widget position suits your website layout.</Typography>
+                      </Box>
+                    </Stack>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
+                      <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>
+                        Back to Agent Management
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={saveWidgetProfile}
+                        disabled={busy}
+                        sx={{
+                          borderRadius: '12px',
+                          px: 2.8,
+                          boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
+                          background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                        }}
+                      >
+                        {busy ? <CircularProgress size={20} /> : isEditMode ? 'Update Agent and Continue' : 'Create Agent and Continue'}
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeStep === 1 && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+                <Grid container spacing={2.2}>
+                  <Grid item xs={12}>
                     <Box sx={accentPanelSx}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
-                        Quick Checklist
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">1. Name and welcome tone are clear.</Typography>
-                      <Typography variant="body2" color="text.secondary">2. Colors match your brand and dashboard.</Typography>
-                      <Typography variant="body2" color="text.secondary">3. Widget position suits your website layout.</Typography>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
+                        <Box>
+                          <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                            Step 2
+                          </Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
+                            Add Knowledge Base
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Agent ID: <strong>{createdWidgetId}</strong>
+                          </Typography>
+                        </Box>
+                        <Chip label={`Knowledge Actions ${knowledgeActionsDone}`} color={knowledgeActionsDone > 0 ? 'success' : 'default'} />
+                      </Stack>
                     </Box>
-                  </Stack>
-                </Grid>
+                  </Grid>
 
-                <Grid item xs={12}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
-                    <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>
-                      Back to Agent Management
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={saveWidgetProfile}
-                      disabled={busy}
-                      sx={{
-                        borderRadius: '12px',
-                        px: 2.8,
-                        boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
-                        background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-                      }}
-                    >
-                      {busy ? <CircularProgress size={20} /> : isEditMode ? 'Update Agent and Continue' : 'Create Agent and Continue'}
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        )}
+                  <Grid item xs={12} md={7}>
+                    <Stack spacing={2}>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Website Crawl</Typography>
+                        <Stack spacing={1.4}>
+                          <TextField
+                            label="Website URL"
+                            value={knowledgeUrl}
+                            onChange={(e) => {
+                              setKnowledgeUrl(e.target.value);
+                              setCrawlPreviewItems([]);
+                            }}
+                            placeholder="https://example.com"
+                            fullWidth
+                            sx={fieldSx}
+                          />
+                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                            <TextField
+                              label="Max Pages"
+                              type="number"
+                              value={crawlMaxPages}
+                              onChange={(e) => {
+                                setCrawlMaxPages(Math.max(1, Number(e.target.value) || 1));
+                                setCrawlPreviewItems([]);
+                              }}
+                              inputProps={{ min: 1 }}
+                              fullWidth
+                              sx={fieldSx}
+                            />
+                            <TextField
+                              label="Max Depth"
+                              type="number"
+                              value={crawlMaxDepth}
+                              onChange={(e) => {
+                                setCrawlMaxDepth(Math.max(1, Number(e.target.value) || 1));
+                                setCrawlPreviewItems([]);
+                              }}
+                              inputProps={{ min: 1 }}
+                              fullWidth
+                              sx={fieldSx}
+                            />
+                          </Box>
 
-        {activeStep === 1 && (
-          <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-              <Grid container spacing={2.2}>
-                <Grid item xs={12}>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <Button variant="outlined" onClick={previewWebsiteLinks} disabled={busy || crawlJobActive}>
+                              Preview Crawled Links
+                            </Button>
+                            <Button
+                              variant="contained"
+                              onClick={addWebsiteKnowledge}
+                              disabled={busy || crawlJobActive || selectedPreviewCount < 1}
+                              sx={{
+                                background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                              }}
+                            >
+                              Embed Selected ({selectedPreviewCount})
+                            </Button>
+                            <Button
+                              variant="text"
+                              onClick={refreshCrawlProgress}
+                              disabled={refreshingCrawlStatus || !createdWidgetId}
+                              startIcon={refreshingCrawlStatus ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
+                            >
+                              {refreshingCrawlStatus ? 'Refreshing...' : 'Refresh Progress'}
+                            </Button>
+                          </Stack>
+
+                          {crawlJobStatus && (
+                            <Box
+                              sx={{
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                                borderRadius: '12px',
+                                p: 1.2,
+                                background: alpha(theme.palette.common.white, 0.76),
+                              }}
+                            >
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                                <Stack direction="row" spacing={0.8} alignItems="center">
+                                  <Chip
+                                    size="small"
+                                    label={crawlJobStatus.status.toUpperCase()}
+                                    color={
+                                      crawlJobStatus.status === 'completed'
+                                        ? 'success'
+                                        : crawlJobStatus.status === 'failed'
+                                          ? 'error'
+                                          : 'primary'
+                                    }
+                                  />
+                                  <Typography variant="caption" color="text.secondary">
+                                    {crawlJobStatus.stage ? `Stage: ${crawlJobStatus.stage}` : 'Processing'}
+                                  </Typography>
+                                </Stack>
+                                <Typography variant="caption" color="text.secondary">
+                                  Job ID: {crawlJobStatus.job_id}
+                                </Typography>
+                              </Stack>
+
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.max(0, Math.min(100, crawlJobStatus.progress || 0))}
+                                sx={{ mt: 1, height: 8, borderRadius: 999 }}
+                              />
+
+                              <Typography variant="body2" sx={{ mt: 0.8 }}>
+                                {crawlJobStatus.message || 'Processing website embedding...'}
+                              </Typography>
+
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.45 }}>
+                                Pages {crawlJobStatus.pages_completed || 0}/{crawlJobStatus.pages_total || selectedPreviewCount} • Crawled {crawlJobStatus.pages_crawled || 0} • Scanned {crawlJobStatus.pages_scanned || 0} • Chunks {crawlJobStatus.chunks_embedded || 0}
+                              </Typography>
+
+                              {crawlJobStatus.error && (
+                                <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.6 }}>
+                                  {crawlJobStatus.error}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+
+                          {crawlPreviewItems.length > 0 && (
+                            <Box
+                              sx={{
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                                borderRadius: '12px',
+                                p: 1.2,
+                                background: alpha(theme.palette.common.white, 0.72),
+                              }}
+                            >
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Discovered {crawlPreviewItems.length} links. Selected {selectedPreviewCount}.
+                                </Typography>
+                                <Stack direction="row" spacing={0.8}>
+                                  <Button size="small" variant="text" onClick={() => setAllPreviewSelections(true)}>
+                                    Select All
+                                  </Button>
+                                  <Button size="small" variant="text" onClick={() => setAllPreviewSelections(false)}>
+                                    Unselect All
+                                  </Button>
+                                </Stack>
+                              </Stack>
+
+                              <Box
+                                sx={{
+                                  mt: 1,
+                                  maxHeight: 240,
+                                  overflowY: 'auto',
+                                  borderRadius: '10px',
+                                  border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                                  p: 0.8,
+                                  background: alpha(theme.palette.common.white, 0.86),
+                                }}
+                              >
+                                {crawlPreviewItems.map((item) => (
+                                  <Box
+                                    key={item.url}
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      gap: 0.8,
+                                      px: 0.4,
+                                      py: 0.45,
+                                      borderRadius: '8px',
+                                      '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
+                                    }}
+                                  >
+                                    <Checkbox
+                                      size="small"
+                                      checked={item.selected}
+                                      onChange={() => togglePreviewSelection(item.url)}
+                                      sx={{ mt: -0.3 }}
+                                    />
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                                        {item.url}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Depth {item.depth}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
+                        </Stack>
+                      </Box>
+
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge</Typography>
+                        <Stack spacing={1.4}>
+                          <TextField
+                            label="Title"
+                            value={knowledgeTitle}
+                            onChange={(e) => setKnowledgeTitle(e.target.value)}
+                            fullWidth
+                            sx={fieldSx}
+                          />
+                          <TextField
+                            label="Knowledge Content"
+                            value={knowledgeText}
+                            onChange={(e) => setKnowledgeText(e.target.value)}
+                            multiline
+                            rows={6}
+                            fullWidth
+                            placeholder="Paste FAQs, product details, policies, etc."
+                            sx={fieldSx}
+                          />
+                          <Button variant="outlined" onClick={addTextKnowledge} disabled={busy}>
+                            Add Text Knowledge
+                          </Button>
+                        </Stack>
+                      </Box>
+                    </Stack>
+                  </Grid>
+
+                  <Grid item xs={12} md={5}>
+                    <Stack spacing={2}>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
+                        <Stack spacing={1.4}>
+                          <Button variant="outlined" component="label" disabled={busy}>
+                            {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
+                            <input
+                              type="file"
+                              hidden
+                              accept=".pdf,.doc,.docx,.xls,.xlsx"
+                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                            />
+                          </Button>
+                          <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy}>
+                            Upload Document Knowledge
+                          </Button>
+                        </Stack>
+                      </Box>
+
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
+                          Curation Guidance
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">1. Start with high-value pages (pricing, FAQs, policies).</Typography>
+                        <Typography variant="body2" color="text.secondary">2. Add internal process docs for support precision.</Typography>
+                        <Typography variant="body2" color="text.secondary">3. Keep updates frequent to avoid stale answers.</Typography>
+                      </Box>
+                    </Stack>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
+                      <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
+                        Back to Agent Setup
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={moveToIntegrationStep}
+                        disabled={busy}
+                        sx={{
+                          borderRadius: '12px',
+                          px: 2.6,
+                          boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
+                          background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                        }}
+                      >
+                        Continue to Integrations
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeStep === 2 && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+                <Stack spacing={2.2}>
                   <Box sx={accentPanelSx}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
                       <Box>
                         <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                          Step 2
+                          Step 3
                         </Typography>
                         <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
-                          Add Knowledge Base
+                          Integrations
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Agent ID: <strong>{createdWidgetId}</strong>
+                          Connect external channels and prepare your agent for multi-surface conversations.
                         </Typography>
                       </Box>
-                      <Chip label={`Knowledge Actions ${knowledgeActionsDone}`} color={knowledgeActionsDone > 0 ? 'success' : 'default'} />
+                      <Chip label={whatsappConfigured ? 'WhatsApp Ready' : 'Channel Setup Pending'} color={whatsappConfigured ? 'success' : 'warning'} />
                     </Stack>
+                    <Alert severity="info" sx={{ mt: 1.2 }}>
+                      WhatsApp requires plan support (`whatsapp_enabled`) and valid Meta Cloud API credentials.
+                    </Alert>
                   </Box>
-                </Grid>
 
-                <Grid item xs={12} md={7}>
-                  <Stack spacing={2}>
-                    <Box sx={accentPanelSx}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Website Crawl</Typography>
-                      <Stack spacing={1.4}>
-                        <TextField
-                          label="Website URL"
-                          value={knowledgeUrl}
-                          onChange={(e) => {
-                            setKnowledgeUrl(e.target.value);
-                            setCrawlPreviewItems([]);
-                          }}
-                          placeholder="https://example.com"
-                          fullWidth
-                          sx={fieldSx}
-                        />
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                          <TextField
-                            label="Max Pages"
-                            type="number"
-                            value={crawlMaxPages}
-                            onChange={(e) => {
-                              setCrawlMaxPages(Math.max(1, Number(e.target.value) || 1));
-                              setCrawlPreviewItems([]);
-                            }}
-                            inputProps={{ min: 1 }}
-                            fullWidth
-                            sx={fieldSx}
-                          />
-                          <TextField
-                            label="Max Depth"
-                            type="number"
-                            value={crawlMaxDepth}
-                            onChange={(e) => {
-                              setCrawlMaxDepth(Math.max(1, Number(e.target.value) || 1));
-                              setCrawlPreviewItems([]);
-                            }}
-                            inputProps={{ min: 1 }}
-                            fullWidth
-                            sx={fieldSx}
-                          />
-                        </Box>
-
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                          <Button variant="outlined" onClick={previewWebsiteLinks} disabled={busy || crawlJobActive}>
-                            Preview Crawled Links
-                          </Button>
-                          <Button
-                            variant="contained"
-                            onClick={addWebsiteKnowledge}
-                            disabled={busy || crawlJobActive || selectedPreviewCount < 1}
-                            sx={{
-                              background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-                            }}
-                          >
-                            Embed Selected ({selectedPreviewCount})
-                          </Button>
-                          <Button
-                            variant="text"
-                            onClick={refreshCrawlProgress}
-                            disabled={refreshingCrawlStatus || !createdWidgetId}
-                            startIcon={refreshingCrawlStatus ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
-                          >
-                            {refreshingCrawlStatus ? 'Refreshing...' : 'Refresh Progress'}
-                          </Button>
-                        </Stack>
-
-                        {crawlJobStatus && (
-                          <Box
-                            sx={{
-                              border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
-                              borderRadius: '12px',
-                              p: 1.2,
-                              background: alpha(theme.palette.common.white, 0.76),
-                            }}
-                          >
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                              <Stack direction="row" spacing={0.8} alignItems="center">
-                                <Chip
-                                  size="small"
-                                  label={crawlJobStatus.status.toUpperCase()}
-                                  color={
-                                    crawlJobStatus.status === 'completed'
-                                      ? 'success'
-                                      : crawlJobStatus.status === 'failed'
-                                      ? 'error'
-                                      : 'primary'
-                                  }
-                                />
-                                <Typography variant="caption" color="text.secondary">
-                                  {crawlJobStatus.stage ? `Stage: ${crawlJobStatus.stage}` : 'Processing'}
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={integrationCardSx}>
+                        <CardContent>
+                          <Stack spacing={1.5}>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <WhatsAppIcon color="success" />
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                  WhatsApp (Meta)
                                 </Typography>
                               </Stack>
-                              <Typography variant="caption" color="text.secondary">
-                                Job ID: {crawlJobStatus.job_id}
+                              <Chip
+                                label={whatsappConfigured ? 'Connected' : 'Not Connected'}
+                                color={whatsappConfigured ? 'success' : 'default'}
+                                size="small"
+                              />
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              Connect Meta WhatsApp Cloud API for two-way messaging with the same knowledge base.
+                            </Typography>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={openMetaWhatsAppWizard}
+                                disabled={metaConnecting}
+                                sx={{ minWidth: { sm: 128 }, py: 0.55, px: 1.25, whiteSpace: 'nowrap' }}
+                              >
+                                {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
+                              </Button>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => setIntegrationDialogOpen(true)}
+                                sx={{ minWidth: { sm: 102 }, py: 0.55, px: 1.4, whiteSpace: 'nowrap' }}
+                              >
+                                Configure
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<OpenInNewIcon />}
+                                onClick={() => window.open('/integrations/whatsapp', '_blank', 'noopener,noreferrer')}
+                                sx={{ minWidth: { sm: 126 }, py: 0.55, px: 1.25 }}
+                              >
+                                Open Full Page
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
+                        <CardContent>
+                          <Stack spacing={1.5}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <GroupsIcon color="primary" />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                Microsoft Teams
                               </Typography>
                             </Stack>
-
-                            <LinearProgress
-                              variant="determinate"
-                              value={Math.max(0, Math.min(100, crawlJobStatus.progress || 0))}
-                              sx={{ mt: 1, height: 8, borderRadius: 999 }}
-                            />
-
-                            <Typography variant="body2" sx={{ mt: 0.8 }}>
-                              {crawlJobStatus.message || 'Processing website embedding...'}
+                            <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
+                            <Typography variant="body2" color="text.secondary">
+                              Teams channel integration is available as a roadmap option and can be enabled in the same flow.
                             </Typography>
+                            <Button variant="outlined" disabled>
+                              Configure
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
 
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.45 }}>
-                              Pages {crawlJobStatus.pages_completed || 0}/{crawlJobStatus.pages_total || selectedPreviewCount} • Crawled {crawlJobStatus.pages_crawled || 0} • Scanned {crawlJobStatus.pages_scanned || 0} • Chunks {crawlJobStatus.chunks_embedded || 0}
-                            </Typography>
-
-                            {crawlJobStatus.error && (
-                              <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.6 }}>
-                                {crawlJobStatus.error}
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
+                        <CardContent>
+                          <Stack spacing={1.5}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <ForumIcon color="primary" />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                Slack
                               </Typography>
-                            )}
-                          </Box>
-                        )}
-
-                        {crawlPreviewItems.length > 0 && (
-                          <Box
-                            sx={{
-                              border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-                              borderRadius: '12px',
-                              p: 1.2,
-                              background: alpha(theme.palette.common.white, 0.72),
-                            }}
-                          >
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                Discovered {crawlPreviewItems.length} links. Selected {selectedPreviewCount}.
-                              </Typography>
-                              <Stack direction="row" spacing={0.8}>
-                                <Button size="small" variant="text" onClick={() => setAllPreviewSelections(true)}>
-                                  Select All
-                                </Button>
-                                <Button size="small" variant="text" onClick={() => setAllPreviewSelections(false)}>
-                                  Unselect All
-                                </Button>
-                              </Stack>
                             </Stack>
+                            <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
+                            <Typography variant="body2" color="text.secondary">
+                              Slack bot integration can be added here next with workspace OAuth and event webhook setup.
+                            </Typography>
+                            <Button variant="outlined" disabled>
+                              Configure
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
 
-                            <Box
-                              sx={{
-                                mt: 1,
-                                maxHeight: 240,
-                                overflowY: 'auto',
-                                borderRadius: '10px',
-                                border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
-                                p: 0.8,
-                                background: alpha(theme.palette.common.white, 0.86),
-                              }}
-                            >
-                              {crawlPreviewItems.map((item) => (
-                                <Box
-                                  key={item.url}
-                                  sx={{
-                                    display: 'flex',
-                                    alignItems: 'flex-start',
-                                    gap: 0.8,
-                                    px: 0.4,
-                                    py: 0.45,
-                                    borderRadius: '8px',
-                                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
-                                  }}
-                                >
-                                  <Checkbox
-                                    size="small"
-                                    checked={item.selected}
-                                    onChange={() => togglePreviewSelection(item.url)}
-                                    sx={{ mt: -0.3 }}
-                                  />
-                                  <Box sx={{ minWidth: 0 }}>
-                                    <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                                      {item.url}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Depth {item.depth}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                              ))}
-                            </Box>
-                          </Box>
-                        )}
-                      </Stack>
-                    </Box>
-
-                    <Box sx={accentPanelSx}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge</Typography>
-                      <Stack spacing={1.4}>
-                        <TextField
-                          label="Title"
-                          value={knowledgeTitle}
-                          onChange={(e) => setKnowledgeTitle(e.target.value)}
-                          fullWidth
-                          sx={fieldSx}
-                        />
-                        <TextField
-                          label="Knowledge Content"
-                          value={knowledgeText}
-                          onChange={(e) => setKnowledgeText(e.target.value)}
-                          multiline
-                          rows={6}
-                          fullWidth
-                          placeholder="Paste FAQs, product details, policies, etc."
-                          sx={fieldSx}
-                        />
-                        <Button variant="outlined" onClick={addTextKnowledge} disabled={busy}>
-                          Add Text Knowledge
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </Grid>
-
-                <Grid item xs={12} md={5}>
-                  <Stack spacing={2}>
-                    <Box sx={accentPanelSx}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
-                      <Stack spacing={1.4}>
-                        <Button variant="outlined" component="label" disabled={busy}>
-                          {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
-                          <input
-                            type="file"
-                            hidden
-                            accept=".pdf,.doc,.docx,.xls,.xlsx"
-                            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                          />
-                        </Button>
-                        <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy}>
-                          Upload Document Knowledge
-                        </Button>
-                      </Stack>
-                    </Box>
-
-                    <Box sx={accentPanelSx}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
-                        Curation Guidance
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">1. Start with high-value pages (pricing, FAQs, policies).</Typography>
-                      <Typography variant="body2" color="text.secondary">2. Add internal process docs for support precision.</Typography>
-                      <Typography variant="body2" color="text.secondary">3. Keep updates frequent to avoid stale answers.</Typography>
-                    </Box>
-                  </Stack>
-                </Grid>
-
-                <Grid item xs={12}>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
                     <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
-                      Back to Agent Setup
+                      Back to Knowledge
                     </Button>
                     <Button
                       variant="contained"
-                      onClick={moveToIntegrationStep}
-                      disabled={busy}
+                      onClick={moveToShareStep}
                       sx={{
                         borderRadius: '12px',
                         px: 2.6,
@@ -1765,399 +1913,253 @@ const CreateChatAgentPage: React.FC = () => {
                         background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
                       }}
                     >
-                      Continue to Integrations
+                      Continue to Share Link
                     </Button>
                   </Stack>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeStep === 2 && (
-          <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-              <Stack spacing={2.2}>
-                <Box sx={accentPanelSx}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-                    <Box>
-                      <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                        Step 3
-                      </Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
-                        Integrations
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Connect external channels and prepare your agent for multi-surface conversations.
-                      </Typography>
-                    </Box>
-                    <Chip label={whatsappConfigured ? 'WhatsApp Ready' : 'Channel Setup Pending'} color={whatsappConfigured ? 'success' : 'warning'} />
-                  </Stack>
-                  <Alert severity="info" sx={{ mt: 1.2 }}>
-                    WhatsApp requires plan support (`whatsapp_enabled`) and valid Meta Cloud API credentials.
-                  </Alert>
-                </Box>
-
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={integrationCardSx}>
-                      <CardContent>
-                        <Stack spacing={1.5}>
-                          <Stack direction="row" alignItems="center" justifyContent="space-between">
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <WhatsAppIcon color="success" />
-                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                                WhatsApp (Meta)
-                              </Typography>
-                            </Stack>
-                            <Chip
-                              label={whatsappConfigured ? 'Connected' : 'Not Connected'}
-                              color={whatsappConfigured ? 'success' : 'default'}
-                              size="small"
-                            />
-                          </Stack>
-                          <Typography variant="body2" color="text.secondary">
-                            Connect Meta WhatsApp Cloud API for two-way messaging with the same knowledge base.
-                          </Typography>
-                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              onClick={openMetaWhatsAppWizard}
-                              disabled={metaConnecting}
-                              sx={{ minWidth: { sm: 128 }, py: 0.55, px: 1.25, whiteSpace: 'nowrap' }}
-                            >
-                              {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
-                            </Button>
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => setIntegrationDialogOpen(true)}
-                              sx={{ minWidth: { sm: 102 }, py: 0.55, px: 1.4, whiteSpace: 'nowrap' }}
-                            >
-                              Configure
-                            </Button>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              startIcon={<OpenInNewIcon />}
-                              onClick={() => window.open('/integrations/whatsapp', '_blank', 'noopener,noreferrer')}
-                              sx={{ minWidth: { sm: 126 }, py: 0.55, px: 1.25 }}
-                            >
-                              Open Full Page
-                            </Button>
-                          </Stack>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
-                      <CardContent>
-                        <Stack spacing={1.5}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <GroupsIcon color="primary" />
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                              Microsoft Teams
-                            </Typography>
-                          </Stack>
-                          <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            Teams channel integration is available as a roadmap option and can be enabled in the same flow.
-                          </Typography>
-                          <Button variant="outlined" disabled>
-                            Configure
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
-                      <CardContent>
-                        <Stack spacing={1.5}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <ForumIcon color="primary" />
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                              Slack
-                            </Typography>
-                          </Stack>
-                          <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            Slack bot integration can be added here next with workspace OAuth and event webhook setup.
-                          </Typography>
-                          <Button variant="outlined" disabled>
-                            Configure
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
-                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
-                    Back to Knowledge
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={moveToShareStep}
-                    sx={{
-                      borderRadius: '12px',
-                      px: 2.6,
-                      boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
-                      background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-                    }}
-                  >
-                    Continue to Share Link
-                  </Button>
                 </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          )}
 
-        {activeStep === 3 && (
-          <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-              <Stack spacing={2.2}>
-                <Box sx={accentPanelSx}>
-                  <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                    Step 4
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
-                    Share and Validate
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Share this public URL with stakeholders so they can test the chatbot experience instantly.
-                  </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                    <Chip label="Launch Ready" color="success" />
-                    <Chip label="Public Test Link" variant="outlined" />
-                  </Stack>
-                </Box>
-
-                <Box sx={accentPanelSx}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Agent Test URL
-                  </Typography>
-                  <TextField
-                    value={shareLinkLoading ? 'Generating expiring test link...' : shareLink}
-                    fullWidth
-                    InputProps={{ readOnly: true }}
-                    sx={fieldSx}
-                  />
-                  {shareLinkExpiresAt && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      This test link expires on {new Date(shareLinkExpiresAt).toLocaleString()}.
+          {activeStep === 3 && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+                <Stack spacing={2.2}>
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                      Step 4
                     </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1.2, display: 'block' }}>
-                    Tip: If your backend runs on a different host, set VITE_API_URL in frontend .env before sharing.
-                  </Typography>
-                </Box>
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
-                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
-                    Back to Integrations
-                  </Button>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                    <Button
-                      variant="contained"
-                      startIcon={<ContentCopyIcon />}
-                      onClick={copyShareLink}
-                      disabled={shareLinkLoading || !createdWidgetId}
-                      sx={{
-                        borderRadius: '12px',
-                        px: 2.4,
-                        boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
-                        background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-                      }}
-                    >
-                      Copy Link
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      startIcon={<LaunchIcon />}
-                      onClick={() => window.open(shareLink, '_blank', 'noopener,noreferrer')}
-                      disabled={shareLinkLoading || !shareLink}
-                    >
-                      Open Test Page
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      startIcon={<ArrowBackIcon />}
-                      onClick={() => navigate('/widgets')}
-                    >
-                      Back to Agent Management
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        )}
-
-        <Dialog
-          open={integrationDialogOpen}
-          onClose={() => setIntegrationDialogOpen(false)}
-          fullWidth
-          maxWidth="md"
-          PaperProps={{ sx: { ...sectionPanelSx, borderRadius: '18px' } }}
-        >
-          <DialogTitle sx={{ pb: 1 }}>
-            WhatsApp Integration (Meta Cloud API)
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 0.5 }}>
-              <Typography variant="body2" color="text.secondary">
-                This popup lets you finish Meta setup directly from the wizard using the newly created agent.
-              </Typography>
-
-              <Alert
-                severity="info"
-                action={
-                  <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard} disabled={metaConnecting}>
-                    {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect' : 'Loading SDK...'}
-                  </Button>
-                }
-              >
-                Use Meta onboarding wizard to auto-import Phone Number ID and access token.
-              </Alert>
-
-              <TextField label="Agent ID" value={createdWidgetId} fullWidth disabled />
-
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Phone Number ID *"
-                    value={whatsappForm.phone_number_id}
-                    onChange={(e) => handleWhatsAppField('phone_number_id', e.target.value)}
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="WABA ID"
-                    value={whatsappForm.waba_id}
-                    onChange={(e) => handleWhatsAppField('waba_id', e.target.value)}
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Meta Access Token *"
-                    value={whatsappForm.access_token}
-                    onChange={(e) => handleWhatsAppField('access_token', e.target.value)}
-                    type="password"
-                    helperText="Required when saving config"
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Webhook Verify Token *"
-                    value={whatsappForm.verify_token}
-                    onChange={(e) => handleWhatsAppField('verify_token', e.target.value)}
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Business Phone Number"
-                    value={whatsappForm.business_phone_number}
-                    onChange={(e) => handleWhatsAppField('business_phone_number', e.target.value)}
-                    placeholder="+91XXXXXXXXXX"
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-              </Grid>
-
-              <Card sx={{ ...sectionPanelSx, borderRadius: '14px' }}>
-                <CardContent>
-                  <Stack spacing={1}>
-                    <Typography variant="subtitle2">Meta Webhook Setup</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
+                      Share and Validate
+                    </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Callback URL: {webhookUrl}
+                      Share this public URL with stakeholders so they can test the chatbot experience instantly.
                     </Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                      <Chip label="Launch Ready" color="success" />
+                      <Chip label="Public Test Link" variant="outlined" />
+                    </Stack>
+                  </Box>
+
+                  <Box sx={accentPanelSx}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      Agent Test URL
+                    </Typography>
+                    <TextField
+                      value={shareLinkLoading ? 'Generating expiring test link...' : shareLink}
+                      fullWidth
+                      InputProps={{ readOnly: true }}
+                      sx={fieldSx}
+                    />
+                    {shareLinkExpiresAt && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        This test link expires on {new Date(shareLinkExpiresAt).toLocaleString()}.
+                      </Typography>
+                    )}
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1.2, display: 'block' }}>
+                      Tip: If your backend runs on a different host, set VITE_API_URL in frontend .env before sharing.
+                    </Typography>
+                  </Box>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
+                    <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
+                      Back to Integrations
+                    </Button>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                       <Button
-                        variant="outlined"
-                        size="small"
+                        variant="contained"
                         startIcon={<ContentCopyIcon />}
-                        onClick={() => copyToClipboard(webhookUrl, 'Webhook URL copied.')}
+                        onClick={copyShareLink}
+                        disabled={shareLinkLoading || !createdWidgetId}
+                        sx={{
+                          borderRadius: '12px',
+                          px: 2.4,
+                          boxShadow: `0 10px 22px ${alpha(theme.palette.primary.dark, 0.2)}`,
+                          background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                        }}
                       >
-                        Copy Webhook URL
+                        Copy Link
                       </Button>
                       <Button
                         variant="outlined"
-                        size="small"
-                        startIcon={<ContentCopyIcon />}
-                        onClick={() => copyToClipboard(whatsappForm.verify_token, 'Verify token copied.')}
+                        startIcon={<LaunchIcon />}
+                        onClick={() => window.open(shareLink, '_blank', 'noopener,noreferrer')}
+                        disabled={shareLinkLoading || !shareLink}
                       >
-                        Copy Verify Token
+                        Open Test Page
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<ArrowBackIcon />}
+                        onClick={() => navigate('/widgets')}
+                      >
+                        Back to Agent Management
                       </Button>
                     </Stack>
                   </Stack>
-                </CardContent>
-              </Card>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
 
-              <Divider />
+          <Dialog
+            open={integrationDialogOpen}
+            onClose={() => setIntegrationDialogOpen(false)}
+            fullWidth
+            maxWidth="md"
+            PaperProps={{ sx: { ...sectionPanelSx, borderRadius: '18px' } }}
+          >
+            <DialogTitle sx={{ pb: 1 }}>
+              WhatsApp Integration (Meta Cloud API)
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 0.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  This popup lets you finish Meta setup directly from the wizard using the newly created agent.
+                </Typography>
 
-              <Stack spacing={1}>
-                <Typography variant="subtitle2">Send Test Message</Typography>
+                <Alert
+                  severity="info"
+                  action={
+                    <Button color="inherit" size="small" onClick={openMetaWhatsAppWizard} disabled={metaConnecting}>
+                      {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect' : 'Loading SDK...'}
+                    </Button>
+                  }
+                >
+                  Use Meta onboarding wizard to auto-import Phone Number ID and access token.
+                </Alert>
+
+                <TextField label="Agent ID" value={createdWidgetId} fullWidth disabled />
+
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
                     <TextField
-                      label="Recipient Number"
-                      value={testToNumber}
-                      onChange={(e) => setTestToNumber(e.target.value)}
-                      placeholder="9198XXXXXXXX"
+                      label="Phone Number ID *"
+                      value={whatsappForm.phone_number_id}
+                      onChange={(e) => handleWhatsAppField('phone_number_id', e.target.value)}
                       fullWidth
                       sx={fieldSx}
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <TextField
-                      label="Message"
-                      value={testMessage}
-                      onChange={(e) => setTestMessage(e.target.value)}
+                      label="WABA ID"
+                      value={whatsappForm.waba_id}
+                      onChange={(e) => handleWhatsAppField('waba_id', e.target.value)}
+                      fullWidth
+                      sx={fieldSx}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Meta Access Token *"
+                      value={whatsappForm.access_token}
+                      onChange={(e) => handleWhatsAppField('access_token', e.target.value)}
+                      type="password"
+                      helperText="Required when saving config"
+                      fullWidth
+                      sx={fieldSx}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Webhook Verify Token *"
+                      value={whatsappForm.verify_token}
+                      onChange={(e) => handleWhatsAppField('verify_token', e.target.value)}
+                      fullWidth
+                      sx={fieldSx}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Business Phone Number"
+                      value={whatsappForm.business_phone_number}
+                      onChange={(e) => handleWhatsAppField('business_phone_number', e.target.value)}
+                      placeholder="+91XXXXXXXXXX"
                       fullWidth
                       sx={fieldSx}
                     />
                   </Grid>
                 </Grid>
-                <Box>
-                  <Button variant="outlined" onClick={sendWhatsAppTest} disabled={whatsappTesting}>
-                    {whatsappTesting ? 'Sending...' : 'Send Test Message'}
-                  </Button>
-                </Box>
+
+                <Card sx={{ ...sectionPanelSx, borderRadius: '14px' }}>
+                  <CardContent>
+                    <Stack spacing={1}>
+                      <Typography variant="subtitle2">Meta Webhook Setup</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Callback URL: {webhookUrl}
+                      </Typography>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() => copyToClipboard(webhookUrl, 'Webhook URL copied.')}
+                        >
+                          Copy Webhook URL
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() => copyToClipboard(whatsappForm.verify_token, 'Verify token copied.')}
+                        >
+                          Copy Verify Token
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Divider />
+
+                <Stack spacing={1}>
+                  <Typography variant="subtitle2">Send Test Message</Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        label="Recipient Number"
+                        value={testToNumber}
+                        onChange={(e) => setTestToNumber(e.target.value)}
+                        placeholder="9198XXXXXXXX"
+                        fullWidth
+                        sx={fieldSx}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        label="Message"
+                        value={testMessage}
+                        onChange={(e) => setTestMessage(e.target.value)}
+                        fullWidth
+                        sx={fieldSx}
+                      />
+                    </Grid>
+                  </Grid>
+                  <Box>
+                    <Button variant="outlined" onClick={sendWhatsAppTest} disabled={whatsappTesting}>
+                      {whatsappTesting ? 'Sending...' : 'Send Test Message'}
+                    </Button>
+                  </Box>
+                </Stack>
               </Stack>
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setIntegrationDialogOpen(false)} sx={{ borderRadius: '10px' }}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={saveWhatsAppIntegration}
-              disabled={whatsappSaving}
-              sx={{
-                borderRadius: '10px',
-                background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-              }}
-            >
-              {whatsappSaving ? 'Saving...' : 'Save WhatsApp Integration'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setIntegrationDialogOpen(false)} sx={{ borderRadius: '10px' }}>Cancel</Button>
+              <Button
+                variant="contained"
+                onClick={saveWhatsAppIntegration}
+                disabled={whatsappSaving}
+                sx={{
+                  borderRadius: '10px',
+                  background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                }}
+              >
+                {whatsappSaving ? 'Saving...' : 'Save WhatsApp Integration'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Stack>
       </Box>
     </AdminLayout>
   );

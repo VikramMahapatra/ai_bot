@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str
     UVICORN_HOST: str
     UVICORN_PORT: int
+    PUBLIC_APP_URL: str
 
     # OpenAI Configuration
     OPENAPI_KEY2: str

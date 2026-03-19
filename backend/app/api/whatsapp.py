@@ -17,7 +17,7 @@ from app.services.whatsapp_service import (
     send_whatsapp_text_message,
     verify_meta_signature,
 )
-
+from app.config import settings
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -254,7 +254,7 @@ async def embedded_signup_callback(
     error: Optional[str] = Query(default=None),
     origin: Optional[str] = Query(default=None),
 ):
-    target_origin = "*"
+    target_origin = settings.PUBLIC_APP_URL
     if origin:
         try:
             parsed = urlparse(origin)
