@@ -395,6 +395,10 @@ const ChatInterface: React.FC = () => {
               const data = line.replace(/^data:\s?/, '');
               if (!data) continue;
               const payload = JSON.parse(data);
+              if (payload.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
               if (payload.type === 'token') {
                 if (!receivedToken) {
                   receivedToken = true;
