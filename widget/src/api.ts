@@ -2,6 +2,32 @@ interface ChatResponse {
   response: string;
   session_id: string;
   ui_action?: string;
+  handoff_chat_id?: string;
+  handoff_status?: string;
+}
+
+interface HandoffSessionResponse {
+  active: boolean;
+  chat_id?: string | null;
+  status?: string | null;
+  wait_cycle?: number | null;
+  waiting_expires_at?: string | null;
+  waiting_timeout_notified?: boolean | null;
+  wait_timeout_seconds?: number | null;
+}
+
+interface HandoffMessagesResponse {
+  chat_id: string;
+  status?: string | null;
+  wait_cycle?: number | null;
+  waiting_expires_at?: string | null;
+  waiting_timeout_notified?: boolean | null;
+  wait_timeout_seconds?: number | null;
+  items: Array<{
+    id: number;
+    sender_type: string;
+    message: string;
+  }>;
 }
 
 interface SuggestedQuestionsResponse {
@@ -146,6 +172,35 @@ export class ChatAPI {
       throw new Error('Failed to book appointment');
     }
 
+    return response.json();
+  }
+
+  async getHandoffSession(sessionId: string, widgetId: string, chatId?: string): Promise<HandoffSessionResponse | null> {
+    const url = new URL(`${this.baseURL}/api/chat/handoff/session`);
+    url.searchParams.set('session_id', sessionId);
+    url.searchParams.set('widget_id', widgetId);
+    if (chatId) {
+      url.searchParams.set('chat_id', chatId);
+    }
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return null;
+    }
+    return response.json();
+  }
+
+  async getHandoffMessages(chatId: string, sessionId: string, widgetId: string, afterId = 0): Promise<HandoffMessagesResponse | null> {
+    const url = new URL(`${this.baseURL}/api/chat/handoff/messages`);
+    url.searchParams.set('chat_id', chatId);
+    url.searchParams.set('session_id', sessionId);
+    url.searchParams.set('widget_id', widgetId);
+    url.searchParams.set('after_id', String(afterId));
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return null;
+    }
     return response.json();
   }
 }

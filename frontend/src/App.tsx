@@ -18,6 +18,7 @@ import AppointmentsPage from './pages/AppointmentsPage';
 import CampaignManagementPage from './pages/CampaignManagementPage';
 import ReportsPage from './pages/ReportsPage';
 import WhatsAppIntegrationPage from './pages/WhatsAppIntegrationPage';
+import HandoffInboxPage from './pages/HandoffInboxPage';
 import AgentTestPage from './pages/AgentTestPage.tsx';
 import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
 import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
@@ -370,7 +371,7 @@ const ScrollToTop: React.FC = () => {
 };
 
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({ 
+const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'HANDOFF_OPERATOR' | 'ALL' }> = ({ 
   children, 
   requiredRole = 'ALL' 
 }) => {
@@ -385,11 +386,15 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMI
   
   // If admin-only route, check role
   if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
-    return <Navigate to="/chat" replace />;
+    return <Navigate to={userRole === 'USER_HANDOFF' ? '/handoff' : '/chat'} replace />;
   }
 
   if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'ADMIN' && userRole !== 'USER_HANDOFF') {
+    return <Navigate to="/chat" replace />;
   }
   
   return <>{children}</>;
@@ -519,6 +524,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="ADMIN">
             <AppointmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/handoff"
+        element={
+          <ProtectedRoute requiredRole="HANDOFF_OPERATOR">
+            <HandoffInboxPage />
           </ProtectedRoute>
         }
       />

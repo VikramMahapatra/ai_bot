@@ -18,6 +18,9 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
   MenuItem,
   Chip,
   CircularProgress,
@@ -29,7 +32,7 @@ import {
 import { alpha, useTheme } from '@mui/material/styles';
 import AdminLayout from '../components/Layout/AdminLayout';
 import { useAuth } from '../context/AuthContext';
-import { organizationService, type User as OrganizationUser } from '../services/organizationService';
+import { organizationService, type User as OrganizationUser, type OrganizationWidget } from '../services/organizationService';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -44,14 +47,17 @@ interface CreateUserData {
   username: string;
   email: string;
   password: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'USER_HANDOFF';
+  assigned_widget_ids: string[];
 }
 
 const UserManagementPage: React.FC = () => {
   const theme = useTheme();
   const { isAdmin, organizationId } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [widgets, setWidgets] = useState<OrganizationWidget[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingWidgets, setLoadingWidgets] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -60,6 +66,7 @@ const UserManagementPage: React.FC = () => {
     email: '',
     password: '',
     role: 'USER',
+    assigned_widget_ids: [],
   });
 
   useEffect(() => {
@@ -68,6 +75,7 @@ const UserManagementPage: React.FC = () => {
       return;
     }
     fetchUsers();
+    fetchWidgets();
   }, [isAdmin, organizationId]);
 
   const fetchUsers = async () => {
@@ -84,6 +92,27 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
+  const fetchWidgets = async () => {
+    try {
+      setLoadingWidgets(true);
+      const response = await organizationService.listWidgets();
+      setWidgets(response || []);
+    } catch (err) {
+      setWidgets([]);
+      console.error(err);
+    } finally {
+      setLoadingWidgets(false);
+    }
+  };
+
+  const getAssignedWidgetLabels = (assignedWidgetIds?: string[]) => {
+    if (!assignedWidgetIds || assignedWidgetIds.length === 0) return [];
+    return assignedWidgetIds.map((widgetId) => {
+      const widget = widgets.find((w) => w.widget_id === widgetId);
+      return widget ? widget.name : widgetId;
+    });
+  };
+
   const handleOpenDialog = (user?: User) => {
     if (user) {
       setEditingUser(user);
@@ -92,6 +121,7 @@ const UserManagementPage: React.FC = () => {
         email: user.email,
         password: '',
         role: user.role,
+        assigned_widget_ids: user.assigned_widget_ids || [],
       });
     } else {
       setEditingUser(null);
@@ -100,6 +130,7 @@ const UserManagementPage: React.FC = () => {
         email: '',
         password: '',
         role: 'USER',
+        assigned_widget_ids: [],
       });
     }
     setOpenDialog(true);
@@ -113,6 +144,7 @@ const UserManagementPage: React.FC = () => {
       email: '',
       password: '',
       role: 'USER',
+      assigned_widget_ids: [],
     });
   };
 
@@ -123,11 +155,17 @@ const UserManagementPage: React.FC = () => {
         return;
       }
 
+      if (formData.role === 'USER_HANDOFF' && formData.assigned_widget_ids.length === 0) {
+        setError('Select at least one agent for User (Human Handoff) role');
+        return;
+      }
+
       await organizationService.createUser({
         username: formData.username,
         email: formData.email,
         password: formData.password,
         role: formData.role,
+        assigned_widget_ids: formData.role === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
       });
 
       setError(null);
@@ -142,9 +180,15 @@ const UserManagementPage: React.FC = () => {
     try {
       if (!editingUser) return;
 
+      if (formData.role === 'USER_HANDOFF' && formData.assigned_widget_ids.length === 0) {
+        setError('Select at least one agent for User (Human Handoff) role');
+        return;
+      }
+
       await organizationService.updateUser(editingUser.id, {
         role: formData.role,
         is_active: editingUser.is_active,
+        assigned_widget_ids: formData.role === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
       });
 
       setError(null);
@@ -172,6 +216,7 @@ const UserManagementPage: React.FC = () => {
       await organizationService.updateUser(user.id, {
         role: user.role,
         is_active: !user.is_active,
+        assigned_widget_ids: user.role === 'USER_HANDOFF' ? (user.assigned_widget_ids || []) : [],
       });
       setError(null);
       fetchUsers();
@@ -284,6 +329,7 @@ const UserManagementPage: React.FC = () => {
                       <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Username</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Email</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Role</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Assigned Agents</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Status</TableCell>
                       <TableCell sx={{ fontWeight: 700, color: 'primary.main' }} align="right">
                         Actions
@@ -303,11 +349,35 @@ const UserManagementPage: React.FC = () => {
                         <TableCell>{user.email}</TableCell>
                         <TableCell>
                           <Chip
-                            label={user.role}
+                            label={
+                              user.role === 'USER_HANDOFF'
+                                ? 'USER (HUMAN HANDOFF)'
+                                : user.role
+                            }
                             size="small"
-                            color={user.role === 'ADMIN' ? 'error' : 'default'}
+                            color={
+                              user.role === 'ADMIN'
+                                ? 'error'
+                                : user.role === 'USER_HANDOFF'
+                                  ? 'warning'
+                                  : 'default'
+                            }
                             variant="outlined"
                           />
+                        </TableCell>
+                        <TableCell>
+                          {user.role === 'USER_HANDOFF' ? (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
+                              {getAssignedWidgetLabels(user.assigned_widget_ids).map((label) => (
+                                <Chip key={`${user.id}-${label}`} size="small" label={label} variant="outlined" />
+                              ))}
+                              {(!user.assigned_widget_ids || user.assigned_widget_ids.length === 0) && (
+                                <Typography variant="caption" color="text.secondary">No agents assigned</Typography>
+                              )}
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">-</Typography>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Chip
@@ -394,12 +464,47 @@ const UserManagementPage: React.FC = () => {
               <Select
                 value={formData.role}
                 label="Role"
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'ADMIN' | 'USER' })}
+                onChange={(e) => {
+                  const nextRole = e.target.value as 'ADMIN' | 'USER' | 'USER_HANDOFF';
+                  setFormData({
+                    ...formData,
+                    role: nextRole,
+                    assigned_widget_ids: nextRole === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
+                  });
+                }}
               >
                 <MenuItem value="USER">User (Chat only)</MenuItem>
+                <MenuItem value="USER_HANDOFF">User (Human Handoff)</MenuItem>
                 <MenuItem value="ADMIN">Admin (Full access)</MenuItem>
               </Select>
             </FormControl>
+
+            {formData.role === 'USER_HANDOFF' && (
+              <FormControl fullWidth margin="normal" disabled={loadingWidgets}>
+                <InputLabel>Assigned Agents</InputLabel>
+                <Select
+                  multiple
+                  value={formData.assigned_widget_ids}
+                  onChange={(e) => setFormData({ ...formData, assigned_widget_ids: e.target.value as string[] })}
+                  input={<OutlinedInput label="Assigned Agents" />}
+                  renderValue={(selected) =>
+                    (selected as string[])
+                      .map((widgetId) => {
+                        const widget = widgets.find((w) => w.widget_id === widgetId);
+                        return widget ? widget.name : widgetId;
+                      })
+                      .join(', ')
+                  }
+                >
+                  {widgets.map((widget) => (
+                    <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                      <Checkbox checked={formData.assigned_widget_ids.indexOf(widget.widget_id) > -1} />
+                      <ListItemText primary={widget.name} secondary={widget.widget_id} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={handleCloseDialog}>Cancel</Button>

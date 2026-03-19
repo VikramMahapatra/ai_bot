@@ -40,6 +40,11 @@ const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36
 const APPOINTMENT_FORM_PROMPT =
   'If you would like to set a meeting, please fill this short form and I will set it up for you.';
 
+const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const POST_HANDOFF_FOLLOWUP_MESSAGE =
+  'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
+
 const getDefaultAppointmentDateTime = () => {
   const seed = new Date(Date.now() + 60 * 60 * 1000);
   const local = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000).toISOString();
@@ -47,6 +52,54 @@ const getDefaultAppointmentDateTime = () => {
     date: local.slice(0, 10),
     time: local.slice(11, 16),
   };
+};
+
+const formatCountdownSeconds = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+};
+
+const parseServerDateToMs = (value?: string | null): number | null => {
+  if (!value) return null;
+
+  const normalized = String(value).trim().replace(' ', 'T');
+  if (!normalized) return null;
+
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized}Z`;
+  const ms = Date.parse(candidate);
+  return Number.isNaN(ms) ? null : ms;
+};
+
+const normalizeIntentText = (value: string): string =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\u2019/g, "'")
+    .replace(/\u2018/g, "'")
+    .replace(/\u201c|\u201d/g, '"')
+    .replace(/\u2014|\u2013/g, '-');
+
+const wantsMeetingSetup = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+  const tokens = new Set((normalized.match(/[a-z0-9]+/g) || []));
+  if (tokens.has('yes') && (tokens.has('meeting') || tokens.has('appointment') || tokens.has('call'))) {
+    return true;
+  }
+  if (tokens.has('book') || tokens.has('schedule') || tokens.has('meeting') || tokens.has('appointment')) {
+    return true;
+  }
+  return false;
+};
+
+const isSatisfiedResponse = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+  const affirmative = ['yes', 'satisfied', 'happy', 'resolved', 'all good', 'good now', 'fine now'];
+  return affirmative.some((item) => normalized.includes(item));
 };
 
 const ChatWidget: React.FC<WidgetConfig> = ({
@@ -92,9 +145,27 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     appointment_date: '',
     appointment_time: '',
   });
+  const [handoffActive, setHandoffActive] = useState(false);
+  const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [handoffAfterId, setHandoffAfterId] = useState(0);
+  const [handoffError, setHandoffError] = useState('');
+  const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
+  const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
+  const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
+  const [handoffNowMs, setHandoffNowMs] = useState(Date.now());
+  const [pendingHandoffAfterLead, setPendingHandoffAfterLead] = useState(false);
+  const [awaitingPostHandoffDecision, setAwaitingPostHandoffDecision] = useState(false);
+  const handoffSeenIdsRef = useRef<Set<number>>(new Set());
+  const handoffPromptedChatIdRef = useRef<string | null>(null);
+  const lastHandoffStatusRef = useRef<string | null>(null);
 
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [sessionEngaged, setSessionEngaged] = useState(false);
+  const [sessionClosedByInactivity, setSessionClosedByInactivity] = useState(false);
+  const [lastActivityAtMs, setLastActivityAtMs] = useState(Date.now());
+  const [inactivityNowMs, setInactivityNowMs] = useState(Date.now());
 
   const [sessionId, setSessionId] = useState(() => {
     const stored = localStorage.getItem(storageKey);
@@ -121,6 +192,47 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     !showAppointmentForm &&
     input.trim().length === 0 &&
     messages.length <= 1;
+
+  const inactivityRemainingSeconds = useMemo(() => {
+    if (sessionClosedByInactivity || !sessionEngaged) {
+      return null;
+    }
+    const elapsed = inactivityNowMs - lastActivityAtMs;
+    return Math.max(0, Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
+  }, [sessionClosedByInactivity, sessionEngaged, inactivityNowMs, lastActivityAtMs]);
+
+  const handoffRemainingSeconds = useMemo(() => {
+    if (!handoffActive || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) {
+      return null;
+    }
+    const expiresAtMs = parseServerDateToMs(handoffWaitingExpiresAt);
+    if (expiresAtMs === null) {
+      return null;
+    }
+    return Math.max(0, Math.ceil((expiresAtMs - handoffNowMs) / 1000));
+  }, [handoffActive, handoffStatus, handoffWaitingExpiresAt, handoffNowMs]);
+
+  const handoffCountdownText = useMemo(() => {
+    if (handoffStatus !== 'waiting_for_agent') {
+      return null;
+    }
+    if (handoffRemainingSeconds === null) {
+      const cycleMinutes = Math.max(1, Math.round(handoffWaitTimeoutSeconds / 60));
+      return `Each wait cycle is about ${cycleMinutes} minute${cycleMinutes > 1 ? 's' : ''}.`;
+    }
+    if (handoffRemainingSeconds <= 0) {
+      return 'Checking live user availability...';
+    }
+    return `Round ${Math.max(1, handoffWaitCycle)} time left: ${formatCountdownSeconds(handoffRemainingSeconds)}`;
+  }, [handoffStatus, handoffRemainingSeconds, handoffWaitCycle, handoffWaitTimeoutSeconds]);
+
+  const handoffProgressPercent = useMemo(() => {
+    if (handoffStatus !== 'waiting_for_agent' || handoffRemainingSeconds === null || handoffWaitTimeoutSeconds <= 0) {
+      return null;
+    }
+    const ratio = handoffRemainingSeconds / handoffWaitTimeoutSeconds;
+    return Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  }, [handoffStatus, handoffRemainingSeconds, handoffWaitTimeoutSeconds]);
 
   useEffect(() => {
     chatAPI.current = new ChatAPI(apiUrl);
@@ -174,56 +286,300 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setShowEmailForm(false);
     setEmailValue('');
     setShowAppointmentForm(false);
+    setHandoffActive(false);
+    setHandoffChatId(null);
+    setHandoffStatus(null);
+    setHandoffAfterId(0);
+    setHandoffError('');
+    setHandoffWaitCycle(1);
+    setHandoffWaitingExpiresAt(null);
+    setHandoffWaitTimeoutSeconds(120);
+    setHandoffNowMs(Date.now());
+    setPendingHandoffAfterLead(false);
+    setAwaitingPostHandoffDecision(false);
+    handoffSeenIdsRef.current.clear();
+    handoffPromptedChatIdRef.current = null;
+    lastHandoffStatusRef.current = null;
+    setSessionEngaged(false);
+    setSessionClosedByInactivity(false);
+    setLastActivityAtMs(Date.now());
     setAppointmentForm({
       name: '',
       email: '',
       appointment_date: '',
       appointment_time: '',
     });
+    return created;
   };
 
-  const sendMessage = async (overrideText?: string) => {
+  const loadHandoffSession = async () => {
+    if (!widgetId) return;
+    try {
+      const data = await chatAPI.current.getHandoffSession(sessionId, widgetId, handoffChatId || undefined);
+      if (!data?.chat_id) return;
+      const nextStatus = data.status || null;
+      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
+      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+
+      setHandoffChatId(data.chat_id);
+      setHandoffStatus(nextStatus);
+      setHandoffActive(isActive);
+      setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
+      setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+        setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
+      }
+      setHandoffNowMs(Date.now());
+      lastHandoffStatusRef.current = nextStatus;
+
+      if (wasActive && !isActive && data.chat_id && handoffPromptedChatIdRef.current !== data.chat_id) {
+        handoffPromptedChatIdRef.current = data.chat_id;
+        setAwaitingPostHandoffDecision(true);
+        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+      }
+      if (isActive) {
+        setAwaitingPostHandoffDecision(false);
+      }
+    } catch {
+      // Do not block chat on handoff polling failures.
+    }
+  };
+
+  const loadHandoffMessages = async (chatId: string, reset = false) => {
+    if (!widgetId || !chatId) return;
+    try {
+      if (reset) {
+        handoffSeenIdsRef.current.clear();
+        setHandoffAfterId(0);
+      }
+      const data = await chatAPI.current.getHandoffMessages(chatId, sessionId, widgetId, reset ? 0 : handoffAfterId);
+      if (!data) return;
+
+      const nextStatus = data.status || null;
+      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
+      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+
+      setHandoffStatus(nextStatus);
+      setHandoffActive(isActive);
+      setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
+      setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+        setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
+      }
+      setHandoffNowMs(Date.now());
+      lastHandoffStatusRef.current = nextStatus;
+
+      if (wasActive && !isActive && chatId && handoffPromptedChatIdRef.current !== chatId) {
+        handoffPromptedChatIdRef.current = chatId;
+        setAwaitingPostHandoffDecision(true);
+        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+      }
+      if (isActive) {
+        setAwaitingPostHandoffDecision(false);
+      }
+
+      const visible = (data.items || []).filter((item) => {
+        const isBotUpdate = item.sender_type === 'bot' && !reset;
+        if (item.sender_type !== 'agent' && item.sender_type !== 'system' && !isBotUpdate) return false;
+        if (handoffSeenIdsRef.current.has(item.id)) return false;
+        handoffSeenIdsRef.current.add(item.id);
+        return true;
+      });
+
+      if (visible.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          ...visible.map((item) => ({ role: 'assistant' as const, content: item.message })),
+        ]);
+        setSessionEngaged(true);
+        setLastActivityAtMs(Date.now());
+      }
+
+      const maxId = (data.items || []).reduce((acc, item) => Math.max(acc, item.id), handoffAfterId);
+      setHandoffAfterId(maxId);
+      setHandoffError('');
+    } catch {
+      setHandoffError('Live agent updates are temporarily unavailable.');
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || !widgetId) return;
+    loadHandoffSession();
+  }, [isOpen, widgetId, sessionId]);
+
+  useEffect(() => {
+    if (!handoffActive || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) return;
+    setHandoffNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setHandoffNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [handoffActive, handoffStatus, handoffWaitingExpiresAt]);
+
+  useEffect(() => {
+    if (!isOpen || !handoffActive || !handoffChatId) return;
+
+    const timer = window.setInterval(() => {
+      loadHandoffSession();
+      loadHandoffMessages(handoffChatId, false);
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [isOpen, handoffActive, handoffChatId, handoffAfterId]);
+
+  useEffect(() => {
+    if (!isOpen || sessionClosedByInactivity || !sessionEngaged || loading) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setMessages((prev) => {
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          if (last.role === 'assistant' && last.content === CHAT_INACTIVITY_CLOSE_MESSAGE) {
+            return prev;
+          }
+        }
+        return [...prev, { role: 'assistant', content: CHAT_INACTIVITY_CLOSE_MESSAGE }];
+      });
+      setSessionClosedByInactivity(true);
+      setSessionEngaged(false);
+      setHandoffActive(false);
+      setHandoffChatId(null);
+      setHandoffStatus(null);
+      setHandoffAfterId(0);
+      setHandoffError('');
+      handoffSeenIdsRef.current.clear();
+      setLoading(false);
+    }, CHAT_INACTIVITY_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, sessionClosedByInactivity, sessionEngaged, loading, lastActivityAtMs]);
+
+  useEffect(() => {
+    if (!isOpen || sessionClosedByInactivity || !sessionEngaged) return;
+
+    setInactivityNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setInactivityNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isOpen, sessionClosedByInactivity, sessionEngaged, lastActivityAtMs]);
+
+  const sendMessage = async (
+    overrideText?: string,
+    options?: { silentUserMessage?: boolean; skipLeadCaptureCheck?: boolean; forceSessionId?: string }
+  ) => {
+    const opts = options || {};
+    let activeSessionId = opts.forceSessionId || sessionId;
+    if (sessionClosedByInactivity) {
+      activeSessionId = resetChat();
+    }
+
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
 
     if (!overrideText) {
       setInput('');
     }
+
+    if (awaitingPostHandoffDecision && !opts.silentUserMessage) {
+      if (wantsMeetingSetup(text)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: APPOINTMENT_FORM_PROMPT },
+        ]);
+        setAwaitingPostHandoffDecision(false);
+        openAppointmentForm();
+        return;
+      }
+      if (isSatisfiedResponse(text)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: 'Great to hear that. If you need anything else, I am here to help.' },
+        ]);
+        setAwaitingPostHandoffDecision(false);
+        return;
+      }
+    }
+
     setLoading(true);
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setSessionEngaged(true);
+    setSessionClosedByInactivity(false);
+    setLastActivityAtMs(Date.now());
+    if (!opts.silentUserMessage) {
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    }
 
     try {
       const response = await chatAPI.current.sendMessage(
         text,
-        sessionId,
+        activeSessionId,
         widgetId,
         shopDomain,
         customerId ? String(customerId) : undefined
       );
 
-      const rawAssistantText = response?.response || 'I could not generate a response right now.';
+      const rawAssistantText = typeof response?.response === 'string'
+        ? response.response
+        : 'I could not generate a response right now.';
       const shouldOpenAppointmentForm = response?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = response?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = response?.ui_action === 'open_lead_form';
       const assistantText = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawAssistantText;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: assistantText,
-        },
-      ]);
+      if (assistantText.trim().length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: assistantText,
+          },
+        ]);
+        setLastActivityAtMs(Date.now());
+      }
 
       if (shouldOpenAppointmentForm) {
         openAppointmentForm();
       }
 
-      try {
-        const shouldCapture = await chatAPI.current.shouldCaptureLead(sessionId, widgetId);
-        if (shouldCapture && !leadSubmitted) {
-          setShowLeadForm(true);
+      if (shouldOpenLeadForm) {
+        setShowLeadForm(true);
+        setPendingHandoffAfterLead(true);
+      }
+
+      if (shouldOpenHandoff) {
+        setPendingHandoffAfterLead(false);
+        setShowLeadForm(false);
+        setHandoffActive(true);
+        if (response?.handoff_chat_id) {
+          const isNewChat = response.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(response.handoff_chat_id);
+          if (isNewChat) {
+            setHandoffAfterId(0);
+            handoffSeenIdsRef.current.clear();
+            loadHandoffMessages(response.handoff_chat_id, true);
+          } else {
+            loadHandoffMessages(response.handoff_chat_id, false);
+          }
         }
-      } catch {
-        // Ignore lead-capture check failures.
+        if (response?.handoff_status) {
+          setHandoffStatus(response.handoff_status);
+        }
+      }
+
+      if (!opts.skipLeadCaptureCheck) {
+        try {
+          const shouldCapture = await chatAPI.current.shouldCaptureLead(activeSessionId, widgetId);
+          if (shouldCapture && !leadSubmitted && !pendingHandoffAfterLead && !handoffActive) {
+            setShowLeadForm(true);
+          }
+        } catch {
+          // Ignore lead-capture check failures.
+        }
       }
     } catch {
       setMessages((prev) => [
@@ -233,6 +589,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           content: 'Sorry, something went wrong. Please try again.',
         },
       ]);
+      setLastActivityAtMs(Date.now());
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -267,10 +624,24 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setLeadSubmitted(true);
       setShowLeadForm(false);
       setLeadForm({ name: '', email: '', phone: '', company: '' });
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Thanks. Your details have been received.' },
-      ]);
+
+      if (pendingHandoffAfterLead) {
+        setPendingHandoffAfterLead(false);
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Thanks, your details are captured. I am now transferring your handoff request to a live agent.' },
+        ]);
+        await sendMessage('yes connect me', {
+          silentUserMessage: true,
+          skipLeadCaptureCheck: true,
+          forceSessionId: sessionId,
+        });
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Thanks. Your details have been received.' },
+        ]);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -423,6 +794,48 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           </div>
 
           <div className="chatbot-widget-messages">
+            {handoffActive && (
+              <div className="chatbot-handoff-banner chatbot-fade-in">
+                <div className="chatbot-handoff-title-row">
+                  <span className="chatbot-handoff-title">Human handoff in progress</span>
+                  <span className={`chatbot-handoff-chip ${handoffStatus === 'assigned' ? 'assigned' : 'waiting'}`}>
+                    {handoffStatus === 'assigned' ? 'Agent assigned' : 'Waiting for agent'}
+                  </span>
+                </div>
+                <div className="chatbot-handoff-subtitle">
+                  Keep chatting. Your messages are routed to live support.
+                </div>
+                {handoffCountdownText ? (
+                  <div className="chatbot-handoff-countdown">{handoffCountdownText}</div>
+                ) : null}
+                {handoffStatus === 'waiting_for_agent' && typeof handoffProgressPercent === 'number' ? (
+                  <div className="chatbot-handoff-timer-graphic">
+                    <div className="chatbot-handoff-timer-row">
+                      <span className="chatbot-handoff-timer-seconds">{Math.max(0, handoffRemainingSeconds ?? handoffWaitTimeoutSeconds)} sec</span>
+                      <span className="chatbot-handoff-timer-scale">{`${handoffWaitTimeoutSeconds} sec -> 0 sec`}</span>
+                    </div>
+                    <div className="chatbot-handoff-progress-track">
+                      <div className="chatbot-handoff-progress-fill" style={{ width: `${handoffProgressPercent}%` }} />
+                    </div>
+                  </div>
+                ) : null}
+                <div className="chatbot-handoff-actions">
+                  <button
+                    className="chatbot-inline-button secondary"
+                    onClick={() => {
+                      loadHandoffSession();
+                      if (handoffChatId) {
+                        loadHandoffMessages(handoffChatId, false);
+                      }
+                    }}
+                  >
+                    Refresh status
+                  </button>
+                  {handoffError ? <span className="chatbot-handoff-error">{handoffError}</span> : null}
+                </div>
+              </div>
+            )}
+
             {showSuggestions && (suggestionsLoading || suggestedQuestions.length > 0) && (
               <div className="chatbot-suggestions">
                 <div className="chatbot-suggestions-title">Try asking</div>
@@ -535,9 +948,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               type="text"
               className="chatbot-widget-input"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setLastActivityAtMs(Date.now());
+              }}
               onKeyDown={handleKeyPress}
-              placeholder="Type your message..."
+              placeholder={
+                sessionClosedByInactivity
+                  ? 'Session closed due to inactivity. Type a message to start a new session...'
+                  : 'Type your message...'
+              }
               disabled={loading}
               ref={inputRef}
             />
@@ -550,6 +970,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               Send
             </button>
           </div>
+          {typeof inactivityRemainingSeconds === 'number' ? (
+            <div className={`chatbot-inactivity-countdown${inactivityRemainingSeconds <= 15 ? ' warning' : ''}`}>
+              Session auto-closes in {formatCountdownSeconds(inactivityRemainingSeconds)} if no activity.
+            </div>
+          ) : null}
 
           {showEmailForm && (
             <div className="chatbot-inline-card chatbot-fade-in">
@@ -582,32 +1007,33 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           )}
 
           {showLeadForm && (
-            <div className="chatbot-inline-card chatbot-fade-in">
-              <div className="chatbot-inline-title">Stay in touch</div>
+            <div className="chatbot-inline-card chatbot-lead-card chatbot-fade-in">
+              <div className="chatbot-inline-title chatbot-lead-title">Quick contact form</div>
+              <div className="chatbot-lead-subtitle">Small details now help us connect you faster with live support.</div>
               <input
                 type="text"
-                className="chatbot-inline-input"
+                className="chatbot-inline-input chatbot-lead-input"
                 placeholder="Name"
                 value={leadForm.name}
                 onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
               />
               <input
                 type="email"
-                className="chatbot-inline-input"
+                className="chatbot-inline-input chatbot-lead-input"
                 placeholder="Email"
                 value={leadForm.email}
                 onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
               />
               <input
                 type="tel"
-                className="chatbot-inline-input"
+                className="chatbot-inline-input chatbot-lead-input"
                 placeholder="Phone"
                 value={leadForm.phone}
                 onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
               />
               <input
                 type="text"
-                className="chatbot-inline-input"
+                className="chatbot-inline-input chatbot-lead-input"
                 placeholder="Company"
                 value={leadForm.company}
                 onChange={(e) => setLeadForm((prev) => ({ ...prev, company: e.target.value }))}

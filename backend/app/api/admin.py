@@ -311,6 +311,7 @@ async def get_feature_flags(
         "days_left": limits.get("days_left", 0),
         "voice_chat_enabled": limits.get("voice_chat_enabled", False),
         "multilingual_text_enabled": limits.get("multilingual_text_enabled", False),
+        "human_handoff_enabled": limits.get("human_handoff_enabled", False),
     }
 
 

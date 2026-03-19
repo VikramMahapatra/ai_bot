@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import get_current_user, require_admin, get_password_hash, create_access_token
-from app.models import User, Organization, UserRole, WidgetConfig
+from app.models import User, Organization, UserRole, WidgetConfig, HandoffAgentAssignment
 from app.schemas import (
     OrganizationCreate,
     OrganizationResponse,
@@ -11,7 +11,7 @@ from app.schemas import (
     UserListResponse,
     UserUpdate,
 )
-from typing import List
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
@@ -150,6 +150,73 @@ def get_current_org_widgets(
 # Simplified endpoints that use current user's organization
 
 
+def _normalize_assigned_widget_ids(raw_ids: Optional[List[str]]) -> List[str]:
+    if not raw_ids:
+        return []
+
+    normalized: List[str] = []
+    seen = set()
+    for raw in raw_ids:
+        widget_id = (raw or "").strip()
+        if not widget_id or widget_id in seen:
+            continue
+        seen.add(widget_id)
+        normalized.append(widget_id)
+    return normalized
+
+
+def _validate_widget_assignments(db: Session, organization_id: int, widget_ids: List[str]) -> None:
+    if not widget_ids:
+        return
+
+    rows = db.query(WidgetConfig.widget_id).filter(
+        WidgetConfig.organization_id == organization_id,
+        WidgetConfig.widget_id.in_(widget_ids),
+    ).all()
+    valid_ids = {row[0] for row in rows}
+    missing = [widget_id for widget_id in widget_ids if widget_id not in valid_ids]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid agent/widget selection: {', '.join(missing)}",
+        )
+
+
+def _replace_user_widget_assignments(db: Session, user_id: int, widget_ids: List[str]) -> None:
+    db.query(HandoffAgentAssignment).filter(
+        HandoffAgentAssignment.user_id == user_id
+    ).delete(synchronize_session=False)
+
+    for widget_id in widget_ids:
+        db.add(HandoffAgentAssignment(user_id=user_id, widget_id=widget_id))
+
+
+def _get_org_assignment_map(db: Session, organization_id: int) -> Dict[int, List[str]]:
+    rows = db.query(HandoffAgentAssignment.user_id, HandoffAgentAssignment.widget_id).join(
+        User,
+        User.id == HandoffAgentAssignment.user_id,
+    ).filter(User.organization_id == organization_id).all()
+
+    assignment_map: Dict[int, List[str]] = {}
+    for user_id, widget_id in rows:
+        assignment_map.setdefault(user_id, []).append(widget_id)
+    return assignment_map
+
+
+def _serialize_user_with_assignments(user: User, assignment_map: Dict[int, List[str]]) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "organization_id": user.organization_id,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "updated_at": user.updated_at,
+        "assigned_widget_ids": assignment_map.get(user.id, []),
+    }
+
+
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     user_data: UserCreate,
@@ -183,26 +250,42 @@ def create_user(
             detail="Email already exists in this organization",
         )
 
+    selected_role = user_data.role if hasattr(user_data, "role") and user_data.role else UserRole.USER
+    assigned_widget_ids = _normalize_assigned_widget_ids(getattr(user_data, "assigned_widget_ids", None))
+
     # Enforce single admin per organization
-    if user_data.role == UserRole.ADMIN:
+    if selected_role == UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only one admin is allowed per organization",
         )
+
+    if selected_role == UserRole.USER_HANDOFF:
+        if not assigned_widget_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one agent assignment is required for User (Human Handoff)",
+            )
+        _validate_widget_assignments(db, org_id, assigned_widget_ids)
     
     # Create new user
     new_user = User(
         username=user_data.username,
         email=user_data.email,
         hashed_password=get_password_hash(user_data.password),
-        role=user_data.role if hasattr(user_data, 'role') and user_data.role else UserRole.USER,
+        role=selected_role,
         organization_id=org_id,
         is_active=True,
     )
     db.add(new_user)
+
+    db.flush()
+    if selected_role == UserRole.USER_HANDOFF:
+        _replace_user_widget_assignments(db, new_user.id, assigned_widget_ids)
+
     db.commit()
     db.refresh(new_user)
-    return new_user
+    return _serialize_user_with_assignments(new_user, {new_user.id: assigned_widget_ids})
 
 
 @router.get("/users", response_model=List[UserListResponse])
@@ -215,7 +298,8 @@ def list_users(
     """
     org_id = admin_user.organization_id
     users = db.query(User).filter(User.organization_id == org_id).all()
-    return users
+    assignment_map = _get_org_assignment_map(db, org_id)
+    return [_serialize_user_with_assignments(user, assignment_map) for user in users]
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
@@ -237,7 +321,8 @@ def get_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    return user
+    assignment_map = _get_org_assignment_map(db, org_id)
+    return _serialize_user_with_assignments(user, assignment_map)
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
@@ -274,8 +359,13 @@ def update_user(
                 detail="Cannot deactivate the only admin user",
             )
     
+    assignment_map = _get_org_assignment_map(db, org_id)
+    current_widget_ids = assignment_map.get(user.id, [])
+
     if user_data.email is not None:
         user.email = user_data.email
+
+    selected_role = user_data.role if user_data.role is not None else user.role
     if user_data.role is not None:
         if user_data.role == UserRole.ADMIN and user.role != UserRole.ADMIN:
             raise HTTPException(
@@ -283,12 +373,28 @@ def update_user(
                 detail="Only one admin is allowed per organization",
             )
         user.role = user_data.role
+
+    target_widget_ids = current_widget_ids
+    if selected_role == UserRole.USER_HANDOFF:
+        if user_data.assigned_widget_ids is not None:
+            target_widget_ids = _normalize_assigned_widget_ids(user_data.assigned_widget_ids)
+        if not target_widget_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one agent assignment is required for User (Human Handoff)",
+            )
+        _validate_widget_assignments(db, org_id, target_widget_ids)
+    else:
+        target_widget_ids = []
+
     if user_data.is_active is not None:
         user.is_active = user_data.is_active
+
+    _replace_user_widget_assignments(db, user.id, target_widget_ids)
     
     db.commit()
     db.refresh(user)
-    return user
+    return _serialize_user_with_assignments(user, {user.id: target_widget_ids})
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -323,6 +429,10 @@ def delete_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete the only admin user",
             )
+
+    db.query(HandoffAgentAssignment).filter(
+        HandoffAgentAssignment.user_id == user.id
+    ).delete(synchronize_session=False)
     
     db.delete(user)
     db.commit()
@@ -394,19 +504,34 @@ def create_user_in_organization(
             detail="Email already exists in this organization",
         )
     
+    selected_role = user_data.role if hasattr(user_data, "role") and user_data.role else UserRole.USER
+    assigned_widget_ids = _normalize_assigned_widget_ids(getattr(user_data, "assigned_widget_ids", None))
+    if selected_role == UserRole.USER_HANDOFF:
+        if not assigned_widget_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one agent assignment is required for User (Human Handoff)",
+            )
+        _validate_widget_assignments(db, org_id, assigned_widget_ids)
+
     # Create new user
     new_user = User(
         username=user_data.username,
         email=user_data.email,
         hashed_password=get_password_hash(user_data.password),
-        role=user_data.role,
+        role=selected_role,
         organization_id=org_id,
         is_active=True,
     )
     db.add(new_user)
+
+    db.flush()
+    if selected_role == UserRole.USER_HANDOFF:
+        _replace_user_widget_assignments(db, new_user.id, assigned_widget_ids)
+
     db.commit()
     db.refresh(new_user)
-    return new_user
+    return _serialize_user_with_assignments(new_user, {new_user.id: assigned_widget_ids})
 
 
 @router.get("/{org_id}/users", response_model=List[UserListResponse])
@@ -426,7 +551,8 @@ def list_organization_users(
         )
     
     users = db.query(User).filter(User.organization_id == org_id).all()
-    return users
+    assignment_map = _get_org_assignment_map(db, org_id)
+    return [_serialize_user_with_assignments(user, assignment_map) for user in users]
 
 
 @router.get("/{org_id}/users/{user_id}", response_model=UserResponse)
@@ -455,7 +581,8 @@ def get_organization_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    return user
+    assignment_map = _get_org_assignment_map(db, org_id)
+    return _serialize_user_with_assignments(user, assignment_map)
 
 
 @router.patch("/{org_id}/users/{user_id}", response_model=UserResponse)
@@ -499,16 +626,37 @@ def update_organization_user(
                 detail="Cannot deactivate the only admin user",
             )
     
+    assignment_map = _get_org_assignment_map(db, org_id)
+    current_widget_ids = assignment_map.get(user.id, [])
+
     if user_data.email is not None:
         user.email = user_data.email
+
+    selected_role = user_data.role if user_data.role is not None else user.role
     if user_data.role is not None:
         user.role = user_data.role
+
+    target_widget_ids = current_widget_ids
+    if selected_role == UserRole.USER_HANDOFF:
+        if user_data.assigned_widget_ids is not None:
+            target_widget_ids = _normalize_assigned_widget_ids(user_data.assigned_widget_ids)
+        if not target_widget_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one agent assignment is required for User (Human Handoff)",
+            )
+        _validate_widget_assignments(db, org_id, target_widget_ids)
+    else:
+        target_widget_ids = []
+
     if user_data.is_active is not None:
         user.is_active = user_data.is_active
+
+    _replace_user_widget_assignments(db, user.id, target_widget_ids)
     
     db.commit()
     db.refresh(user)
-    return user
+    return _serialize_user_with_assignments(user, {user.id: target_widget_ids})
 
 
 @router.delete("/{org_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -550,6 +698,10 @@ def delete_organization_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete the only admin user",
             )
+
+    db.query(HandoffAgentAssignment).filter(
+        HandoffAgentAssignment.user_id == user.id
+    ).delete(synchronize_session=False)
     
     db.delete(user)
     db.commit()
