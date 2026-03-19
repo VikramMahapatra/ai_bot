@@ -8,6 +8,7 @@ import enum
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
     USER = "USER"
+    USER_HANDOFF = "USER_HANDOFF"
 
 
 class Organization(Base):

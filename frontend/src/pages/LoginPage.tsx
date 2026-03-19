@@ -122,7 +122,14 @@ const LoginPage: React.FC = () => {
 
     try {
       await login(username, password, Number(organizationId));
-      navigate('/admin');
+      const role = localStorage.getItem('user_role');
+      if (role === 'USER_HANDOFF') {
+        navigate('/handoff');
+      } else if (role === 'ADMIN') {
+        navigate('/admin');
+      } else {
+        navigate('/chat');
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed');
     }

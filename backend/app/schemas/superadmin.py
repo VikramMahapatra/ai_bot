@@ -33,6 +33,7 @@ class OrganizationLimitsBase(BaseModel):
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
+    human_handoff_enabled: Optional[bool] = None
 
 
 class OrganizationLimitsUpdate(BaseModel):
@@ -47,6 +48,7 @@ class OrganizationLimitsUpdate(BaseModel):
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
+    human_handoff_enabled: Optional[bool] = None
 
 
 class OrganizationLimitsResponse(OrganizationLimitsBase):
@@ -124,6 +126,7 @@ class PlanCreate(BaseModel):
     voice_chat_enabled: bool
     multilingual_text_enabled: bool
     whatsapp_enabled: bool = False
+    human_handoff_enabled: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -143,6 +146,7 @@ class PlanUpdate(BaseModel):
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
+    human_handoff_enabled: Optional[bool] = None
 
 
 class PlanResponse(PlanCreate):

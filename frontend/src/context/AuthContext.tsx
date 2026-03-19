@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { User } from '../types';
 
-export type UserRole = 'ADMIN' | 'USER' | 'SUPERADMIN';
+export type UserRole = 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'SUPERADMIN';
 
 export interface AuthUser extends User {
   role: UserRole;

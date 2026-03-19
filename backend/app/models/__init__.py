@@ -16,6 +16,8 @@ from app.models.whatsapp_channel import WhatsAppChannel
 from app.models.appointment import Appointment
 from app.models.appointment_intake import AppointmentIntake
 from app.models.campaign import Campaign, ContactList, Contact, CampaignLog
+from app.models.handoff import HandoffSession, HandoffMessage
+from app.models.handoff_agent_assignment import HandoffAgentAssignment
 
 __all__ = [
     "User",
@@ -42,4 +44,7 @@ __all__ = [
     "ContactList",
     "Contact",
     "CampaignLog",
+    "HandoffSession",
+    "HandoffMessage",
+    "HandoffAgentAssignment",
 ]

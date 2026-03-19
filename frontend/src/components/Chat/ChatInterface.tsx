@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -56,11 +56,26 @@ interface Message {
   sources?: SourceInfo[];
 }
 
+const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const createSessionId = () => `session_${Date.now()}_${Math.random()}`;
+const STREAM_FALLBACK_TIMEOUT_MS = 3000;
+const formatCountdownClock = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+};
+
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random()}`);
+  const [sessionId, setSessionId] = useState(() => createSessionId());
+  const [sessionClosedByInactivity, setSessionClosedByInactivity] = useState(false);
+  const [sessionEngaged, setSessionEngaged] = useState(false);
+  const [lastActivityAtMs, setLastActivityAtMs] = useState(Date.now());
+  const [inactivityNowMs, setInactivityNowMs] = useState(Date.now());
   const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
   const [selectedWidgetId, setSelectedWidgetId] = useState('');
   const [widgetError, setWidgetError] = useState('');
@@ -122,8 +137,23 @@ const ChatInterface: React.FC = () => {
     { code: 'en-US', label: 'English (US)' },
   ];
 
+  const inactivityRemainingSeconds = useMemo(() => {
+    if (sessionClosedByInactivity || !sessionEngaged) {
+      return null;
+    }
+    const elapsed = inactivityNowMs - lastActivityAtMs;
+    return Math.max(0, Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
+  }, [sessionClosedByInactivity, sessionEngaged, inactivityNowMs, lastActivityAtMs]);
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'auto',
+      });
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   useEffect(() => {
@@ -177,6 +207,53 @@ const ChatInterface: React.FC = () => {
     loadSuggestedQuestions(selectedWidgetId);
   }, [selectedWidgetId]);
 
+  const startFreshSession = () => {
+    const nextSession = createSessionId();
+    setSessionId(nextSession);
+    setMessages([]);
+    setShowLeadForm(false);
+    setSessionClosedByInactivity(false);
+    setSessionEngaged(false);
+    setLastActivityAtMs(Date.now());
+    return nextSession;
+  };
+
+  useEffect(() => {
+    if (sessionClosedByInactivity || !sessionEngaged || loading || streaming) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setMessages((prev) => {
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          if (last.role === 'assistant' && last.content === CHAT_INACTIVITY_CLOSE_MESSAGE) {
+            return prev;
+          }
+        }
+        return [...prev, { role: 'assistant', content: CHAT_INACTIVITY_CLOSE_MESSAGE }];
+      });
+      setSessionClosedByInactivity(true);
+      setSessionEngaged(false);
+      listeningDesiredRef.current = false;
+      recognitionRef.current?.stop?.();
+      setListening(false);
+      setLoading(false);
+      setStreaming(false);
+    }, CHAT_INACTIVITY_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [lastActivityAtMs, sessionClosedByInactivity, sessionEngaged, loading, streaming]);
+
+  useEffect(() => {
+    if (sessionClosedByInactivity || !sessionEngaged) return;
+
+    setInactivityNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setInactivityNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [sessionClosedByInactivity, sessionEngaged, lastActivityAtMs]);
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setVoiceSupported(!!SpeechRecognition && !!window.speechSynthesis);
@@ -195,9 +272,9 @@ const ChatInterface: React.FC = () => {
     loadFeatures();
   }, []);
 
-  const checkLeadCapture = async () => {
+  const checkLeadCapture = async (targetSessionId: string = sessionId) => {
     try {
-      const shouldCapture = await chatService.shouldCaptureLead(sessionId, selectedWidgetId);
+      const shouldCapture = await chatService.shouldCaptureLead(targetSessionId, selectedWidgetId);
       if (shouldCapture && !showLeadForm) {
         setShowLeadForm(true);
       }
@@ -207,6 +284,11 @@ const ChatInterface: React.FC = () => {
   };
 
   const handleSend = async (overrideText?: string) => {
+    let activeSessionId = sessionId;
+    if (sessionClosedByInactivity) {
+      activeSessionId = startFreshSession();
+    }
+
     const textToSend = (overrideText ?? input).trim();
     if (!textToSend) return;
     if (!selectedWidgetId) {
@@ -214,6 +296,8 @@ const ChatInterface: React.FC = () => {
       return;
     }
     setWidgetError('');
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
 
     const effectiveLangCode = multilingualTextEnabled ? selectedLang : 'en-IN';
     const selectedLangLabel = voiceLanguages.find((lang) => lang.code === effectiveLangCode)?.label;
@@ -276,13 +360,13 @@ const ChatInterface: React.FC = () => {
 
       try {
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
         let receivedToken = false;
 
         const streamResponse = await chatService.sendMessageStream({
           message: translatedMessage || userMessage,
           retrieval_message: translatedMessage ? userMessage : undefined,
-          session_id: sessionId,
+          session_id: activeSessionId,
           widget_id: selectedWidgetId,
           language_code: effectiveLangCode,
           language_label: selectedLangLabel,
@@ -351,7 +435,7 @@ const ChatInterface: React.FC = () => {
         const response = await chatService.sendMessage({
           message: translatedMessage || userMessage,
           retrieval_message: translatedMessage ? userMessage : undefined,
-          session_id: sessionId,
+          session_id: activeSessionId,
           widget_id: selectedWidgetId,
           language_code: effectiveLangCode,
           language_label: selectedLangLabel,
@@ -368,7 +452,8 @@ const ChatInterface: React.FC = () => {
 
       setStreaming(false);
 
-      await checkLeadCapture();
+      await checkLeadCapture(activeSessionId);
+      setLastActivityAtMs(Date.now());
     } catch (err: any) {
       console.error('Failed to send message', err);
       if (err?.response?.status === 403) {
@@ -386,6 +471,7 @@ const ChatInterface: React.FC = () => {
         { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' },
       ]);
       setStreaming(false);
+      setLastActivityAtMs(Date.now());
     } finally {
       setLoading(false);
     }
@@ -1609,9 +1695,16 @@ const ChatInterface: React.FC = () => {
         <TextField
           fullWidth
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setLastActivityAtMs(Date.now());
+          }}
           onKeyPress={handleKeyPress}
-          placeholder="Type your message..."
+          placeholder={
+            sessionClosedByInactivity
+              ? 'Session closed due to inactivity. Type a message to start a new session...'
+              : 'Type your message...'
+          }
           disabled={loading}
           size="small"
           sx={{
@@ -1642,6 +1735,19 @@ const ChatInterface: React.FC = () => {
         >
           Send
         </Button>
+        {typeof inactivityRemainingSeconds === 'number' ? (
+          <Typography
+            variant="caption"
+            sx={{
+              gridColumn: '1 / -1',
+              mt: 0.2,
+              color: inactivityRemainingSeconds <= 15 ? 'error.main' : 'text.secondary',
+              fontWeight: inactivityRemainingSeconds <= 15 ? 700 : 500,
+            }}
+          >
+            Session auto-closes in {formatCountdownClock(inactivityRemainingSeconds)} if no activity.
+          </Typography>
+        ) : null}
       </Box>
     </Box>
   );

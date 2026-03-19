@@ -134,6 +134,16 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def require_handoff_operator(current_user: User = Depends(get_current_user)) -> User:
+    """Require human handoff operator role (admin or handoff user)."""
+    if current_user.role not in {UserRole.ADMIN, UserRole.USER_HANDOFF}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    return current_user
+
+
 def get_current_superadmin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)

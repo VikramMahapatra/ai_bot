@@ -415,6 +415,15 @@ def _looks_like_no_answer(text: Optional[str]) -> bool:
     if not text:
         return True
     lower = text.lower()
+    normalized = (
+        lower
+        .replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2014", "-")
+        .replace("\u2013", "-")
+    )
     patterns = [
         "i don't know",
         "i do not know",
@@ -425,8 +434,136 @@ def _looks_like_no_answer(text: Optional[str]) -> bool:
         "not available in the provided context",
         "not in the context",
         "no relevant information",
+        "reliable expertise",
+        "escalation contacts",
+        "would you like me to connect you",
     ]
-    return any(pattern in lower for pattern in patterns)
+    return any(pattern in normalized for pattern in patterns)
+
+
+def _is_noisy_snippet(text: str) -> bool:
+    if not text:
+        return True
+
+    compact = " ".join(text.split()).strip().lower()
+    if not compact:
+        return True
+
+    noise_markers = [
+        "http://",
+        "https://",
+        "www.",
+        "@",
+        "linkedin.com",
+        "twitter.com",
+        "facebook.com",
+        "search this blog",
+        "view my complete profile",
+        "git commit",
+        "git push",
+    ]
+    marker_hits = sum(1 for marker in noise_markers if marker in compact)
+    if marker_hits >= 2:
+        return True
+
+    return False
+
+
+def _build_context_grounded_response(message: str, retrieval_trace: Dict) -> Optional[str]:
+    selected_chunks = retrieval_trace.get("selected_chunks") or []
+    query_tokens = _keyword_query(message).split()
+    snippets: List[Dict] = []
+
+    for chunk in selected_chunks:
+        raw_snippet = str(chunk.get("snippet") or "")
+        snippet = " ".join(raw_snippet.split()).strip()
+        if not snippet:
+            continue
+
+        lower_snippet = snippet.lower()
+        snippet_tokens = set(re.findall(r"[a-zA-Z0-9]+", lower_snippet))
+        match_tokens = [token for token in query_tokens if token in snippet_tokens]
+        overlap = float(chunk.get("overlap", 0.0) or 0.0)
+        distance = chunk.get("distance")
+
+        snippets.append({
+            "snippet": snippet,
+            "match_tokens": match_tokens,
+            "match_count": len(match_tokens),
+            "overlap": overlap,
+            "distance": float(distance) if distance is not None else None,
+            "is_noisy": _is_noisy_snippet(snippet),
+        })
+
+        if len(snippets) >= 8:
+            break
+
+    if not snippets:
+        return None
+
+    snippets.sort(
+        key=lambda item: (
+            int(item["match_count"]),
+            float(item["overlap"]),
+            -float(item["distance"] if item["distance"] is not None else 9.0),
+            0 if not item["is_noisy"] else -1,
+        ),
+        reverse=True,
+    )
+
+    best = snippets[0]
+    has_strong_context = (
+        best["match_count"] >= 2
+        or float(best["overlap"]) >= 0.09
+        or (
+            best["distance"] is not None
+            and float(best["distance"]) <= 0.22
+            and best["match_count"] >= 1
+        )
+    )
+
+    if not has_strong_context:
+        return None
+
+    coverage_ratio = 0.0
+    if query_tokens:
+        coverage_ratio = min(1.0, best["match_count"] / max(len(query_tokens), 1))
+
+    if len(query_tokens) >= 4 and coverage_ratio < 0.5:
+        matched_terms = ", ".join(best["match_tokens"][:3]) if best["match_tokens"] else "a nearby topic"
+        return (
+            "I found only partial information in the knowledge base, and it does not fully answer your question. "
+            f"The available context mainly covers: {matched_terms}. "
+            "If you want, I can help with that part, or we can refine your question for a more specific answer."
+        )
+
+    chosen: List[str] = []
+    for item in snippets:
+        if item["is_noisy"]:
+            continue
+        if item["match_count"] <= 0:
+            continue
+        text = item["snippet"]
+        if text in chosen:
+            continue
+        chosen.append(text)
+        if len(chosen) >= 2:
+            break
+
+    if not chosen:
+        chosen.append(best["snippet"])
+
+    if len(chosen) == 1:
+        return (
+            "I found relevant information in the knowledge base. "
+            f"Here is what it says: {chosen[0]}"
+        )
+
+    return (
+        "I found relevant information in the knowledge base. "
+        f"Here is what it says: {chosen[0]}\n\n"
+        f"Also related: {chosen[1]}"
+    )
 
 
 def _has_prior_turns(db: Session, session_id: str, widget_id: str) -> bool:
@@ -586,7 +723,8 @@ def _prepare_chat_payload(
     )
     _add_results(primary_results, query_used=query_variants[0], stage="primary", apply_threshold=True)
 
-    if not context_parts:
+    # Expand query variants only when primary retrieval is sparse.
+    if len(candidate_pool) < 4:
         for q in query_variants[1:]:
             if len(context_parts) >= 12:
                 break
@@ -666,7 +804,8 @@ def _prepare_chat_payload(
     retrieval_trace["rerank_avg_overlap_top3"] = round(avg_overlap, 6)
 
     context = "\n\n".join(context_parts) if context_parts else ""
-    has_context = bool(context_parts)
+    # Mark weakly matched retrieval as no-context so similarly phrased queries behave consistently.
+    has_context = bool(context_parts) and not weak_evidence
     retrieval_trace["has_context"] = has_context
     retrieval_trace["source_ids"] = sorted(source_ids)
 
@@ -822,6 +961,14 @@ def generate_chat_response(
             ai_response = str(override_response)
             escalation_triggered = False
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        elif not has_context:
+            if _has_prior_escalation_contacts(db, session_id, widget_id):
+                ai_response = escalation_message
+                escalation_triggered = True
+            else:
+                ai_response = _build_soft_fallback_message()
+                escalation_triggered = False
+            token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         else:
             # Generate response
             response = client.chat.completions.create(
@@ -832,6 +979,11 @@ def generate_chat_response(
             )
 
             ai_response = response.choices[0].message.content
+            if has_context and _looks_like_no_answer(ai_response):
+                grounded_response = _build_context_grounded_response(message, retrieval_trace)
+                if grounded_response:
+                    ai_response = grounded_response
+
             escalation_triggered = not has_context or _looks_like_no_answer(ai_response)
             if escalation_triggered:
                 if _has_prior_escalation_contacts(db, session_id, widget_id):

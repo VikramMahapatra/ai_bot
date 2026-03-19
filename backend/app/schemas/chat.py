@@ -26,6 +26,8 @@ class ChatResponse(BaseModel):
     session_id: str
     sources: List[SourceInfo] = []
     ui_action: Optional[str] = None
+    handoff_chat_id: Optional[str] = None
+    handoff_status: Optional[str] = None
 
 
 class SuggestedQuestionsResponse(BaseModel):

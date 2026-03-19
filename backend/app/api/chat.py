@@ -6,14 +6,28 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
+import uuid
+import asyncio
 from app.database import get_db
-from app.models import Conversation, WidgetConfig, User, Appointment, AppointmentIntake, ContactList, Contact
+from app.models import (
+    Conversation,
+    WidgetConfig,
+    User,
+    Lead,
+    Appointment,
+    AppointmentIntake,
+    ContactList,
+    Contact,
+    HandoffSession,
+    HandoffMessage,
+)
 from app.schemas import ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, SuggestedQuestionsResponse
 from app.services import generate_chat_response, should_capture_lead, translate_text, stream_chat_response, persist_conversation, get_suggested_questions, append_appointment_cta_if_needed
 from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, get_or_create_usage, increment_usage
 from app.services.email_service import send_conversation_email
 from app.auth import get_current_user, get_current_user_optional
 from app.config import settings
+from app.services.handoff_hub import handoff_hub
 import logging
 import json
 import re
@@ -356,6 +370,459 @@ def _has_booked_appointment(db: Session, session_id: str, widget_id: str, organi
         Appointment.status != "cancelled",
     ).order_by(Appointment.created_at.desc(), Appointment.id.desc()).first()
     return existing is not None
+
+
+def _get_open_handoff_session(db: Session, session_id: str, widget_id: str, organization_id: int) -> Optional[HandoffSession]:
+    return db.query(HandoffSession).filter(
+        HandoffSession.session_id == session_id,
+        HandoffSession.widget_id == widget_id,
+        HandoffSession.organization_id == organization_id,
+        HandoffSession.status.in_(["waiting_for_agent", "assigned"]),
+    ).order_by(HandoffSession.created_at.desc(), HandoffSession.id.desc()).first()
+
+
+def _response_looks_like_no_answer(response_text: str) -> bool:
+    lower = (response_text or "").strip().lower()
+    if not lower:
+        return False
+
+    # Normalize common smart punctuation from model output before substring checks.
+    normalized = (
+        lower
+        .replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2014", "-")
+        .replace("\u2013", "-")
+    )
+
+    if any(pattern in normalized for pattern in settings.handoff_no_answer_patterns_list):
+        return True
+
+    fallback_hints = [
+        "reliable expertise",
+        "escalation contacts",
+        "would you like me to connect you",
+    ]
+    return any(hint in normalized for hint in fallback_hints)
+
+
+def _normalize_handoff_text(text: Optional[str]) -> str:
+    return (
+        (text or "")
+        .strip()
+        .lower()
+        .replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2014", "-")
+        .replace("\u2013", "-")
+    )
+
+
+def _response_offers_handoff(response_text: Optional[str]) -> bool:
+    normalized = _normalize_handoff_text(response_text)
+    if not normalized:
+        return False
+
+    offer_markers = [
+        "would you like me to connect you",
+        "would you like me to help you reach them",
+        "or i can connect you with our escalation contacts",
+        "i can connect you with our escalation contacts",
+        "before i transfer this handoff request to a live agent",
+    ]
+    return any(marker in normalized for marker in offer_markers)
+
+
+def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[WidgetConfig]) -> str:
+    if not _response_looks_like_no_answer(response_text):
+        return response_text
+    if _response_offers_handoff(response_text):
+        return response_text
+    return _build_escalation_contacts_message(widget_config)
+
+
+def _has_captured_lead_for_session(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+) -> bool:
+    query = db.query(Lead.id).filter(
+        Lead.organization_id == organization_id,
+        Lead.session_id == session_id,
+    )
+    if widget_id:
+        query = query.filter(Lead.widget_id == widget_id)
+    return query.first() is not None
+
+
+def _handoff_lead_capture_prompt_if_needed(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    user_message: str,
+) -> Optional[str]:
+    if _get_open_handoff_session(db, session_id, widget_id, organization_id):
+        return None
+
+    offered_response = _latest_handoff_offer_response(db, session_id, widget_id)
+    if not offered_response:
+        return None
+    if not _is_handoff_opt_in(user_message):
+        return None
+    if _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
+        return None
+
+    return (
+        "Before I transfer this handoff request to a live agent, "
+        "please fill the quick contact form in chat so we can reach you if needed."
+    )
+
+
+def _latest_handoff_offer_response(db: Session, session_id: str, widget_id: str) -> Optional[str]:
+    last = db.query(Conversation).filter(
+        Conversation.session_id == session_id,
+        Conversation.widget_id == widget_id,
+    ).order_by(Conversation.created_at.desc(), Conversation.id.desc()).first()
+    if not last or not last.response:
+        return None
+    return last.response if _response_offers_handoff(last.response) else None
+
+
+def _is_handoff_opt_in(text: str) -> bool:
+    normalized = _normalize_handoff_text(text)
+    if not normalized:
+        return False
+
+    negative_phrases = {
+        "no",
+        "nope",
+        "nah",
+        "not now",
+        "no thanks",
+        "don't",
+        "do not",
+        "dont",
+        "stop",
+    }
+    if normalized in negative_phrases:
+        return False
+
+    direct_affirmative = {
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "ok",
+        "okay",
+        "go ahead",
+        "please do",
+        "yes please",
+        "connect me",
+    }
+    if normalized in direct_affirmative:
+        return True
+
+    tokens = set(re.findall(r"[a-zA-Z0-9]+", normalized))
+    if not tokens:
+        return False
+
+    if "connect" in tokens and ({"human", "agent", "support", "live", "escalation", "team"} & tokens or "me" in tokens):
+        return True
+    if ({"talk", "speak"} & tokens) and ({"human", "agent", "support", "team"} & tokens):
+        return True
+    if {"handoff", "escalate", "escalation"} & tokens:
+        return True
+
+    return False
+
+
+def _create_handoff_after_user_confirmation(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    user_message: str,
+) -> Optional[HandoffSession]:
+    if _get_open_handoff_session(db, session_id, widget_id, organization_id):
+        return None
+
+    offered_response = _latest_handoff_offer_response(db, session_id, widget_id)
+    if not offered_response:
+        return None
+    if not _is_handoff_opt_in(user_message):
+        return None
+
+    handoff_session = _create_or_get_handoff_session(
+        db,
+        organization_id,
+        session_id,
+        widget_id,
+        user_message,
+        offered_response,
+        "user_confirmed_handoff",
+    )
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="bot",
+        sender_user_id=None,
+        message=settings.HUMAN_HANDOFF_WAITING_MESSAGE,
+    ))
+    handoff_session.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(handoff_session)
+    return handoff_session
+
+
+def _handoff_wait_timeout_seconds() -> int:
+    try:
+        value = int(settings.HUMAN_HANDOFF_WAIT_TIMEOUT_SECONDS)
+        return value if value > 0 else 120
+    except Exception:
+        return 120
+
+
+def _handoff_max_wait_cycles() -> int:
+    try:
+        value = int(settings.HUMAN_HANDOFF_MAX_WAIT_CYCLES)
+        return value if value > 0 else 2
+    except Exception:
+        return 2
+
+
+def _next_handoff_wait_expiry(from_time: Optional[datetime] = None) -> datetime:
+    base = from_time or datetime.utcnow()
+    return base + timedelta(seconds=_handoff_wait_timeout_seconds())
+
+
+def _close_handoff_to_bot_after_timeout(
+    db: Session,
+    handoff_session: HandoffSession,
+    now: Optional[datetime] = None,
+    include_bot_message: bool = True,
+) -> None:
+    closed_at = now or datetime.utcnow()
+
+    if include_bot_message:
+        db.add(HandoffMessage(
+            handoff_session_id=handoff_session.id,
+            sender_type="bot",
+            sender_user_id=None,
+            message=settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE,
+        ))
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=None,
+        message="Human handoff was closed because no live user was available in time.",
+    ))
+
+    handoff_session.status = "bot_active"
+    handoff_session.assigned_agent_id = None
+    handoff_session.waiting_timeout_notified = True
+    handoff_session.waiting_expires_at = None
+    handoff_session.updated_at = closed_at
+    handoff_session.closed_at = closed_at
+
+
+def _is_wait_more_intent(text: str) -> bool:
+    lower = (text or "").strip().lower()
+    if not lower:
+        return False
+
+    wait_markers = [
+        "wait",
+        "wait more",
+        "continue waiting",
+        "try again",
+        "yes",
+        "ok",
+        "okay",
+        "sure",
+    ]
+    return any(marker in lower for marker in wait_markers)
+
+
+def _emit_handoff_timeout_prompt_if_needed(db: Session, handoff_session: HandoffSession) -> bool:
+    if handoff_session.status != "waiting_for_agent" or handoff_session.assigned_agent_id is not None:
+        return False
+
+    now = datetime.utcnow()
+    if handoff_session.waiting_expires_at is None:
+        handoff_session.waiting_expires_at = _next_handoff_wait_expiry(now)
+        handoff_session.updated_at = now
+        db.commit()
+        db.refresh(handoff_session)
+        return False
+
+    if now < handoff_session.waiting_expires_at:
+        return False
+
+    current_cycle = max(1, int(handoff_session.wait_cycle or 1))
+    if current_cycle >= _handoff_max_wait_cycles():
+        _close_handoff_to_bot_after_timeout(db, handoff_session, now=now, include_bot_message=True)
+        db.commit()
+        db.refresh(handoff_session)
+        return True
+
+    if handoff_session.waiting_timeout_notified:
+        return False
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="bot",
+        sender_user_id=None,
+        message=settings.HUMAN_HANDOFF_BUSY_MESSAGE,
+    ))
+    handoff_session.waiting_timeout_notified = True
+    handoff_session.updated_at = now
+    db.commit()
+    db.refresh(handoff_session)
+    return True
+
+
+def _create_or_get_handoff_session(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    user_message: str,
+    bot_response: str,
+    handoff_reason: str,
+) -> HandoffSession:
+    existing = _get_open_handoff_session(db, session_id, widget_id, organization_id)
+    if existing:
+        return existing
+
+    handoff_session = HandoffSession(
+        chat_id=str(uuid.uuid4()),
+        session_id=session_id,
+        widget_id=widget_id,
+        organization_id=organization_id,
+        status="waiting_for_agent",
+        handoff_reason=handoff_reason,
+        bot_suggested_answer=(bot_response or "")[:2000] or None,
+        wait_cycle=1,
+        waiting_expires_at=_next_handoff_wait_expiry(),
+        waiting_timeout_notified=False,
+    )
+    db.add(handoff_session)
+    db.flush()
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="user",
+        sender_user_id=None,
+        message=(user_message or "")[:4000] or "User requested assistance",
+    ))
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="bot",
+        sender_user_id=None,
+        message=(bot_response or "")[:4000] or "Bot fallback was triggered",
+    ))
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=None,
+        message="A human handoff request has been created.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+    return handoff_session
+
+
+def _route_user_message_to_handoff_if_active(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    message_text: str,
+) -> Optional[dict]:
+    session = _get_open_handoff_session(db, session_id, widget_id, organization_id)
+    if not session:
+        return None
+
+    now = datetime.utcnow()
+    response_text = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+    ui_action: Optional[str] = None
+    add_bot_message_text: Optional[str] = None
+    max_wait_cycles = _handoff_max_wait_cycles()
+
+    if session.status == "waiting_for_agent" and session.assigned_agent_id is None:
+        ui_action = "open_human_handoff"
+        if session.waiting_expires_at is None:
+            session.waiting_expires_at = _next_handoff_wait_expiry(now)
+
+        current_wait_cycle = max(1, int(session.wait_cycle or 1))
+
+        if session.waiting_timeout_notified and _is_booking_intent(message_text):
+            response_text = "If you would like to set a meeting, please fill this short form and I will set it up for you."
+            ui_action = "open_appointment_form"
+            add_bot_message_text = response_text
+        elif session.waiting_timeout_notified and _is_wait_more_intent(message_text):
+            if current_wait_cycle >= max_wait_cycles:
+                response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
+                add_bot_message_text = response_text
+                ui_action = None
+                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
+            else:
+                session.wait_cycle = current_wait_cycle + 1
+                session.waiting_expires_at = _next_handoff_wait_expiry(now)
+                session.waiting_timeout_notified = False
+                response_text = "Thanks for waiting. I will try to connect you with a live user for 2 more minutes."
+                add_bot_message_text = response_text
+        elif session.waiting_timeout_notified:
+            response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
+        elif session.waiting_expires_at is not None and now >= session.waiting_expires_at:
+            if current_wait_cycle >= max_wait_cycles:
+                if _is_booking_intent(message_text):
+                    response_text = "Live users are still busy, so I am moving you back to bot support. If you would like to set a meeting, please fill this short form and I will set it up for you."
+                    ui_action = "open_appointment_form"
+                else:
+                    response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
+                    ui_action = None
+                add_bot_message_text = response_text
+                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
+            else:
+                session.waiting_timeout_notified = True
+                response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
+                add_bot_message_text = response_text
+        else:
+            response_text = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+    elif session.status == "assigned":
+        # Avoid repeating a bot acknowledgement while a live user is already assigned.
+        response_text = ""
+
+    db.add(HandoffMessage(
+        handoff_session_id=session.id,
+        sender_type="user",
+        sender_user_id=None,
+        message=(message_text or "")[:4000] or "",
+    ))
+
+    if add_bot_message_text:
+        db.add(HandoffMessage(
+            handoff_session_id=session.id,
+            sender_type="bot",
+            sender_user_id=None,
+            message=add_bot_message_text,
+        ))
+
+    session.updated_at = now
+    db.commit()
+    db.refresh(session)
+    return {
+        "session": session,
+        "response_text": response_text,
+        "ui_action": ui_action,
+    }
 
 
 def _normalize_phone(phone: Optional[str]) -> str:
@@ -845,6 +1312,160 @@ async def chat(
                 },
             )
 
+        if limits.get("human_handoff_enabled"):
+            active_handoff = _route_user_message_to_handoff_if_active(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if active_handoff:
+                handoff_session = active_handoff["session"]
+                waiting_response = active_handoff["response_text"]
+                ui_action = active_handoff.get("ui_action")
+                persist_conversation(
+                    db,
+                    session_id=message.session_id,
+                    widget_id=message.widget_id,
+                    user_id=user_id,
+                    organization_id=user.organization_id,
+                    message=message.message,
+                    response_text=waiting_response,
+                    token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    retrieval_trace={
+                        "user_query": message.message,
+                        "retrieval_query": None,
+                        "query_variants": [],
+                        "retrieved_chunks": [],
+                        "selected_chunks": [],
+                        "source_ids": [],
+                        "has_context": False,
+                        "escalation_triggered": True,
+                        "top_distance": None,
+                    },
+                )
+                increment_usage(
+                    db,
+                    user.organization_id,
+                    conversations_count=1 if is_new_session else 0,
+                    messages_count=2,
+                    tokens_used=0,
+                )
+                await handoff_hub.broadcast(user.organization_id, {
+                    "type": "handoff_user_message",
+                    "chat_id": handoff_session.chat_id,
+                    "widget_id": handoff_session.widget_id,
+                    "session_id": handoff_session.session_id,
+                    "status": handoff_session.status,
+                    "message": (message.message or "")[:500],
+                })
+                return ChatResponse(
+                    response=waiting_response,
+                    session_id=message.session_id,
+                    sources=[],
+                    ui_action=ui_action,
+                    handoff_chat_id=handoff_session.chat_id,
+                    handoff_status=handoff_session.status,
+                )
+
+            lead_prompt = _handoff_lead_capture_prompt_if_needed(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if lead_prompt:
+                persist_conversation(
+                    db,
+                    session_id=message.session_id,
+                    widget_id=message.widget_id,
+                    user_id=user_id,
+                    organization_id=user.organization_id,
+                    message=message.message,
+                    response_text=lead_prompt,
+                    token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    retrieval_trace={
+                        "user_query": message.message,
+                        "retrieval_query": None,
+                        "query_variants": [],
+                        "retrieved_chunks": [],
+                        "selected_chunks": [],
+                        "source_ids": [],
+                        "has_context": False,
+                        "escalation_triggered": True,
+                        "top_distance": None,
+                    },
+                )
+                increment_usage(
+                    db,
+                    user.organization_id,
+                    conversations_count=1 if is_new_session else 0,
+                    messages_count=2,
+                    tokens_used=0,
+                )
+                return ChatResponse(
+                    response=lead_prompt,
+                    session_id=message.session_id,
+                    sources=[],
+                    ui_action="open_lead_form",
+                )
+
+            confirmed_handoff = _create_handoff_after_user_confirmation(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if confirmed_handoff:
+                waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+                persist_conversation(
+                    db,
+                    session_id=message.session_id,
+                    widget_id=message.widget_id,
+                    user_id=user_id,
+                    organization_id=user.organization_id,
+                    message=message.message,
+                    response_text=waiting_response,
+                    token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    retrieval_trace={
+                        "user_query": message.message,
+                        "retrieval_query": None,
+                        "query_variants": [],
+                        "retrieved_chunks": [],
+                        "selected_chunks": [],
+                        "source_ids": [],
+                        "has_context": False,
+                        "escalation_triggered": True,
+                        "top_distance": None,
+                    },
+                )
+                increment_usage(
+                    db,
+                    user.organization_id,
+                    conversations_count=1 if is_new_session else 0,
+                    messages_count=2,
+                    tokens_used=0,
+                )
+                await handoff_hub.broadcast(user.organization_id, {
+                    "type": "handoff_request_created",
+                    "chat_id": confirmed_handoff.chat_id,
+                    "widget_id": confirmed_handoff.widget_id,
+                    "session_id": confirmed_handoff.session_id,
+                    "status": confirmed_handoff.status,
+                    "handoff_reason": confirmed_handoff.handoff_reason,
+                })
+                return ChatResponse(
+                    response=waiting_response,
+                    session_id=message.session_id,
+                    sources=[],
+                    ui_action="open_human_handoff",
+                    handoff_chat_id=confirmed_handoff.chat_id,
+                    handoff_status=confirmed_handoff.status,
+                )
+
         # ----------------------
         # Generate Response
         # ----------------------
@@ -932,6 +1553,9 @@ async def chat(
                 retrieval_message=message.retrieval_message
             )
 
+            if limits.get("human_handoff_enabled"):
+                response_text = _ensure_handoff_offer_response(response_text, widget_config)
+
             increment_usage(
                 db,
                 user.organization_id,
@@ -943,7 +1567,7 @@ async def chat(
             return ChatResponse(
                 response=response_text,
                 session_id=message.session_id,
-                sources=sources
+                sources=sources,
             )
     except HTTPException:
         raise
@@ -1044,6 +1668,181 @@ async def chat_stream(
                 },
             )
 
+        if limits.get("human_handoff_enabled"):
+            active_handoff = _route_user_message_to_handoff_if_active(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if active_handoff:
+                handoff_session = active_handoff["session"]
+                waiting_response = active_handoff["response_text"]
+                ui_action = active_handoff.get("ui_action")
+
+                def handoff_event_generator():
+                    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    try:
+                        if (waiting_response or "").strip():
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                    finally:
+                        persist_conversation(
+                            db,
+                            session_id=message.session_id,
+                            widget_id=message.widget_id,
+                            user_id=user_id,
+                            organization_id=user.organization_id,
+                            message=message.message,
+                            response_text=waiting_response,
+                            token_usage=token_usage,
+                            retrieval_trace={
+                                "user_query": message.message,
+                                "retrieval_query": None,
+                                "query_variants": [],
+                                "retrieved_chunks": [],
+                                "selected_chunks": [],
+                                "source_ids": [],
+                                "has_context": False,
+                                "escalation_triggered": True,
+                                "top_distance": None,
+                            },
+                        )
+                        increment_usage(
+                            db,
+                            user.organization_id,
+                            conversations_count=1 if is_new_session else 0,
+                            messages_count=2,
+                            tokens_used=0,
+                        )
+                        asyncio.create_task(handoff_hub.broadcast(user.organization_id, {
+                            "type": "handoff_user_message",
+                            "chat_id": handoff_session.chat_id,
+                            "widget_id": handoff_session.widget_id,
+                            "session_id": handoff_session.session_id,
+                            "status": handoff_session.status,
+                            "message": (message.message or "")[:500],
+                        }))
+                        done_payload = {
+                            "type": "done",
+                            "sources": [],
+                            "handoff_chat_id": handoff_session.chat_id,
+                            "handoff_status": handoff_session.status,
+                        }
+                        if ui_action:
+                            done_payload["ui_action"] = ui_action
+                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+
+                return StreamingResponse(handoff_event_generator(), media_type="text/event-stream")
+
+            lead_prompt = _handoff_lead_capture_prompt_if_needed(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if lead_prompt:
+                def lead_prompt_event_generator():
+                    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    try:
+                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(lead_prompt)} }}\\n\\n"
+                    finally:
+                        persist_conversation(
+                            db,
+                            session_id=message.session_id,
+                            widget_id=message.widget_id,
+                            user_id=user_id,
+                            organization_id=user.organization_id,
+                            message=message.message,
+                            response_text=lead_prompt,
+                            token_usage=token_usage,
+                            retrieval_trace={
+                                "user_query": message.message,
+                                "retrieval_query": None,
+                                "query_variants": [],
+                                "retrieved_chunks": [],
+                                "selected_chunks": [],
+                                "source_ids": [],
+                                "has_context": False,
+                                "escalation_triggered": True,
+                                "top_distance": None,
+                            },
+                        )
+                        increment_usage(
+                            db,
+                            user.organization_id,
+                            conversations_count=1 if is_new_session else 0,
+                            messages_count=2,
+                            tokens_used=0,
+                        )
+                        yield "data: {\"type\": \"done\", \"sources\": [], \"ui_action\": \"open_lead_form\" }\n\n"
+
+                return StreamingResponse(lead_prompt_event_generator(), media_type="text/event-stream")
+
+            confirmed_handoff = _create_handoff_after_user_confirmation(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if confirmed_handoff:
+                waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+
+                def confirmed_handoff_event_generator():
+                    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    try:
+                        if (waiting_response or "").strip():
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                    finally:
+                        persist_conversation(
+                            db,
+                            session_id=message.session_id,
+                            widget_id=message.widget_id,
+                            user_id=user_id,
+                            organization_id=user.organization_id,
+                            message=message.message,
+                            response_text=waiting_response,
+                            token_usage=token_usage,
+                            retrieval_trace={
+                                "user_query": message.message,
+                                "retrieval_query": None,
+                                "query_variants": [],
+                                "retrieved_chunks": [],
+                                "selected_chunks": [],
+                                "source_ids": [],
+                                "has_context": False,
+                                "escalation_triggered": True,
+                                "top_distance": None,
+                            },
+                        )
+                        increment_usage(
+                            db,
+                            user.organization_id,
+                            conversations_count=1 if is_new_session else 0,
+                            messages_count=2,
+                            tokens_used=0,
+                        )
+                        asyncio.create_task(handoff_hub.broadcast(user.organization_id, {
+                            "type": "handoff_request_created",
+                            "chat_id": confirmed_handoff.chat_id,
+                            "widget_id": confirmed_handoff.widget_id,
+                            "session_id": confirmed_handoff.session_id,
+                            "status": confirmed_handoff.status,
+                            "handoff_reason": confirmed_handoff.handoff_reason,
+                        }))
+                        done_payload = {
+                            "type": "done",
+                            "sources": [],
+                            "ui_action": "open_human_handoff",
+                            "handoff_chat_id": confirmed_handoff.chat_id,
+                            "handoff_status": confirmed_handoff.status,
+                        }
+                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+
+                return StreamingResponse(confirmed_handoff_event_generator(), media_type="text/event-stream")
+
         intake_response = None
         if widget_config:
             intake_response = _handle_appointment_intake_flow(
@@ -1116,6 +1915,8 @@ async def chat_stream(
             try:
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
+                    if limits.get("human_handoff_enabled"):
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
                 else:
@@ -1163,7 +1964,13 @@ async def chat_stream(
                     messages_count=2,
                     tokens_used=usage_tokens.get("total_tokens", 0)
                 )
-                yield f"data: {{\"type\": \"done\", \"sources\": {json.dumps(sources)} }}\n\n"
+
+                done_payload = {
+                    "type": "done",
+                    "sources": sources,
+                }
+
+                yield f"data: {json.dumps(done_payload)}\n\n"
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
     except HTTPException:
@@ -1273,6 +2080,129 @@ async def translate(
     except Exception as e:
         logger.error(f"Error in translate endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/handoff/session")
+async def get_handoff_session_status(
+    session_id: str,
+    widget_id: str,
+    chat_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    limits = get_effective_limits(db, widget_config.organization_id)
+    handoff_enabled = bool(limits.get("human_handoff_enabled"))
+
+    query = db.query(HandoffSession).filter(
+        HandoffSession.organization_id == widget_config.organization_id,
+        HandoffSession.session_id == session_id,
+        HandoffSession.widget_id == widget_id,
+    )
+    if chat_id:
+        query = query.filter(HandoffSession.chat_id == chat_id)
+
+    session = query.order_by(HandoffSession.id.desc()).first()
+    if not session:
+        return {
+            "active": False,
+            "chat_id": None,
+            "status": None,
+            "assigned_agent_id": None,
+            "updated_at": None,
+            "wait_cycle": None,
+            "waiting_expires_at": None,
+            "waiting_timeout_notified": None,
+            "wait_timeout_seconds": _handoff_wait_timeout_seconds(),
+        }
+
+    if handoff_enabled:
+        _emit_handoff_timeout_prompt_if_needed(db, session)
+
+    return {
+        "active": session.status in {"waiting_for_agent", "assigned"},
+        "chat_id": session.chat_id,
+        "status": session.status,
+        "assigned_agent_id": session.assigned_agent_id,
+        "updated_at": session.updated_at,
+        "wait_cycle": session.wait_cycle,
+        "waiting_expires_at": session.waiting_expires_at,
+        "waiting_timeout_notified": session.waiting_timeout_notified,
+        "wait_timeout_seconds": _handoff_wait_timeout_seconds(),
+    }
+
+
+@router.get("/handoff/messages")
+async def get_handoff_messages(
+    chat_id: str,
+    session_id: str,
+    widget_id: str,
+    after_id: int = 0,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    limits = get_effective_limits(db, widget_config.organization_id)
+    handoff_enabled = bool(limits.get("human_handoff_enabled"))
+
+    handoff_session = db.query(HandoffSession).filter(
+        HandoffSession.chat_id == chat_id,
+        HandoffSession.organization_id == widget_config.organization_id,
+        HandoffSession.session_id == session_id,
+        HandoffSession.widget_id == widget_id,
+    ).first()
+    if not handoff_session:
+        return {
+            "chat_id": chat_id,
+            "status": None,
+            "assigned_agent_id": None,
+            "wait_cycle": None,
+            "waiting_expires_at": None,
+            "waiting_timeout_notified": None,
+            "wait_timeout_seconds": _handoff_wait_timeout_seconds(),
+            "items": [],
+        }
+
+    if handoff_enabled:
+        _emit_handoff_timeout_prompt_if_needed(db, handoff_session)
+
+    rows = db.query(HandoffMessage).filter(
+        HandoffMessage.handoff_session_id == handoff_session.id,
+        HandoffMessage.id > max(0, int(after_id or 0)),
+    ).order_by(HandoffMessage.id.asc()).all()
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "wait_cycle": handoff_session.wait_cycle,
+        "waiting_expires_at": handoff_session.waiting_expires_at,
+        "waiting_timeout_notified": handoff_session.waiting_timeout_notified,
+        "wait_timeout_seconds": _handoff_wait_timeout_seconds(),
+        "items": [
+            {
+                "id": row.id,
+                "sender_type": row.sender_type,
+                "sender_user_id": row.sender_user_id,
+                "message": row.message,
+                "created_at": row.created_at,
+            }
+            for row in rows
+            if row.sender_type != "system"
+        ],
+    }
 
 
 @router.get("/history/{session_id}", response_model=List[ConversationHistoryItem])

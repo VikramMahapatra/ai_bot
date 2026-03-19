@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
 from app.models.user import UserRole
@@ -32,12 +32,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: UserRole = UserRole.USER
+    assigned_widget_ids: Optional[List[str]] = None
 
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    assigned_widget_ids: Optional[List[str]] = None
 
 
 class UserResponse(BaseModel):
@@ -47,6 +49,7 @@ class UserResponse(BaseModel):
     role: UserRole
     organization_id: int
     is_active: bool
+    assigned_widget_ids: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -65,6 +68,7 @@ class UserListResponse(BaseModel):
     role: UserRole
     organization_id: int
     is_active: bool
+    assigned_widget_ids: List[str] = Field(default_factory=list)
     created_at: datetime
 
     class Config:
