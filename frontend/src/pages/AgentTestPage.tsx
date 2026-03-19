@@ -148,6 +148,7 @@ const formatCountdownSeconds = (seconds: number): string => {
 };
 
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
   'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
@@ -707,37 +708,47 @@ const AgentTestPage: React.FC = () => {
     setSessionEngaged(true);
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
+    let assistantIndex = -1;
     if (!opts.silentUserMessage) {
       setMessages((prev) => [...prev, { role: 'user', content: text }]);
     }
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: activeSessionId,
-          widget_id: widgetId,
-        }),
-      });
+    setMessages((prev) => {
+      assistantIndex = prev.length;
+      return [...prev, { role: 'assistant', content: '' }];
+    });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response from chatbot');
-      }
+    const replaceAssistantMessage = (content: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content }
+            : msg
+        )
+      );
+    };
 
-      const data = (await response.json()) as ChatApiResponse;
-      const rawReply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
-      const shouldOpenAppointmentForm = data?.ui_action === 'open_appointment_form';
-      const shouldOpenHandoff = data?.ui_action === 'open_human_handoff';
-      const shouldOpenLeadForm = data?.ui_action === 'open_lead_form';
-      const reply = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawReply;
-      if (reply.trim().length > 0) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setLastActivityAtMs(Date.now());
-      }
+    const appendAssistantToken = (delta: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content: `${msg.content}${delta}` }
+            : msg
+        )
+      );
+    };
+
+    const applyUiAction = (payload?: {
+      ui_action?: string;
+      handoff_chat_id?: string;
+      handoff_status?: string;
+    }) => {
+      const shouldOpenAppointmentForm = payload?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = payload?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = payload?.ui_action === 'open_lead_form';
 
       if (shouldOpenAppointmentForm) {
+        replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
         openAppointmentDialog();
       }
 
@@ -750,30 +761,131 @@ const AgentTestPage: React.FC = () => {
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffOpen(true);
-        if (data?.handoff_chat_id) {
-          const isNewChat = data.handoff_chat_id !== handoffChatId;
-          setHandoffChatId(data.handoff_chat_id);
+        if (payload?.handoff_chat_id) {
+          const isNewChat = payload.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
             setHandoffAfterId(0);
             handoffSeenMessageIdsRef.current.clear();
-            loadHandoffMessages(data.handoff_chat_id, true);
+            loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
-            loadHandoffMessages(data.handoff_chat_id, false);
+            loadHandoffMessages(payload.handoff_chat_id, false);
           }
         }
-        if (data?.handoff_status) {
-          setHandoffStatus(data.handoff_status);
+        if (payload?.handoff_status) {
+          setHandoffStatus(payload.handoff_status);
         }
         setAwaitingPostHandoffDecision(false);
       }
+    };
+
+    try {
+      let streamDonePayload: any = null;
+      let receivedToken = false;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
+
+        const streamResponse = await fetch(`${apiBaseUrl}/api/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!streamResponse.ok) {
+          throw new Error('Failed to stream chatbot response');
+        }
+
+        const reader = streamResponse.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data:')) continue;
+              const data = line.replace(/^data:\s?/, '');
+              if (!data) continue;
+
+              let payload: any;
+              try {
+                payload = JSON.parse(data);
+              } catch {
+                continue;
+              }
+
+              if (payload?.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
+
+              if (payload?.type === 'token' && typeof payload?.text === 'string') {
+                if (!receivedToken) {
+                  receivedToken = true;
+                  window.clearTimeout(timeoutId);
+                }
+                appendAssistantToken(payload.text);
+              }
+
+              if (payload?.type === 'done') {
+                streamDonePayload = payload;
+              }
+            }
+          }
+        }
+
+        window.clearTimeout(timeoutId);
+      } catch {
+        const response = await fetch(`${apiBaseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get response from chatbot');
+        }
+
+        const data = (await response.json()) as ChatApiResponse;
+        const rawReply = typeof data?.response === 'string'
+          ? data.response
+          : 'I could not generate a response right now.';
+        const reply = data?.ui_action === 'open_appointment_form' ? APPOINTMENT_FORM_PROMPT : rawReply;
+        replaceAssistantMessage(reply);
+        applyUiAction(data);
+      }
+
+      applyUiAction(streamDonePayload);
+
+      if (!receivedToken && !streamDonePayload?.ui_action) {
+        replaceAssistantMessage('I could not generate a response right now.');
+      }
+
+      setLastActivityAtMs(Date.now());
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, the chatbot is temporarily unavailable. Please try again in a moment.',
-        },
-      ]);
+      replaceAssistantMessage('Sorry, the chatbot is temporarily unavailable. Please try again in a moment.');
       setLastActivityAtMs(Date.now());
     } finally {
       setSending(false);
@@ -1314,6 +1426,7 @@ const AgentTestPage: React.FC = () => {
           <Box ref={messagesContainerRef} sx={{ flex: 1, p: 1.5, overflowY: 'auto', bgcolor: '#f8fafc' }}>
             <Stack spacing={1.2}>
               {messages.map((message, index) => (
+                
                 <Box
                   key={`${message.role}-${index}`}
                   sx={{
@@ -1325,6 +1438,15 @@ const AgentTestPage: React.FC = () => {
                     flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
                   }}
                 >
+                  {(() => {
+                    const isPendingAssistantMessage =
+                      message.role === 'assistant' &&
+                      sending &&
+                      index === messages.length - 1 &&
+                      !message.content.trim();
+
+                    return (
+                      <>
                   <Box
                     sx={{
                       width: 28,
@@ -1351,10 +1473,18 @@ const AgentTestPage: React.FC = () => {
                       border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
                       whiteSpace: 'pre-wrap',
                       fontSize: '0.92rem',
+                      minHeight: isPendingAssistantMessage ? 30 : undefined,
+                      minWidth: isPendingAssistantMessage ? 46 : undefined,
+                      display: isPendingAssistantMessage ? 'flex' : 'block',
+                      alignItems: isPendingAssistantMessage ? 'center' : undefined,
+                      justifyContent: isPendingAssistantMessage ? 'center' : undefined,
                     }}
                   >
-                    {message.content}
+                    {isPendingAssistantMessage ? <CircularProgress size={16} /> : message.content}
                   </Box>
+                      </>
+                    );
+                  })()}
                 </Box>
               ))}
               {showLeadForm && (
@@ -1593,26 +1723,6 @@ const AgentTestPage: React.FC = () => {
                       </Stack>
                     </Stack>
                   </Box>
-                </Box>
-              )}
-              {sending && (
-                <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 0.9 }}>
-                  <Box
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      border: '1px solid #d1d5db',
-                      bgcolor: '#fff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    {botIconGlyph}
-                  </Box>
-                  <CircularProgress size={18} />
                 </Box>
               )}
               <div ref={messagesEndRef} />

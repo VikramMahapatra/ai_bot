@@ -1892,27 +1892,43 @@ async def chat_stream(
 
             return StreamingResponse(appointment_event_generator(), media_type="text/event-stream")
 
-        stream, sources, escalation_fallback_text, retrieval_trace = stream_chat_response(
-            message.message,
-            message.session_id,
-            message.widget_id,
-            user_id,
-            user.organization_id,
-            db,
-            language_code=message.language_code,
-            language_label=message.language_label,
-            retrieval_message=message.retrieval_message
-        )
-
         is_first_turn = db.query(Conversation.id).filter(
             Conversation.session_id == message.session_id,
             Conversation.widget_id == message.widget_id,
         ).first() is None
 
         def event_generator():
+            # Emit an immediate event so clients can mark the stream as alive
+            # before retrieval/model latency is paid.
+            yield "data: {\"type\": \"ready\"}\n\n"
+
             collected_parts = []
             usage_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            sources = []
+            retrieval_trace = {
+                "user_query": message.message,
+                "retrieval_query": None,
+                "query_variants": [],
+                "retrieved_chunks": [],
+                "selected_chunks": [],
+                "source_ids": [],
+                "has_context": False,
+                "escalation_triggered": False,
+                "top_distance": None,
+            }
             try:
+                stream, sources, escalation_fallback_text, retrieval_trace = stream_chat_response(
+                    message.message,
+                    message.session_id,
+                    message.widget_id,
+                    user_id,
+                    user.organization_id,
+                    db,
+                    language_code=message.language_code,
+                    language_label=message.language_label,
+                    retrieval_message=message.retrieval_message
+                )
+
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
@@ -1936,6 +1952,14 @@ async def chat_stream(
                         if delta:
                             collected_parts.append(delta)
                             yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(delta)} }}\n\n"
+            except Exception as stream_error:
+                logger.error("Error preparing chat stream: %s", str(stream_error))
+                if not collected_parts:
+                    fallback_text = "Sorry—I don’t have a reliable answer for this right now."
+                    if limits.get("human_handoff_enabled"):
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
+                    collected_parts.append(fallback_text)
+                    yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
             finally:
                 full_text = "".join(collected_parts)
                 final_text = append_appointment_cta_if_needed(full_text, is_first_turn)
