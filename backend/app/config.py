@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -36,6 +40,13 @@ class Settings(BaseSettings):
     # Chat Escalation Defaults
     DEFAULT_ESCALATION_CONTACT_LEVEL_1: str
     DEFAULT_ESCALATION_CONTACT_LEVEL_2: str
+    HUMAN_HANDOFF_DISTANCE_THRESHOLD: float = 0.65
+    HUMAN_HANDOFF_NO_ANSWER_PATTERNS: str = "i don't know|i do not know|don't have a reliable answer|unable to answer|no relevant context found|knowledge base doesn't contain|don't have reliable expertise|escalation contacts|would you like me to connect you"
+    HUMAN_HANDOFF_WAITING_MESSAGE: str = "I am connecting you to a human expert. Please share any additional details and we will respond shortly."
+    HUMAN_HANDOFF_WAIT_TIMEOUT_SECONDS: int = 120
+    HUMAN_HANDOFF_MAX_WAIT_CYCLES: int = 2
+    HUMAN_HANDOFF_BUSY_MESSAGE: str = "Live users are currently busy. Do you want to wait for 2 more minutes while I try again, or would you like to schedule a meeting and I will set it up for you?"
+    HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE: str = "Live users are still busy, so I am moving you back to the bot. I can help you set up a meeting now, or you can type exit to end this chat session."
 
     # Reporting Defaults
     TOKEN_COST_PROMPT_PER_1K: float
@@ -89,8 +100,12 @@ class Settings(BaseSettings):
     def cors_allow_headers_list(self) -> List[str]:
         return [header.strip() for header in self.CORS_ALLOW_HEADERS.split(",") if header.strip()]
 
+    @property
+    def handoff_no_answer_patterns_list(self) -> List[str]:
+        return [item.strip().lower() for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|") if item.strip()]
+
     model_config = SettingsConfigDict(
-        env_file=(".env.example",),
+        env_file=(str(BASE_DIR / ".env.example"), str(BASE_DIR / ".env")),
         case_sensitive=True,
         extra="ignore",
     )

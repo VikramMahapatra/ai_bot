@@ -3,8 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.api import (
-    admin_router, knowledge_router, chat_router, leads_router, organization_router, dashboard_router, analytics_router, 
-    superadmin_router, whatsapp_router, campaigns_router, calling_agent_router, call_campaign_router, call_log_router,
+    admin_router,
+    knowledge_router,
+    chat_router,
+    leads_router,
+    organization_router,
+    dashboard_router,
+    analytics_router,
+    superadmin_router,
+    whatsapp_router,
+    campaigns_router,
+    handoff_router,
+    calling_agent_router,
+    call_campaign_router,
+    call_log_router,
     calls_router
 )
 from app.api.feedback import router as feedback_router
@@ -54,11 +66,11 @@ app.include_router(feedback_router)
 app.include_router(reports_router)
 app.include_router(whatsapp_router)
 app.include_router(campaigns_router)
+app.include_router(handoff_router)
 app.include_router(calling_agent_router)
 app.include_router(call_campaign_router)
 app.include_router(call_log_router)
 app.include_router(calls_router)
-
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")

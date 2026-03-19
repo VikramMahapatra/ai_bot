@@ -25,7 +25,7 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import StopIcon from "@mui/icons-material/Stop";
 import IconButton from "@mui/material/IconButton";
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { callingAgentService, Voice } from '../../services/callingAgentService';
 
 interface AddAgentFormProps {

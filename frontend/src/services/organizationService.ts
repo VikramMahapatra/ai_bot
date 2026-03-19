@@ -4,9 +4,16 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'USER_HANDOFF';
   is_active: boolean;
   created_at: string;
+  assigned_widget_ids?: string[];
+}
+
+export interface OrganizationWidget {
+  widget_id: string;
+  name: string;
+  created_at?: string;
 }
 
 export interface Organization {
@@ -50,6 +57,11 @@ export const organizationService = {
     return response.data;
   },
 
+  async listWidgets(): Promise<OrganizationWidget[]> {
+    const response = await api.get<{ widgets: OrganizationWidget[] }>('/api/organizations/me/widgets');
+    return Array.isArray(response.data?.widgets) ? response.data.widgets : [];
+  },
+
   async getUser(userId: number): Promise<User> {
     const response = await api.get<User>(`/api/organizations/users/${userId}`);
     return response.data;
@@ -59,13 +71,15 @@ export const organizationService = {
     username: string;
     email: string;
     password: string;
-    role?: 'ADMIN' | 'USER';
+    role?: 'ADMIN' | 'USER' | 'USER_HANDOFF';
+    assigned_widget_ids?: string[];
   }): Promise<User> {
     const response = await api.post<User>('/api/organizations/users', {
       username: data.username,
       email: data.email,
       password: data.password,
       role: data.role || 'USER',
+      assigned_widget_ids: data.assigned_widget_ids || [],
     });
     return response.data;
   },
@@ -74,8 +88,9 @@ export const organizationService = {
     userId: number,
     data: {
       email?: string;
-      role?: 'ADMIN' | 'USER';
+      role?: 'ADMIN' | 'USER' | 'USER_HANDOFF';
       is_active?: boolean;
+      assigned_widget_ids?: string[];
     }
   ): Promise<User> {
     const response = await api.patch<User>(`/api/organizations/users/${userId}`, data);

@@ -83,7 +83,7 @@ export const chatService = {
     return response.data;
   },
 
-  async getFeatureFlags(): Promise<{ subscription_active: boolean; days_left: number; voice_chat_enabled: boolean; multilingual_text_enabled: boolean }> {
+  async getFeatureFlags(): Promise<{ subscription_active: boolean; days_left: number; voice_chat_enabled: boolean; multilingual_text_enabled: boolean; human_handoff_enabled?: boolean }> {
     const response = await api.get('/api/admin/features');
     return response.data;
   },

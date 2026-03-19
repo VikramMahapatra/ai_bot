@@ -1,7 +1,7 @@
 export interface User {
   username: string;
   email: string;
-  role: 'ADMIN' | 'USER' | 'SUPERADMIN';
+  role: 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'SUPERADMIN';
   organization_id?: number;
   user_id?: number;
 }
@@ -98,6 +98,9 @@ export interface ChatResponse {
   response: string;
   session_id: string;
   sources?: SourceInfo[];
+  ui_action?: string;
+  handoff_chat_id?: string;
+  handoff_status?: string;
 }
 
 export interface ConversationHistoryItem {
@@ -189,7 +192,7 @@ export interface LoginResponse {
   token_type: string;
   user_id: number;
   organization_id: number;
-  role: 'ADMIN' | 'USER' | 'SUPERADMIN';
+  role: 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'SUPERADMIN';
   organization_name: string;
 }
 
@@ -219,6 +222,7 @@ export interface OrganizationLimits {
   lead_generation_enabled: boolean;
   voice_chat_enabled?: boolean;
   multilingual_text_enabled?: boolean;
+  human_handoff_enabled?: boolean;
 }
 
 export interface Plan {
@@ -238,6 +242,7 @@ export interface Plan {
   lead_generation_enabled: boolean;
   voice_chat_enabled: boolean;
   multilingual_text_enabled: boolean;
+  human_handoff_enabled?: boolean;
 }
 
 export interface Subscription {

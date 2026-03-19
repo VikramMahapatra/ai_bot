@@ -31,6 +31,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import CallIcon from '@mui/icons-material/Call';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 
 const drawerWidth = 280;
 
@@ -43,7 +44,7 @@ interface MenuItem {
   text: string;
   icon: React.ReactNode;
   path: string;
-  requiredRole?: 'ADMIN' | 'USER' | 'ALL';
+  requiredRole?: 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'ADMIN_OR_HANDOFF' | 'ALL';
 }
 
 const allMenuItems: MenuItem[] = [
@@ -58,6 +59,7 @@ const allMenuItems: MenuItem[] = [
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN' },
+  { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF' },
   { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN' },
 ];
 
@@ -88,6 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
   // Filter menu items based on user role
   const visibleMenuItems = allMenuItems.filter((item) => {
     if (item.requiredRole === 'ALL') return true;
+    if (item.requiredRole === 'ADMIN_OR_HANDOFF') return userRole === 'ADMIN' || userRole === 'USER_HANDOFF';
     return item.requiredRole === userRole;
   });
 

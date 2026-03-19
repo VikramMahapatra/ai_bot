@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  LinearProgress,
   Paper,
   Stack,
   TextField,
@@ -31,6 +32,32 @@ interface ChatMessage {
 interface ChatApiResponse {
   response?: string;
   ui_action?: string;
+  handoff_chat_id?: string;
+  handoff_status?: string;
+}
+
+interface HandoffSessionResponse {
+  active: boolean;
+  chat_id?: string | null;
+  status?: string | null;
+  wait_cycle?: number | null;
+  waiting_expires_at?: string | null;
+  waiting_timeout_notified?: boolean | null;
+  wait_timeout_seconds?: number | null;
+}
+
+interface HandoffMessageResponse {
+  chat_id: string;
+  status?: string | null;
+  wait_cycle?: number | null;
+  waiting_expires_at?: string | null;
+  waiting_timeout_notified?: boolean | null;
+  wait_timeout_seconds?: number | null;
+  items: Array<{
+    id: number;
+    sender_type: string;
+    message: string;
+  }>;
 }
 
 interface WidgetPublicConfig {
@@ -113,6 +140,60 @@ const formatTimeRemaining = (ms: number): string => {
   return `${minutes}m`;
 };
 
+const formatCountdownSeconds = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+};
+
+const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const POST_HANDOFF_FOLLOWUP_MESSAGE =
+  'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
+const createPublicSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+const parseServerDateToMs = (value?: string | null): number | null => {
+  if (!value) return null;
+
+  const normalized = String(value).trim().replace(' ', 'T');
+  if (!normalized) return null;
+
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized}Z`;
+  const ms = Date.parse(candidate);
+  return Number.isNaN(ms) ? null : ms;
+};
+
+const normalizeIntentText = (value: string): string =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\u2019/g, "'")
+    .replace(/\u2018/g, "'")
+    .replace(/\u201c|\u201d/g, '"')
+    .replace(/\u2014|\u2013/g, '-');
+
+const wantsMeetingSetup = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+  const tokens = new Set((normalized.match(/[a-z0-9]+/g) || []));
+  if (tokens.has('yes') && (tokens.has('meeting') || tokens.has('appointment') || tokens.has('call'))) {
+    return true;
+  }
+  if (tokens.has('book') || tokens.has('schedule') || tokens.has('meeting') || tokens.has('appointment')) {
+    return true;
+  }
+  return false;
+};
+
+const isSatisfiedResponse = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+  const affirmative = ['yes', 'satisfied', 'happy', 'resolved', 'all good', 'good now', 'fine now'];
+  return affirmative.some((item) => normalized.includes(item));
+};
+
 interface ProductTrack {
   title: string;
   description: string;
@@ -188,12 +269,41 @@ const AgentTestPage: React.FC = () => {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [showLeadForm, setShowLeadForm] = useState(false);
+  const [leadSubmitting, setLeadSubmitting] = useState(false);
+  const [leadForm, setLeadForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    company: '',
+  });
+  const [pendingHandoffAfterLead, setPendingHandoffAfterLead] = useState(false);
+  const [awaitingPostHandoffDecision, setAwaitingPostHandoffDecision] = useState(false);
   const [appointmentName, setAppointmentName] = useState('');
   const [appointmentEmail, setAppointmentEmail] = useState('');
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
   const [appointmentBusy, setAppointmentBusy] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [handoffPollError, setHandoffPollError] = useState('');
+  const [handoffAfterId, setHandoffAfterId] = useState(0);
+  const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
+  const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
+  const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
+  const [handoffNowMs, setHandoffNowMs] = useState(Date.now());
+  const handoffSeenMessageIdsRef = useRef<Set<number>>(new Set());
+  const handoffPromptedChatIdRef = useRef<string | null>(null);
+  const lastHandoffStatusRef = useRef<string | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [sessionEngaged, setSessionEngaged] = useState(false);
+  const [sessionClosedByInactivity, setSessionClosedByInactivity] = useState(false);
+  const [lastActivityAtMs, setLastActivityAtMs] = useState(Date.now());
+  const [inactivityNowMs, setInactivityNowMs] = useState(Date.now());
+  const [sessionId, setSessionId] = useState('');
   const [nowMs, setNowMs] = useState(Date.now());
 
   const apiBaseUrl = appEnv.apiUrl;
@@ -212,15 +322,45 @@ const AgentTestPage: React.FC = () => {
   );
   const testTokenExpired = typeof testTokenRemainingMs === 'number' && testTokenRemainingMs <= 0;
   const canUseChat = Boolean(widgetId && testToken && !accessError && !testTokenExpired);
+  const inactivityRemainingSeconds = useMemo(() => {
+    if (sessionClosedByInactivity || !sessionEngaged) {
+      return null;
+    }
+    const elapsed = inactivityNowMs - lastActivityAtMs;
+    return Math.max(0, Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
+  }, [sessionClosedByInactivity, sessionEngaged, inactivityNowMs, lastActivityAtMs]);
+  const handoffRemainingSeconds = useMemo(() => {
+    if (!handoffOpen || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) {
+      return null;
+    }
+    const expiresAtMs = parseServerDateToMs(handoffWaitingExpiresAt);
+    if (expiresAtMs === null) {
+      return null;
+    }
+    return Math.max(0, Math.ceil((expiresAtMs - handoffNowMs) / 1000));
+  }, [handoffOpen, handoffStatus, handoffWaitingExpiresAt, handoffNowMs]);
+  const handoffCountdownText = useMemo(() => {
+    if (handoffStatus !== 'waiting_for_agent') {
+      return null;
+    }
+    if (handoffRemainingSeconds === null) {
+      const cycleMinutes = Math.max(1, Math.round(handoffWaitTimeoutSeconds / 60));
+      return `Each wait cycle is about ${cycleMinutes} minute${cycleMinutes > 1 ? 's' : ''}.`;
+    }
+    if (handoffRemainingSeconds <= 0) {
+      return 'Checking live user availability...';
+    }
+    return `Round ${Math.max(1, handoffWaitCycle)} time left: ${formatCountdownSeconds(handoffRemainingSeconds)}`;
+  }, [handoffStatus, handoffRemainingSeconds, handoffWaitCycle, handoffWaitTimeoutSeconds]);
+  const handoffProgressPercent = useMemo(() => {
+    if (handoffStatus !== 'waiting_for_agent' || handoffRemainingSeconds === null || handoffWaitTimeoutSeconds <= 0) {
+      return null;
+    }
+    const ratio = handoffRemainingSeconds / handoffWaitTimeoutSeconds;
+    return Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  }, [handoffStatus, handoffRemainingSeconds, handoffWaitTimeoutSeconds]);
 
-  const sessionId = useMemo(() => {
-    const key = `public_agent_session_${widgetId || 'unknown'}`;
-    const existing = localStorage.getItem(key);
-    if (existing) return existing;
-    const created = `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem(key, created);
-    return created;
-  }, [widgetId]);
+  const sessionStorageKey = useMemo(() => `public_agent_session_${widgetId || 'unknown'}`, [widgetId]);
 
   useEffect(() => {
     if (!testTokenExpiryMs) return;
@@ -231,6 +371,29 @@ const AgentTestPage: React.FC = () => {
 
     return () => window.clearInterval(timer);
   }, [testTokenExpiryMs]);
+
+  useEffect(() => {
+    const existing = localStorage.getItem(sessionStorageKey);
+    if (existing) {
+      setSessionId(existing);
+      return;
+    }
+
+    const created = createPublicSessionId();
+    localStorage.setItem(sessionStorageKey, created);
+    setSessionId(created);
+  }, [sessionStorageKey]);
+
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'auto',
+      });
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [messages, showLeadForm, showAppointmentForm, sending]);
 
   useEffect(() => {
     const loadWidgetConfig = async () => {
@@ -274,6 +437,219 @@ const AgentTestPage: React.FC = () => {
     loadWidgetConfig();
   }, [apiBaseUrl, testToken, widgetId]);
 
+  const startFreshSession = () => {
+    const created = createPublicSessionId();
+    localStorage.setItem(sessionStorageKey, created);
+    setSessionId(created);
+    setMessages([{ role: 'assistant', content: welcomeText }]);
+    setInput('');
+    setShowLeadForm(false);
+    setLeadSubmitting(false);
+    setLeadForm({ name: '', email: '', phone: '', company: '' });
+    setPendingHandoffAfterLead(false);
+    setAwaitingPostHandoffDecision(false);
+    setShowAppointmentForm(false);
+    setAppointmentError('');
+    setHandoffOpen(false);
+    setHandoffChatId(null);
+    setHandoffStatus(null);
+    setHandoffPollError('');
+    setHandoffAfterId(0);
+    handoffSeenMessageIdsRef.current.clear();
+    handoffPromptedChatIdRef.current = null;
+    lastHandoffStatusRef.current = null;
+    setSessionClosedByInactivity(false);
+    setSessionEngaged(false);
+    setLastActivityAtMs(Date.now());
+    return created;
+  };
+
+  useEffect(() => {
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || sending) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setMessages((prev) => {
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          if (last.role === 'assistant' && last.content === CHAT_INACTIVITY_CLOSE_MESSAGE) {
+            return prev;
+          }
+        }
+        return [...prev, { role: 'assistant', content: CHAT_INACTIVITY_CLOSE_MESSAGE }];
+      });
+      setSessionClosedByInactivity(true);
+      setSessionEngaged(false);
+      setHandoffOpen(false);
+      setHandoffChatId(null);
+      setHandoffStatus(null);
+      setHandoffPollError('');
+      setHandoffAfterId(0);
+      handoffSeenMessageIdsRef.current.clear();
+      handoffPromptedChatIdRef.current = null;
+      lastHandoffStatusRef.current = null;
+      setPendingHandoffAfterLead(false);
+      setAwaitingPostHandoffDecision(false);
+      setSending(false);
+    }, CHAT_INACTIVITY_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, sending, lastActivityAtMs]);
+
+  useEffect(() => {
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged) return;
+
+    setInactivityNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setInactivityNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, lastActivityAtMs]);
+
+  const appendHandoffMessages = (items: HandoffMessageResponse['items'], includeBotMessages: boolean) => {
+    const visibleMessages = items.filter((item) => {
+      const isBotUpdate = includeBotMessages && item.sender_type === 'bot';
+      if (item.sender_type !== 'agent' && item.sender_type !== 'system' && !isBotUpdate) return false;
+      if (handoffSeenMessageIdsRef.current.has(item.id)) return false;
+      handoffSeenMessageIdsRef.current.add(item.id);
+      return true;
+    });
+    if (visibleMessages.length === 0) return;
+    setMessages((prev) => [
+      ...prev,
+      ...visibleMessages.map((item) => ({
+        role: 'assistant' as const,
+        content: item.message,
+      })),
+    ]);
+  };
+
+  const loadHandoffSession = async () => {
+    if (!widgetId || !canUseChat || !sessionId) return;
+    try {
+      const params = new URLSearchParams({
+        session_id: sessionId,
+        widget_id: widgetId,
+      });
+      if (handoffChatId) {
+        params.set('chat_id', handoffChatId);
+      }
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/session?${params.toString()}`);
+      if (!response.ok) return;
+      const data = (await response.json()) as HandoffSessionResponse;
+      if (!data?.chat_id) return;
+
+      const nextStatus = data.status || null;
+      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
+      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+
+      setHandoffChatId(data.chat_id);
+      setHandoffStatus(nextStatus);
+      setHandoffOpen(isActive);
+      setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
+      setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+        setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
+      }
+      setHandoffNowMs(Date.now());
+      lastHandoffStatusRef.current = nextStatus;
+
+      if (wasActive && !isActive && data.chat_id && handoffPromptedChatIdRef.current !== data.chat_id) {
+        handoffPromptedChatIdRef.current = data.chat_id;
+        setAwaitingPostHandoffDecision(true);
+        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+      }
+      if (isActive) {
+        setAwaitingPostHandoffDecision(false);
+      }
+    } catch {
+      // Non-blocking for normal chat.
+    }
+  };
+
+  const loadHandoffMessages = async (chatId: string, reset = false) => {
+    if (!widgetId || !chatId || !canUseChat || !sessionId) return;
+    try {
+      const params = new URLSearchParams({
+        chat_id: chatId,
+        session_id: sessionId,
+        widget_id: widgetId,
+        after_id: String(reset ? 0 : handoffAfterId),
+      });
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/messages?${params.toString()}`);
+      if (!response.ok) return;
+
+      const data = (await response.json()) as HandoffMessageResponse;
+      if (reset) {
+        handoffSeenMessageIdsRef.current.clear();
+        setHandoffAfterId(0);
+      }
+      const nextStatus = data?.status || null;
+      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
+      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+
+      setHandoffStatus(nextStatus);
+      setHandoffOpen(isActive);
+      setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
+      setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+        setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
+      }
+      setHandoffNowMs(Date.now());
+      lastHandoffStatusRef.current = nextStatus;
+
+      if (wasActive && !isActive && chatId && handoffPromptedChatIdRef.current !== chatId) {
+        handoffPromptedChatIdRef.current = chatId;
+        setAwaitingPostHandoffDecision(true);
+        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+      }
+      if (isActive) {
+        setAwaitingPostHandoffDecision(false);
+      }
+
+      if (Array.isArray(data?.items) && data.items.length > 0) {
+        appendHandoffMessages(data.items, !reset);
+        const maxId = data.items.reduce((acc, item) => Math.max(acc, item.id), 0);
+        setHandoffAfterId((prev) => Math.max(prev, maxId));
+        setSessionEngaged(true);
+        setLastActivityAtMs(Date.now());
+      }
+      setHandoffPollError('');
+    } catch {
+      setHandoffPollError('Live agent updates are temporarily unavailable.');
+    }
+  };
+
+  useEffect(() => {
+    if (!canUseChat) return;
+    loadHandoffSession();
+  }, [canUseChat, widgetId, sessionId]);
+
+  useEffect(() => {
+    if (!handoffOpen || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) return;
+    setHandoffNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setHandoffNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [handoffOpen, handoffStatus, handoffWaitingExpiresAt]);
+
+  useEffect(() => {
+    handoffSeenMessageIdsRef.current.clear();
+    setHandoffAfterId(0);
+  }, [handoffChatId]);
+
+  useEffect(() => {
+    if (!canUseChat || !handoffChatId || !handoffOpen) return;
+    const timer = window.setInterval(() => {
+      loadHandoffSession();
+      loadHandoffMessages(handoffChatId, false);
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [canUseChat, handoffChatId, handoffOpen, handoffAfterId]);
+
   const launcherPositionSx = useMemo(() => {
     if (position === 'bottom-left') return { left: 24, bottom: 24 };
     if (position === 'top-right') return { right: 24, top: 24 };
@@ -288,13 +664,52 @@ const AgentTestPage: React.FC = () => {
     return { right: 16, bottom: 16 };
   }, [position]);
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (
+    overrideText?: string,
+    options?: { silentUserMessage?: boolean; skipLeadCaptureCheck?: boolean; forceSessionId?: string }
+  ) => {
+    const opts = options || {};
+    let activeSessionId = opts.forceSessionId || sessionId;
+    if (sessionClosedByInactivity || !activeSessionId) {
+      activeSessionId = startFreshSession();
+    }
+
+    const text = (overrideText ?? input).trim();
     if (!text || sending || !canUseChat) return;
 
-    setInput('');
+    if (!overrideText) {
+      setInput('');
+    }
+
+    if (awaitingPostHandoffDecision && !opts.silentUserMessage) {
+      if (wantsMeetingSetup(text)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: APPOINTMENT_FORM_PROMPT },
+        ]);
+        setAwaitingPostHandoffDecision(false);
+        openAppointmentDialog();
+        return;
+      }
+      if (isSatisfiedResponse(text)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: 'Great to hear that. If you need anything else, I am here to help.' },
+        ]);
+        setAwaitingPostHandoffDecision(false);
+        return;
+      }
+    }
+
     setSending(true);
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setSessionEngaged(true);
+    setSessionClosedByInactivity(false);
+    setLastActivityAtMs(Date.now());
+    if (!opts.silentUserMessage) {
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    }
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/chat`, {
@@ -302,7 +717,7 @@ const AgentTestPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          session_id: sessionId,
+          session_id: activeSessionId,
           widget_id: widgetId,
         }),
       });
@@ -314,11 +729,42 @@ const AgentTestPage: React.FC = () => {
       const data = (await response.json()) as ChatApiResponse;
       const rawReply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
       const shouldOpenAppointmentForm = data?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = data?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = data?.ui_action === 'open_lead_form';
       const reply = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawReply;
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      if (reply.trim().length > 0) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+        setLastActivityAtMs(Date.now());
+      }
 
       if (shouldOpenAppointmentForm) {
         openAppointmentDialog();
+      }
+
+      if (shouldOpenLeadForm) {
+        setShowLeadForm(true);
+        setPendingHandoffAfterLead(true);
+      }
+
+      if (shouldOpenHandoff) {
+        setPendingHandoffAfterLead(false);
+        setShowLeadForm(false);
+        setHandoffOpen(true);
+        if (data?.handoff_chat_id) {
+          const isNewChat = data.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(data.handoff_chat_id);
+          if (isNewChat) {
+            setHandoffAfterId(0);
+            handoffSeenMessageIdsRef.current.clear();
+            loadHandoffMessages(data.handoff_chat_id, true);
+          } else {
+            loadHandoffMessages(data.handoff_chat_id, false);
+          }
+        }
+        if (data?.handoff_status) {
+          setHandoffStatus(data.handoff_status);
+        }
+        setAwaitingPostHandoffDecision(false);
       }
     } catch {
       setMessages((prev) => [
@@ -328,8 +774,71 @@ const AgentTestPage: React.FC = () => {
           content: 'Sorry, the chatbot is temporarily unavailable. Please try again in a moment.',
         },
       ]);
+      setLastActivityAtMs(Date.now());
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleLeadSubmit = async () => {
+    if (!canUseChat || leadSubmitting) return;
+    if (!leadForm.name.trim() && !leadForm.email.trim() && !leadForm.phone.trim()) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Please add at least one contact field so we can follow up.' },
+      ]);
+      return;
+    }
+
+    try {
+      setLeadSubmitting(true);
+      const response = await fetch(`${apiBaseUrl}/api/admin/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          widget_id: widgetId,
+          name: leadForm.name.trim() || undefined,
+          email: leadForm.email.trim() || undefined,
+          phone: leadForm.phone.trim() || undefined,
+          company: leadForm.company.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Lead submission failed');
+      }
+
+      setShowLeadForm(false);
+      setLeadForm({ name: '', email: '', phone: '', company: '' });
+
+      if (pendingHandoffAfterLead) {
+        setPendingHandoffAfterLead(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Thanks, your details are captured. I am now transferring your handoff request to a live agent.',
+          },
+        ]);
+        await sendMessage('yes connect me', {
+          silentUserMessage: true,
+          skipLeadCaptureCheck: true,
+          forceSessionId: sessionId,
+        });
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Thanks. Your details have been received.' },
+        ]);
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Sorry, failed to submit your details. Please try again.' },
+      ]);
+    } finally {
+      setLeadSubmitting(false);
     }
   };
 
@@ -726,7 +1235,83 @@ const AgentTestPage: React.FC = () => {
             </Button>
           </Box>
 
-          <Box sx={{ flex: 1, p: 1.5, overflowY: 'auto', bgcolor: '#f8fafc' }}>
+          {handoffOpen && (
+            <Box
+              sx={{
+                px: 1.4,
+                py: 1,
+                borderBottom: '1px solid #dbeafe',
+                background: 'linear-gradient(120deg, #eff6ff 0%, #f8fafc 100%)',
+              }}
+            >
+              <Stack spacing={0.8}>
+                <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="space-between">
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: '#0f172a' }}>
+                    Human handoff in progress
+                  </Typography>
+                  <Chip
+                    size="small"
+                    color={handoffStatus === 'assigned' ? 'success' : 'warning'}
+                    label={handoffStatus === 'assigned' ? 'Agent assigned' : 'Waiting for agent'}
+                  />
+                </Stack>
+                <Typography sx={{ fontSize: '0.74rem', color: '#475569' }}>
+                  Keep chatting here. Your messages are routed to live support while handoff is active.
+                </Typography>
+                {handoffCountdownText ? (
+                  <Typography sx={{ fontSize: '0.72rem', color: '#1d4ed8', fontWeight: 600 }}>
+                    {handoffCountdownText}
+                  </Typography>
+                ) : null}
+                {handoffStatus === 'waiting_for_agent' && typeof handoffProgressPercent === 'number' ? (
+                  <Stack spacing={0.4}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography sx={{ fontSize: '0.68rem', color: '#334155', fontWeight: 600 }}>
+                        {Math.max(0, handoffRemainingSeconds ?? handoffWaitTimeoutSeconds)} sec
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.68rem', color: '#475569' }}>
+                        {`${handoffWaitTimeoutSeconds} sec -> 0 sec`}
+                      </Typography>
+                    </Stack>
+                    <LinearProgress
+                      variant="determinate"
+                      value={handoffProgressPercent}
+                      sx={{
+                        height: 7,
+                        borderRadius: 999,
+                        backgroundColor: 'rgba(37, 99, 235, 0.16)',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 999,
+                          background: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)',
+                        },
+                      }}
+                    />
+                  </Stack>
+                ) : null}
+                <Stack direction="row" spacing={0.8}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      loadHandoffSession();
+                      if (handoffChatId) {
+                        loadHandoffMessages(handoffChatId, false);
+                      }
+                    }}
+                  >
+                    Refresh status
+                  </Button>
+                  {handoffPollError ? (
+                    <Typography sx={{ fontSize: '0.72rem', color: '#dc2626', alignSelf: 'center' }}>
+                      {handoffPollError}
+                    </Typography>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Box>
+          )}
+
+          <Box ref={messagesContainerRef} sx={{ flex: 1, p: 1.5, overflowY: 'auto', bgcolor: '#f8fafc' }}>
             <Stack spacing={1.2}>
               {messages.map((message, index) => (
                 <Box
@@ -772,6 +1357,120 @@ const AgentTestPage: React.FC = () => {
                   </Box>
                 </Box>
               ))}
+              {showLeadForm && (
+                <Box
+                  sx={{
+                    alignSelf: 'flex-start',
+                    maxWidth: '92%',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    gap: 0.9,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid #d1d5db',
+                      bgcolor: '#fff',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.95rem',
+                      flex: '0 0 28px',
+                    }}
+                  >
+                    {botIconGlyph}
+                  </Box>
+                  <Box
+                    sx={{
+                      px: 1.3,
+                      py: 1,
+                      borderRadius: 2,
+                      bgcolor: '#f8fbff',
+                      border: '1px solid #cfe3ff',
+                      boxShadow: '0 12px 30px rgba(15,23,42,0.08)',
+                      width: '100%',
+                      maxWidth: 308,
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700, color: '#0f172a', fontSize: '0.78rem', mb: 0.2 }}>
+                      Quick contact form
+                    </Typography>
+                    <Typography sx={{ color: '#64748b', fontSize: '0.68rem', mb: 0.8 }}>
+                      Small details now help us connect you faster with live support.
+                    </Typography>
+
+                    <Stack spacing={0.6}>
+                      <TextField
+                        placeholder="Name"
+                        value={leadForm.name}
+                        onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.78rem', py: 0.8 } }}
+                      />
+                      <TextField
+                        placeholder="Email"
+                        type="email"
+                        value={leadForm.email}
+                        onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.78rem', py: 0.8 } }}
+                      />
+                      <TextField
+                        placeholder="Phone"
+                        type="tel"
+                        value={leadForm.phone}
+                        onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.78rem', py: 0.8 } }}
+                      />
+                      <TextField
+                        placeholder="Company"
+                        value={leadForm.company}
+                        onChange={(e) => setLeadForm((prev) => ({ ...prev, company: e.target.value }))}
+                        size="small"
+                        fullWidth
+                        sx={{ '& .MuiInputBase-input': { fontSize: '0.78rem', py: 0.8 } }}
+                      />
+                      <Stack direction="row" spacing={0.75}>
+                        <Button
+                          variant="contained"
+                          onClick={handleLeadSubmit}
+                          disabled={leadSubmitting}
+                          fullWidth
+                          size="small"
+                          sx={{
+                            borderRadius: '10px',
+                            minHeight: 32,
+                            fontSize: '0.78rem',
+                            background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                          }}
+                        >
+                          {leadSubmitting ? 'Submitting...' : 'Submit'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setShowLeadForm(false);
+                            setPendingHandoffAfterLead(false);
+                          }}
+                          disabled={leadSubmitting}
+                          fullWidth
+                          size="small"
+                          sx={{ borderRadius: '10px', minHeight: 32, fontSize: '0.78rem' }}
+                        >
+                          Later
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                </Box>
+              )}
               {showAppointmentForm && (
                 <Box
                   sx={{
@@ -916,6 +1615,7 @@ const AgentTestPage: React.FC = () => {
                   <CircularProgress size={18} />
                 </Box>
               )}
+              <div ref={messagesEndRef} />
             </Stack>
           </Box>
 
@@ -924,8 +1624,15 @@ const AgentTestPage: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9 }}>
               <TextField
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setLastActivityAtMs(Date.now());
+                }}
+                placeholder={
+                  sessionClosedByInactivity
+                    ? 'Session closed due to inactivity. Type a message to start a new session...'
+                    : 'Type your message...'
+                }
                 fullWidth
                 size="small"
                 sx={{
@@ -942,7 +1649,7 @@ const AgentTestPage: React.FC = () => {
               />
               <Button
                 variant="contained"
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
                   minWidth: 46,
@@ -958,6 +1665,17 @@ const AgentTestPage: React.FC = () => {
               <Typography variant="caption" color="text.secondary">
                 Press Enter to send. Appointment booking is available anytime.
               </Typography>
+              {typeof inactivityRemainingSeconds === 'number' ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#64748b',
+                    fontWeight: inactivityRemainingSeconds <= 15 ? 700 : 500,
+                  }}
+                >
+                  Session auto-closes in {formatCountdownSeconds(inactivityRemainingSeconds)} if no activity.
+                </Typography>
+              ) : null}
             </Stack>
           </Box>
         </Paper>
