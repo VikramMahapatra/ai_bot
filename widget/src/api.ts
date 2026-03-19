@@ -1,6 +1,12 @@
 interface ChatResponse {
   response: string;
   session_id: string;
+  sources?: Array<{
+    id: number;
+    name: string;
+    type: string;
+    url?: string;
+  }>;
   ui_action?: string;
   handoff_chat_id?: string;
   handoff_status?: string;
@@ -86,6 +92,36 @@ export class ChatAPI {
     }
 
     return response.json();
+  }
+
+  async sendMessageStream(
+    message: string,
+    sessionId: string,
+    widgetId?: string,
+    shopDomain?: string,
+    customerId?: string,
+    signal?: AbortSignal
+  ): Promise<Response> {
+    const response = await fetch(`${this.baseURL}/api/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message,
+        session_id: sessionId,
+        widget_id: widgetId,
+        shop_domain: shopDomain,
+        customer_id: customerId,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to stream chat response');
+    }
+
+    return response;
   }
 
   async shouldCaptureLead(sessionId: string, widgetId?: string): Promise<boolean> {

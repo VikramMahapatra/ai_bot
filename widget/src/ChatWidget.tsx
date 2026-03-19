@@ -42,6 +42,7 @@ const APPOINTMENT_FORM_PROMPT =
 
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
   'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
 
@@ -510,39 +511,48 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setSessionEngaged(true);
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
+    let assistantIndex = -1;
     if (!opts.silentUserMessage) {
       setMessages((prev) => [...prev, { role: 'user', content: text }]);
     }
 
-    try {
-      const response = await chatAPI.current.sendMessage(
-        text,
-        activeSessionId,
-        widgetId,
-        shopDomain,
-        customerId ? String(customerId) : undefined
+    setMessages((prev) => {
+      assistantIndex = prev.length;
+      return [...prev, { role: 'assistant', content: '' }];
+    });
+
+    const replaceAssistantMessage = (content: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content }
+            : msg
+        )
       );
+    };
 
-      const rawAssistantText = typeof response?.response === 'string'
-        ? response.response
-        : 'I could not generate a response right now.';
-      const shouldOpenAppointmentForm = response?.ui_action === 'open_appointment_form';
-      const shouldOpenHandoff = response?.ui_action === 'open_human_handoff';
-      const shouldOpenLeadForm = response?.ui_action === 'open_lead_form';
-      const assistantText = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawAssistantText;
+    const appendAssistantToken = (delta: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content: `${msg.content}${delta}` }
+            : msg
+        )
+      );
+    };
 
-      if (assistantText.trim().length > 0) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: assistantText,
-          },
-        ]);
-        setLastActivityAtMs(Date.now());
-      }
+    const applyUiAction = (payload?: {
+      ui_action?: string;
+      handoff_chat_id?: string;
+      handoff_status?: string;
+      response?: string;
+    }) => {
+      const shouldOpenAppointmentForm = payload?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = payload?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = payload?.ui_action === 'open_lead_form';
 
       if (shouldOpenAppointmentForm) {
+        replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
         openAppointmentForm();
       }
 
@@ -555,21 +565,109 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffActive(true);
-        if (response?.handoff_chat_id) {
-          const isNewChat = response.handoff_chat_id !== handoffChatId;
-          setHandoffChatId(response.handoff_chat_id);
+        if (payload?.handoff_chat_id) {
+          const isNewChat = payload.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
             setHandoffAfterId(0);
             handoffSeenIdsRef.current.clear();
-            loadHandoffMessages(response.handoff_chat_id, true);
+            loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
-            loadHandoffMessages(response.handoff_chat_id, false);
+            loadHandoffMessages(payload.handoff_chat_id, false);
           }
         }
-        if (response?.handoff_status) {
-          setHandoffStatus(response.handoff_status);
+        if (payload?.handoff_status) {
+          setHandoffStatus(payload.handoff_status);
         }
       }
+    };
+
+    try {
+      let streamDonePayload: any = null;
+      let receivedToken = false;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
+
+        const streamResponse = await chatAPI.current.sendMessageStream(
+          text,
+          activeSessionId,
+          widgetId,
+          shopDomain,
+          customerId ? String(customerId) : undefined,
+          controller.signal
+        );
+
+        const reader = streamResponse.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data:')) continue;
+              const data = line.replace(/^data:\s?/, '');
+              if (!data) continue;
+
+              let payload: any;
+              try {
+                payload = JSON.parse(data);
+              } catch {
+                continue;
+              }
+
+              if (payload?.type === 'token' && typeof payload?.text === 'string') {
+                if (!receivedToken) {
+                  receivedToken = true;
+                  window.clearTimeout(timeoutId);
+                }
+                appendAssistantToken(payload.text);
+              }
+
+              if (payload?.type === 'done') {
+                streamDonePayload = payload;
+              }
+            }
+          }
+        }
+
+        window.clearTimeout(timeoutId);
+      } catch {
+        const response = await chatAPI.current.sendMessage(
+          text,
+          activeSessionId,
+          widgetId,
+          shopDomain,
+          customerId ? String(customerId) : undefined
+        );
+
+        const rawAssistantText = typeof response?.response === 'string'
+          ? response.response
+          : 'I could not generate a response right now.';
+        replaceAssistantMessage(rawAssistantText);
+        applyUiAction(response);
+      }
+
+      applyUiAction(streamDonePayload);
+
+      if (!receivedToken && !streamDonePayload?.ui_action) {
+        replaceAssistantMessage('I could not generate a response right now.');
+      }
+
+      setLastActivityAtMs(Date.now());
 
       if (!opts.skipLeadCaptureCheck) {
         try {
@@ -582,13 +680,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, something went wrong. Please try again.',
-        },
-      ]);
+      replaceAssistantMessage('Sorry, something went wrong. Please try again.');
       setLastActivityAtMs(Date.now());
     } finally {
       setLoading(false);

@@ -122,15 +122,3 @@ def init_db():
                     conn.execute(text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT"))
             except Exception:
                 pass
-
-            try:
-                cols = conn.execute(text("PRAGMA table_info('handoff_sessions')")).fetchall()
-                col_names = {row[1] for row in cols}
-                if "wait_cycle" not in col_names:
-                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN wait_cycle INTEGER DEFAULT 1"))
-                if "waiting_expires_at" not in col_names:
-                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN waiting_expires_at DATETIME"))
-                if "waiting_timeout_notified" not in col_names:
-                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN waiting_timeout_notified BOOLEAN DEFAULT 0"))
-            except Exception:
-                pass

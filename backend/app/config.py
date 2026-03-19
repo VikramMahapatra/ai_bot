@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -79,6 +83,10 @@ class Settings(BaseSettings):
     # Frontend URLs used in notifications
     FRONTEND_DASHBOARD_LEADS_URL: str
     
+    # Echo Lead Keys
+    ECHOL_API_BASE_URL: str
+    ECHOL_API_KEY: str
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
@@ -96,7 +104,7 @@ class Settings(BaseSettings):
         return [item.strip().lower() for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|") if item.strip()]
 
     model_config = SettingsConfigDict(
-        env_file=(".env",),
+        env_file=(str(BASE_DIR / ".env.example"), str(BASE_DIR / ".env")),
         case_sensitive=True,
         extra="ignore",
     )
