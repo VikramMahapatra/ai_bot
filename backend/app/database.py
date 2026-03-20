@@ -122,3 +122,16 @@ def init_db():
                     conn.execute(text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT"))
             except Exception:
                 pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('contacts')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "external_contact_id" not in col_names:
+                    conn.execute(text("ALTER TABLE contacts ADD COLUMN external_contact_id INTEGER"))
+            except Exception:
+                pass
+
+            try:
+                conn.commit()
+            except Exception:
+                pass

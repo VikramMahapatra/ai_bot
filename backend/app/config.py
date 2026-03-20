@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
     CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
 
+    # Twilio SMS defaults (used for bootstrap/testing)
+    TWILIO_SMS_DEFAULT_ACCOUNT_SID: str = ""
+    TWILIO_SMS_DEFAULT_AUTH_TOKEN: str = ""
+    TWILIO_SMS_DEFAULT_FROM_NUMBER: str = ""
+    TWILIO_SMS_DEFAULT_INBOUND_NUMBER: str = ""
+    TWILIO_SMS_DEFAULT_LOCATION_LABEL: str = ""
+    TWILIO_SMS_DEFAULT_VOICE_WEBHOOK_URL: str = ""
+    TWILIO_SMS_DEFAULT_MESSAGING_WEBHOOK_URL: str = ""
+
     # Frontend URLs used in notifications
     FRONTEND_DASHBOARD_LEADS_URL: str
     

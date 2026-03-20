@@ -1,6 +1,6 @@
 import api from './api';
 
-export type CampaignType = 'email' | 'whatsapp';
+export type CampaignType = 'email' | 'whatsapp' | 'sms';
 export type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'completed' | 'paused' | 'failed';
 
 export interface CampaignItem {

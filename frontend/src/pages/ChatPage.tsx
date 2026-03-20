@@ -13,7 +13,7 @@ const ChatPage: React.FC = () => {
     <AdminLayout>
       <Box
         sx={{
-          height: { xs: 'calc(100vh - 138px)', md: 'calc(100vh - 154px)' },
+          height: { xs: 'calc(100vh - 120px)', md: 'calc(100vh - 132px)' },
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -23,63 +23,69 @@ const ChatPage: React.FC = () => {
         <Paper
           elevation={0}
           sx={{
-            p: { xs: 2, md: 2.3 },
-            mb: 2.2,
+            p: { xs: 1.4, md: 1.7 },
+            mb: 1.2,
             flexShrink: 0,
-            borderRadius: '22px',
-            border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
-              theme.palette.background.paper,
-              0.84
-            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
-            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
-            position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              background:
-                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-              pointerEvents: 'none',
-            },
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              top: '-24%',
-              right: '-6%',
-              width: '42%',
-              height: '150%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-              pointerEvents: 'none',
-            },
+            borderRadius: '16px',
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+            background: `linear-gradient(125deg, ${alpha('#f8fbff', 0.95)} 0%, ${alpha('#eff6ff', 0.95)} 100%)`,
+            boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.08)}`,
             '& > *': {
               position: 'relative',
               zIndex: 1,
             },
           }}
         >
-          <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.8 }}>
-            AI Chat
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary', mb: 1.6 }}>
-            Have a conversation with your AI assistant powered by your knowledge base.
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Chip icon={<SmartToyIcon />} label="Real-time assistant" size="small" variant="outlined" />
-            <Chip icon={<AutoAwesomeIcon />} label="Streaming responses" size="small" variant="outlined" />
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1}
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.2, letterSpacing: '-0.01em' }}>
+                AI Chat
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 640 }}>
+                Chat with your assistant using selected widget knowledge and live streaming responses.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+              <Chip
+                icon={<SmartToyIcon />}
+                label="Live assistant"
+                size="small"
+                sx={{
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  color: 'primary.main',
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                }}
+              />
+              <Chip
+                icon={<AutoAwesomeIcon />}
+                label="Streaming"
+                size="small"
+                sx={{
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  color: 'primary.main',
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                }}
+              />
+            </Stack>
           </Stack>
         </Paper>
         <Card
           sx={{
-            boxShadow: 3,
-            p: { xs: 1.1, md: 1.4 },
+            boxShadow: `0 14px 32px ${alpha(theme.palette.primary.dark, 0.1)}`,
+            p: { xs: 0.9, md: 1.1 },
             borderRadius: 2.5,
             flexGrow: 1,
             minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+            background: `linear-gradient(180deg, ${alpha('#f8fbff', 0.98)} 0%, ${alpha('#f3f8ff', 0.96)} 100%)`,
           }}
         >
           <ChatInterface />

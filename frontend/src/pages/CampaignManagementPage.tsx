@@ -149,7 +149,7 @@ const CampaignManagementPage: React.FC = () => {
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
   const [createCampaignName, setCreateCampaignName] = useState('');
-  const [createCampaignType, setCreateCampaignType] = useState<'email' | 'whatsapp'>('email');
+  const [createCampaignType, setCreateCampaignType] = useState<'email' | 'whatsapp' | 'sms'>('email');
   const [createMessageTemplate, setCreateMessageTemplate] = useState('');
   const [emailEditorMode, setEmailEditorMode] = useState<'plain' | 'html'>('plain');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
@@ -747,7 +747,7 @@ const CampaignManagementPage: React.FC = () => {
             Campaign Management
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Run non-AI promotional campaigns via Email or WhatsApp.
+            Run non-AI promotional campaigns via Email, WhatsApp, or SMS.
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mt: 1.4 }} flexWrap="wrap" useFlexGap>
             <Chip size="small" icon={<ListAltIcon />} label="Build Audience" variant="outlined" />
@@ -927,6 +927,7 @@ const CampaignManagementPage: React.FC = () => {
                       <MenuItem value="">All</MenuItem>
                       <MenuItem value="email">Email</MenuItem>
                       <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                      <MenuItem value="sms">SMS</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1049,10 +1050,11 @@ const CampaignManagementPage: React.FC = () => {
                   <Select
                     value={createCampaignType}
                     label="Campaign Type"
-                    onChange={(e) => setCreateCampaignType(e.target.value as 'email' | 'whatsapp')}
+                    onChange={(e) => setCreateCampaignType(e.target.value as 'email' | 'whatsapp' | 'sms')}
                   >
                     <MenuItem value="email">Email</MenuItem>
                     <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                    <MenuItem value="sms">SMS</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
