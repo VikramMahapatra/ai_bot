@@ -150,6 +150,10 @@ const formatCountdownSeconds = (seconds: number): string => {
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
 const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const HANDOFF_WAITING_MESSAGE =
+  'I am connecting you to a human expert. Please share any additional details and we will respond shortly.';
+const HANDOFF_LEAD_CAPTURE_MESSAGE =
+  'Before I transfer this handoff request to a live agent, please fill the quick contact form in chat so we can reach you if needed.';
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
   'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
 const createPublicSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -466,7 +470,7 @@ const AgentTestPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || sending) return;
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || sending || handoffOpen) return;
 
     const timeoutId = window.setTimeout(() => {
       setMessages((prev) => {
@@ -494,10 +498,10 @@ const AgentTestPage: React.FC = () => {
     }, CHAT_INACTIVITY_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, sending, lastActivityAtMs]);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, sending, handoffOpen, lastActivityAtMs]);
 
   useEffect(() => {
-    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged) return;
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || handoffOpen) return;
 
     setInactivityNowMs(Date.now());
     const timer = window.setInterval(() => {
@@ -505,7 +509,7 @@ const AgentTestPage: React.FC = () => {
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, lastActivityAtMs]);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, handoffOpen, lastActivityAtMs]);
 
   const appendHandoffMessages = (items: HandoffMessageResponse['items'], includeBotMessages: boolean) => {
     const visibleMessages = items.filter((item) => {
@@ -753,11 +757,13 @@ const AgentTestPage: React.FC = () => {
       }
 
       if (shouldOpenLeadForm) {
+        replaceAssistantMessage(HANDOFF_LEAD_CAPTURE_MESSAGE);
         setShowLeadForm(true);
         setPendingHandoffAfterLead(true);
       }
 
       if (shouldOpenHandoff) {
+        replaceAssistantMessage(HANDOFF_WAITING_MESSAGE);
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffOpen(true);
@@ -849,6 +855,23 @@ const AgentTestPage: React.FC = () => {
                 streamDonePayload = payload;
               }
             }
+          }
+        }
+
+        const trailing = buffer.trim();
+        if (trailing.startsWith('data:')) {
+          const data = trailing.replace(/^data:\s?/, '');
+          try {
+            const payload = JSON.parse(data);
+            if (payload?.type === 'token' && typeof payload?.text === 'string') {
+              receivedToken = true;
+              appendAssistantToken(payload.text);
+            }
+            if (payload?.type === 'done') {
+              streamDonePayload = payload;
+            }
+          } catch {
+            // Ignore malformed trailing event chunk.
           }
         }
 
