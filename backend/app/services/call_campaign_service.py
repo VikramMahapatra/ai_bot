@@ -59,13 +59,15 @@ def get_campaign_stats(db: Session, organization_id: int):
 
 def list_campaigns(
     db: Session,
+    organization_id:int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10
 ):
     ###SYNC FROM ECHOLEAD
     campaign_models = db.query(CallCampaign).filter(
-        CallCampaign.is_deleted == False
+        CallCampaign.is_deleted == False,
+        CallCampaign.organization_id == organization_id
     )
 
     if search:
@@ -96,6 +98,7 @@ def list_campaigns(
             CallCampaign.completed_calls
         )
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
+        .filter(CallCampaign.organization_id == organization_id, CallCampaign.is_deleted == False)
         .group_by(CallCampaign.id)
     )
 
