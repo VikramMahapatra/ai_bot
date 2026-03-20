@@ -162,7 +162,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
               {user?.username || 'User'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem', display: 'block', maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user?.email || 'user@example.com'}
+              {user?.email || 'No email'}
             </Typography>
           </Box>
           <Chip

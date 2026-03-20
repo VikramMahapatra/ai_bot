@@ -2,6 +2,7 @@ import React, { createContext, useState, useMemo, useEffect, useLayoutEffect } f
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { Box, CircularProgress } from '@mui/material';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -373,11 +374,22 @@ const ScrollToTop: React.FC = () => {
 };
 
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({ 
+const ProtectedRoute: React.FC<{
+  children: React.ReactNode;
+  requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'HANDOFF_OPERATOR' | 'ALL';
+}> = ({
   children, 
   requiredRole = 'ALL' 
 }) => {
-  const { isAuthenticated, userRole } = useAuth();
+  const { isAuthenticated, userRole, isAuthLoading } = useAuth();
+
+  if (isAuthLoading) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (!isAuthenticated) {
     if (requiredRole === 'SUPERADMIN') {
@@ -393,6 +405,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMI
 
   if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF') {
+    if (userRole === 'ADMIN') {
+      return <Navigate to="/admin" replace />;
+    }
+    return <Navigate to="/chat" replace />;
   }
   
   return <>{children}</>;
