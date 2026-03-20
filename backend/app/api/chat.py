@@ -346,7 +346,7 @@ def _last_response_was_escalation(db: Session, session_id: str, widget_id: str) 
         "level 2:",
         "would you like me to connect you",
         "set up a meeting now",
-        "set up a meeting for you",
+        "set up a meeting for you", 
         "don’t have a reliable answer",
         "don't have a reliable answer",
         "don’t have reliable expertise",
