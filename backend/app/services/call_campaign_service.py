@@ -1,5 +1,6 @@
 
 from datetime import datetime, timedelta
+import json
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_
@@ -11,8 +12,9 @@ from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCre
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
-from app.models.call_logs import CallLog
-from app.services.call_log_service import save_transcripts
+from app.models.call_logs import CallLog, CallTranscript
+from app.services.call_log_service import process_call, save_transcripts
+from app.models.user import Organization
 
 
 STALE_MINUTES = 1
@@ -47,24 +49,26 @@ def get_campaign_stats(db: Session, organization_id: int):
 
     for status, count in stats:
         result["totalCampaigns"] += count
-        if status == "Active":
+        if status == "active":
             result["activeCampaigns"] = count
-        elif status == "Paused":
+        elif status == "paused":
             result["pausedCampaigns"] = count
-        elif status == "Completed":
+        elif status == "completed":
             result["completedCampaigns"] = count
 
     return result
 
 def list_campaigns(
     db: Session,
+    organization_id:int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10
 ):
     ###SYNC FROM ECHOLEAD
     campaign_models = db.query(CallCampaign).filter(
-        CallCampaign.is_deleted == False
+        CallCampaign.is_deleted == False,
+        CallCampaign.organization_id == organization_id
     )
 
     if search:
@@ -94,7 +98,9 @@ def list_campaigns(
             CallCampaign.total_calls,
             CallCampaign.completed_calls
         )
+        .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
+        .filter(CallCampaign.organization_id == organization_id, CallCampaign.is_deleted == False)
         .group_by(CallCampaign.id)
     )
 
@@ -106,6 +112,8 @@ def list_campaigns(
 
     # TOTAL COUNT (before pagination)
     total = base_query.count()
+    
+    print(total)
 
     # PAGINATION
     campaigns = (
@@ -116,9 +124,6 @@ def list_campaigns(
     )
 
     rows = []
-    
-    echolead_client = EcholeadsClient()
-
     for campaign in campaigns:
         progress = 0
         if campaign.total_calls:
@@ -191,7 +196,46 @@ def get_campaign(db: Session, campaign_id: int):
         "retry_on_voicemail": schedule.retry_voicemail if schedule else None
     }
     
+def get_campaign_detail(db: Session, campaign_id: int):
+    campaign = db.query(CallCampaign).filter(
+        CallCampaign.id == campaign_id,
+        CallCampaign.is_deleted == False
+    ).first()
+
+    if not campaign:
+        return None
+
+    # Total contacts
+    total_contacts = db.query(CampaignContact).filter(
+        CampaignContact.campaign_id == campaign_id
+    ).count()
+
+    # ✅ Scheduled calls (future calls)
+    scheduled_calls = db.query(CallLog).filter(
+        CallLog.campaign_id == campaign_id,
+        CallLog.status == "Scheduled"
+    ).count()
+
+    
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "agent_name": campaign.agent.name,
+        "calling_no": campaign.agent.calling_no,
+        "status": campaign.status,
+        "created_at": campaign.created_at,
+        "total_calls": campaign.total_calls,
+        "completed_calls": campaign.completed_calls,
+        "success_rate": campaign.success_rate,
+        "response_rate": campaign.response_rate,
+        "total_contacts": total_contacts,
+        "scheduled_calls": scheduled_calls,
+    }
+    
 def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
+    org = db.query(Organization).filter(
+        Organization.id == organization_id
+    ).first()
 
     if data.start_datetime:
         status = "scheduled"
@@ -204,33 +248,6 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             CallingAgent.id == data.agent_id
         ).first()
 
-    external_contact_ids = get_external_contact_ids(db, data.contacts)
-    
-    payload = {
-        "campaign_name": data.name,
-        "agent_id": agent.external_agent_id,
-        "from_number": agent.calling_no,
-        "send_option": send_option,
-        "schedule_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
-        "schedule_time": data.start_datetime.split("T")[1][:5] if data.start_datetime else None,
-        "timezone": data.timezone,
-        "concurrency_reserved": 2,
-        "concurrency_allocated": 5,
-        "contact_ids": external_contact_ids,
-        "retries": data.max_retry_attempts,
-        "retry_after": data.retry_interval
-    }
-
-    client = EcholeadsClient()
-
-    response = client.create_campaign(payload)
-
-    if not response.get("success"):
-        raise HTTPException(status_code=400, detail="Failed to create campaign in Echoleads")
-
-    echoleads_campaign_id = response["campaign"]["id"]
-    echoleads_campaign_status = response["campaign"]["status"]
-
     campaign = CallCampaign(
         organization_id=organization_id,
         name=data.name,
@@ -238,8 +255,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         category=data.category,
         priority=data.priority,
         agent_id=data.agent_id,
-        status= echoleads_campaign_status if echoleads_campaign_status else status,
-        external_campaign_id=echoleads_campaign_id
+        status= "pending",
+        external_campaign_name= f"{org.name}-{data.name}"
     )
 
     db.add(campaign)
@@ -269,9 +286,49 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         retry_busy=data.retry_on_busy,
         retry_voicemail=data.retry_on_voicemail
     )
-
     db.add(schedule)
-    db.commit()
+    
+    external_contact_ids = get_external_contact_ids(db, data.contacts)
+    
+    payload = {
+        "campaign_name": data.name,
+        "agent_id": agent.external_agent_id,
+        "from_number": agent.calling_no,
+        "send_option": send_option,
+        "schedule_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
+        "schedule_time": data.start_datetime.split("T")[1][:5] if data.start_datetime else None,
+        "timezone": data.timezone,
+        "concurrency_reserved": 2,
+        "concurrency_allocated": 5,
+        "contact_ids": external_contact_ids,
+        "retries": data.max_retry_attempts,
+        "retry_after": data.retry_interval
+    }
+
+    client = EcholeadsClient()
+    echo_failed = False
+    echoleads_campaign_id = None
+    echoleads_campaign_status = "pending"
+    try:
+        echo_response = client.create_campaign(payload)
+        if echo_response and "data" in echo_response:
+            echoleads_campaign_id = echo_response["campaign"]["id"]
+            echoleads_campaign_status = echo_response["campaign"]["status"]
+        else:
+            echo_failed = True
+    except Exception as e:
+        print(f"EchoLeads API failed: {str(e)}")
+        echo_failed = True
+        
+    campaign.status = echoleads_campaign_status
+    campaign.external_campaign_id = echoleads_campaign_id
+    
+    db.commit()    
+    
+    if echo_failed:
+        message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
+    else:
+        message = "AgeCampaignnt created successfully"
 
     return {
         "message": "Campaign created",
@@ -292,6 +349,10 @@ def update_campaign(
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    org = db.query(Organization).filter(
+        Organization.id == campaign.organization_id
+    ).first()
 
     update_data = data.dict(exclude_unset=True)
 
@@ -334,7 +395,7 @@ def update_campaign(
         external_contact_ids = get_external_contact_ids(db, data.contacts)
         
     payload = {
-        "campaign_name": campaign.name,
+        "campaign_name": f"{org.name}-{campaign.name}",
         "agent_id": agent.external_agent_id if agent else None,
         "send_option": send_option,
         "schedule_date": (
@@ -357,17 +418,18 @@ def update_campaign(
         payload["contact_ids"] = external_contact_ids
 
     client = EcholeadsClient()
-
-    response = client.update_campaign(
-        campaign.external_campaign_id,
-        payload
-    )
-
-    if not response.get("success"):
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to update campaign in Echoleads"
+    echo_failed = False
+    try:
+        response = client.update_campaign(
+            campaign.external_campaign_id,
+            payload
         )
+        
+        if response and "campaign" in response:
+            campaign.status = response["campaign"].get("status", campaign.status)
+    except Exception as e:
+        print(f"EchoLeads API failed: {str(e)}")
+        echo_failed = False
 
     # update basic fields
     for field in ["name", "description", "category", "priority", "agent_id"]:
@@ -415,12 +477,12 @@ def update_campaign(
 
     if data.retry_on_voicemail is not None:
         schedule.retry_voicemail = data.retry_on_voicemail
-
     
-
-    # sync status from Echoleads
-    campaign.status = response["campaign"].get("status", campaign.status)
-
+    if echo_failed:
+        message = "Campaign updated successfully, but sync failed. Please reload the list to sync the campaign."
+    else:
+        message = "Campaign updated successfully"
+        
     db.commit()
 
     return {
@@ -441,15 +503,22 @@ def delete_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    echoleads = EcholeadsClient()
     
-    echo_payload = {
-        "status": "paused"
-    }
+    if campaign.status not in ["draft", "completed"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted."
+        )
+    
+    # echoleads = EcholeadsClient()
+    
+    # echo_payload = {
+    #     "status": "paused"
+    # }
 
-    # Update Echoleads agent
-    if campaign.external_campaign_id:
-        echoleads.update_agent(campaign.external_campaign_id, echo_payload)
+    # # Update Echoleads agent
+    # if campaign.external_campaign_id:
+    #     echoleads.update_agent(campaign.external_campaign_id, echo_payload)
 
     campaign.is_deleted = True
 
@@ -629,71 +698,36 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
     return external_contact_ids
 
 
-def sync_campaign_from_echoleads(db: Session, echolead_client : EcholeadsClient, campaign: CallCampaign):
-    if not campaign.external_campaign_id:
-        return
-
+def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, campaign: CallCampaign):
     try:
-        response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
-
-        if not response or not response.get("campaign"):
-            return
-
+        if campaign.external_campaign_id:
+            response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
+        else:
+            response = echolead_client.get_campaign_by_name(campaign.external_campaign_name)
+    except Exception as e:
+        print("Sync failed:", str(e))
+        
+    if response and response.get("campaign"):
         data = response["campaign"]
 
-        # ✅ Update campaign fields
         campaign.status = data.get("status", campaign.status)
         campaign.updated_at = datetime.utcnow()
+        campaign.total_calls = data.get("total_calls", 0)
+        campaign.completed_calls = data.get("completed_calls", 0)
+        campaign.success_rate = data.get("success_rate", 0.0)
+        campaign.response_rate = data.get("response_rate", 0.0)
 
-        # OPTIONAL: store metrics if you want faster listing later
-        total_calls = data.get("total_calls", 0)
-        completed_calls = data.get("completed_calls", 0)
-
-        # You can store these in DB if needed
-        campaign.total_calls = total_calls
-        campaign.completed_calls = completed_calls
-
-        db.add(campaign)
-
-        # ✅ Sync call logs (IMPORTANT)
         for call in data.get("calls", []):
-            existing_call = db.query(CallLog).filter(
-                CallLog.external_call_id == call["id"]
-            ).first()
-
-            if existing_call:
-                continue
-            
+                
             agent = db.query(CallingAgent).filter(
-                CallingAgent.external_agent_id == call.get("agent_id")
-            ).first()
+                    CallingAgent.external_agent_id == call.get("agent_id")
+                ).first()
 
-            new_call = CallLog(
-                external_call_id=call["id"],
-                organization_id=campaign.organization_id,
-                campaign_id=campaign.id,
-                agent_id=agent.id,
-                type=agent.type,
-                phone=call.get("phone"),
-                mode="Voice",
-                status=call.get("status"),
-                start_time=parse_datetime(call.get("call_started_at")),
-                end_time=parse_datetime(call.get("call_ended_at")),
-                audio_url=call.get("recording_url"),
-                cost=call.get("cost"),
-            )
-
-            db.add(new_call)
-            db.flush()
-            save_transcripts(db, new_call.id, call.get("transcript"))
+            if agent:
+                process_call(db, call, agent)
 
         db.commit()
 
-    except Exception as e:
-        print("Sync failed:", str(e))
-        db.rollback()
-        
-        
 def parse_datetime(dt):
     if not dt:
         return None

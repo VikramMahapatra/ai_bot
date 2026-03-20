@@ -10,20 +10,23 @@ import {
     Button,
     Tooltip
 } from '@mui/material';
-
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import BusinessIcon from '@mui/icons-material/Business';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DescriptionIcon from '@mui/icons-material/Description';
+import TimerIcon from "@mui/icons-material/Timer";
+import CallEndIcon from "@mui/icons-material/CallEnd";
 
 interface CallDetailDrawerProps {
-    selectedCall: any;
+    open: boolean;
     onClose: () => void;
+    selectedCall: any;
 }
 
-const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClose }) => {
+const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
 
     return (
@@ -33,11 +36,11 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
             BackdropProps={{
                 sx: { backgroundColor: 'rgba(0,0,0,0.5)' }, // subtle fade overlay
             }}
-            open={!!selectedCall}
+            open={open}
             onClose={onClose}
             PaperProps={{
                 sx: {
-                    width: { xs: '100%', md: 700 },
+                    width: { xs: '100%', md: 800 },
                     p: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -73,27 +76,68 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
                         <Stack spacing={1}>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">Start: {selectedCall.startTime
-                                    ? new Date(selectedCall.startTime).toLocaleString()
-                                    : "-"}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Start:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.startTime
+                                        ? new Date(selectedCall.startTime).toLocaleString()
+                                        : "-"}
+                                </Typography>
                             </Box>
+
                             <Box display="flex" alignItems="center" gap={1}>
                                 <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">End: {selectedCall.endTime
-                                    ? new Date(selectedCall.endTime).toLocaleString()
-                                    : "-"}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    End:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.endTime
+                                        ? new Date(selectedCall.endTime).toLocaleString()
+                                        : "-"}
+                                </Typography>
                             </Box>
+
                             <Box display="flex" alignItems="center" gap={1}>
                                 <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Agent: {selectedCall.agent || "N/A"}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Agent:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.agent || "N/A"}
+                                </Typography>
                             </Box>
+
                             <Box display="flex" alignItems="center" gap={1}>
-                                <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Contact: {selectedCall.contact || "N/A"}</Typography>
+                                <TimerIcon fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Duration:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.duration
+                                        ? `${selectedCall.duration} sec`
+                                        : "N/A"}
+                                </Typography>
                             </Box>
+
                             <Box display="flex" alignItems="center" gap={1}>
-                                <BusinessIcon fontSize="small" />
-                                <Typography variant="body2">Industry: {selectedCall.industry || "N/A"}</Typography>
+                                <AttachMoneyIcon fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Cost:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600} color="success.main">
+                                    {selectedCall.cost || "N/A"}
+                                </Typography>
+                            </Box>
+
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <CallEndIcon fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Disconnected By:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600} color="error.main">
+                                    {selectedCall.ended_reason || "N/A"}
+                                </Typography>
                             </Box>
                         </Stack>
                     </Stack>

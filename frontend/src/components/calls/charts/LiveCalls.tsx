@@ -1,19 +1,11 @@
 import { Box, Typography } from "@mui/material";
+import { LiveCall } from "../../../services/callService";
 
-const liveCalls = [
-    {
-        name: "Rohit Patil",
-        campaign: "Real Estate Leads",
-        duration: "02:15"
-    },
-    {
-        name: "Priya Mehta",
-        campaign: "Insurance Renewal",
-        duration: "01:40"
-    }
-];
+interface Props {
+    liveCalls: LiveCall[];
+}
 
-export default function LiveCalls() {
+export default function LiveCalls({ liveCalls }: Props) {
     return (
         <Box>
             {liveCalls.map((call, i) => (

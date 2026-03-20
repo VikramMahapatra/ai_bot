@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Box,
     Paper,
@@ -20,6 +20,7 @@ import Contacts from "./Contacts";
 import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
+import CampaignDetails from "./CampaignDetails";
 
 const steps = [
     "Campaign Info",
@@ -53,7 +54,7 @@ const emptyCampaignForm: CallCampaign = {
 };
 
 const CampaignBuilder = () => {
-    const [view, setView] = useState<"list" | "form">("list");
+    const [view, setView] = useState<"list" | "form" | "details">("list");
     const [mode, setMode] = useState<"create" | "edit">("create");
     const [campaignId, setCampaignId] = useState<number | null>(null);
     const [activeStep, setActiveStep] = useState(0);
@@ -93,6 +94,7 @@ const CampaignBuilder = () => {
         setError('');
         setSuccess('');
         setActiveStep(0);
+        window.scrollTo({ top: 0, behavior: "smooth" });
 
         try {
             const data = await callCampaignService.getCampaign(id);
@@ -138,8 +140,13 @@ const CampaignBuilder = () => {
         }
     };
 
+    useEffect(() => {
+        if (loading) {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+    }, [loading]);
+
     const handleSaveCampaign = async () => {
-        console.log("Campaign Data", campaignForm);
         setError('');
         setSuccess('');
         setLoading(true);
@@ -163,11 +170,37 @@ const CampaignBuilder = () => {
         }
     };
 
+    const handleDeleteCampaign = async () => {
+        setError('');
+        setSuccess('');
+        setLoading(true);
+        try {
+            await callCampaignService.createCampaign(campaignForm);
+            showSuccess("Campaign delete successfully")
+            setView("list");
+        }
+        catch (err: any) {
+            showError(err?.response?.data?.detail || 'Failed to save the campaign data');
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        finally {
+            setLoading(false);
+        }
+    };
+
     const handleBackToList = () => {
         setView("list");
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const handleViewCampaign = (id?: number) => {
+        if (id === undefined) return;
+        setCampaignId(id);
+        setView("details");
+        window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const renderStep = () => {
@@ -201,6 +234,7 @@ const CampaignBuilder = () => {
                         setForm={setCampaignForm}
                         prevStep={prevStep}
                         saveCampaign={handleSaveCampaign}
+                        loading={loading}
                     />
                 );
             default:
@@ -210,7 +244,25 @@ const CampaignBuilder = () => {
 
     if (view === "list") {
         return (
-            <CampaignList onAddCampaign={handleAddCampaign} onEditCampaign={handleEditCampaign} />
+            <CampaignList
+                onAddCampaign={handleAddCampaign}
+                onEditCampaign={handleEditCampaign}
+                onViewCampaign={handleViewCampaign}
+                onDeleteCampaign={handleViewCampaign}
+            />
+        );
+    }
+
+    if (view === "details" && campaignId) {
+        return (
+            <CampaignDetails
+                campaignId={campaignId}
+                onBack={handleBackToList}
+                onEdit={(id) => {
+                    handleEditCampaign(id);
+                    setView("form");
+                }}
+            />
         );
     }
 
@@ -269,12 +321,14 @@ const CampaignBuilder = () => {
             <Paper sx={{ p: 4 }}>
                 <Box display="flex" justifyContent="space-between" mb={2}>
                     <Typography variant="h5">
-                        Create Campaign
+                        {mode === "edit" ? "Edit Campaign" : "Create Campaign"}
                     </Typography>
 
-                    <Button variant="outlined" color="error" onClick={handleBackToList}>
-                        Cancel
-                    </Button>
+                    <Box display="flex" justifyContent="flex-end" >
+                        <Button variant="outlined" color="error" onClick={handleBackToList}>
+                            Cancel
+                        </Button>
+                    </Box>
                 </Box>
 
 

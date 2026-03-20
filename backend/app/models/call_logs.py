@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, Integer, Numeric, String, DateTime, ForeignKey
+from sqlalchemy import JSON, Column, Integer, Numeric, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -23,6 +23,16 @@ class CallLog(Base):
     mode = Column(String)       # Voice / WhatsApp / etc
     phone = Column(String)
     status = Column(String)     # Completed / Failed / No Answer
+    
+    duration = Column(Integer)
+    ended_reason = Column(String)
+    call_summary = Column(Text)
+    sentiment = Column(String)
+    follow_up_recommended = Column(JSON)
+    extract_data = Column(JSON)
+    lead_info = Column(JSON)
+    success_evaluation = Column(String, default="false")
+    
     industry = Column(String)
     start_time = Column(DateTime)
     end_time = Column(DateTime)

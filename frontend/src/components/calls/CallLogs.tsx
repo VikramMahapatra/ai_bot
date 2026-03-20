@@ -19,6 +19,7 @@ import {
     TablePagination,
     Button,
     CircularProgress,
+    LinearProgress,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -31,29 +32,6 @@ import SyncIcon from "@mui/icons-material/Sync";
 import CloseIcon from "@mui/icons-material/Close";
 import { CallLog, callLogService } from '../../services/callLogService';
 
-
-
-const mockCallLogs = [
-    {
-        id: 'CONV-001',
-        contact: 'Rohit Patil',
-        agent: 'Agent A',
-        type: 'Outbound',
-        mode: 'Voice',
-        status: 'Completed',
-        date: '2026-03-11 10:25',
-        startTime: '2026-03-11 10:25',
-        endTime: '2026-03-11 10:35',
-        industry: 'Real Estate',
-        audioUrl: '/sample_audio.mp3',
-        transcript: [
-            { speaker: 'Agent', text: 'Hello, I am calling regarding your property listing.' },
-            { speaker: 'Contact', text: 'Yes, I am interested. Could you give me more details?' },
-            { speaker: 'Agent', text: 'Sure, here is what we offer...' },
-        ]
-    },
-    // more mock calls...
-];
 
 const getStatusColor = (status: string) => {
     switch (status) {
@@ -70,28 +48,32 @@ const getModeIcon = (mode: string) => mode === 'Voice' ? <PhoneIcon fontSize="sm
 export const CallLogsTab = () => {
     const theme = useTheme();
     const [search, setSearch] = useState('');
-    const [fromDate, setFromDate] = useState<string>("");
-    const [endDate, setEndDate] = useState<string>("");
     const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
     const [callLogs, setCallLogs] = useState<CallLog[]>([]);
     const [callLogTotal, setCallLogTotal] = useState(0);
     const [callLogPage, setCallLogPage] = useState(0);
     const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [lastSynced, setLastSynced] = useState<Date | null>(null);
+    const [openDetail, setOpenDetail] = useState(false);
+
+    const getDefaultDates = () => {
+        const today = new Date();
+        const end = today.toISOString().split("T")[0]; // YYYY-MM-DD
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(today.getMonth() - 1);
+        const start = oneMonthAgo.toISOString().split("T")[0];
+        return { start, end };
+    };
+    const { start, end } = getDefaultDates();
+    const [fromDate, setFromDate] = useState<string>(start);
+    const [endDate, setEndDate] = useState<string>(end);
 
     const showError = (message: string) => {
-        setSuccess('');
         setError(message);
     };
-
-    const showSuccess = (message: string) => {
-        setError('');
-        setSuccess(message);
-    };
-
 
     const loadCallLogs = async () => {
         const data = await callLogService.allLogs({
@@ -107,8 +89,12 @@ export const CallLogsTab = () => {
 
     const handleSyncCalls = async () => {
         setSyncing(true);
+        setError('');
         try {
-            await callLogService.syncCallLogs();
+            await callLogService.syncCallLogs({
+                from_date: fromDate || undefined,
+                end_date: endDate || undefined,
+            });
             setLastSynced(new Date());
             loadCallLogs(); // refresh table
         } catch (error) {
@@ -119,15 +105,16 @@ export const CallLogsTab = () => {
     };
 
     useEffect(() => {
-        loadCallLogs();
-    }, []);
-
-    useEffect(() => {
+        showError('');
         const run = async () => {
             try {
+                setLoading(true);
                 await loadCallLogs();
+
             } catch (err: any) {
                 showError(err?.response?.data?.detail || 'Failed to load call logs');
+            } finally {
+                setLoading(false);
             }
         };
         run();
@@ -212,10 +199,16 @@ export const CallLogsTab = () => {
 
             </Grid>
 
-            <Stack
-                mb={2}
-            >
-                {error && (
+            {loading && (
+                <Box mb={3}>
+                    <LinearProgress sx={{ borderRadius: 1.2 }} />
+                </Box>
+            )}
+            {error && (
+                <Stack
+                    mb={2}
+                >
+
                     <Alert
                         severity="error"
                         sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}
@@ -232,13 +225,8 @@ export const CallLogsTab = () => {
                     >
                         {error}
                     </Alert>
-                )}
-                {success && (
-                    <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
-                        {success}
-                    </Alert>
-                )}
-            </Stack>
+                </Stack>
+            )}
 
             {/* Table */}
             <Paper>
@@ -260,7 +248,7 @@ export const CallLogsTab = () => {
                     <TableBody>
                         {callLogs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8} sx={{ py: 8 }}>
+                                <TableCell colSpan={10} sx={{ py: 8 }}>
                                     <Box
                                         display="flex"
                                         flexDirection="column"
@@ -311,7 +299,13 @@ export const CallLogsTab = () => {
                                         }) : "-"}
                                     </TableCell>
                                     <TableCell>
-                                        <IconButton size="small" onClick={() => setSelectedCall(log)}>
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => {
+                                                setSelectedCall(log);
+                                                setOpenDetail(true);
+                                            }}
+                                        >
                                             <VisibilityIcon />
                                         </IconButton>
                                     </TableCell>
@@ -335,8 +329,9 @@ export const CallLogsTab = () => {
 
             {/* Drawer / Detail View */}
             <CallDetailDrawer
+                open={openDetail}
                 selectedCall={selectedCall}
-                onClose={() => setSelectedCall(null)}
+                onClose={() => setOpenDetail(false)}
             />
         </Box>
     );

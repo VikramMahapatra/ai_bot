@@ -11,7 +11,11 @@ from app.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/call-campaigns", tags=["call-campaign"])
+router = APIRouter(
+    prefix="/api/call-campaigns", 
+    tags=["call-campaign"],
+    dependencies=[Depends(get_current_user)]
+)
 
 @router.get("/stats")
 def get_campaign_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -22,12 +26,17 @@ def list_campaigns(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
-    db: Session = Depends(get_db)):
-    return service.list_campaigns(db, search, skip, limit)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)):
+    return service.list_campaigns(db, current_user.organization_id, search, skip, limit)
 
 @router.get("/{campaign_id:int}")
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     return service.get_campaign(db, campaign_id)
+
+@router.get("/{campaign_id:int}/detail")
+def get_campaign_detail(campaign_id: int, db: Session = Depends(get_db)):
+    return service.get_campaign_detail(db, campaign_id)
 
 @router.post("/create") 
 def create_campaign( 
@@ -46,7 +55,7 @@ def update_campaign(
     return service.update_campaign(db, campaign_id, data)
 
 
-@router.post("/{campaign_id:int}/delete")
+@router.delete("/{campaign_id:int}/delete")
 def delete_campaign(
     campaign_id: int,
     db: Session = Depends(get_db)

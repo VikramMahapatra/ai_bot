@@ -80,7 +80,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                     helperText={errors.description}
                 />
             </Grid>
-            <Grid item xs={4}>
+            <Grid item xs={6}>
                 <TextField
                     required
                     label="Agent"
@@ -102,7 +102,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                 </TextField>
             </Grid>
 
-            <Grid item xs={4}>
+            <Grid item xs={6}>
                 <TextField
                     label="Category"
                     select
@@ -118,7 +118,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                 </TextField>
             </Grid>
 
-            <Grid item xs={4}>
+            {/* <Grid item xs={4}>
                 <TextField
                     label="Priority"
                     select
@@ -133,7 +133,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                     <MenuItem value="medium">Medium</MenuItem>
                     <MenuItem value="high">High</MenuItem>
                 </TextField>
-            </Grid>
+            </Grid> */}
 
             <Grid item xs={12} textAlign="right">
                 <Button

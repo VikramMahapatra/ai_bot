@@ -135,3 +135,57 @@ def init_db():
                 conn.commit()
             except Exception:
                 pass
+            
+            try:
+                cols = conn.execute(text("PRAGMA table_info('calling_agents')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "external_agent_name" not in col_names:
+                    conn.execute(text("ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT"))
+            except Exception:
+                pass
+            
+            try:
+                cols = conn.execute(text("PRAGMA table_info('call_campaigns')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "external_agent_name" not in col_names:
+                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN external_campaign_name TEXT"))
+            except Exception:
+                pass
+            
+            try:
+                columns = {
+                    "duration": "INTEGER",
+                    "ended_reason": "TEXT",
+                    "call_summary": "TEXT",
+                    "sentiment": "TEXT",
+                    "follow_up_recommended": "TEXT",
+                    "extract_data": "TEXT",
+                    "lead_info": "TEXT",
+                    "success_evaluation": "BOOLEAN DEFAULT 0"
+                }
+
+                cols = conn.execute(text("PRAGMA table_info('call_logs')")).fetchall()
+                col_names = {row[1] for row in cols}
+
+                for col, col_type in columns.items():
+                    if col not in col_names:
+                        conn.execute(
+                            text(f"ALTER TABLE call_logs ADD COLUMN {col} {col_type}")
+                        )
+                if "success_evaluation" not in col_names:
+                    conn.execute(
+                        text("UPDATE call_logs SET success_evaluation = 0 WHERE success_evaluation IS NULL")
+                    )
+            except Exception as e:
+                pass
+            
+            try:
+                cols = conn.execute(text("PRAGMA table_info('call_campaigns')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "success_rate " not in col_names:
+                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN success_rate FLOAT DEFAULT 0.0"))
+                if "response_rate " not in col_names:
+                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN response_rate FLOAT DEFAULT 0.0"))    
+                
+            except Exception:
+                pass
