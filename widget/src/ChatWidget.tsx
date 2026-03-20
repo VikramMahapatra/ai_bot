@@ -629,6 +629,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 continue;
               }
 
+              if (payload?.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
+
               if (payload?.type === 'token' && typeof payload?.text === 'string') {
                 if (!receivedToken) {
                   receivedToken = true;

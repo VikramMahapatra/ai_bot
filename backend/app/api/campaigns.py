@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.auth import require_admin
 from app.database import get_db
-from app.models import User, Campaign, ContactList, Contact, CampaignLog
+from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
 from app.services.email_service import send_campaign_email
+from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
-ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp"}
+ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp", "sms"}
 ALLOWED_CAMPAIGN_STATUSES = {"draft", "scheduled", "running", "completed", "paused", "failed"}
 ALLOWED_LOG_STATUSES = {"sent", "failed", "pending"}
 AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX = "AUTO_AGENT_APPOINTMENT_LIST::"
@@ -86,10 +87,21 @@ def _serialize_campaign(campaign: Campaign, contact_list_name: Optional[str] = N
     }
 
 
-def _send_campaign_message(campaign: Campaign, contact: Contact) -> tuple[bool, Optional[str]]:
+def _get_active_twilio_sms_config(db: Session, organization_id: int) -> Optional[TwilioSmsChannel]:
+    return db.query(TwilioSmsChannel).filter(
+        TwilioSmsChannel.organization_id == organization_id,
+        TwilioSmsChannel.is_active == True,
+    ).first()
+
+
+def _send_campaign_message(
+    campaign: Campaign,
+    contact: Contact,
+    twilio_sms_config: Optional[TwilioSmsChannel] = None,
+) -> tuple[bool, Optional[str]]:
     """Send campaign message for the selected channel.
 
-    Email channel sends real SMTP emails. WhatsApp remains a placeholder until API integration is added.
+    Email sends via SMTP, WhatsApp remains placeholder, SMS sends via Twilio.
     """
     if campaign.campaign_type == "email":
         return send_campaign_email(
@@ -106,10 +118,30 @@ def _send_campaign_message(campaign: Campaign, contact: Contact) -> tuple[bool, 
         # Placeholder for real WhatsApp API integration.
         return True, None
 
+    if campaign.campaign_type == "sms":
+        if not twilio_sms_config:
+            return False, "Twilio SMS is not configured or inactive"
+
+        rendered_message = render_sms_template(
+            template=campaign.message_template,
+            recipient_name=contact.name or "",
+            campaign_name=campaign.campaign_name,
+        )
+        return send_twilio_sms(
+            config=twilio_sms_config,
+            to_number=contact.phone or "",
+            message_text=rendered_message,
+        )
+
     return False, "Unsupported campaign type"
 
 
-def _execute_campaign_now(db: Session, campaign: Campaign, contacts: List[Contact]) -> dict:
+def _execute_campaign_now(
+    db: Session,
+    campaign: Campaign,
+    contacts: List[Contact],
+    twilio_sms_config: Optional[TwilioSmsChannel] = None,
+) -> dict:
     campaign.status = "running"
     campaign.number_sent = 0
     campaign.number_failed = 0
@@ -119,7 +151,7 @@ def _execute_campaign_now(db: Session, campaign: Campaign, contacts: List[Contac
     failed_count = 0
 
     for contact in contacts:
-        is_sent, error_message = _send_campaign_message(campaign, contact)
+        is_sent, error_message = _send_campaign_message(campaign, contact, twilio_sms_config=twilio_sms_config)
 
         log = CampaignLog(
             campaign_id=campaign.id,
@@ -514,7 +546,7 @@ async def create_campaign(
 
     campaign_type = payload.campaign_type.strip().lower()
     if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
-        raise HTTPException(status_code=400, detail="campaign_type must be email or whatsapp")
+        raise HTTPException(status_code=400, detail="campaign_type must be email, whatsapp, or sms")
 
     message_template = payload.message_template.strip()
     if not message_template:
@@ -704,7 +736,14 @@ async def run_due_campaigns(
             skipped.append({"campaign_id": campaign.id, "reason": "No contacts in selected list"})
             continue
 
-        result = _execute_campaign_now(db, campaign, contacts)
+        twilio_sms_config = None
+        if campaign.campaign_type == "sms":
+            twilio_sms_config = _get_active_twilio_sms_config(db, current_user.organization_id)
+            if not twilio_sms_config:
+                skipped.append({"campaign_id": campaign.id, "reason": "Twilio SMS is not configured or inactive"})
+                continue
+
+        result = _execute_campaign_now(db, campaign, contacts, twilio_sms_config=twilio_sms_config)
         executed.append(result)
 
     return {
@@ -740,7 +779,13 @@ async def run_campaign(
     if not contacts:
         raise HTTPException(status_code=400, detail="No contacts available in selected list")
 
-    return _execute_campaign_now(db, campaign, contacts)
+    twilio_sms_config = None
+    if campaign.campaign_type == "sms":
+        twilio_sms_config = _get_active_twilio_sms_config(db, current_user.organization_id)
+        if not twilio_sms_config:
+            raise HTTPException(status_code=400, detail="Twilio SMS is not configured or inactive")
+
+    return _execute_campaign_now(db, campaign, contacts, twilio_sms_config=twilio_sms_config)
 
 
 @router.get("/{campaign_id}/logs")

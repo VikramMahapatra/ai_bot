@@ -13,6 +13,7 @@ from app.models.feedback import MessageFeedback
 from app.models.report_metrics import ConversationMetrics
 from app.models.retrieval_trace import RetrievalTrace
 from app.models.whatsapp_channel import WhatsAppChannel
+from app.models.twilio_sms_channel import TwilioSmsChannel
 from app.models.appointment import Appointment
 from app.models.appointment_intake import AppointmentIntake
 from app.models.campaign import Campaign, ContactList, Contact, CampaignLog
@@ -38,6 +39,7 @@ __all__ = [
     "ConversationMetrics",
     "RetrievalTrace",
     "WhatsAppChannel",
+    "TwilioSmsChannel",
     "Appointment",
     "AppointmentIntake",
     "Campaign",

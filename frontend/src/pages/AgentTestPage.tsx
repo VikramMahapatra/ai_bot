@@ -148,6 +148,7 @@ const formatCountdownSeconds = (seconds: number): string => {
 };
 
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
   'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
@@ -707,37 +708,47 @@ const AgentTestPage: React.FC = () => {
     setSessionEngaged(true);
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
+    let assistantIndex = -1;
     if (!opts.silentUserMessage) {
       setMessages((prev) => [...prev, { role: 'user', content: text }]);
     }
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: activeSessionId,
-          widget_id: widgetId,
-        }),
-      });
+    setMessages((prev) => {
+      assistantIndex = prev.length;
+      return [...prev, { role: 'assistant', content: '' }];
+    });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response from chatbot');
-      }
+    const replaceAssistantMessage = (content: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content }
+            : msg
+        )
+      );
+    };
 
-      const data = (await response.json()) as ChatApiResponse;
-      const rawReply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
-      const shouldOpenAppointmentForm = data?.ui_action === 'open_appointment_form';
-      const shouldOpenHandoff = data?.ui_action === 'open_human_handoff';
-      const shouldOpenLeadForm = data?.ui_action === 'open_lead_form';
-      const reply = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawReply;
-      if (reply.trim().length > 0) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setLastActivityAtMs(Date.now());
-      }
+    const appendAssistantToken = (delta: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content: `${msg.content}${delta}` }
+            : msg
+        )
+      );
+    };
+
+    const applyUiAction = (payload?: {
+      ui_action?: string;
+      handoff_chat_id?: string;
+      handoff_status?: string;
+    }) => {
+      const shouldOpenAppointmentForm = payload?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = payload?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = payload?.ui_action === 'open_lead_form';
 
       if (shouldOpenAppointmentForm) {
+        replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
         openAppointmentDialog();
       }
 
@@ -750,30 +761,131 @@ const AgentTestPage: React.FC = () => {
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffOpen(true);
-        if (data?.handoff_chat_id) {
-          const isNewChat = data.handoff_chat_id !== handoffChatId;
-          setHandoffChatId(data.handoff_chat_id);
+        if (payload?.handoff_chat_id) {
+          const isNewChat = payload.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
             setHandoffAfterId(0);
             handoffSeenMessageIdsRef.current.clear();
-            loadHandoffMessages(data.handoff_chat_id, true);
+            loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
-            loadHandoffMessages(data.handoff_chat_id, false);
+            loadHandoffMessages(payload.handoff_chat_id, false);
           }
         }
-        if (data?.handoff_status) {
-          setHandoffStatus(data.handoff_status);
+        if (payload?.handoff_status) {
+          setHandoffStatus(payload.handoff_status);
         }
         setAwaitingPostHandoffDecision(false);
       }
+    };
+
+    try {
+      let streamDonePayload: any = null;
+      let receivedToken = false;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
+
+        const streamResponse = await fetch(`${apiBaseUrl}/api/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!streamResponse.ok) {
+          throw new Error('Failed to stream chatbot response');
+        }
+
+        const reader = streamResponse.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data:')) continue;
+              const data = line.replace(/^data:\s?/, '');
+              if (!data) continue;
+
+              let payload: any;
+              try {
+                payload = JSON.parse(data);
+              } catch {
+                continue;
+              }
+
+              if (payload?.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
+
+              if (payload?.type === 'token' && typeof payload?.text === 'string') {
+                if (!receivedToken) {
+                  receivedToken = true;
+                  window.clearTimeout(timeoutId);
+                }
+                appendAssistantToken(payload.text);
+              }
+
+              if (payload?.type === 'done') {
+                streamDonePayload = payload;
+              }
+            }
+          }
+        }
+
+        window.clearTimeout(timeoutId);
+      } catch {
+        const response = await fetch(`${apiBaseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get response from chatbot');
+        }
+
+        const data = (await response.json()) as ChatApiResponse;
+        const rawReply = typeof data?.response === 'string'
+          ? data.response
+          : 'I could not generate a response right now.';
+        const reply = data?.ui_action === 'open_appointment_form' ? APPOINTMENT_FORM_PROMPT : rawReply;
+        replaceAssistantMessage(reply);
+        applyUiAction(data);
+      }
+
+      applyUiAction(streamDonePayload);
+
+      if (!receivedToken && !streamDonePayload?.ui_action) {
+        replaceAssistantMessage('I could not generate a response right now.');
+      }
+
+      setLastActivityAtMs(Date.now());
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, the chatbot is temporarily unavailable. Please try again in a moment.',
-        },
-      ]);
+      replaceAssistantMessage('Sorry, the chatbot is temporarily unavailable. Please try again in a moment.');
       setLastActivityAtMs(Date.now());
     } finally {
       setSending(false);
@@ -1169,14 +1281,16 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...launcherPositionSx,
-            borderRadius: '999px',
-            minWidth: 64,
-            height: 64,
-            fontSize: 28,
+            borderRadius: '18px',
+            minWidth: 68,
+            height: 68,
+            fontSize: 30,
             background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            boxShadow: '0 16px 30px rgba(2,132,199,0.35)',
+            boxShadow: '0 18px 36px rgba(15,23,42,0.32)',
+            border: '1px solid rgba(255,255,255,0.35)',
             '&:hover': {
-              opacity: 0.92,
+              transform: 'translateY(-1px)',
+              boxShadow: '0 22px 42px rgba(15,23,42,0.36)',
             },
             zIndex: 1200,
           }}
@@ -1191,48 +1305,91 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...panelPositionSx,
-            width: { xs: 'calc(100vw - 24px)', sm: 412 },
-            height: { xs: '72vh', sm: 620 },
-            borderRadius: 4,
+            width: { xs: 'calc(100vw - 20px)', sm: 430 },
+            height: { xs: '76vh', sm: 650 },
+            borderRadius: 5,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1300,
-            border: '1px solid #cbd5e1',
-            boxShadow: '0 24px 52px rgba(15,23,42,0.24)',
+            border: '1px solid rgba(148,163,184,0.35)',
+            boxShadow: '0 28px 62px rgba(15,23,42,0.34)',
+            backdropFilter: 'blur(8px)',
           }}
         >
           <Box sx={{
-            background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            color: '#fff',
-            p: 1.8,
+            background: `linear-gradient(115deg, #0f172a 0%, ${primaryColor} 55%, ${secondaryColor} 100%)`,
+            color: '#f8fafc',
+            px: 1.8,
+            py: 1.4,
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            alignItems: 'center',
+            borderBottom: '1px solid rgba(255,255,255,0.22)',
           }}>
             <Box>
-              <Typography sx={{ fontWeight: 800, lineHeight: 1.2 }}>{assistantName}</Typography>
-              <Typography sx={{ fontSize: '0.76rem', opacity: 0.9, mt: 0.3 }}>
-                Live assistant preview
+              <Typography sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em' }}>{assistantName}</Typography>
+              <Stack direction="row" spacing={0.8} sx={{ mt: 0.35, alignItems: 'center' }}>
+                <Chip
+                  size="small"
+                  label={sending ? 'Replying...' : 'Live'}
+                  sx={{
+                    height: 20,
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    color: '#f8fafc',
+                    fontWeight: 700,
+                    '& .MuiChip-label': { px: 1, fontSize: '0.66rem' },
+                  }}
+                />
+                <Typography sx={{ fontSize: '0.7rem', opacity: 0.88 }}>
+                  Test Link Mode
+                </Typography>
+              </Stack>
+              <Typography sx={{ fontSize: '0.66rem', opacity: 0.82, mt: 0.4, fontFamily: 'Consolas, Menlo, monospace' }}>
+                session: {sessionId ? sessionId.slice(-10) : 'n/a'}
               </Typography>
             </Box>
-            <Button size="small" sx={{ color: '#fff' }} onClick={() => setIsOpen(false)}>
-              Close
+            <Button
+              size="small"
+              sx={{
+                color: '#f8fafc',
+                minWidth: 34,
+                width: 34,
+                height: 34,
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.35)',
+                bgcolor: 'rgba(255,255,255,0.08)',
+              }}
+              onClick={() => setIsOpen(false)}
+            >
+              ×
             </Button>
           </Box>
 
-          <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
-            <Button
-              variant="outlined"
-              startIcon={<CalendarMonthIcon />}
-              onClick={openAppointmentDialog}
-              disabled={!canUseChat || sending}
-              size="small"
-              fullWidth
-              sx={{ borderRadius: '10px' }}
-            >
-              Book Appointment
-            </Button>
+          <Box sx={{ px: 1.35, py: 1.05, borderBottom: '1px solid #e2e8f0', bgcolor: '#f8fbff' }}>
+            <Stack direction="row" spacing={0.9}>
+              <Button
+                variant="outlined"
+                startIcon={<CalendarMonthIcon />}
+                onClick={openAppointmentDialog}
+                disabled={!canUseChat || sending}
+                size="small"
+                fullWidth
+                sx={{ borderRadius: '11px', fontWeight: 700, textTransform: 'none' }}
+              >
+                Book
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={startFreshSession}
+                disabled={sending}
+                size="small"
+                fullWidth
+                sx={{ borderRadius: '11px', fontWeight: 700, textTransform: 'none' }}
+              >
+                New Session
+              </Button>
+            </Stack>
           </Box>
 
           {handoffOpen && (
@@ -1311,50 +1468,86 @@ const AgentTestPage: React.FC = () => {
             </Box>
           )}
 
-          <Box ref={messagesContainerRef} sx={{ flex: 1, p: 1.5, overflowY: 'auto', bgcolor: '#f8fafc' }}>
-            <Stack spacing={1.2}>
+          <Box
+            ref={messagesContainerRef}
+            sx={{
+              flex: 1,
+              p: 1.35,
+              overflowY: 'auto',
+              bgcolor: '#f4f8ff',
+              backgroundImage:
+                'radial-gradient(circle at 0% 0%, rgba(56,189,248,0.08), transparent 34%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.08), transparent 38%)',
+            }}
+          >
+            <Stack spacing={1.35}>
               {messages.map((message, index) => (
+                
                 <Box
                   key={`${message.role}-${index}`}
                   sx={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '92%',
+                    maxWidth: '94%',
                     display: 'flex',
                     alignItems: 'flex-end',
-                    gap: 0.9,
+                    gap: 0.72,
                     flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
                   }}
                 >
+                  {(() => {
+                    const isPendingAssistantMessage =
+                      message.role === 'assistant' &&
+                      sending &&
+                      index === messages.length - 1 &&
+                      !message.content.trim();
+
+                    return (
+                      <>
                   <Box
                     sx={{
-                      width: 28,
-                      height: 28,
+                      width: 30,
+                      height: 30,
                       borderRadius: '50%',
-                      border: '1px solid #d1d5db',
-                      bgcolor: '#fff',
+                      border: message.role === 'assistant' ? '1px solid #bfdbfe' : '1px solid rgba(255,255,255,0.65)',
+                      bgcolor: message.role === 'assistant' ? '#ffffff' : 'rgba(255,255,255,0.22)',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '0.95rem',
-                      flex: '0 0 28px',
+                      flex: '0 0 30px',
+                      boxShadow: '0 6px 14px rgba(15,23,42,0.08)',
                     }}
                   >
                     {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
                   </Box>
                   <Box
                     sx={{
-                      px: 1.5,
-                      py: 1,
-                      borderRadius: 2,
-                      bgcolor: message.role === 'user' ? primaryColor : '#fff',
+                      px: 1.45,
+                      py: 1.05,
+                      borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
+                      bgcolor: message.role === 'user' ? undefined : '#ffffff',
+                      background: message.role === 'user'
+                        ? `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
+                        : undefined,
                       color: message.role === 'user' ? '#fff' : '#0f172a',
-                      border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
+                      border: message.role === 'assistant' ? '1px solid #dbeafe' : 'none',
                       whiteSpace: 'pre-wrap',
-                      fontSize: '0.92rem',
+                      fontSize: '0.91rem',
+                      lineHeight: 1.38,
+                      boxShadow: message.role === 'assistant'
+                        ? '0 8px 18px rgba(15,23,42,0.06)'
+                        : '0 10px 20px rgba(2,132,199,0.28)',
+                      minHeight: isPendingAssistantMessage ? 30 : undefined,
+                      minWidth: isPendingAssistantMessage ? 46 : undefined,
+                      display: isPendingAssistantMessage ? 'flex' : 'block',
+                      alignItems: isPendingAssistantMessage ? 'center' : undefined,
+                      justifyContent: isPendingAssistantMessage ? 'center' : undefined,
                     }}
                   >
-                    {message.content}
+                    {isPendingAssistantMessage ? <CircularProgress size={16} /> : message.content}
                   </Box>
+                      </>
+                    );
+                  })()}
                 </Box>
               ))}
               {showLeadForm && (
@@ -1595,33 +1788,13 @@ const AgentTestPage: React.FC = () => {
                   </Box>
                 </Box>
               )}
-              {sending && (
-                <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 0.9 }}>
-                  <Box
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      border: '1px solid #d1d5db',
-                      bgcolor: '#fff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    {botIconGlyph}
-                  </Box>
-                  <CircularProgress size={18} />
-                </Box>
-              )}
               <div ref={messagesEndRef} />
             </Stack>
           </Box>
 
-          <Box sx={{ p: 1.5, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
-            <Stack spacing={0.8}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9 }}>
+          <Box sx={{ p: 1.35, borderTop: '1px solid #dbeafe', bgcolor: '#ffffff' }}>
+            <Stack spacing={0.7}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <TextField
                 value={input}
                 onChange={(e) => {
@@ -1637,8 +1810,13 @@ const AgentTestPage: React.FC = () => {
                 size="small"
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    borderRadius: '10px',
+                    borderRadius: '12px',
+                    bgcolor: '#f8fbff',
+                    '& fieldset': { borderColor: '#cbd5e1' },
+                    '&:hover fieldset': { borderColor: '#93c5fd' },
+                    '&.Mui-focused fieldset': { borderColor: '#60a5fa' },
                   },
+                  '& .MuiInputBase-input': { fontSize: '0.94rem' },
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1653,23 +1831,24 @@ const AgentTestPage: React.FC = () => {
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
                   minWidth: 46,
-                  width: 46,
+                  width: 48,
                   height: 40,
-                  borderRadius: '10px',
+                  borderRadius: '12px',
                   background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                  boxShadow: '0 10px 18px rgba(2,132,199,0.3)',
                 }}
               >
                 <SendRoundedIcon fontSize="small" />
               </Button>
               </Box>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 500 }}>
                 Press Enter to send. Appointment booking is available anytime.
               </Typography>
               {typeof inactivityRemainingSeconds === 'number' ? (
                 <Typography
                   variant="caption"
                   sx={{
-                    color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#64748b',
+                    color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#334155',
                     fontWeight: inactivityRemainingSeconds <= 15 ? 700 : 500,
                   }}
                 >

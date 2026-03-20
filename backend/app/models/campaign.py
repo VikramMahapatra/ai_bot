@@ -32,7 +32,7 @@ class Campaign(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     campaign_name = Column(String, nullable=False, index=True)
-    campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp
+    campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
     message_template = Column(Text, nullable=False)
     contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
