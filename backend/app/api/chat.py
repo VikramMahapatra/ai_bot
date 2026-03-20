@@ -345,6 +345,8 @@ def _last_response_was_escalation(db: Session, session_id: str, widget_id: str) 
         "level 1:",
         "level 2:",
         "would you like me to connect you",
+        "set up a meeting now",
+        "set up a meeting for you",
         "don’t have a reliable answer",
         "don't have a reliable answer",
         "don’t have reliable expertise",
@@ -600,6 +602,18 @@ def _next_handoff_wait_expiry(from_time: Optional[datetime] = None) -> datetime:
     return base + timedelta(seconds=_handoff_wait_timeout_seconds())
 
 
+def _final_handoff_timeout_message() -> str:
+    base = (settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE or "").strip()
+    if not base:
+        base = "Live users are still busy."
+
+    normalized = base.lower()
+    if "set up a meeting" in normalized or "schedule" in normalized:
+        return base
+
+    return f"{base} If you want, I can set up a meeting for you now."
+
+
 def _close_handoff_to_bot_after_timeout(
     db: Session,
     handoff_session: HandoffSession,
@@ -613,7 +627,7 @@ def _close_handoff_to_bot_after_timeout(
             handoff_session_id=handoff_session.id,
             sender_type="bot",
             sender_user_id=None,
-            message=settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE,
+            message=_final_handoff_timeout_message(),
         ))
 
     db.add(HandoffMessage(
@@ -665,14 +679,12 @@ def _emit_handoff_timeout_prompt_if_needed(db: Session, handoff_session: Handoff
         return False
 
     current_cycle = max(1, int(handoff_session.wait_cycle or 1))
-    if current_cycle >= _handoff_max_wait_cycles():
+    max_wait_cycles = _handoff_max_wait_cycles()
+    if current_cycle >= max_wait_cycles:
         _close_handoff_to_bot_after_timeout(db, handoff_session, now=now, include_bot_message=True)
         db.commit()
         db.refresh(handoff_session)
         return True
-
-    if handoff_session.waiting_timeout_notified:
-        return False
 
     db.add(HandoffMessage(
         handoff_session_id=handoff_session.id,
@@ -680,6 +692,8 @@ def _emit_handoff_timeout_prompt_if_needed(db: Session, handoff_session: Handoff
         sender_user_id=None,
         message=settings.HUMAN_HANDOFF_BUSY_MESSAGE,
     ))
+    handoff_session.wait_cycle = min(max_wait_cycles, current_cycle + 1)
+    handoff_session.waiting_expires_at = _next_handoff_wait_expiry(now)
     handoff_session.waiting_timeout_notified = True
     handoff_session.updated_at = now
     db.commit()
@@ -766,34 +780,36 @@ def _route_user_message_to_handoff_if_active(
             response_text = "If you would like to set a meeting, please fill this short form and I will set it up for you."
             ui_action = "open_appointment_form"
             add_bot_message_text = response_text
-        elif session.waiting_timeout_notified and _is_wait_more_intent(message_text):
-            if current_wait_cycle >= max_wait_cycles:
-                response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
-                add_bot_message_text = response_text
-                ui_action = None
-                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
-            else:
-                session.wait_cycle = current_wait_cycle + 1
-                session.waiting_expires_at = _next_handoff_wait_expiry(now)
-                session.waiting_timeout_notified = False
-                response_text = "Thanks for waiting. I will try to connect you with a live user for 2 more minutes."
-                add_bot_message_text = response_text
-        elif session.waiting_timeout_notified:
-            response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
         elif session.waiting_expires_at is not None and now >= session.waiting_expires_at:
             if current_wait_cycle >= max_wait_cycles:
                 if _is_booking_intent(message_text):
                     response_text = "Live users are still busy, so I am moving you back to bot support. If you would like to set a meeting, please fill this short form and I will set it up for you."
                     ui_action = "open_appointment_form"
                 else:
-                    response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
+                    response_text = _final_handoff_timeout_message()
                     ui_action = None
                 add_bot_message_text = response_text
                 _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
             else:
+                session.wait_cycle = min(max_wait_cycles, current_wait_cycle + 1)
+                session.waiting_expires_at = _next_handoff_wait_expiry(now)
                 session.waiting_timeout_notified = True
                 response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
                 add_bot_message_text = response_text
+        elif session.waiting_timeout_notified and _is_wait_more_intent(message_text):
+            if current_wait_cycle >= max_wait_cycles:
+                response_text = _final_handoff_timeout_message()
+                add_bot_message_text = response_text
+                ui_action = None
+                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
+            else:
+                session.wait_cycle = min(max_wait_cycles, current_wait_cycle + 1)
+                session.waiting_expires_at = _next_handoff_wait_expiry(now)
+                session.waiting_timeout_notified = False
+                response_text = "Thanks for waiting. I will try to connect you with a live user for 2 more minutes."
+                add_bot_message_text = response_text
+        elif session.waiting_timeout_notified:
+            response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
         else:
             response_text = settings.HUMAN_HANDOFF_WAITING_MESSAGE
     elif session.status == "assigned":
@@ -1684,8 +1700,9 @@ async def chat_stream(
                 def handoff_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
                         if (waiting_response or "").strip():
-                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1731,7 +1748,7 @@ async def chat_stream(
                         }
                         if ui_action:
                             done_payload["ui_action"] = ui_action
-                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+                        yield f"data: {json.dumps(done_payload)}\n\n"
 
                 return StreamingResponse(handoff_event_generator(), media_type="text/event-stream")
 
@@ -1746,7 +1763,8 @@ async def chat_stream(
                 def lead_prompt_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
-                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(lead_prompt)} }}\\n\\n"
+                        yield "data: {\"type\": \"ready\"}\n\n"
+                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(lead_prompt)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1793,8 +1811,9 @@ async def chat_stream(
                 def confirmed_handoff_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
                         if (waiting_response or "").strip():
-                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1839,7 +1858,7 @@ async def chat_stream(
                             "handoff_chat_id": confirmed_handoff.chat_id,
                             "handoff_status": confirmed_handoff.status,
                         }
-                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+                        yield f"data: {json.dumps(done_payload)}\n\n"
 
                 return StreamingResponse(confirmed_handoff_event_generator(), media_type="text/event-stream")
 
@@ -1858,6 +1877,7 @@ async def chat_stream(
             def appointment_event_generator():
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                 try:
+                    yield "data: {\"type\": \"ready\"}\n\n"
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(intake_response)} }}\n\n"
                 finally:
                     persist_conversation(

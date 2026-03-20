@@ -33,6 +33,7 @@ _STOPWORDS = {
     "were", "what", "when", "where", "which", "who", "how", "why", "can", "could",
     "would", "should", "a", "an", "in", "on", "of", "to", "is", "it", "as", "at",
     "by", "or", "we", "our", "us", "i", "me", "my", "they", "their", "them", "about",
+    "those", "these", "have", "has", "had", "many",
 }
 
 
@@ -368,7 +369,16 @@ def get_suggested_questions(
 
 def _keyword_query(text: str) -> str:
     tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
-    keywords = [t for t in tokens if t not in _STOPWORDS]
+
+    def _normalize_token(token: str) -> str:
+        # Light stemming to keep singular/plural variants aligned (post/posts).
+        if len(token) > 4 and token.endswith("ies"):
+            return f"{token[:-3]}y"
+        if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+            return token[:-1]
+        return token
+
+    keywords = [_normalize_token(t) for t in tokens if t not in _STOPWORDS]
     return " ".join(keywords[:12])
 
 
@@ -528,7 +538,49 @@ def _should_include_previous_message(current_message: str, previous_message: str
         lower_current,
     )
     short_query = len(current_keywords) <= 5
-    return bool(followup_pattern and short_query)
+
+    # Capture under-specified follow-ups like "want to write my first program"
+    # so they inherit the previous topical context (for example: Docker).
+    starter_pattern = re.search(
+        r"^(want to|i want to|need to|i need to|how to|can you|could you|help me|guide me|show me|teach me)\b",
+        lower_current,
+    )
+    generic_followup_tokens = {
+        "a", "an", "and", "are", "begin", "build", "can", "could", "create", "do", "first",
+        "for", "get", "give", "help", "how", "i", "learn", "make", "me", "my", "need", "on", "program",
+        "show", "start", "step", "steps", "teach", "tell", "to", "want", "write", "you", "your",
+        "guide", "guidance", "instruction", "instructions", "example", "examples", "detail", "details",
+        "more", "next",
+    }
+    non_generic_tokens = {token for token in current_keywords if token not in generic_followup_tokens}
+    underspecified_followup = bool(starter_pattern and short_query and len(non_generic_tokens) == 0)
+
+    return bool((followup_pattern and short_query) or underspecified_followup)
+
+
+def _followup_overlap_score(current_message: str, previous_message: str) -> float:
+    current_keywords = set(_keyword_query(current_message).split())
+    previous_keywords = set(_keyword_query(previous_message).split())
+    if not current_keywords or not previous_keywords:
+        return 0.0
+    return len(current_keywords & previous_keywords) / max(len(current_keywords), 1)
+
+
+def _is_referential_followup(message: str) -> bool:
+    lower = (message or "").lower().strip()
+    if not lower:
+        return False
+
+    has_reference = bool(re.search(r"\b(it|that|those|them|this|these|same|again|previous|earlier)\b", lower))
+    is_short = len(_keyword_query(message).split()) <= 6
+    return has_reference and is_short
+
+
+def _compact_response_for_retrieval(text: str, max_chars: int = 240) -> str:
+    compact = " ".join((text or "").split()).strip()
+    if len(compact) <= max_chars:
+        return compact
+    return f"{compact[:max_chars - 3]}..."
 
 
 def _expand_queries(base_query: str, raw_message: str) -> List[str]:
@@ -811,14 +863,29 @@ def _prepare_chat_payload(
 
     query_text = retrieval_message or message
     if history:
-        recent_user_message = history[0].message
-        if (
-            recent_user_message
-            and recent_user_message.strip()
-            and recent_user_message.strip() != message.strip()
-            and _should_include_previous_message(message, recent_user_message)
-        ):
-            query_text = f"{query_text}\n\nPrevious user message: {recent_user_message.strip()}"
+        best_followup_row = None
+        best_followup_score = -1.0
+        for row in history:
+            prior_message = (row.message or "").strip()
+            if not prior_message or prior_message == message.strip():
+                continue
+            if not _should_include_previous_message(message, prior_message):
+                continue
+
+            score = _followup_overlap_score(message, prior_message)
+            if score > best_followup_score:
+                best_followup_score = score
+                best_followup_row = row
+
+        if best_followup_row is not None:
+            prior_message = (best_followup_row.message or "").strip()
+            query_text = f"{query_text}\n\nPrevious user message: {prior_message}"
+
+            # Referential prompts like "what are those posts" benefit from
+            # including a compact prior assistant summary as an anchor.
+            prior_response = _compact_response_for_retrieval(best_followup_row.response or "")
+            if prior_response and _is_referential_followup(message):
+                query_text = f"{query_text}\n\nPrevious assistant response: {prior_response}"
 
     context_parts = []
     source_ids = set()
