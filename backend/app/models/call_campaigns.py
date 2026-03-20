@@ -25,6 +25,7 @@ class CallCampaign(Base):
 
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
+    external_campaign_name = Column(String, nullable=True) 
 
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")

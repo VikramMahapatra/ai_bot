@@ -79,7 +79,7 @@ def call_analytics(
     # Active campaigns
     active_campaigns = db.query(CallCampaign).filter(
         CallCampaign.organization_id == org_id,
-        CallCampaign.status == "Active",
+        CallCampaign.status.in_(["active", "running"]),
         CallCampaign.is_deleted == False
     ).count()
     

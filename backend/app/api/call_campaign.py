@@ -26,8 +26,9 @@ def list_campaigns(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
-    db: Session = Depends(get_db)):
-    return service.list_campaigns(db, search, skip, limit)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)):
+    return service.list_campaigns(db, current_user.organization_id, search, skip, limit)
 
 @router.get("/{campaign_id:int}")
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):

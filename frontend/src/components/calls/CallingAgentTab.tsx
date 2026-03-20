@@ -102,15 +102,14 @@ export const CallingAgentTab: React.FC = () => {
     };
 
     useEffect(() => {
-        loadCallingAgents();
-    }, []);
-
-    useEffect(() => {
         const run = async () => {
+            setLoading(true);
             try {
                 await loadCallingAgents();
             } catch (err: any) {
                 showError(err?.response?.data?.detail || 'Failed to load agent list');
+            } finally {
+                setLoading(false);
             }
         };
         run();
@@ -135,9 +134,15 @@ export const CallingAgentTab: React.FC = () => {
                 response = await callingAgentService.updateCallingAgent(data, selectedAgent?.id);
             }
 
+            let message = `Agent ${formMode === "create" ? "created" : "updated"} successfully`;
+
+            if (response.message)
+                message = response.message;
+
             // Success
             setError("");
-            showSuccess(`Agent ${formMode === "create" ? "created" : "updated"} successfully`);
+
+            showSuccess(message);
             setShowForm(false);
             loadCallingAgents();
 
@@ -179,7 +184,7 @@ export const CallingAgentTab: React.FC = () => {
 
     const handlePause = async (agent: CallingAgent) => {
         setLoading(true);
-        const newStatus = agent.status === "Paused" ? "Active" : "Paused";
+        const newStatus = agent.status === "paused" ? "active" : "paused";
         try {
             await callingAgentService.updateAgentStatus(agent.id!, newStatus);
             loadCallingAgents();
@@ -431,15 +436,15 @@ export const CallingAgentTab: React.FC = () => {
                                                         size="small"
                                                         sx={{
                                                             color:
-                                                                agent.status === "Active"
+                                                                agent.status === "active"
                                                                     ? "green"
-                                                                    : agent.status === "Paused"
+                                                                    : agent.status === "paused"
                                                                         ? "orange"
                                                                         : "gray",
                                                             backgroundColor:
-                                                                agent.status === "Active"
+                                                                agent.status === "active"
                                                                     ? "rgba(72, 187, 120, 0.15)"
-                                                                    : agent.status === "Paused"
+                                                                    : agent.status === "paused"
                                                                         ? "rgba(255, 165, 0, 0.15)"
                                                                         : "rgba(128, 128, 128, 0.15)",
                                                             fontWeight: 600
@@ -550,7 +555,7 @@ export const CallingAgentTab: React.FC = () => {
                                                 <TableCell align="right">
                                                     <Stack direction="row" spacing={1} justifyContent="flex-end">
 
-                                                        {agent.status === "Draft" && (
+                                                        {agent.status === "draft" && (
                                                             <Tooltip title="Publish Agent">
                                                                 <IconButton
                                                                     size="small"
@@ -562,7 +567,7 @@ export const CallingAgentTab: React.FC = () => {
                                                             </Tooltip>
                                                         )}
 
-                                                        {agent.status !== "Draft" && (
+                                                        {agent.status !== "draft" && (
                                                             <>
                                                                 <Tooltip title="Test Call">
                                                                     <IconButton
@@ -575,7 +580,7 @@ export const CallingAgentTab: React.FC = () => {
 
                                                                 <Tooltip
                                                                     title={
-                                                                        agent.status === "Active"
+                                                                        agent.status === "active"
                                                                             ? "Pause Agent"
                                                                             : "Resume Agent"
                                                                     }
@@ -584,7 +589,7 @@ export const CallingAgentTab: React.FC = () => {
                                                                         size="small"
                                                                         onClick={() => handlePause(agent)}
                                                                     >
-                                                                        {agent.status === "Active" ? (
+                                                                        {agent.status === "active" ? (
                                                                             <PauseIcon />
                                                                         ) : (
                                                                             <PlayArrowIcon />
@@ -593,15 +598,18 @@ export const CallingAgentTab: React.FC = () => {
                                                                 </Tooltip>
                                                             </>
                                                         )}
-
-                                                        <Tooltip title="Edit">
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={() => handleEdit(agent)}
-                                                            >
-                                                                <EditIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
+                                                        {agent.status !== "pending" && (
+                                                            <>
+                                                                <Tooltip title="Edit">
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        onClick={() => handleEdit(agent)}
+                                                                    >
+                                                                        <EditIcon />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            </>
+                                                        )}
 
                                                         <Tooltip title="Delete">
                                                             <IconButton

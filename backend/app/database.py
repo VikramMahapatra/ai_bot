@@ -137,10 +137,18 @@ def init_db():
                 pass
             
             try:
-                cols = conn.execute(text("PRAGMA table_info('contacts')")).fetchall()
+                cols = conn.execute(text("PRAGMA table_info('calling_agents')")).fetchall()
                 col_names = {row[1] for row in cols}
-                if "external_contact_id" not in col_names:
-                    conn.execute(text("ALTER TABLE contacts ADD COLUMN external_contact_id INTEGER"))
+                if "external_agent_name" not in col_names:
+                    conn.execute(text("ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT"))
+            except Exception:
+                pass
+            
+            try:
+                cols = conn.execute(text("PRAGMA table_info('call_campaigns')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "external_agent_name" not in col_names:
+                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN external_campaign_name TEXT"))
             except Exception:
                 pass
             

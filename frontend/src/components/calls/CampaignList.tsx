@@ -46,11 +46,15 @@ interface Props {
 
 const getStatusColor = (status: string) => {
     switch (status) {
-        case "Active":
+        case "active":
             return "secondary";
-        case "Paused":
+        case "running":
+            return "secondary";
+        case "scheduled":
+            return "secondary";
+        case "paused":
             return "warning";
-        case "Completed":
+        case "completed":
             return "primary";
         default:
             return "default";
@@ -116,7 +120,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     };
 
     useEffect(() => {
-        loadCampaigns();
         loadCampaignStats();
     }, []);
 
@@ -412,7 +415,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
-                                        {campaign.status != "completed" && (
+                                        {["active", "running", "draft", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 onClick={() => onEditCampaign(campaign.id)}
@@ -420,7 +423,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 <EditIcon />
                                             </IconButton>
                                         )}
-                                        {["completed", "draft"].includes(campaign.status) && (
+                                        {["completed", "draft", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 color="error"

@@ -125,6 +125,14 @@ class EcholeadsClient:
     def create_call(self, payload: dict):
         return self._post("/call/create", payload)
     
+    def fetch_agents(self, limit: int, search: str):
+        params = {
+            "page": 1,
+            "limit": limit,
+            "search": search
+        }
+        return self._get("/agent-tables")
+    
     def create_agent(self, payload: dict):
         return self._post("/agent-tables", payload)
     
@@ -156,6 +164,9 @@ class EcholeadsClient:
 
         return self._get("/call-logs", params=params)
     
+    def get_campaign_by_name(self, campaign_name: str):
+        return self._get(f"/campaigns?search={campaign_name}")
+    
     def get_campaign_by_id(self, campaign_id: int):
         return self._get(f"/campaigns/{campaign_id}")
     
@@ -170,3 +181,6 @@ class EcholeadsClient:
     
     def delete_agent(self, agent_id: str):
         return self._delete(f"/agent-tables/{agent_id}")
+    
+    def fetch_bookings(self):
+        return self._get("/calendar-booking")

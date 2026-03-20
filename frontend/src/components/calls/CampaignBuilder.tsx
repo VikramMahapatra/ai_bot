@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Box,
     Paper,
@@ -140,6 +140,12 @@ const CampaignBuilder = () => {
         }
     };
 
+    useEffect(() => {
+        if (loading) {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+    }, [loading]);
+
     const handleSaveCampaign = async () => {
         setError('');
         setSuccess('');
@@ -228,6 +234,7 @@ const CampaignBuilder = () => {
                         setForm={setCampaignForm}
                         prevStep={prevStep}
                         saveCampaign={handleSaveCampaign}
+                        loading={loading}
                     />
                 );
             default:
