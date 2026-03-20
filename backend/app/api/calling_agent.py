@@ -49,9 +49,10 @@ def read_agents(
     skip: int = 0,
     limit: int = 10,
     sort_by: str = "newest",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    return service.read_agents(db, search, skip, limit, sort_by)
+    return service.read_agents(db, current_user.organization_id, search, skip, limit, sort_by)
     
 @router.get("/{agent_id:int}", response_model=CallingAgentRead)
 def get_agent(agent_id: int, db: Session = Depends(get_db)):
@@ -67,7 +68,7 @@ def test_call(
     return service.test_call(db, agent_id, data)
 
 
-@router.patch("/{agent_id:int}/status")
+@router.post("/{agent_id:int}/status")
 def update_agent_status(
     agent_id: int,
     data: AgentStatusUpdate,

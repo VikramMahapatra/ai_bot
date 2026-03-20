@@ -367,12 +367,10 @@ const CreateChatAgentPage: React.FC = () => {
   }, []);
 
   const webhookUrl = useMemo(() => buildApiUrl('/api/channels/whatsapp/webhook'), []);
-  // const metaRedirectUri = useMemo(
-  //   () => buildApiUrl(`/api/admin/whatsapp/embedded/callback?origin=${encodeURIComponent(window.location.origin)}`),
-  //   []
-  // );
-
-  const metaRedirectUri = "https://thomasina-mesogleal-alarmingly.ngrok-free.dev/api/admin/whatsapp/embedded/callback"
+  const metaRedirectUri = useMemo(
+    () => buildApiUrl(`/api/admin/whatsapp/embedded/callback`),
+    []
+  );
 
   useEffect(() => {
     if (!createdWidgetId) {
@@ -542,7 +540,7 @@ const CreateChatAgentPage: React.FC = () => {
     try {
       setMetaConnecting(true);
       setError('');
-      if (!metaSdkFailed) {
+      if (metaSdkFailed) {
         openMetaOAuthFallback(metaAppId, configId);
         setError('Meta SDK failed to load. Opened fallback signup window.');
         return;

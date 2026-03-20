@@ -54,7 +54,7 @@ def update_campaign(
     return service.update_campaign(db, campaign_id, data)
 
 
-@router.post("/{campaign_id:int}/delete")
+@router.delete("/{campaign_id:int}/delete")
 def delete_campaign(
     campaign_id: int,
     db: Session = Depends(get_db)

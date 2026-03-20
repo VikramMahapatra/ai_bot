@@ -15,7 +15,8 @@ import {
     Grid,
     TablePagination,
     TextField,
-    InputAdornment
+    InputAdornment,
+    Tooltip
 } from "@mui/material";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -29,14 +30,18 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import GroupIcon from "@mui/icons-material/Group";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import InsightsIcon from "@mui/icons-material/Insights";
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
+import { formatDateTime } from "../../utils/dateUtils";
+import CampaignAnalyticsDrawer from "./CampaignAnalyticsDrawer";
 
 interface Props {
     onAddCampaign: () => void;
     onEditCampaign: (id?: number) => void;
     onViewCampaign: (id?: number) => void;
+    onDeleteCampaign: (id?: number) => void;
 }
 
 const getStatusColor = (status: string) => {
@@ -52,7 +57,7 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCampaign }) => {
+const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCampaign, onDeleteCampaign }) => {
     const [loading, setLoading] = useState(false);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [campaignTotal, setCampaignTotal] = useState(0);
@@ -70,7 +75,18 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [success, setSuccess] = useState('');
 
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-    const [detailOpen, setDetailOpen] = useState(false);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+
+    const openDrawer = (campaign: Campaign) => {
+        setSelectedCampaign(campaign);
+        setDrawerOpen(true);
+    };
+
+    const closeDrawer = () => {
+        setDrawerOpen(false);
+        setSelectedCampaign(null);
+    };
 
     const showError = (message: string) => {
         setSuccess('');
@@ -140,15 +156,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                 return "#374151";
         }
     };
-
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "numeric",
-        });
-    };
-
 
     return (
         <Box>
@@ -388,28 +395,40 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                     {/* CREATED AT */}
                                     <TableCell>
                                         <Typography variant="body2" color="text.secondary">
-                                            {formatDate(campaign.created_at)}
+                                            {formatDateTime(campaign.created_at)}
                                         </Typography>
                                     </TableCell>
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
+                                        <Tooltip title="View Insights">
+                                            <IconButton onClick={() => openDrawer(campaign)}>
+                                                <InsightsIcon color="primary" />
+                                            </IconButton>
+                                        </Tooltip>
                                         <IconButton
                                             size="small"
                                             onClick={() => onViewCampaign(campaign.id)}
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => onEditCampaign(campaign.id)}
-                                        >
-                                            <EditIcon />
-                                        </IconButton>
-
-                                        <IconButton size="small" color="error">
-                                            <DeleteIcon />
-                                        </IconButton>
+                                        {campaign.status != "completed" && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => onEditCampaign(campaign.id)}
+                                            >
+                                                <EditIcon />
+                                            </IconButton>
+                                        )}
+                                        {["completed", "draft"].includes(campaign.status) && (
+                                            <IconButton
+                                                size="small"
+                                                color="error"
+                                                onClick={() => onDeleteCampaign(campaign.id)}
+                                            >
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        )}
                                     </TableCell>
 
                                 </TableRow>
@@ -430,6 +449,11 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     rowsPerPageOptions={[10, 25, 50]}
                 />
             </Paper>
+            <CampaignAnalyticsDrawer
+                open={drawerOpen}
+                onClose={closeDrawer}
+                campaign={selectedCampaign}
+            />
 
         </Box>
     );

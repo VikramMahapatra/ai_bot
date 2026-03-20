@@ -32,6 +32,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
+        .filter(CallLog.organization_id == organization_id)
     )
     
     if params.campaign_id:

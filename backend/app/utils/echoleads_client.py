@@ -32,14 +32,12 @@ class EcholeadsClient:
             response.raise_for_status()
             return response.json()
 
-        except requests.exceptions.RequestException as e:
-            print("====== ECHOLEADS ERROR ======")
-            if e.response is not None:
-                print("Status:", e.response.status_code)
-                print("Body:", e.response.text)
-            print("==============================")
-
-            raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
+        except requests.exceptions.HTTPError as e:  # only catch actual HTTP errors
+            print("HTTP ERROR:", e.response.status_code, e.response.text)
+            raise HTTPException(status_code=400, detail=f"API error: {str(e)}")
+        except requests.exceptions.RequestException as e:  # network errors
+            print("NETWORK ERROR:", str(e))
+            raise HTTPException(status_code=400, detail=f"Network Error: {str(e)}")
         
     def _put(self, endpoint: str, payload: dict):
         try:
@@ -60,13 +58,12 @@ class EcholeadsClient:
             response.raise_for_status()
             return response.json()
 
-        except requests.exceptions.RequestException as e:
-            print("====== ECHOLEADS ERROR ======")
-            if e.response is not None:
-                print("Status:", e.response.status_code)
-                print("Body:", e.response.text)
-            print("==============================")
-            raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
+        except requests.exceptions.HTTPError as e:  # only catch actual HTTP errors
+            print("HTTP ERROR:", e.response.status_code, e.response.text)
+            raise HTTPException(status_code=400, detail=f"API Error: {str(e)}")
+        except requests.exceptions.RequestException as e:  # network errors
+            print("NETWORK ERROR:", str(e))
+            raise HTTPException(status_code=400, detail=f"Network Error: {str(e)}")
         
     def _delete(self, endpoint: str):
         try:
@@ -76,13 +73,22 @@ class EcholeadsClient:
                 timeout=15
             )
 
-            # print("====== ECHOLEADS API RESPONSE ======")
-            # print("URL:", f"{self.base_url}{endpoint}")
-            # print("Status Code:", response.status_code)
-            # print("Response Text:", response.text)
-            # print("====================================")
+            # ✅ Handle 404 gracefully
+            if response.status_code == 404:
+                return {
+                    "success": False,
+                    "not_found": True,
+                    "message": response.text
+                }
 
-            response.raise_for_status()
+            # ✅ Other errors (400, 500 etc.)
+            if not response.ok:
+                return {
+                    "success": False,
+                    "error": response.text,
+                    "status_code": response.status_code
+                }
+
             return response.json()
 
         except requests.exceptions.RequestException as e:
@@ -91,6 +97,7 @@ class EcholeadsClient:
                 print("Status:", e.response.status_code)
                 print("Body:", e.response.text)
             print("==============================")
+
             raise HTTPException(status_code=500, detail=f"Echoleads API error: {str(e)}")
         
     def _get(self, endpoint: str, params=None):

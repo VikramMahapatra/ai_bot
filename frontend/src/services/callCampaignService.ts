@@ -34,13 +34,23 @@ export interface CampaignContactListResponse {
 export interface Campaign {
     id?: number;
     name: string;
-    agent_name: string;
-    from_number: string;
-    category: string;
-    status: "Active" | "Paused" | "Completed";
-    contacts: number;
-    progress: number;
-    created_at: string;
+    description: string;
+    agent_name?: string;
+    from_number?: string;
+    category?: string;
+    status: "running" | "paused" | "completed" | "scheduled";
+    contacts?: number;
+    progress?: number;
+    created_at?: string;
+    total_calls: number;
+    completed_calls: number;
+    avg_duration: string;
+    response_rate: string;
+    sentiment: Sentiment;
+    key_insights: KeyInsight[];
+    ai_recommendations: AIRecommendation[];
+    timeline: Timeline;
+    engagement: CampaignEngagement;
 }
 
 
@@ -58,6 +68,36 @@ export interface CampaignStats {
     activeCampaigns: number;
     pausedCampaigns: number;
     completedCampaigns: number;
+}
+
+export interface KeyInsight {
+    title: string;
+    value: string;
+    change?: string;
+    description: string;
+    color: "blue" | "purple" | "green" | "orange";
+}
+
+interface AIRecommendation {
+    title: string;
+    impact: string;
+}
+
+export interface Sentiment {
+    positive: number;
+    neutral: number;
+    negative: number;
+}
+
+export interface Timeline {
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CampaignEngagement {
+    engagement_rate: number;
+    conversion: number;
+    avg_call_time: string;
 }
 
 export interface CallCampaign {
@@ -87,6 +127,7 @@ export interface CallCampaign {
     retry_on_voicemail: boolean;
 
     call_logs?: [];
+
 }
 
 export interface CreateCampaignResponse {
@@ -126,6 +167,11 @@ export const callCampaignService = {
 
     async updateCampaign(payload: any, campaign_id: number): Promise<CreateCampaignResponse> {
         const response = await api.put(`/api/call-campaigns/update/${campaign_id}`, payload);
+        return response.data;
+    },
+
+    async deleteCampaign(campaign_id: number): Promise<CreateCampaignResponse> {
+        const response = await api.delete(`/api/call-campaigns/${campaign_id}/delete`);
         return response.data;
     },
 

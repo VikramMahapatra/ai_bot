@@ -122,7 +122,6 @@ def init_db():
                     conn.execute(text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT"))
             except Exception:
                 pass
-<<<<<<< HEAD
             
             try:
                 cols = conn.execute(text("PRAGMA table_info('contacts')")).fetchall()
@@ -169,5 +168,3 @@ def init_db():
                 
             except Exception:
                 pass
-=======
->>>>>>> origin/main

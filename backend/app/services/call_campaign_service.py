@@ -478,15 +478,22 @@ def delete_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    echoleads = EcholeadsClient()
     
-    echo_payload = {
-        "status": "paused"
-    }
+    if campaign.status not in ["draft", "completed"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted."
+        )
+    
+    # echoleads = EcholeadsClient()
+    
+    # echo_payload = {
+    #     "status": "paused"
+    # }
 
-    # Update Echoleads agent
-    if campaign.external_campaign_id:
-        echoleads.update_agent(campaign.external_campaign_id, echo_payload)
+    # # Update Echoleads agent
+    # if campaign.external_campaign_id:
+    #     echoleads.update_agent(campaign.external_campaign_id, echo_payload)
 
     campaign.is_deleted = True
 

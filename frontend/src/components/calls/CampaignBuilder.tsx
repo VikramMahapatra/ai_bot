@@ -94,6 +94,7 @@ const CampaignBuilder = () => {
         setError('');
         setSuccess('');
         setActiveStep(0);
+        window.scrollTo({ top: 0, behavior: "smooth" });
 
         try {
             const data = await callCampaignService.getCampaign(id);
@@ -140,7 +141,6 @@ const CampaignBuilder = () => {
     };
 
     const handleSaveCampaign = async () => {
-        console.log("Campaign Data", campaignForm);
         setError('');
         setSuccess('');
         setLoading(true);
@@ -153,6 +153,24 @@ const CampaignBuilder = () => {
                 await callCampaignService.createCampaign(campaignForm);
             }
             showSuccess("Campaign saved successfully")
+            setView("list");
+        }
+        catch (err: any) {
+            showError(err?.response?.data?.detail || 'Failed to save the campaign data');
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteCampaign = async () => {
+        setError('');
+        setSuccess('');
+        setLoading(true);
+        try {
+            await callCampaignService.createCampaign(campaignForm);
+            showSuccess("Campaign delete successfully")
             setView("list");
         }
         catch (err: any) {
@@ -219,7 +237,12 @@ const CampaignBuilder = () => {
 
     if (view === "list") {
         return (
-            <CampaignList onAddCampaign={handleAddCampaign} onEditCampaign={handleEditCampaign} onViewCampaign={handleViewCampaign} />
+            <CampaignList
+                onAddCampaign={handleAddCampaign}
+                onEditCampaign={handleEditCampaign}
+                onViewCampaign={handleViewCampaign}
+                onDeleteCampaign={handleViewCampaign}
+            />
         );
     }
 
@@ -294,9 +317,11 @@ const CampaignBuilder = () => {
                         {mode === "edit" ? "Edit Campaign" : "Create Campaign"}
                     </Typography>
 
-                    <Button variant="outlined" color="error" onClick={handleBackToList}>
-                        Cancel
-                    </Button>
+                    <Box display="flex" justifyContent="flex-end" >
+                        <Button variant="outlined" color="error" onClick={handleBackToList}>
+                            Cancel
+                        </Button>
+                    </Box>
                 </Box>
 
 

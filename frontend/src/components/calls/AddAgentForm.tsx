@@ -34,6 +34,7 @@ interface AddAgentFormProps {
     mode: "create" | "edit";
     onCancel: () => void;
     onSave: (data: any) => void;
+    loading: boolean;
 }
 
 // const destinationOptions = ['India', 'USA', 'UK', 'Canada', 'Australia'];
@@ -93,18 +94,55 @@ const transcriberLanguages = [
     { label: "Auto Detect", value: "multi" }
 ];
 
-export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave }) => {
+const INCOMING_DEFAULTS = {
+    greeting: "Hello! Thank you for calling. How can I assist you today?",
+    prompt: `You are a helpful and professional AI support agent handling incoming calls.
+
+Your goal is to assist the caller with their queries, provide accurate information, and ensure a smooth experience.
+
+Guidelines:
+- Be polite, calm, and patient
+- Listen carefully and understand the user's issue
+- Ask clarifying questions when needed
+- Provide clear and concise answers
+- If unsure, politely say you will check or escalate
+
+Always begin with the greeting provided.`
+};
+
+const OUTGOING_DEFAULTS = {
+    greeting: "Hello! This is a quick call regarding an update. Is this a good time to talk?",
+    prompt: `You are a professional AI calling agent making outgoing calls.
+
+Your goal is to engage the user, communicate the purpose of the call clearly, and guide the conversation toward a specific outcome.
+
+Guidelines:
+- Start by confirming if it’s a good time to talk
+- Be friendly and confident
+- Clearly explain the purpose of the call
+- Keep responses short and natural
+- Handle objections politely
+
+Always begin with the greeting provided.`
+};
+
+export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave, loading }) => {
     const [errors, setErrors] = useState<any>({});
     const [files, setFiles] = useState<File[]>([]);
     const [voiceOptions, setVoiceOptions] = useState<Voice[]>([]);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isDisabled, setIsDisabled] = useState(false);
+
+    const defaults = agentType === "inbound"
+        ? INCOMING_DEFAULTS
+        : OUTGOING_DEFAULTS;
 
     const [formData, setFormData] = useState({
         name: agent?.name || '',
-        greeting: agent?.greeting || '',
-        prompt: agent?.prompt || '',
+        greeting: agent?.greeting || defaults.greeting,
+        prompt: agent?.prompt || defaults.prompt,
         destination: agent?.destination || [],
         server_location: agent?.server_location || "US",
 
@@ -292,7 +330,6 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             console.log("Validation Errors:", errors);
             return;
         }
-
         const data = new FormData();
 
         // create agent object
@@ -376,7 +413,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         <Button color="error" variant='outlined' onClick={onCancel}>
                             Cancel
                         </Button>
-                        <Button variant="contained" onClick={handleSubmit} sx={{ ml: 1 }}>
+                        <Button variant="contained" onClick={handleSubmit} sx={{ ml: 1 }} disabled={loading}>
                             {mode === "create" ? "Save" : "Update"}
                         </Button>
                     </Box>
@@ -1148,7 +1185,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                 {/* Save Button aligned right */}
                 <Box display="flex" justifyContent="flex-end" >
-                    <Button variant="contained" onClick={handleSubmit}>
+                    <Button variant="contained" onClick={handleSubmit} disabled={loading}>
                         {mode === "create" ? "Save" : "Update"}
                     </Button>
                 </Box >

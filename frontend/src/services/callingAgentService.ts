@@ -73,8 +73,8 @@ export interface CallingAgent {
     training_doc?: string[]
 
     // Metadata
-    created_at?: Date
-    updated_at?: Date
+    created_at?: string
+    updated_at?: string
 }
 
 export interface CallingAgentLookup {

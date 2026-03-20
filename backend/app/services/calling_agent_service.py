@@ -1,5 +1,5 @@
 # Create Agent
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import shutil
 from typing import List, Optional
@@ -277,6 +277,7 @@ def update_agent(
 # Read All Agents
 def read_agents(
     db: Session,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
@@ -305,7 +306,7 @@ def read_agents(
             CallCampaign,
             CallingAgent.id == CallCampaign.agent_id
         )
-        .filter(CallingAgent.is_deleted == False)
+        .filter(CallingAgent.is_deleted == False, CallingAgent.organization_id == organization_id)
         .group_by(CallingAgent.id)
     )
 
@@ -343,6 +344,10 @@ def read_agents(
         data["active_campaigns"] = active_campaigns
         data["completed_campaigns"] = completed_campaigns
         data["pending_campaigns"] = pending_campaigns
+        
+        if data.get("created_at"):
+            data["created_at"] = data["created_at"].replace(tzinfo=timezone.utc).isoformat()
+            
         items.append(data)
 
     return {
@@ -485,14 +490,31 @@ def update_agent_status(
     agent_id: int,
     data: AgentStatusUpdate,
 ):
-
+    # Get the agent
     agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
-
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    agent.status = data.status
+    # If pausing, check for active campaigns
+    if data.status.lower() == "paused":
+        active_campaign_count = (
+            db.query(CallCampaign)
+            .filter(
+                CallCampaign.agent_id == agent_id,
+                CallCampaign.status.in_["active", "running", "scheduled"],
+                CallCampaign.is_deleted == False
+            )
+            .count()
+        )
 
+        if active_campaign_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot pause agent: {active_campaign_count} active campaign(s) running"
+            )
+
+    # Update status
+    agent.status = data.status
     db.commit()
     db.refresh(agent)
 
@@ -504,31 +526,29 @@ def update_agent_status(
     
 def delete_agent(db: Session, agent_id: int):
     agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
-    if not agent:
-        raise Exception("Agent not found")
 
-    # 3️⃣ Soft delete in Echoleads
-    try:
-        
-        echoleads = EcholeadsClient()
-        response = echoleads.delete_agent(agent.external_agent_id)
-        
-        if response.get("success"):
-            agent.is_deleted = True
-            db.commit()
-            db.refresh(agent)
-        else:
-            raise HTTPException(status_code=404, detail="Failed to delete the Agent")
-        
-    except Exception as e:
-        # Handle API failure: log or rollback DB if needed
-        raise HTTPException(status_code=404, detail="Failed to delete the Agent")
-   
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    echoleads = EcholeadsClient()
+    response = echoleads.delete_agent(agent.external_agent_id)
+
+    # ✅ Treat both success & not_found as success
+    if response.get("success") or response.get("not_found"):
+        agent.is_deleted = True
+        db.commit()
+        db.refresh(agent)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Echoleads delete failed: {response.get('error')}"
+        )
+
     return {
         "message": "Agent deleted",
         "agent_id": agent.id,
         "status": agent.status
-    }
+    }   
     
     
 # Agent Lookup
@@ -540,7 +560,11 @@ def agent_lookup(
     query = db.query(
         CallingAgent.id,
         CallingAgent.name
-    ).filter(CallingAgent.organization_id == organization_id, CallingAgent.is_deleted == False)
+    ).filter(
+        CallingAgent.organization_id == organization_id, 
+        CallingAgent.is_deleted == False,
+        CallingAgent.status == "Active"
+    )
 
     if search:
         query = query.filter(

@@ -16,7 +16,14 @@ import {
     CardActionArea,
     LinearProgress,
     Chip,
-    Select
+    Select,
+    TableContainer,
+    Table,
+    TableHead,
+    TableCell,
+    TableRow,
+    TableBody,
+    TablePagination
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from "@mui/icons-material/Close";
@@ -49,6 +56,7 @@ import {
     DialogActions
 } from "@mui/material";
 import TestCallDialog from './TestCallDialog';
+import { formatDateTime } from "../../utils/dateUtils";
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
@@ -108,29 +116,47 @@ export const CallingAgentTab: React.FC = () => {
         run();
     }, [search, agentPage, agentRowsPerPage]);
 
+    useEffect(() => {
+        if (loading) {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+    }, [loading]);
+
     const handleSaveAgent = async (data: FormData) => {
         setLoading(true);
         setError("");
         setSuccess("");
-        window.scrollTo({ top: 0, behavior: "smooth" });
+
         try {
+            let response;
             if (formMode === "create") {
-                await callingAgentService.createCallingAgent(data);
+                response = await callingAgentService.createCallingAgent(data);
             } else {
-                await callingAgentService.updateCallingAgent(data, selectedAgent?.id);
+                response = await callingAgentService.updateCallingAgent(data, selectedAgent?.id);
             }
-            setError("")
-            showSuccess(`Agent ${formMode === "create" ? "created" : "updated"} successfully`)
+
+            // Success
+            setError("");
+            showSuccess(`Agent ${formMode === "create" ? "created" : "updated"} successfully`);
             setShowForm(false);
             loadCallingAgents();
 
+            return response;
+
         } catch (err: any) {
-            console.log(err)
-            showError('Failed to save the data');
+            console.log(err);
+
+            // Check for network error vs API error
+            if (err.detail?.includes("Network Error")) {
+                // Network failure: maybe the record is actually created!
+                showError("Network error occurred. Data might have been saved. Please verify before retrying.");
+            } else {
+                // API returned error
+                showError("Failed to save the data");
+            }
         } finally {
             setLoading(false);
         }
-
     };
 
     const handlePublish = async (agent: CallingAgent) => {
@@ -157,8 +183,8 @@ export const CallingAgentTab: React.FC = () => {
         try {
             await callingAgentService.updateAgentStatus(agent.id!, newStatus);
             loadCallingAgents();
-        } catch (error) {
-            showError(`Failed to update the status`);
+        } catch (error: any) {
+            showError(error?.response?.data?.detail || `Failed to update the status`);
         } finally {
             setLoading(false);
         }
@@ -308,6 +334,7 @@ export const CallingAgentTab: React.FC = () => {
                         setError("");
                     }}
                     onSave={handleSaveAgent}
+                    loading={loading}
                 />
             }
 
@@ -316,90 +343,213 @@ export const CallingAgentTab: React.FC = () => {
             {
                 !showForm && (
                     <>
-                        {agents.length === 0 ? (
-                            <Paper
-                                sx={{
-                                    p: 6,
-                                    textAlign: "center",
-                                    borderRadius: 3,
-                                    border: "1px dashed #ccc",
-                                    backgroundColor: "#fafafa"
-                                }}
-                            >
-                                <Stack spacing={2} alignItems="center">
-                                    <GroupIcon sx={{ fontSize: 60, color: "text.secondary" }} />
+                        <TableContainer component={Paper}>
+                            <Table>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Type</TableCell>
+                                        <TableCell>Name</TableCell>
+                                        <TableCell>Status</TableCell>
+                                        <TableCell>Server</TableCell>
+                                        <TableCell>Campaigns</TableCell>
+                                        <TableCell>Created At</TableCell>
+                                        <TableCell align="right">Actions</TableCell>
+                                    </TableRow>
+                                </TableHead>
 
-                                    <Typography variant="h6">
-                                        No Calling Agents Found
-                                    </Typography>
-
-                                    <Typography variant="body2" color="text.secondary" maxWidth={400}>
-                                        You haven't created any calling agents yet. Create an agent to start
-                                        running inbound or outbound campaigns.
-                                    </Typography>
-
-                                    <Button
-                                        variant="contained"
-                                        startIcon={<AddIcon />}
-                                        onClick={() => setShowForm(true)}
-                                    >
-                                        Create Agent
-                                    </Button>
-                                </Stack>
-                            </Paper>
-                        ) : (
-                            <Grid container spacing={3}>
-                                {agents.map((agent) => (
-                                    <Grid item xs={12} md={6} key={agent.id}>
-                                        <Card sx={{ position: "relative", overflow: "visible" }}>
-                                            {/* Header */}
-                                            <CardContent
-                                                sx={{
-                                                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
-                                                    mb: 1,
-                                                    borderRadius: 1
-                                                }}
-                                            >
-                                                <Stack
-                                                    direction="row"
-                                                    alignItems="center"
-                                                    justifyContent="space-between"
-                                                >
-                                                    <Stack direction="row" spacing={1} alignItems="center">
-                                                        <Tooltip
-                                                            title={
-                                                                agent.type == "outbound"
-                                                                    ? "Outbound Call"
-                                                                    : "Inbound Call"
-                                                            }
-                                                        >
-                                                            {agent.type == "outbound" ? (
-                                                                <CallMadeIcon color="primary" />
-                                                            ) : (
-                                                                <CallReceivedIcon color="secondary" />
-                                                            )}
-                                                        </Tooltip>
+                                <TableBody>
+                                    {agents.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} align="center">
+                                                <Box py={5}>
+                                                    <Stack spacing={2} alignItems="center">
+                                                        <GroupIcon sx={{ fontSize: 50, color: "text.secondary" }} />
 
                                                         <Typography variant="h6">
-                                                            {agent.name}
+                                                            No Calling Agents Found
                                                         </Typography>
 
-                                                        <Chip
-                                                            label={agent.status}
-                                                            size="small"
-                                                            sx={{
-                                                                color: agent.status === "Active" ? "green" :
-                                                                    agent.status === "Paused" ? "orange" : "gray",
-                                                                backgroundColor: agent.status === "Active" ? "rgba(72, 187, 120, 0.15)" :
-                                                                    agent.status === "Paused" ? "rgba(255, 165, 0, 0.15)" :
-                                                                        "rgba(128, 128, 128, 0.15)",
-                                                                fontWeight: 600
-                                                            }}
-                                                        />
-                                                    </Stack>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            You haven't created any agents yet.
+                                                        </Typography>
 
-                                                    <Stack direction="row" spacing={1}>
-                                                        {/* Publish button for Draft */}
+                                                        <Button
+                                                            variant="contained"
+                                                            startIcon={<AddIcon />}
+                                                            onClick={() => setShowForm(true)}
+                                                        >
+                                                            Create Agent
+                                                        </Button>
+                                                    </Stack>
+                                                </Box>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        agents.map((agent) => (
+                                            <TableRow key={agent.id} hover>
+
+                                                {/* Type */}
+                                                <TableCell>
+                                                    <Tooltip
+                                                        title={
+                                                            agent.type === "outbound"
+                                                                ? "Outbound Call"
+                                                                : "Inbound Call"
+                                                        }
+                                                    >
+                                                        <Box display="flex" alignItems="center" gap={1}>
+                                                            {agent.type === "outbound" ? (
+                                                                <>
+                                                                    <CallMadeIcon color="primary" fontSize="small" />
+                                                                    <Typography variant="body2" fontWeight={500}>
+                                                                        Outbound
+                                                                    </Typography>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <CallReceivedIcon color="secondary" fontSize="small" />
+                                                                    <Typography variant="body2" fontWeight={500}>
+                                                                        Inbound
+                                                                    </Typography>
+                                                                </>
+                                                            )}
+                                                        </Box>
+                                                    </Tooltip>
+                                                </TableCell>
+
+                                                {/* Name */}
+                                                <TableCell>
+                                                    <Typography fontWeight={600}>
+                                                        {agent.name}
+                                                    </Typography>
+                                                </TableCell>
+
+                                                {/* Status */}
+                                                <TableCell>
+                                                    <Chip
+                                                        label={agent.status}
+                                                        size="small"
+                                                        sx={{
+                                                            color:
+                                                                agent.status === "Active"
+                                                                    ? "green"
+                                                                    : agent.status === "Paused"
+                                                                        ? "orange"
+                                                                        : "gray",
+                                                            backgroundColor:
+                                                                agent.status === "Active"
+                                                                    ? "rgba(72, 187, 120, 0.15)"
+                                                                    : agent.status === "Paused"
+                                                                        ? "rgba(255, 165, 0, 0.15)"
+                                                                        : "rgba(128, 128, 128, 0.15)",
+                                                            fontWeight: 600
+                                                        }}
+                                                    />
+                                                </TableCell>
+
+                                                {/* Server */}
+                                                <TableCell>
+                                                    {
+                                                        agent.server_location?.toLowerCase() === "in"
+                                                            ? "India"
+                                                            : agent.server_location?.toLowerCase() === "us"
+                                                                ? "United States"
+                                                                : agent.server_location
+                                                    }
+                                                </TableCell>
+
+                                                {/* Campaigns */}
+                                                <TableCell>
+                                                    <Box display="flex" flexWrap="wrap" gap={1}>
+
+                                                        {/* Pending */}
+                                                        <Box
+                                                            sx={{
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                px: 1.2,
+                                                                py: 0.3,
+                                                                borderRadius: "999px",
+                                                                bgcolor: "rgba(59, 130, 246, 0.1)", // blue-50
+                                                                color: "#1d4ed8", // blue-700
+                                                                fontSize: 12,
+                                                                fontWeight: 500
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                sx={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: "50%",
+                                                                    bgcolor: "#3b82f6", // blue-500
+                                                                    mr: 0.8
+                                                                }}
+                                                            />
+                                                            Pending {agent.pending_campaigns}
+                                                        </Box>
+
+                                                        {/* Active */}
+                                                        <Box
+                                                            sx={{
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                px: 1.2,
+                                                                py: 0.3,
+                                                                borderRadius: "999px",
+                                                                bgcolor: "rgba(168, 85, 247, 0.1)", // purple
+                                                                color: "#6b21a8",
+                                                                fontSize: 12,
+                                                                fontWeight: 500
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                sx={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: "50%",
+                                                                    bgcolor: "#a855f7",
+                                                                    mr: 0.8
+                                                                }}
+                                                            />
+                                                            Running {agent.active_campaigns}
+                                                        </Box>
+
+                                                        {/* Completed */}
+                                                        <Box
+                                                            sx={{
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                px: 1.2,
+                                                                py: 0.3,
+                                                                borderRadius: "999px",
+                                                                bgcolor: "rgba(16, 185, 129, 0.1)", // green-50
+                                                                color: "#047857", // green-700
+                                                                fontSize: 12,
+                                                                fontWeight: 500
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                sx={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: "50%",
+                                                                    bgcolor: "#10b981", // green-500
+                                                                    mr: 0.8
+                                                                }}
+                                                            />
+                                                            Completed {agent.completed_campaigns}
+                                                        </Box>
+
+                                                    </Box>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {formatDateTime(agent.created_at)}
+                                                </TableCell>
+
+                                                {/* Actions */}
+                                                <TableCell align="right">
+                                                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+
                                                         {agent.status === "Draft" && (
                                                             <Tooltip title="Publish Agent">
                                                                 <IconButton
@@ -412,7 +562,6 @@ export const CallingAgentTab: React.FC = () => {
                                                             </Tooltip>
                                                         )}
 
-                                                        {/* Pause / Resume */}
                                                         {agent.status !== "Draft" && (
                                                             <>
                                                                 <Tooltip title="Test Call">
@@ -423,7 +572,14 @@ export const CallingAgentTab: React.FC = () => {
                                                                         <CallIcon />
                                                                     </IconButton>
                                                                 </Tooltip>
-                                                                <Tooltip title={agent.status === "Active" ? "Pause Agent" : "Resume Agent"}>
+
+                                                                <Tooltip
+                                                                    title={
+                                                                        agent.status === "Active"
+                                                                            ? "Pause Agent"
+                                                                            : "Resume Agent"
+                                                                    }
+                                                                >
                                                                     <IconButton
                                                                         size="small"
                                                                         onClick={() => handlePause(agent)}
@@ -438,7 +594,7 @@ export const CallingAgentTab: React.FC = () => {
                                                             </>
                                                         )}
 
-                                                        <Tooltip title="Settings">
+                                                        <Tooltip title="Edit">
                                                             <IconButton
                                                                 size="small"
                                                                 onClick={() => handleEdit(agent)}
@@ -446,7 +602,8 @@ export const CallingAgentTab: React.FC = () => {
                                                                 <EditIcon />
                                                             </IconButton>
                                                         </Tooltip>
-                                                        <Tooltip title="Delete Agent">
+
+                                                        <Tooltip title="Delete">
                                                             <IconButton
                                                                 size="small"
                                                                 color="error"
@@ -456,118 +613,26 @@ export const CallingAgentTab: React.FC = () => {
                                                             </IconButton>
                                                         </Tooltip>
                                                     </Stack>
-                                                </Stack>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                            <TablePagination
+                                component="div"
+                                count={agentTotal}
+                                page={agentPage}
+                                onPageChange={(_, value) => setAgentPage(value)}
+                                rowsPerPage={agentRowsPerPage}
+                                onRowsPerPageChange={(event) => {
+                                    setAgentRowsPerPage(parseInt(event.target.value, 10));
+                                    setAgentPage(0);
+                                }}
+                                rowsPerPageOptions={[10, 25, 50]}
+                            />
+                        </TableContainer>
 
-                                                <Stack direction="row" spacing={1} alignItems="center">
-                                                    <Chip
-                                                        size="small"
-                                                        icon={<PhoneIcon color='primary' />}
-                                                        label={agent.calling_no || "Not Assigned"}
-                                                        color="default"
-                                                        variant="outlined"
-                                                    />
-
-                                                    <Chip
-                                                        size="small"
-                                                        icon={<PublicIcon color="primary" />}
-                                                        label={
-                                                            agent.server_location?.toLowerCase() === "in"
-                                                                ? "India Server"
-                                                                : agent.server_location?.toLowerCase() === "us"
-                                                                    ? "US Server"
-                                                                    : agent.server_location
-                                                        }
-                                                        variant="outlined"
-                                                    />
-                                                </Stack>
-                                            </CardContent>
-
-                                            {/* Body */}
-                                            <CardContent>
-                                                <Stack
-                                                    direction="row"
-                                                    alignItems="center"
-                                                    spacing={2}
-                                                    flexWrap="wrap"
-                                                    sx={{
-                                                        mb: 2
-                                                    }}
-                                                >
-                                                    <Stack direction="row" alignItems="center" spacing={1}>
-                                                        <CampaignIcon color="primary" />
-                                                        <Typography fontWeight={600}>Campaigns</Typography>
-                                                    </Stack>
-
-                                                    <Box display="flex" alignItems="center" gap={0.5}>
-                                                        <PendingIcon color="warning" />
-                                                        <Typography color="text.primary">Pending: {agent.pending_campaigns}</Typography>
-                                                    </Box>
-
-                                                    <Box display="flex" alignItems="center" gap={0.5}>
-                                                        <PlayCircleIcon color="secondary" />
-                                                        <Typography color="text.primary">Active: {agent.active_campaigns}</Typography>
-                                                    </Box>
-
-                                                    <Box display="flex" alignItems="center" gap={0.5}>
-                                                        <CheckCircleIcon color="primary" />
-                                                        <Typography color="text.primary">Completed: {agent.completed_campaigns}</Typography>
-                                                    </Box>
-                                                </Stack>
-
-                                                <Typography variant="subtitle2" mb={1}>
-                                                    Credit Summary
-                                                </Typography>
-
-                                                <Stack
-                                                    direction="row"
-                                                    justifyContent="space-between"
-                                                    alignItems="center"
-                                                >
-                                                    <Box textAlign="center" flex={1}>
-                                                        <AssignmentIcon
-                                                            color="secondary"
-                                                            sx={{ fontSize: 28 }}
-                                                        />
-                                                        <Typography variant="h6">
-                                                            {agent.allocated_calls}
-                                                        </Typography>
-                                                        <Typography variant="caption">
-                                                            Allocated
-                                                        </Typography>
-                                                    </Box>
-
-                                                    <Box textAlign="center" flex={1}>
-                                                        <HourglassEmptyIcon
-                                                            color="warning"
-                                                            sx={{ fontSize: 28 }}
-                                                        />
-                                                        <Typography variant="h6">
-                                                            {agent.pending_calls}
-                                                        </Typography>
-                                                        <Typography variant="caption">
-                                                            Pending
-                                                        </Typography>
-                                                    </Box>
-
-                                                    <Box textAlign="center" flex={1}>
-                                                        <CheckCircleIcon
-                                                            color="primary"
-                                                            sx={{ fontSize: 28 }}
-                                                        />
-                                                        <Typography variant="h6">
-                                                            {agent.attempted_calls}
-                                                        </Typography>
-                                                        <Typography variant="caption">
-                                                            Attempted
-                                                        </Typography>
-                                                    </Box>
-                                                </Stack>
-                                            </CardContent>
-                                        </Card>
-                                    </Grid>
-                                ))}
-                            </Grid>
-                        )}
                     </>
                 )
             }
