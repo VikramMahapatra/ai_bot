@@ -18,7 +18,7 @@ class CallingAgent(Base):
     type = Column(String, nullable=False, default="outbound")  # 'inbound' | 'outbound'
     calling_no = Column(String, nullable=True)
     destination = Column(String, nullable=True)  # comma-separated list of countries
-    status = Column(String, default="Draft")  # Active / Paused
+    status = Column(String, default="draft")  # Active / Paused
     server_location = Column(String)
 
     # Campaign & credits
@@ -75,6 +75,7 @@ class CallingAgent(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     
     external_agent_id = Column(String, nullable=True) 
+    external_agent_name = Column(String, nullable=True) 
     external_agent_a_id = Column(String, nullable=True)
     
     campaigns = relationship("CallCampaign", back_populates="agent")

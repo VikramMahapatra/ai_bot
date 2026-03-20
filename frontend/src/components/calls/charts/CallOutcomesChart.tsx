@@ -6,22 +6,27 @@ import {
     ResponsiveContainer,
     Legend
 } from "recharts";
+import { CallOutcome } from "../../../services/callService";
 
-const outcomes = [
-    { name: "Answered", value: 1870 },
-    { name: "No Answer", value: 890 },
-    { name: "Busy", value: 310 },
-    { name: "Voicemail", value: 140 }
-];
+// const outcomes = [
+//     { name: "Answered", value: 1870 },
+//     { name: "No Answer", value: 890 },
+//     { name: "Busy", value: 310 },
+//     { name: "Voicemail", value: 140 }
+// ];
 
 const COLORS = ["#2e7d32", "#ed6c02", "#0288d1", "#9c27b0"];
 
-export default function CallOutcomesChart() {
+interface Props {
+    data: CallOutcome[];
+}
+
+export default function CallOutcomesChart({ data }: Props) {
     return (
         <ResponsiveContainer width="100%" height={200}>
             <PieChart>
                 <Pie
-                    data={outcomes}
+                    data={data}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
@@ -29,7 +34,7 @@ export default function CallOutcomesChart() {
                     outerRadius={70}  // 👈 reduce size
                     label
                 >
-                    {outcomes.map((entry, index) => (
+                    {data.map((entry, index) => (
                         <Cell key={index} fill={COLORS[index]} />
                     ))}
                 </Pie>

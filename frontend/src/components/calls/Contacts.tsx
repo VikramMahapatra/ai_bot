@@ -26,6 +26,7 @@ import {
 import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { campaignService } from "../../services/campaignService";
+import React from "react";
 interface ContactsProps {
     form: any;
     setForm: any;
@@ -59,20 +60,41 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
     const [loading, setLoading] = useState(false);
     const theme = useTheme();
     const [dialogContacts, setDialogContacts] = useState<Contact[]>([]);
+    const [uploadResult, setUploadResult] = React.useState<any>(null);
 
     const handleAddContacts = () => {
-        const existingIds = campaignContacts.map(c => c.id);
+        const existingIds = new Set(campaignContacts.map(c => c.id));
 
-        const newContacts = dialogContacts.filter(
-            c => !existingIds.includes(c.id)
-        );
+        const combined = [
+            ...dialogContacts,
+            ...(uploadResult?.contacts || [])
+        ];
 
-        setCampaignContacts(prev => [...prev, ...newContacts]);
+        const uniqueNew: Contact[] = [];
+        const seen = new Set();
+
+        for (const c of combined) {
+            if (!c?.id) continue;
+
+            // skip if already in campaign OR already added in this batch
+            if (existingIds.has(c.id) || seen.has(c.id)) continue;
+
+            seen.add(c.id);
+            uniqueNew.push(c);
+        }
+
+        if (uniqueNew.length === 0) {
+            setOpenAdd(false);
+            return;
+        }
+
+        setCampaignContacts(prev => [...prev, ...uniqueNew]);
 
         setForm((prev: any) => ({
             ...prev,
-            contacts: [...prev.contacts, ...newContacts.map(c => c.id)]
+            contacts: [...prev.contacts, ...uniqueNew.map(c => c.id)]
         }));
+
         setOpenAdd(false);
     };
 
@@ -100,6 +122,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
     useEffect(() => {
         loadContactLists();
         loadExistingContacts();
+        setUploadResult(null)
     }, [form]);
 
 
@@ -214,7 +237,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         try {
             const result = await campaignService.uploadContactsCsv(Number(uploadListId), csvFile);
             setCsvFile(null);
-            showSuccess(`CSV upload complete: ${result.created} created, ${result.failed} failed`);
+            setUploadResult(result);
             await loadContactLists();
         } catch (err: any) {
             showMapContactError(err?.response?.data?.detail || 'Failed to upload CSV contacts');
@@ -404,6 +427,31 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                                 </Stack>
 
                             </Box>
+                            {uploadResult && (
+                                <Box
+                                    mt={2}
+                                    sx={{
+                                        p: 2,
+                                        borderRadius: 2,
+                                        bgcolor: "#ecfdf5",
+                                        border: "1px solid #bbf7d0",
+                                    }}
+                                >
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: "#065f46", mb: 0.5 }}>
+                                        CSV Upload Successful
+                                    </Typography>
+
+                                    <Typography variant="body2" sx={{ color: "#047857" }}>
+                                        {uploadResult.created} contacts added,{" "}
+                                        {uploadResult.updated} updated,{" "}
+                                        {uploadResult.failed} failed.
+                                    </Typography>
+
+                                    <Typography variant="caption" sx={{ color: "#065f46" }}>
+                                        Click "Done" to complete the process.
+                                    </Typography>
+                                </Box>
+                            )}
                         </>
 
                     )}

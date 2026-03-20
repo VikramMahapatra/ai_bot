@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -19,9 +19,13 @@ class CallCampaign(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     total_calls = Column(Integer, default=0)        
     completed_calls = Column(Integer, default=0)    
+    
+    success_rate = Column(Float, default=0.0)
+    response_rate = Column(Float, default=0.0)
 
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
+    external_campaign_name = Column(String, nullable=True) 
 
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")

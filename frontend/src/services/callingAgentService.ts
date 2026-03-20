@@ -7,7 +7,7 @@ export interface CallingAgent {
     type: 'outbound' | 'inbound'
     name: string
     calling_no?: string
-    status: 'Active' | 'Paused' | 'Draft'
+    status: 'active' | 'paused' | 'draft' | 'pending'
 
     server_location?: "IN" | "US"
 
@@ -73,8 +73,8 @@ export interface CallingAgent {
     training_doc?: string[]
 
     // Metadata
-    created_at?: Date
-    updated_at?: Date
+    created_at?: string
+    updated_at?: string
 }
 
 export interface CallingAgentLookup {
@@ -116,12 +116,12 @@ export interface CallingAgentStatusResponse {
 
 
 export const callingAgentService = {
-    async createCallingAgent(payload: FormData): Promise<CallingAgent> {
+    async createCallingAgent(payload: FormData): Promise<CallingAgentStatusResponse> {
         const response = await api.post('/api/calling-agent/create', payload);
         return response.data;
     },
 
-    async updateCallingAgent(payload: FormData, agent_id?: number): Promise<CallingAgent> {
+    async updateCallingAgent(payload: FormData, agent_id?: number): Promise<CallingAgentStatusResponse> {
         const response = await api.post(`/api/calling-agent/update/${agent_id}`, payload);
         console.log(response);
         return response.data;

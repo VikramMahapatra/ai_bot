@@ -21,11 +21,12 @@ interface ScheduleProps {
     setForm: any;
     prevStep: () => void;
     saveCampaign: () => void;
+    loading: boolean;
 }
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const Schedule = ({ mode, form, setForm, prevStep, saveCampaign }: ScheduleProps) => {
+const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: ScheduleProps) => {
     const [errors, setErrors] = useState<any>({});
     const [sendOption, setSendOption] = useState<"now" | "schedule">(form.start_datetime ? "schedule" : "now");
 
@@ -438,7 +439,7 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign }: ScheduleProps
                 <Button onClick={prevStep}>Back</Button>
             </Grid>
             <Grid item xs={6} textAlign="right">
-                <Button variant="contained" onClick={handleSave}>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>
                     {mode === "edit" ? "Update Campaign" : "Save Campaign"}
                 </Button>
             </Grid>

@@ -10,7 +10,7 @@ class CallingAgentCreate(BaseModel):
     type: str = "Outbound"
     calling_no: Optional[str] = None
     destination: Optional[List[str]] = []
-    status: str = "Active"
+    status: str = "pending"
     server_location: Optional[str] = None
 
     # Credit & campaign

@@ -29,6 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { Organization } from '../types';
+import logo from '../assets/Logo-02.png';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -202,7 +203,17 @@ const LoginPage: React.FC = () => {
                 position: 'relative',
                 overflow: 'hidden',
                 p: { xs: 3, sm: 4, md: 5 },
-                color: '#f7faff',
+                color: '#ffffff',
+
+                // 👇 FORCE all text inside to be white
+                '& .MuiTypography-root': {
+                  color: '#ffffff',
+                },
+
+                '& .MuiTypography-colorTextSecondary': {
+                  color: 'rgba(255,255,255,0.75)',
+                },
+
                 background:
                   'linear-gradient(160deg, #0a1d4b 0%, #10316f 46%, #17528f 100%)',
               }}
@@ -249,7 +260,7 @@ const LoginPage: React.FC = () => {
                   </Avatar>
                   <Box>
                     <Typography sx={{ fontSize: 12, letterSpacing: 1.6, fontWeight: 800, opacity: 0.84 }}>
-                      ZENTRIXEL AI PLATFORM
+                      ZENTRIXEL AI CHATBOT PLATFORM
                     </Typography>
                     <Typography sx={{ fontSize: 14, opacity: 0.88 }}>
                       Enterprise Conversational Suite
@@ -311,11 +322,29 @@ const LoginPage: React.FC = () => {
                 background: 'linear-gradient(180deg, rgba(255,255,255,0.9), rgba(245,250,255,0.85))',
               }}
             >
-              <Typography variant="h4" sx={{ fontWeight: 800, color: '#133a80', mb: 0.3, fontSize: { xs: 28, sm: 32 } }}>
+              <Box
+                sx={{
+                  height: 70,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={logo}
+                  alt="logo"
+                  style={{
+                    height: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                />
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 800, color: '#133a80', mb: 0.3, fontSize: { xs: 28, sm: 32 }, textAlign: 'center', }}>
                 Welcome back
               </Typography>
-              <Typography sx={{ color: 'text.secondary', mb: 2.1, fontSize: 14.6 }}>
-                Access your Zentrixel AI admin workspace.
+              <Typography sx={{ color: 'text.secondary', mb: 2.1, textAlign: 'center', fontSize: 14.6 }}>
+                Manage your AI agents, calls, and conversations in one place.
               </Typography>
 
               <Tabs
@@ -344,7 +373,7 @@ const LoginPage: React.FC = () => {
                 }}
               >
                 <Tab label="Login" />
-                <Tab label="Register" />
+                {/* <Tab label="Register" /> */}
               </Tabs>
 
               {error && <Alert severity="error" sx={{ mt: 1.2 }}>{error}</Alert>}
@@ -529,6 +558,23 @@ const LoginPage: React.FC = () => {
                   </Box>
                 </form>
               </TabPanel>
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  © Zentrixel, {new Date().getFullYear()}. All rights reserved. Powered by{" "}
+                  <a
+                    href="https://zentrixel.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: '#2d7df6',
+                      textDecoration: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    Zentrixel.com
+                  </a>
+                </Typography>
+              </Box>
             </Box>
           </Box>
         </Paper>

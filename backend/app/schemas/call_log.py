@@ -1,8 +1,8 @@
 # schemas/call_log.py
 
 from pydantic import BaseModel
-from typing import List
-from datetime import datetime
+from typing import List, Optional
+from datetime import date, datetime
 
 
 class TranscriptSchema(BaseModel):
@@ -37,3 +37,12 @@ class CallLogCreate(BaseModel):
     end_time: datetime
     audio_url: str
     transcript: list[TranscriptSchema]
+    
+    
+class CallLogRequest(BaseModel):
+    from_date: Optional[date] = None
+    end_date: Optional[date] = None
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 10
+    campaign_id: Optional[int] = None

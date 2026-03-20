@@ -12,6 +12,8 @@ from app.api.call_campaign import router as call_campaign_router
 from app.api.call_log import router as call_log_router
 from app.api.campaigns import router as campaigns_router
 from app.api.handoff import router as handoff_router
+from app.api.calls import router as calls_router
+
 from app.api.twilio_sms import router as twilio_sms_router
 
 __all__ = [

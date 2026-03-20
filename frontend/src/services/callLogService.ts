@@ -7,12 +7,28 @@ export interface CallTranscript {
 export interface CallLog {
     id: string;
     phone: string;
+    contact?: string;
     agent?: string;
     campaign?: string;
     testCall: boolean;
     type: "Inbound" | "Outbound";
     mode: "Voice" | "Chat" | "Video";
     status: string;
+    ended_reason?: string;
+    sentiment?: string;
+    call_summary?: string;
+    follow_up_recommended?: string[];
+    extract_data?: string;
+    lead_info?: {
+        lead_quality?: {
+            rate?: number;
+            label?: string;
+        },
+        follow_up?: {
+            rate?: number;
+            label?: string;
+        }
+    };
     date: string;
     startTime: string;
     endTime: string;
@@ -24,6 +40,7 @@ export interface CallLog {
 }
 
 export interface CallLogFilters {
+    campaign_id?: number;
     search?: string;
     skip?: number;
     limit?: number;
@@ -53,8 +70,8 @@ export const callLogService = {
         return response.data;
     },
 
-    async syncCallLogs(): Promise<SyncCallResponse> {
-        const response = await api.post(`/api/call-log/sync-call-logs`);
+    async syncCallLogs(params: CallLogFilters = {}): Promise<SyncCallResponse> {
+        const response = await api.post(`/api/call-log/sync-call-logs`, { params });
         return response.data;
     },
 

@@ -376,6 +376,7 @@ async def upload_contacts_manual(
         ContactList.id == contact_list_id,
         ContactList.organization_id == current_user.organization_id,
     ).first()
+    
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
@@ -442,6 +443,7 @@ async def upload_contacts_csv(
 
     created = 0
     errors = []
+    added_contacts = []
 
     for index, row in enumerate(reader, start=2):
         try:
@@ -450,22 +452,65 @@ async def upload_contacts_csv(
                 row.get("email"),
                 row.get("phone"),
             )
-            db.add(Contact(
-                contact_list_id=contact_list.id,
-                name=name or None,
-                email=email or None,
-                phone=phone or None,
-            ))
-            created += 1
+
+            # 🔍 Check existing contact
+            existing = None
+
+            if phone:
+                existing = db.query(Contact).filter(
+                    Contact.contact_list_id == contact_list.id,
+                    Contact.phone == phone
+                ).first()
+
+            elif email:
+                existing = db.query(Contact).filter(
+                    Contact.contact_list_id == contact_list.id,
+                    Contact.email == email
+                ).first()
+
+            if existing:
+                # ✏️ UPDATE
+                existing.name = name or existing.name
+                existing.email = email or existing.email
+                existing.phone = phone or existing.phone
+
+                added_contacts.append({
+                    "id": existing.id,
+                    "label": f"{existing.name} ({existing.phone})",
+                    "name": existing.name,
+                    "email": existing.email,
+                    "phone": existing.phone
+                })
+
+            else:
+                # ➕ CREATE
+                new_contact = Contact(
+                    contact_list_id=contact_list.id,
+                    name=name or None,
+                    email=email or None,
+                    phone=phone or None,
+                )
+                db.add(new_contact)
+                db.flush()  # get ID without commit
+
+                added_contacts.append({
+                    "id": new_contact.id,
+                    "label": f"{existing.name} ({existing.phone})",
+                    "name": new_contact.name,
+                    "email": new_contact.email,
+                    "phone": new_contact.phone
+                })
+
         except ValueError as exc:
             errors.append({"row": index, "error": str(exc)})
 
     db.commit()
 
     return {
-        "created": created,
+        "created": len(added_contacts),
         "failed": len(errors),
         "errors": errors,
+        "contacts": added_contacts
     }
 
 
