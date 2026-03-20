@@ -77,7 +77,7 @@ const CampaignAnalytics = () => {
             setAnalytics(response);
         }
         catch (err: any) {
-            showError(err?.response?.data?.detail || 'Failed to save the campaign data');
+            showError(err?.response?.data?.detail || 'Failed to sync analytics data');
             window.scrollTo({ top: 0, behavior: "smooth" });
         }
         finally {
