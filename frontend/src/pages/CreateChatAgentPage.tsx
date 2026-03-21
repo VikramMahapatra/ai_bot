@@ -93,6 +93,10 @@ const BOT_ICON_OPTIONS: IconOption[] = [
   { id: 'bot-spark', label: 'Spark', glyph: '✨' },
   { id: 'bot-brain', label: 'Brain', glyph: '🧠' },
   { id: 'bot-guide', label: 'Guide', glyph: '🛰️' },
+  { id: 'bot-helper', label: 'Helper', glyph: '🧑‍🔧' },
+  { id: 'bot-assistant', label: 'Assistant', glyph: '🤝' },
+  { id: 'bot-shield', label: 'Shield', glyph: '🛡️' },
+  { id: 'bot-light', label: 'Light', glyph: '💡' },
 ];
 
 const USER_ICON_OPTIONS: IconOption[] = [
@@ -100,6 +104,10 @@ const USER_ICON_OPTIONS: IconOption[] = [
   { id: 'user-smile', label: 'Smile', glyph: '🙂' },
   { id: 'user-chat', label: 'Chat', glyph: '💬' },
   { id: 'user-brief', label: 'Work', glyph: '🧑‍💼' },
+  { id: 'user-student', label: 'Student', glyph: '🧑‍🎓' },
+  { id: 'user-creative', label: 'Creative', glyph: '🎨' },
+  { id: 'user-tech', label: 'Tech', glyph: '🧑‍💻' },
+  { id: 'user-star', label: 'Star', glyph: '🌟' },
 ];
 
 const getIconGlyph = (iconId: string, role: 'bot' | 'user'): string => {
@@ -159,7 +167,9 @@ const CreateChatAgentPage: React.FC = () => {
   const [crawlPreviewItems, setCrawlPreviewItems] = useState<CrawlPreviewItem[]>([]);
   const [crawlJobStatus, setCrawlJobStatus] = useState<CrawlJobStatus | null>(null);
   const [refreshingCrawlStatus, setRefreshingCrawlStatus] = useState(false);
+  const [previewCrawling, setPreviewCrawling] = useState(false);
   const [knowledgeActionsDone, setKnowledgeActionsDone] = useState(0);
+  const [knowledgeFlowStep, setKnowledgeFlowStep] = useState(0);
 
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
   const [whatsappSaving, setWhatsappSaving] = useState(false);
@@ -171,7 +181,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [metaSdkFailed, setMetaSdkFailed] = useState(false);
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
-  const [showWidgetPreview, setShowWidgetPreview] = useState(false);
+  const [showWidgetPreview, setShowWidgetPreview] = useState(true);
   const [botIcon, setBotIcon] = useState('bot-robot');
   const [userIcon, setUserIcon] = useState('user-person');
 
@@ -206,6 +216,10 @@ const CreateChatAgentPage: React.FC = () => {
     () => Boolean(crawlJobStatus && (crawlJobStatus.status === 'queued' || crawlJobStatus.status === 'running')),
     [crawlJobStatus]
   );
+
+  const knowledgeEditingLocked = crawlJobActive;
+  const canAdvanceToStepB = selectedPreviewCount > 0;
+  const canAdvanceToStepC = crawlJobStatus?.status === 'completed';
 
   const goBackStep = () => {
     setActiveStep((prev) => Math.max(0, prev - 1));
@@ -464,7 +478,7 @@ const CreateChatAgentPage: React.FC = () => {
     };
   }, []);
 
-  const openMetaOAuthFallback = (metaAppId: string, configId: string) => {
+  const openMetaOAuthFallback = (metaAppId: string) => {
     const state = `wa_${Date.now()}`;
     const oauthUrl =
       `https://www.facebook.com/v19.0/dialog/oauth` +
@@ -472,7 +486,6 @@ const CreateChatAgentPage: React.FC = () => {
       `&redirect_uri=${encodeURIComponent(metaRedirectUri)}` +
       `&response_type=code` +
       `&scope=${encodeURIComponent('business_management,whatsapp_business_management,whatsapp_business_messaging')}` +
-      // `&config_id=${encodeURIComponent(configId)}` +
       `&state=${encodeURIComponent(state)}`;
 
     const popup = window.open(oauthUrl, 'meta_whatsapp_oauth', 'width=980,height=760,resizable=yes,scrollbars=yes');
@@ -541,7 +554,7 @@ const CreateChatAgentPage: React.FC = () => {
       setMetaConnecting(true);
       setError('');
       if (metaSdkFailed) {
-        openMetaOAuthFallback(metaAppId, configId);
+        openMetaOAuthFallback(metaAppId);
         setError('Meta SDK failed to load. Opened fallback signup window.');
         return;
       }
@@ -687,6 +700,22 @@ const CreateChatAgentPage: React.FC = () => {
     };
   }, [crawlJobStatus]);
 
+  useEffect(() => {
+    if (activeStep !== 1) return;
+
+    if (crawlJobStatus?.status === 'completed') {
+      setKnowledgeFlowStep(2);
+      return;
+    }
+
+    if (crawlJobStatus?.status === 'queued' || crawlJobStatus?.status === 'running' || crawlPreviewItems.length > 0) {
+      setKnowledgeFlowStep(1);
+      return;
+    }
+
+    setKnowledgeFlowStep(0);
+  }, [activeStep]);
+
   const buildWidgetPayload = () => {
     let leadFieldMetadata: Record<string, any> = {};
     const rawLeadFields = (widget.lead_fields || '').trim();
@@ -770,6 +799,7 @@ const CreateChatAgentPage: React.FC = () => {
 
     try {
       setBusy(true);
+      setPreviewCrawling(true);
       setError('');
       setCrawlJobStatus(null);
       const result = await knowledgeService.previewWebsiteLinks({
@@ -793,6 +823,7 @@ const CreateChatAgentPage: React.FC = () => {
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to preview website links.');
     } finally {
+      setPreviewCrawling(false);
       setBusy(false);
     }
   };
@@ -900,6 +931,10 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const addTextKnowledge = async () => {
+    if (knowledgeEditingLocked) {
+      setError('Website embedding is in progress. Please wait before adding text knowledge.');
+      return;
+    }
     if (!createdWidgetId) {
       setError('Save agent profile first.');
       return;
@@ -924,6 +959,10 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const addDocumentKnowledge = async () => {
+    if (knowledgeEditingLocked) {
+      setError('Website embedding is in progress. Please wait before uploading a document.');
+      return;
+    }
     if (!createdWidgetId) {
       setError('Save agent profile first.');
       return;
@@ -966,6 +1005,10 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const moveToIntegrationStep = () => {
+    if (knowledgeEditingLocked) {
+      setError('Please wait for website crawling/embedding to finish before continuing to integrations.');
+      return;
+    }
     setActiveStep(2);
     setError('');
     if (knowledgeActionsDone > 0) {
@@ -1496,7 +1539,15 @@ const CreateChatAgentPage: React.FC = () => {
                             Agent ID: <strong>{createdWidgetId}</strong>
                           </Typography>
                         </Box>
-                        <Chip label={`Knowledge Actions ${knowledgeActionsDone}`} color={knowledgeActionsDone > 0 ? 'success' : 'default'} />
+                        <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                          <Chip label={`Knowledge Actions ${knowledgeActionsDone}`} color={knowledgeActionsDone > 0 ? 'success' : 'default'} />
+                          <Chip
+                            label={`Chunks Embedded ${crawlJobStatus?.chunks_embedded || 0}`}
+                            color={(crawlJobStatus?.chunks_embedded || 0) > 0 ? 'success' : 'default'}
+                            variant="outlined"
+                          />
+                          {knowledgeEditingLocked && <Chip label="Embedding in Progress" color="warning" variant="outlined" />}
+                        </Stack>
                       </Stack>
                     </Box>
                   </Grid>
@@ -1504,124 +1555,192 @@ const CreateChatAgentPage: React.FC = () => {
                   <Grid item xs={12} md={7}>
                     <Stack spacing={2}>
                       <Box sx={accentPanelSx}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Website Crawl</Typography>
                         <Stack spacing={1.4}>
-                          <TextField
-                            label="Website URL"
-                            value={knowledgeUrl}
-                            onChange={(e) => {
-                              setKnowledgeUrl(e.target.value);
-                              setCrawlPreviewItems([]);
-                            }}
-                            placeholder="https://example.com"
-                            fullWidth
-                            sx={fieldSx}
-                          />
-                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                            <TextField
-                              label="Max Pages"
-                              type="number"
-                              value={crawlMaxPages}
-                              onChange={(e) => {
-                                setCrawlMaxPages(Math.max(1, Number(e.target.value) || 1));
-                                setCrawlPreviewItems([]);
-                              }}
-                              inputProps={{ min: 1 }}
-                              fullWidth
-                              sx={fieldSx}
-                            />
-                            <TextField
-                              label="Max Depth"
-                              type="number"
-                              value={crawlMaxDepth}
-                              onChange={(e) => {
-                                setCrawlMaxDepth(Math.max(1, Number(e.target.value) || 1));
-                                setCrawlPreviewItems([]);
-                              }}
-                              inputProps={{ min: 1 }}
-                              fullWidth
-                              sx={fieldSx}
-                            />
-                          </Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Website Crawl Workflow</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Use Next to move Step A to Step B to Step C.
+                          </Typography>
 
-                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                            <Button variant="outlined" onClick={previewWebsiteLinks} disabled={busy || crawlJobActive}>
-                              Preview Crawled Links
-                            </Button>
-                            <Button
-                              variant="contained"
-                              onClick={addWebsiteKnowledge}
-                              disabled={busy || crawlJobActive || selectedPreviewCount < 1}
-                              sx={{
-                                background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
-                              }}
-                            >
-                              Embed Selected ({selectedPreviewCount})
-                            </Button>
-                            <Button
-                              variant="text"
-                              onClick={refreshCrawlProgress}
-                              disabled={refreshingCrawlStatus || !createdWidgetId}
-                              startIcon={refreshingCrawlStatus ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
-                            >
-                              {refreshingCrawlStatus ? 'Refreshing...' : 'Refresh Progress'}
-                            </Button>
+                          <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                            <Chip label="Step A" color={knowledgeFlowStep === 0 ? 'primary' : knowledgeFlowStep > 0 ? 'success' : 'default'} variant={knowledgeFlowStep === 0 ? 'filled' : 'outlined'} />
+                            <Chip label="Step B" color={knowledgeFlowStep === 1 ? 'primary' : knowledgeFlowStep > 1 ? 'success' : 'default'} variant={knowledgeFlowStep === 1 ? 'filled' : 'outlined'} />
+                            <Chip label="Step C" color={knowledgeFlowStep === 2 ? 'primary' : 'default'} variant={knowledgeFlowStep === 2 ? 'filled' : 'outlined'} />
                           </Stack>
 
-                          {crawlJobStatus && (
+                          {knowledgeEditingLocked && (
+                            <Alert severity="info">
+                              Website embedding is running. To avoid conflicts, Continue to Integrations, Document Upload, and Add Text Knowledge are temporarily disabled.
+                            </Alert>
+                          )}
+
+                          {knowledgeFlowStep === 0 && (
                             <Box
                               sx={{
-                                border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
                                 borderRadius: '12px',
                                 p: 1.2,
-                                background: alpha(theme.palette.common.white, 0.76),
+                                background: alpha(theme.palette.common.white, 0.72),
                               }}
                             >
-                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                                <Stack direction="row" spacing={0.8} alignItems="center">
-                                  <Chip
-                                    size="small"
-                                    label={crawlJobStatus.status.toUpperCase()}
-                                    color={
-                                      crawlJobStatus.status === 'completed'
-                                        ? 'success'
-                                        : crawlJobStatus.status === 'failed'
-                                          ? 'error'
-                                          : 'primary'
-                                    }
+                              <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                                Step A
+                              </Typography>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                                Preview Crawled Links
+                              </Typography>
+
+                              <Stack spacing={1.2}>
+                                <TextField
+                                  label="Website URL"
+                                  value={knowledgeUrl}
+                                  onChange={(e) => {
+                                    setKnowledgeUrl(e.target.value);
+                                    setCrawlPreviewItems([]);
+                                  }}
+                                  placeholder="https://example.com"
+                                  fullWidth
+                                  disabled={knowledgeEditingLocked}
+                                  sx={fieldSx}
+                                />
+                                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                                  <TextField
+                                    label="Max Pages"
+                                    type="number"
+                                    value={crawlMaxPages}
+                                    onChange={(e) => {
+                                      setCrawlMaxPages(Math.max(1, Number(e.target.value) || 1));
+                                      setCrawlPreviewItems([]);
+                                    }}
+                                    inputProps={{ min: 1 }}
+                                    fullWidth
+                                    disabled={knowledgeEditingLocked}
+                                    sx={fieldSx}
                                   />
-                                  <Typography variant="caption" color="text.secondary">
-                                    {crawlJobStatus.stage ? `Stage: ${crawlJobStatus.stage}` : 'Processing'}
+                                  <TextField
+                                    label="Max Depth"
+                                    type="number"
+                                    value={crawlMaxDepth}
+                                    onChange={(e) => {
+                                      setCrawlMaxDepth(Math.max(1, Number(e.target.value) || 1));
+                                      setCrawlPreviewItems([]);
+                                    }}
+                                    inputProps={{ min: 1 }}
+                                    fullWidth
+                                    disabled={knowledgeEditingLocked}
+                                    sx={fieldSx}
+                                  />
+                                </Box>
+
+                                <Button variant="outlined" onClick={previewWebsiteLinks} disabled={previewCrawling || crawlJobActive}>
+                                  {previewCrawling ? 'Preview Crawling...' : 'Preview Crawled Links'}
+                                </Button>
+
+                                {previewCrawling && (
+                                  <Box
+                                    sx={{
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                                      borderRadius: '10px',
+                                      p: 1,
+                                      background: alpha(theme.palette.common.white, 0.8),
+                                    }}
+                                  >
+                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                                      <Typography variant="caption" color="text.secondary">
+                                        Crawling website links for preview. Please wait...
+                                      </Typography>
+                                      <CircularProgress size={16} />
+                                    </Stack>
+                                    <LinearProgress sx={{ mt: 0.7, height: 7, borderRadius: 999 }} />
+                                  </Box>
+                                )}
+
+                                {crawlPreviewItems.length > 0 ? (
+                                  <Box
+                                    sx={{
+                                      mt: 0.2,
+                                      border: `1px solid ${alpha(theme.palette.divider, 0.42)}`,
+                                      borderRadius: '10px',
+                                      p: 0.9,
+                                      background: alpha(theme.palette.common.white, 0.86),
+                                    }}
+                                  >
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Discovered {crawlPreviewItems.length} links. Selected {selectedPreviewCount}.
+                                      </Typography>
+                                      <Stack direction="row" spacing={0.8}>
+                                        <Button size="small" variant="text" onClick={() => setAllPreviewSelections(true)} disabled={knowledgeEditingLocked}>
+                                          Select All
+                                        </Button>
+                                        <Button size="small" variant="text" onClick={() => setAllPreviewSelections(false)} disabled={knowledgeEditingLocked}>
+                                          Unselect All
+                                        </Button>
+                                      </Stack>
+                                    </Stack>
+
+                                    <Box
+                                      sx={{
+                                        mt: 1,
+                                        maxHeight: 240,
+                                        overflowY: 'auto',
+                                        borderRadius: '10px',
+                                        border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                                        p: 0.8,
+                                        background: alpha(theme.palette.common.white, 0.9),
+                                      }}
+                                    >
+                                      {crawlPreviewItems.map((item) => (
+                                        <Box
+                                          key={item.url}
+                                          sx={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: 0.8,
+                                            px: 0.4,
+                                            py: 0.45,
+                                            borderRadius: '8px',
+                                            '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
+                                          }}
+                                        >
+                                          <Checkbox
+                                            size="small"
+                                            checked={item.selected}
+                                            disabled={knowledgeEditingLocked}
+                                            onChange={() => togglePreviewSelection(item.url)}
+                                            sx={{ mt: -0.3 }}
+                                          />
+                                          <Box sx={{ minWidth: 0 }}>
+                                            <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                                              {item.url}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                              Depth {item.depth}
+                                            </Typography>
+                                          </Box>
+                                        </Box>
+                                      ))}
+                                    </Box>
+                                  </Box>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    Preview links to continue.
                                   </Typography>
+                                )}
+
+                                <Stack direction="row" justifyContent="flex-end">
+                                  <Button
+                                    variant="contained"
+                                    onClick={() => setKnowledgeFlowStep(1)}
+                                    disabled={!canAdvanceToStepB || knowledgeEditingLocked}
+                                  >
+                                    Next: Step B
+                                  </Button>
                                 </Stack>
-                                <Typography variant="caption" color="text.secondary">
-                                  Job ID: {crawlJobStatus.job_id}
-                                </Typography>
                               </Stack>
-
-                              <LinearProgress
-                                variant="determinate"
-                                value={Math.max(0, Math.min(100, crawlJobStatus.progress || 0))}
-                                sx={{ mt: 1, height: 8, borderRadius: 999 }}
-                              />
-
-                              <Typography variant="body2" sx={{ mt: 0.8 }}>
-                                {crawlJobStatus.message || 'Processing website embedding...'}
-                              </Typography>
-
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.45 }}>
-                                Pages {crawlJobStatus.pages_completed || 0}/{crawlJobStatus.pages_total || selectedPreviewCount} • Crawled {crawlJobStatus.pages_crawled || 0} • Scanned {crawlJobStatus.pages_scanned || 0} • Chunks {crawlJobStatus.chunks_embedded || 0}
-                              </Typography>
-
-                              {crawlJobStatus.error && (
-                                <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.6 }}>
-                                  {crawlJobStatus.error}
-                                </Typography>
-                              )}
                             </Box>
                           )}
 
-                          {crawlPreviewItems.length > 0 && (
+                          {knowledgeFlowStep === 1 && (
                             <Box
                               sx={{
                                 border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
@@ -1631,112 +1750,217 @@ const CreateChatAgentPage: React.FC = () => {
                               }}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  Discovered {crawlPreviewItems.length} links. Selected {selectedPreviewCount}.
-                                </Typography>
-                                <Stack direction="row" spacing={0.8}>
-                                  <Button size="small" variant="text" onClick={() => setAllPreviewSelections(true)}>
-                                    Select All
-                                  </Button>
-                                  <Button size="small" variant="text" onClick={() => setAllPreviewSelections(false)}>
-                                    Unselect All
-                                  </Button>
-                                </Stack>
+                                <Box>
+                                  <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                                    Step B
+                                  </Typography>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                    Embed Crawled Pages
+                                  </Typography>
+                                </Box>
+                                <Button
+                                  variant="contained"
+                                  onClick={addWebsiteKnowledge}
+                                  disabled={busy || crawlJobActive || selectedPreviewCount < 1}
+                                  sx={{
+                                    background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                                  }}
+                                >
+                                  Embed Selected ({selectedPreviewCount})
+                                </Button>
                               </Stack>
 
-                              <Box
-                                sx={{
-                                  mt: 1,
-                                  maxHeight: 240,
-                                  overflowY: 'auto',
-                                  borderRadius: '10px',
-                                  border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
-                                  p: 0.8,
-                                  background: alpha(theme.palette.common.white, 0.86),
-                                }}
-                              >
-                                {crawlPreviewItems.map((item) => (
-                                  <Box
-                                    key={item.url}
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'flex-start',
-                                      gap: 0.8,
-                                      px: 0.4,
-                                      py: 0.45,
-                                      borderRadius: '8px',
-                                      '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
-                                    }}
-                                  >
-                                    <Checkbox
-                                      size="small"
-                                      checked={item.selected}
-                                      onChange={() => togglePreviewSelection(item.url)}
-                                      sx={{ mt: -0.3 }}
-                                    />
-                                    <Box sx={{ minWidth: 0 }}>
-                                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                                        {item.url}
-                                      </Typography>
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.max(0, Math.min(100, crawlJobStatus?.progress || 0))}
+                                sx={{ mt: 1, height: 8, borderRadius: 999 }}
+                              />
+
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ mt: 0.8 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Step B Progress: {Math.max(0, Math.min(100, crawlJobStatus?.progress || 0))}%
+                                </Typography>
+                                <Button
+                                  variant="text"
+                                  onClick={refreshCrawlProgress}
+                                  disabled={refreshingCrawlStatus || !createdWidgetId}
+                                  startIcon={refreshingCrawlStatus ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
+                                >
+                                  {refreshingCrawlStatus ? 'Refreshing...' : 'Refresh Progress'}
+                                </Button>
+                              </Stack>
+
+                              {crawlJobStatus ? (
+                                <Box sx={{ mt: 0.8 }}>
+                                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                                    <Stack direction="row" spacing={0.8} alignItems="center">
+                                      <Chip
+                                        size="small"
+                                        label={crawlJobStatus.status.toUpperCase()}
+                                        color={
+                                          crawlJobStatus.status === 'completed'
+                                            ? 'success'
+                                            : crawlJobStatus.status === 'failed'
+                                              ? 'error'
+                                              : 'primary'
+                                        }
+                                      />
                                       <Typography variant="caption" color="text.secondary">
-                                        Depth {item.depth}
+                                        {crawlJobStatus.stage ? `Stage: ${crawlJobStatus.stage}` : 'Processing'}
                                       </Typography>
-                                    </Box>
-                                  </Box>
-                                ))}
-                              </Box>
+                                    </Stack>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Job ID: {crawlJobStatus.job_id}
+                                    </Typography>
+                                  </Stack>
+
+                                  <Typography variant="body2" sx={{ mt: 0.8 }}>
+                                    {crawlJobStatus.message || 'Processing website embedding...'}
+                                  </Typography>
+
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.45 }}>
+                                    Pages {crawlJobStatus.pages_completed || 0}/{crawlJobStatus.pages_total || selectedPreviewCount} • Crawled {crawlJobStatus.pages_crawled || 0} • Scanned {crawlJobStatus.pages_scanned || 0} • Chunks Embedded {crawlJobStatus.chunks_embedded || 0}
+                                  </Typography>
+
+                                  {crawlJobStatus.error && (
+                                    <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.6 }}>
+                                      {crawlJobStatus.error}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              ) : (
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>
+                                  Start embedding to see Step B progress updates.
+                                </Typography>
+                              )}
+
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mt: 1.2 }}>
+                                <Button variant="outlined" onClick={() => setKnowledgeFlowStep(0)}>
+                                  Back: Step A
+                                </Button>
+                                <Button variant="contained" onClick={() => setKnowledgeFlowStep(2)} disabled={!canAdvanceToStepC}>
+                                  Next: Step C
+                                </Button>
+                              </Stack>
+                            </Box>
+                          )}
+
+                          {knowledgeFlowStep === 2 && (
+                            <Box
+                              sx={{
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                                borderRadius: '12px',
+                                p: 1.2,
+                                background: alpha(theme.palette.common.white, 0.72),
+                              }}
+                            >
+                              <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+                                Step C
+                              </Typography>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                Embedding Summary
+                              </Typography>
+
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>
+                                Embedding complete. Review summary and continue.
+                              </Typography>
+
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6 }}>
+                                Chunks Embedded: {crawlJobStatus?.chunks_embedded || 0} • Pages Completed: {crawlJobStatus?.pages_completed || 0}/{crawlJobStatus?.pages_total || selectedPreviewCount}
+                              </Typography>
+
+                              <Stack direction="row" spacing={1} justifyContent="space-between" sx={{ mt: 1.2 }}>
+                                <Button variant="outlined" onClick={() => setKnowledgeFlowStep(1)}>
+                                  Back: Step B
+                                </Button>
+                                <Chip label="Step C Complete" color="success" variant="outlined" />
+                              </Stack>
                             </Box>
                           )}
                         </Stack>
                       </Box>
 
-                      <Box sx={accentPanelSx}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge</Typography>
-                        <Stack spacing={1.4}>
-                          <TextField
-                            label="Title"
-                            value={knowledgeTitle}
-                            onChange={(e) => setKnowledgeTitle(e.target.value)}
-                            fullWidth
-                            sx={fieldSx}
-                          />
-                          <TextField
-                            label="Knowledge Content"
-                            value={knowledgeText}
-                            onChange={(e) => setKnowledgeText(e.target.value)}
-                            multiline
-                            rows={6}
-                            fullWidth
-                            placeholder="Paste FAQs, product details, policies, etc."
-                            sx={fieldSx}
-                          />
-                          <Button variant="outlined" onClick={addTextKnowledge} disabled={busy}>
-                            Add Text Knowledge
-                          </Button>
-                        </Stack>
-                      </Box>
+                      {knowledgeFlowStep === 2 ? (
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge</Typography>
+                          {knowledgeEditingLocked && (
+                            <Alert severity="info" sx={{ mb: 1.2 }}>
+                              Disabled while website crawling/embedding is in progress.
+                            </Alert>
+                          )}
+                          <Stack spacing={1.4}>
+                            <TextField
+                              label="Title"
+                              value={knowledgeTitle}
+                              onChange={(e) => setKnowledgeTitle(e.target.value)}
+                              fullWidth
+                              disabled={knowledgeEditingLocked}
+                              sx={fieldSx}
+                            />
+                            <TextField
+                              label="Knowledge Content"
+                              value={knowledgeText}
+                              onChange={(e) => setKnowledgeText(e.target.value)}
+                              multiline
+                              rows={6}
+                              fullWidth
+                              disabled={knowledgeEditingLocked}
+                              placeholder="Paste FAQs, product details, policies, etc."
+                              sx={fieldSx}
+                            />
+                            <Button variant="outlined" onClick={addTextKnowledge} disabled={busy || knowledgeEditingLocked}>
+                              Add Text Knowledge
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ) : (
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
+                            Additional Knowledge Channels
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Add Text Knowledge and Document Upload unlock after reaching Step C.
+                          </Typography>
+                        </Box>
+                      )}
                     </Stack>
                   </Grid>
 
                   <Grid item xs={12} md={5}>
                     <Stack spacing={2}>
-                      <Box sx={accentPanelSx}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
-                        <Stack spacing={1.4}>
-                          <Button variant="outlined" component="label" disabled={busy}>
-                            {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
-                            <input
-                              type="file"
-                              hidden
-                              accept=".pdf,.doc,.docx,.xls,.xlsx"
-                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                            />
-                          </Button>
-                          <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy}>
-                            Upload Document Knowledge
-                          </Button>
-                        </Stack>
-                      </Box>
+                      {knowledgeFlowStep === 2 ? (
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
+                          {knowledgeEditingLocked && (
+                            <Alert severity="info" sx={{ mb: 1.2 }}>
+                              Disabled while website crawling/embedding is in progress.
+                            </Alert>
+                          )}
+                          <Stack spacing={1.4}>
+                            <Button variant="outlined" component="label" disabled={busy || knowledgeEditingLocked}>
+                              {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
+                              <input
+                                type="file"
+                                hidden
+                                accept=".pdf,.doc,.docx,.xls,.xlsx"
+                                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                              />
+                            </Button>
+                            <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy || knowledgeEditingLocked}>
+                              Upload Document Knowledge
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ) : (
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
+                            Document Upload
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Complete Step C to unlock document upload.
+                          </Typography>
+                        </Box>
+                      )}
 
                       <Box sx={accentPanelSx}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
@@ -1757,7 +1981,7 @@ const CreateChatAgentPage: React.FC = () => {
                       <Button
                         variant="contained"
                         onClick={moveToIntegrationStep}
-                        disabled={busy}
+                        disabled={busy || knowledgeEditingLocked || knowledgeFlowStep < 2}
                         sx={{
                           borderRadius: '12px',
                           px: 2.6,
@@ -1765,7 +1989,7 @@ const CreateChatAgentPage: React.FC = () => {
                           background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
                         }}
                       >
-                        Continue to Integrations
+                        {knowledgeFlowStep < 2 ? 'Complete Step A/B/C to Continue' : 'Continue to Integrations'}
                       </Button>
                     </Stack>
                   </Grid>
