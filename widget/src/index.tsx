@@ -12,6 +12,7 @@ declare global {
       welcomeMessage?: string;
       primaryColor?: string;
       secondaryColor?: string;
+      chatHeaderFontColor?: string;
       position?: string;
       botIcon?: string;
       userIcon?: string;
@@ -31,6 +32,7 @@ interface WidgetPublicConfig {
 interface IconSelection {
   botIcon?: string;
   userIcon?: string;
+  chatHeaderFontColor?: string;
 }
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
@@ -54,7 +56,11 @@ const parseIconSelection = (leadFieldsRaw?: string): IconSelection => {
     }
     const botIcon = typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined;
     const userIcon = typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined;
-    return { botIcon, userIcon };
+    const chatHeaderFontColor =
+      typeof (parsed as any).chat_header_font_color === 'string'
+        ? (parsed as any).chat_header_font_color
+        : undefined;
+    return { botIcon, userIcon, chatHeaderFontColor };
   } catch {
     return {};
   }
@@ -92,6 +98,7 @@ async function initWidget() {
         welcomeMessage={config.welcomeMessage || remoteConfig?.welcome_message}
         primaryColor={config.primaryColor || remoteConfig?.primary_color}
         secondaryColor={config.secondaryColor || remoteConfig?.secondary_color}
+        chatHeaderFontColor={config.chatHeaderFontColor || iconSelection.chatHeaderFontColor}
         position={config.position || remoteConfig?.position}
         botIcon={config.botIcon || iconSelection.botIcon}
         userIcon={config.userIcon || iconSelection.userIcon}

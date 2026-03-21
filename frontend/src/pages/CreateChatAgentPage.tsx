@@ -53,6 +53,7 @@ interface WidgetConfig {
   system_prompt?: string;
   primary_color: string;
   secondary_color: string;
+  chat_header_font_color?: string;
   position: string;
   lead_capture_enabled: boolean;
   lead_fields?: string;
@@ -115,7 +116,7 @@ const getIconGlyph = (iconId: string, role: 'bot' | 'user'): string => {
   return source.find((item) => item.id === iconId)?.glyph || source[0].glyph;
 };
 
-const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string } => {
+const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string; chatHeaderFontColor?: string } => {
   if (!leadFieldsRaw) return {};
   try {
     const parsed = JSON.parse(leadFieldsRaw);
@@ -125,6 +126,10 @@ const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIco
     return {
       botIcon: typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined,
       userIcon: typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined,
+      chatHeaderFontColor:
+        typeof (parsed as any).chat_header_font_color === 'string'
+          ? (parsed as any).chat_header_font_color
+          : undefined,
     };
   } catch {
     return {};
@@ -149,6 +154,7 @@ const CreateChatAgentPage: React.FC = () => {
     system_prompt: '',
     primary_color: '#2f6bff',
     secondary_color: '#36c4ff',
+    chat_header_font_color: '',
     position: 'bottom-right',
     lead_capture_enabled: true,
     lead_fields: '',
@@ -230,6 +236,11 @@ const CreateChatAgentPage: React.FC = () => {
     () => `linear-gradient(120deg, ${widget.primary_color || '#2f6bff'} 0%, ${widget.secondary_color || widget.primary_color || '#36c4ff'} 100%)`,
     [widget.primary_color, widget.secondary_color]
   );
+
+  const previewHeaderTextColor = useMemo(() => {
+    const configured = (widget.chat_header_font_color || '').trim();
+    return configured || '#ffffff';
+  }, [widget.chat_header_font_color]);
 
   const previewPositionSx = useMemo(() => {
     if (widget.position === 'bottom-left') return { left: { xs: 8, md: 16 }, bottom: { xs: 8, md: 16 } };
@@ -428,9 +439,12 @@ const CreateChatAgentPage: React.FC = () => {
           lead_fields: typeof config.lead_fields === 'string' ? config.lead_fields : prev.lead_fields,
         }));
 
-        const iconSelection = parseIconSelection(typeof config.lead_fields === 'string' ? config.lead_fields : undefined);
-        if (iconSelection.botIcon) setBotIcon(iconSelection.botIcon);
-        if (iconSelection.userIcon) setUserIcon(iconSelection.userIcon);
+        const styleSelection = parseStyleSelection(typeof config.lead_fields === 'string' ? config.lead_fields : undefined);
+        if (styleSelection.botIcon) setBotIcon(styleSelection.botIcon);
+        if (styleSelection.userIcon) setUserIcon(styleSelection.userIcon);
+        if (styleSelection.chatHeaderFontColor) {
+          setWidget((prev) => ({ ...prev, chat_header_font_color: styleSelection.chatHeaderFontColor }));
+        }
 
         setCreatedWidgetId(loadedWidgetId);
         setSuccess('Loaded existing agent configuration for editing.');
@@ -739,6 +753,9 @@ const CreateChatAgentPage: React.FC = () => {
         ...leadFieldMetadata,
         bot_icon: botIcon,
         user_icon: userIcon,
+        ...(widget.chat_header_font_color?.trim()
+          ? { chat_header_font_color: widget.chat_header_font_color.trim() }
+          : {}),
       }),
     };
   };
@@ -1327,6 +1344,25 @@ const CreateChatAgentPage: React.FC = () => {
                       </Box>
 
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                        <TextField
+                          label="Chat Header Font Color (Optional)"
+                          value={widget.chat_header_font_color || ''}
+                          onChange={(e) => setWidget((prev) => ({ ...prev, chat_header_font_color: e.target.value }))}
+                          placeholder="Leave empty to use default white"
+                          sx={fieldSx}
+                        />
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => setWidget((prev) => ({ ...prev, chat_header_font_color: '' }))}
+                          >
+                            Use Default Header Font
+                          </Button>
+                        </Box>
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
                         <Box sx={accentPanelSx}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
                             Primary Color Picker
@@ -1358,6 +1394,27 @@ const CreateChatAgentPage: React.FC = () => {
                             value={widget.secondary_color}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                               setWidget((prev) => ({ ...prev, secondary_color: e.target.value }))
+                            }
+                            sx={{
+                              width: '100%',
+                              height: 44,
+                              borderRadius: '10px',
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+                              backgroundColor: alpha(theme.palette.common.white, 0.86),
+                              p: 0.4,
+                            }}
+                          />
+                        </Box>
+                        <Box sx={accentPanelSx}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
+                            Header Font Color Picker (Optional)
+                          </Typography>
+                          <Box
+                            component="input"
+                            type="color"
+                            value={(widget.chat_header_font_color || '').trim() || '#ffffff'}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              setWidget((prev) => ({ ...prev, chat_header_font_color: e.target.value }))
                             }
                             sx={{
                               width: '100%',
@@ -1450,7 +1507,7 @@ const CreateChatAgentPage: React.FC = () => {
                                   flexDirection: 'column',
                                 }}
                               >
-                                <Box sx={{ background: previewGradient, color: '#fff', py: 1, px: 1.25, fontWeight: 700, fontSize: '0.9rem' }}>
+                                <Box sx={{ background: previewGradient, color: previewHeaderTextColor, py: 1, px: 1.25, fontWeight: 700, fontSize: '0.9rem' }}>
                                   {widget.name.trim() || 'AI Assistant'}
                                 </Box>
                                 <Box sx={{ flex: 1, p: { xs: 0.85, md: 1.1 }, bgcolor: '#f8fafc' }}>
@@ -1558,7 +1615,7 @@ const CreateChatAgentPage: React.FC = () => {
                         <Stack spacing={1.4}>
                           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Website Crawl Workflow</Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Use Next to move Step A to Step B to Step C.
+                            Optional path: use Step A to Step B to Step C for website crawl, or skip directly to FAQ text and document upload.
                           </Typography>
 
                           <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
@@ -1880,87 +1937,65 @@ const CreateChatAgentPage: React.FC = () => {
                         </Stack>
                       </Box>
 
-                      {knowledgeFlowStep === 2 ? (
-                        <Box sx={accentPanelSx}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge</Typography>
-                          {knowledgeEditingLocked && (
-                            <Alert severity="info" sx={{ mb: 1.2 }}>
-                              Disabled while website crawling/embedding is in progress.
-                            </Alert>
-                          )}
-                          <Stack spacing={1.4}>
-                            <TextField
-                              label="Title"
-                              value={knowledgeTitle}
-                              onChange={(e) => setKnowledgeTitle(e.target.value)}
-                              fullWidth
-                              disabled={knowledgeEditingLocked}
-                              sx={fieldSx}
-                            />
-                            <TextField
-                              label="Knowledge Content"
-                              value={knowledgeText}
-                              onChange={(e) => setKnowledgeText(e.target.value)}
-                              multiline
-                              rows={6}
-                              fullWidth
-                              disabled={knowledgeEditingLocked}
-                              placeholder="Paste FAQs, product details, policies, etc."
-                              sx={fieldSx}
-                            />
-                            <Button variant="outlined" onClick={addTextKnowledge} disabled={busy || knowledgeEditingLocked}>
-                              Add Text Knowledge
-                            </Button>
-                          </Stack>
-                        </Box>
-                      ) : (
-                        <Box sx={accentPanelSx}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
-                            Additional Knowledge Channels
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Add Text Knowledge and Document Upload unlock after reaching Step C.
-                          </Typography>
-                        </Box>
-                      )}
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Add Text Knowledge (FAQ, policies, notes)</Typography>
+                        {knowledgeEditingLocked && (
+                          <Alert severity="info" sx={{ mb: 1.2 }}>
+                            Disabled while website crawling/embedding is in progress.
+                          </Alert>
+                        )}
+                        <Stack spacing={1.4}>
+                          <TextField
+                            label="Title"
+                            value={knowledgeTitle}
+                            onChange={(e) => setKnowledgeTitle(e.target.value)}
+                            fullWidth
+                            disabled={knowledgeEditingLocked}
+                            sx={fieldSx}
+                          />
+                          <TextField
+                            label="Knowledge Content"
+                            value={knowledgeText}
+                            onChange={(e) => setKnowledgeText(e.target.value)}
+                            multiline
+                            rows={6}
+                            fullWidth
+                            disabled={knowledgeEditingLocked}
+                            placeholder="Paste FAQs, product details, policies, etc."
+                            sx={fieldSx}
+                          />
+                          <Button variant="outlined" onClick={addTextKnowledge} disabled={busy || knowledgeEditingLocked}>
+                            Add Text Knowledge
+                          </Button>
+                        </Stack>
+                      </Box>
                     </Stack>
                   </Grid>
 
                   <Grid item xs={12} md={5}>
                     <Stack spacing={2}>
-                      {knowledgeFlowStep === 2 ? (
-                        <Box sx={accentPanelSx}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
-                          {knowledgeEditingLocked && (
-                            <Alert severity="info" sx={{ mb: 1.2 }}>
-                              Disabled while website crawling/embedding is in progress.
-                            </Alert>
-                          )}
-                          <Stack spacing={1.4}>
-                            <Button variant="outlined" component="label" disabled={busy || knowledgeEditingLocked}>
-                              {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
-                              <input
-                                type="file"
-                                hidden
-                                accept=".pdf,.doc,.docx,.xls,.xlsx"
-                                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                              />
-                            </Button>
-                            <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy || knowledgeEditingLocked}>
-                              Upload Document Knowledge
-                            </Button>
-                          </Stack>
-                        </Box>
-                      ) : (
-                        <Box sx={accentPanelSx}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
-                            Document Upload
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Complete Step C to unlock document upload.
-                          </Typography>
-                        </Box>
-                      )}
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.2 }}>Document Upload</Typography>
+                        {knowledgeEditingLocked && (
+                          <Alert severity="info" sx={{ mb: 1.2 }}>
+                            Disabled while website crawling/embedding is in progress.
+                          </Alert>
+                        )}
+                        <Stack spacing={1.4}>
+                          <Button variant="outlined" component="label" disabled={busy || knowledgeEditingLocked}>
+                            {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
+                            <input
+                              type="file"
+                              hidden
+                              accept=".pdf,.doc,.docx,.xls,.xlsx"
+                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                            />
+                          </Button>
+                          <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy || knowledgeEditingLocked}>
+                            Upload Document Knowledge
+                          </Button>
+                        </Stack>
+                      </Box>
 
                       <Box sx={accentPanelSx}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.8 }}>
@@ -1981,7 +2016,7 @@ const CreateChatAgentPage: React.FC = () => {
                       <Button
                         variant="contained"
                         onClick={moveToIntegrationStep}
-                        disabled={busy || knowledgeEditingLocked || knowledgeFlowStep < 2}
+                        disabled={busy || knowledgeEditingLocked}
                         sx={{
                           borderRadius: '12px',
                           px: 2.6,
@@ -1989,7 +2024,7 @@ const CreateChatAgentPage: React.FC = () => {
                           background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
                         }}
                       >
-                        {knowledgeFlowStep < 2 ? 'Complete Step A/B/C to Continue' : 'Continue to Integrations'}
+                        Continue to Integrations
                       </Button>
                     </Stack>
                   </Grid>

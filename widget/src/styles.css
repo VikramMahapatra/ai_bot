@@ -157,7 +157,7 @@
 .chatbot-widget-header-btn {
   background: rgba(255, 255, 255, 0.2);
   border: none;
-  color: white;
+  color: inherit;
   font-size: 15px;
   cursor: pointer;
   padding: 4px 8px;
