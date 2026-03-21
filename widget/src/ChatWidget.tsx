@@ -552,6 +552,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       );
     };
 
+    const removeAssistantPlaceholder = () => {
+      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+    };
+
     const applyUiAction = (payload?: {
       ui_action?: string;
       handoff_chat_id?: string;
@@ -670,16 +674,22 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           customerId ? String(customerId) : undefined
         );
 
-        const rawAssistantText = typeof response?.response === 'string'
-          ? response.response
-          : 'I could not generate a response right now.';
-        replaceAssistantMessage(rawAssistantText);
+        const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
+        const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
+        if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
+          removeAssistantPlaceholder();
+        } else {
+          replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+        }
         applyUiAction(response);
       }
 
       applyUiAction(streamDonePayload);
 
-      if (!receivedToken && !streamDonePayload?.ui_action) {
+      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
+      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+        removeAssistantPlaceholder();
+      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
         replaceAssistantMessage('I could not generate a response right now.');
       }
 

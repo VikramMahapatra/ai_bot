@@ -65,6 +65,12 @@ def _is_booking_intent(text: str) -> bool:
         "book appointment",
         "book an appointment",
         "schedule appointment",
+        "please schedule",
+        "schedule please",
+        "please book",
+        "book please",
+        "please set up a meeting",
+        "set up a meeting",
         "set appointment",
         "set an appointment",
         "set the appointment",
@@ -86,12 +92,19 @@ def _is_booking_intent(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z0-9]+", lower))
     has_appointment_word = bool(tokens & {"appointment", "meeting", "call", "demo", "slot"})
     has_action_word = bool(tokens & {"book", "schedule", "set"})
-    return has_appointment_word and has_action_word
+    if has_appointment_word and has_action_word:
+        return True
+
+    # Handle concise intents like "please schedule" during escalation/handoff flows.
+    if has_action_word and "please" in tokens and len(tokens) <= 3:
+        return True
+
+    return False
 
 
 def _is_affirmative(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z0-9]+", (text or "").lower()))
-    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect"})
+    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect", "sure"})
 
 
 def _is_escalation_opt_in(text: str) -> bool:
@@ -116,6 +129,8 @@ def _is_escalation_opt_in(text: str) -> bool:
         "contact them",
         "help me reach them",
         "proceed",
+        "yes please",
+        "sure"
     }
     if raw in direct_phrases:
         return True
@@ -775,21 +790,32 @@ def _route_user_message_to_handoff_if_active(
             session.waiting_expires_at = _next_handoff_wait_expiry(now)
 
         current_wait_cycle = max(1, int(session.wait_cycle or 1))
+        wants_booking = _is_booking_intent(message_text) or _mentions_appointment_topic(message_text)
 
-        if session.waiting_timeout_notified and _is_booking_intent(message_text):
+        if session.waiting_timeout_notified and wants_booking:
             response_text = "If you would like to set a meeting, please fill this short form and I will set it up for you."
             ui_action = "open_appointment_form"
             add_bot_message_text = response_text
+            session.status = "bot_active"
+            session.assigned_agent_id = None
+            session.waiting_expires_at = None
+            session.waiting_timeout_notified = True
+            session.closed_at = now
         elif session.waiting_expires_at is not None and now >= session.waiting_expires_at:
             if current_wait_cycle >= max_wait_cycles:
-                if _is_booking_intent(message_text):
+                if wants_booking:
                     response_text = "Live users are still busy, so I am moving you back to bot support. If you would like to set a meeting, please fill this short form and I will set it up for you."
                     ui_action = "open_appointment_form"
+                    session.status = "bot_active"
+                    session.assigned_agent_id = None
+                    session.waiting_expires_at = None
+                    session.waiting_timeout_notified = True
+                    session.closed_at = now
                 else:
                     response_text = _final_handoff_timeout_message()
                     ui_action = None
+                    _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
                 add_bot_message_text = response_text
-                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
             else:
                 session.wait_cycle = min(max_wait_cycles, current_wait_cycle + 1)
                 session.waiting_expires_at = _next_handoff_wait_expiry(now)
@@ -816,12 +842,30 @@ def _route_user_message_to_handoff_if_active(
         # Avoid repeating a bot acknowledgement while a live user is already assigned.
         response_text = ""
 
-    db.add(HandoffMessage(
-        handoff_session_id=session.id,
-        sender_type="user",
-        sender_user_id=None,
-        message=(message_text or "")[:4000] or "",
-    ))
+    normalized_user_message = ((message_text or "")[:4000] or "").strip()
+    should_store_user_message = bool(normalized_user_message)
+    if normalized_user_message:
+        latest_user_message = db.query(HandoffMessage).filter(
+            HandoffMessage.handoff_session_id == session.id,
+            HandoffMessage.sender_type == "user",
+        ).order_by(HandoffMessage.id.desc()).first()
+
+        if latest_user_message:
+            same_text = ((latest_user_message.message or "").strip() == normalized_user_message)
+            latest_created_at = getattr(latest_user_message, "created_at", None)
+            is_recent_duplicate = bool(
+                latest_created_at and (now - latest_created_at).total_seconds() <= 3
+            )
+            if same_text and is_recent_duplicate:
+                should_store_user_message = False
+
+    if should_store_user_message:
+        db.add(HandoffMessage(
+            handoff_session_id=session.id,
+            sender_type="user",
+            sender_user_id=None,
+            message=normalized_user_message,
+        ))
 
     if add_bot_message_text:
         db.add(HandoffMessage(

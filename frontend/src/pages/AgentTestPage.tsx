@@ -775,6 +775,10 @@ const AgentTestPage: React.FC = () => {
       );
     };
 
+    const removeAssistantPlaceholder = () => {
+      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+    };
+
     const applyUiAction = (payload?: {
       ui_action?: string;
       handoff_chat_id?: string;
@@ -925,17 +929,26 @@ const AgentTestPage: React.FC = () => {
         }
 
         const data = (await response.json()) as ChatApiResponse;
-        const rawReply = typeof data?.response === 'string'
-          ? data.response
-          : 'I could not generate a response right now.';
-        const reply = data?.ui_action === 'open_appointment_form' ? APPOINTMENT_FORM_PROMPT : rawReply;
-        replaceAssistantMessage(reply);
+        const hasHandoffMeta = Boolean(data?.handoff_chat_id || data?.handoff_status);
+        const rawReply = typeof data?.response === 'string' ? data.response.trim() : '';
+        const reply = data?.ui_action === 'open_appointment_form'
+          ? APPOINTMENT_FORM_PROMPT
+          : (rawReply || 'I could not generate a response right now.');
+
+        if (!rawReply && hasHandoffMeta && !data?.ui_action) {
+          removeAssistantPlaceholder();
+        } else {
+          replaceAssistantMessage(reply);
+        }
         applyUiAction(data);
       }
 
       applyUiAction(streamDonePayload);
 
-      if (!receivedToken && !streamDonePayload?.ui_action) {
+      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
+      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+        removeAssistantPlaceholder();
+      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
         replaceAssistantMessage('I could not generate a response right now.');
       }
 
