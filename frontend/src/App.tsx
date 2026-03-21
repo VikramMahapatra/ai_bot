@@ -407,10 +407,7 @@ const ProtectedRoute: React.FC<{
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF') {
-    if (userRole === 'ADMIN') {
-      return <Navigate to="/admin" replace />;
-    }
+  if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF' && userRole !== 'ADMIN') {
     return <Navigate to="/chat" replace />;
   }
   
