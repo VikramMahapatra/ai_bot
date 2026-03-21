@@ -61,6 +61,12 @@ def init_db():
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"))
                 if "human_handoff_enabled" not in col_names:
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN human_handoff_enabled BOOLEAN"))
+                if "max_agents" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN max_agents INTEGER"))
+                if "max_campaigns" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN max_campaigns INTEGER"))
+                if "max_calls" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN max_calls INTEGER"))    
             except Exception:
                 # If table doesn't exist yet, create_all already handled it
                 pass

@@ -146,7 +146,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                                         size="small"
                                         icon={<PublicIcon />}
                                         label={
-                                            agent?.server_location === "india"
+                                            agent?.server_location === "IN"
                                                 ? "India Server"
                                                 : "US Server"
                                         }

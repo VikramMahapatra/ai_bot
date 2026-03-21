@@ -415,7 +415,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
-                                        {["active", "running", "draft", "pending"].includes(campaign.status) && (
+                                        {["active", "running", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 onClick={() => onEditCampaign(campaign.id)}
@@ -423,7 +423,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 <EditIcon />
                                             </IconButton>
                                         )}
-                                        {["completed", "draft", "pending"].includes(campaign.status) && (
+                                        {["completed", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 color="error"

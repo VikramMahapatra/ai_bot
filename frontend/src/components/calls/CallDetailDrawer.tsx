@@ -40,7 +40,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
             onClose={onClose}
             PaperProps={{
                 sx: {
-                    width: { xs: '100%', md: 800 },
+                    width: { xs: '100%', md: 850 },
                     p: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -224,26 +224,27 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         backgroundColor: msg.speaker === 'Agent' ? 'primary.main' : 'secondary.main',
                                         color: 'white',
                                         p: 1.5,
-                                        pr: 2.5, // extra right padding so timestamp has space
-                                        pb: 3,   // extra bottom padding so timestamp doesn't touch text
                                         borderRadius: 2,
                                         boxShadow: 1,
                                         maxWidth: '75%',
-                                        position: 'relative',
                                     }}
                                 >
-                                    <Typography variant="body2">{msg.text}</Typography>
-                                    <Typography
-                                        variant="caption"
-                                        sx={{
-                                            position: 'absolute',
-                                            bottom: 4, // move a little higher
-                                            right: 8,
-                                            color: 'rgba(255,255,255,0.7)',
-                                        }}
-                                    >
-                                        {msg.timestamp || '10:25 AM'}
+                                    <Typography variant="body2">
+                                        {msg.text}
                                     </Typography>
+
+                                    <Box
+                                        display="flex"
+                                        justifyContent="flex-end"
+                                        mt={0.5}
+                                    >
+                                        <Typography
+                                            variant="caption"
+                                            sx={{ color: 'rgba(255,255,255,0.7)' }}
+                                        >
+                                            {msg.timestamp || '10:25 AM'}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Box>
                         ))}

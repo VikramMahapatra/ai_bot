@@ -15,6 +15,7 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import process_call, save_transcripts
 from app.models.user import Organization
+from app.models.organization_limits import OrganizationLimits
 
 
 STALE_MINUTES = 1
@@ -236,7 +237,42 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     org = db.query(Organization).filter(
         Organization.id == organization_id
     ).first()
+    
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == organization_id
+    ).first()
 
+    # Count existing agents
+    existing_campaigns_count = db.query(CallCampaign).filter(
+        CallCampaign.organization_id == organization_id,
+        CallCampaign.status.in_(["completed", "running", "scheduled"]) 
+    ).count()
+
+    # Check max_agents limit
+    if limits and limits.max_agents is not None and limits.max_agents > 0:
+        if existing_campaigns_count >= limits.max_campaigns:
+            raise HTTPException(
+                status_code=400,
+                detail = f"Cannot create campaign. Maximum allowed agents: {limits.max_campaigns}"
+            )
+            
+    total_calls_used = db.query(CallLog).filter(
+        CallLog.organization_id == organization_id,
+        CallLog.status.in_(["queued", "ended", "completed"])
+    ).count()
+    
+    contacts_count = len(data.contacts)
+    retries = data.max_retry_attempts or 0
+
+    calls_needed = contacts_count * (1 + retries)
+            
+    if limits and limits.max_calls is not None and limits.max_calls > 0:
+        if total_calls_used + calls_needed > limits.max_calls:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Call limit exceeded. Allowed: {limits.max_calls}, Used: {total_calls_used}, Required: {calls_needed}"
+            )
+            
     if data.start_datetime:
         status = "scheduled"
         send_option = "schedule"
@@ -291,7 +327,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     external_contact_ids = get_external_contact_ids(db, data.contacts)
     
     payload = {
-        "campaign_name": data.name,
+        "campaign_name": f"{org.name}-{data.name}",
         "agent_id": agent.external_agent_id,
         "from_number": agent.calling_no,
         "send_option": send_option,
@@ -662,11 +698,12 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
     external_contact_ids = []
 
     contacts = db.query(Contact).filter(Contact.id.in_(contact_ids)).all()
-
     contact_map = {c.id: c for c in contacts}
 
-    for cid in contact_ids:
+    contacts_to_create = []
+    unsynced_contacts = []
 
+    for cid in contact_ids:
         contact = contact_map.get(cid)
 
         if not contact:
@@ -675,27 +712,68 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
         # Already synced
         if contact.external_contact_id:
             external_contact_ids.append(contact.external_contact_id)
-            continue
+        else:
+            contacts_to_create.append({
+                "firstName": contact.name,
+                "phone": normalize_phone(contact.phone)
+            })
+            unsynced_contacts.append(contact)
 
-        # Create contact in EchoLeads
-        payload = {
-            "firstName": contact.name,
-            "phone": contact.phone
-        }
-
-        response = client.create_contact(payload)
+    if contacts_to_create:
+        response = client.create_contacts_bulk(contacts_to_create)
+        
+        
+        print(response)
 
         if not response.get("success"):
-            raise HTTPException(status_code=400, detail="Failed to create contact in Echoleads")
+            raise HTTPException(status_code=400, detail="Bulk contact creation failed")
 
-        external_id = response["contact"]["id"]
+        created_contacts = response.get("contacts", [])
+        skipped_contacts = response.get("skipped", [])
 
-        contact.external_contact_id = external_id
-        external_contact_ids.append(external_id)
+        created_map = {
+            normalize_phone(c["phone"]): c["id"]
+            for c in created_contacts
+        }
+
+        skipped_map = {
+            normalize_phone(c["phone"]): c["id"]
+            for c in skipped_contacts
+        }
+
+        combined_map = {**created_map, **skipped_map}
+        
+        for c in unsynced_contacts:
+            print(c.id, c.name, c.phone)
+
+        for contact in unsynced_contacts:
+            normalized_phone = normalize_phone(contact.phone)
+            external_id = combined_map.get(normalized_phone)
+
+            if not external_id:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to map contact {contact.phone}"
+                )
+
+            contact.external_contact_id = external_id
+            external_contact_ids.append(external_id)
 
     db.commit()
 
     return external_contact_ids
+
+def normalize_phone(phone: str):
+    if not phone:
+        return None
+
+    phone = phone.strip().replace(" ", "")
+
+    # Add default country code if missing (India example)
+    if not phone.startswith("+"):
+        phone = "+91" + phone
+
+    return phone
 
 
 def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, campaign: CallCampaign):
@@ -704,6 +782,8 @@ def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, 
             response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
         else:
             response = echolead_client.get_campaign_by_name(campaign.external_campaign_name)
+            
+        print(response)
     except Exception as e:
         print("Sync failed:", str(e))
         
