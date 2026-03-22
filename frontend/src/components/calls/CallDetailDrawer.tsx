@@ -8,7 +8,8 @@ import {
     IconButton,
     Stack,
     Button,
-    Tooltip
+    Tooltip,
+    Avatar
 } from '@mui/material';
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
@@ -19,6 +20,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DescriptionIcon from '@mui/icons-material/Description';
 import TimerIcon from "@mui/icons-material/Timer";
 import CallEndIcon from "@mui/icons-material/CallEnd";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { formatDateTime } from '../../utils/dateUtils';
 
 interface CallDetailDrawerProps {
@@ -26,6 +28,24 @@ interface CallDetailDrawerProps {
     onClose: () => void;
     selectedCall: any;
 }
+
+const formatEndedReason = (reason?: string) => {
+    if (!reason) return "-";
+
+    // Handle problematic long reasons
+    if (reason.includes("failed-to-connect")) {
+        return "Failed to Connect";
+    }
+
+    if (reason.includes("temporarily-unavailable")) {
+        return "Temporarily Unavailable";
+    }
+
+    // Default: clean normal ones
+    return reason
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
+};
 
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
@@ -137,7 +157,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     Disconnected By:
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600} color="error.main">
-                                    {selectedCall.ended_reason || "N/A"}
+                                    {formatEndedReason(selectedCall.ended_reason) || "N/A"}
                                 </Typography>
                             </Box>
                         </Stack>
@@ -214,41 +234,60 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             if (el) el.scrollTop = el.scrollHeight;
                         }}
                     >
-                        {selectedCall.transcript.map((msg: any, index: number) => (
-                            <Box
-                                key={index}
-                                display="flex"
-                                justifyContent={msg.speaker === 'Agent' ? 'flex-start' : 'flex-end'}
-                            >
-                                <Box
-                                    sx={{
-                                        backgroundColor: msg.speaker === 'Agent' ? 'primary.main' : 'secondary.main',
-                                        color: 'white',
-                                        p: 1.5,
-                                        borderRadius: 2,
-                                        boxShadow: 1,
-                                        maxWidth: '75%',
-                                    }}
-                                >
-                                    <Typography variant="body2">
-                                        {msg.text}
-                                    </Typography>
+                        {selectedCall.transcript.map((msg: any, index: number) => {
+                            const isAgent = msg.speaker === "Agent";
 
+                            return (
+                                <Box
+                                    key={index}
+                                    display="flex"
+                                    justifyContent={isAgent ? "flex-start" : "flex-end"}
+                                    alignItems="flex-end"
+                                    gap={1}
+                                >
+                                    {/* Agent Avatar with Tooltip */}
+                                    {isAgent && (
+                                        <Tooltip title="AI Assistant" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
+
+                                    {/* Message Bubble */}
                                     <Box
-                                        display="flex"
-                                        justifyContent="flex-end"
-                                        mt={0.5}
+                                        sx={{
+                                            backgroundColor: isAgent ? "primary.main" : "secondary.main",
+                                            color: "white",
+                                            p: 1.5,
+                                            borderRadius: 2,
+                                            boxShadow: 1,
+                                            maxWidth: "75%",
+                                        }}
                                     >
-                                        <Typography
-                                            variant="caption"
-                                            sx={{ color: 'rgba(255,255,255,0.7)' }}
-                                        >
-                                            {msg.timestamp || '10:25 AM'}
-                                        </Typography>
+                                        <Typography variant="body2">{msg.text}</Typography>
+
+                                        <Box display="flex" justifyContent="flex-end" mt={0.5}>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{ color: "rgba(255,255,255,0.7)" }}
+                                            >
+                                                {msg.timestamp || "10:25 AM"}
+                                            </Typography>
+                                        </Box>
                                     </Box>
+
+                                    {/* User Avatar with Tooltip */}
+                                    {!isAgent && (
+                                        <Tooltip title="User" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "secondary.main", width: 32, height: 32 }}>
+                                                <PersonIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
                                 </Box>
-                            </Box>
-                        ))}
+                            );
+                        })}
                     </Box>
                 </Grid>
             </Grid>

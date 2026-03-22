@@ -19,7 +19,7 @@ from app.models.organization_limits import OrganizationLimits
 
 
 STALE_MINUTES = 1
-SYNC_STATUSES = ["active", "running", "pending"] 
+SYNC_STATUSES = ["active", "running", "pending", "scheduled"] 
 
 def should_sync(campaign):
     if campaign.status not in SYNC_STATUSES:
@@ -97,7 +97,8 @@ def list_campaigns(
             CallingAgent.name.label("agent_name"),
             CallingAgent.calling_no.label("from_number"),
             CallCampaign.total_calls,
-            CallCampaign.completed_calls
+            CallCampaign.completed_calls,
+            func.count(CampaignContact.id).label("contact_count")
         )
         .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
@@ -137,7 +138,7 @@ def list_campaigns(
             "agent_name": campaign.agent_name,
             "from_number": campaign.from_number,
             "status": campaign.status,
-            "contacts": campaign.total_calls,
+            "contacts": campaign.contact_count,
             "progress": progress,
             "created_at": campaign.created_at.replace(tzinfo=timezone.utc).isoformat()
         })
@@ -347,7 +348,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     echoleads_campaign_status = "pending"
     try:
         echo_response = client.create_campaign(payload)
-        if echo_response and "data" in echo_response:
+        if echo_response and "campaign" in echo_response:
             echoleads_campaign_id = echo_response["campaign"]["id"]
             echoleads_campaign_status = echo_response["campaign"]["status"]
         else:
@@ -364,10 +365,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
     else:
-        message = "AgeCampaignnt created successfully"
+        message = "Campaign created successfully"
 
     return {
-        "message": "Campaign created",
+        "message": message,
         "campaign_id": campaign.id,
         "echoleads_campaign_id": echoleads_campaign_id
     }
@@ -786,8 +787,6 @@ def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, 
             campaigns = response.get("campaigns", []) if response else []
             campaign_data = campaigns[0] if campaigns else None  
             
-            print("Campaign Data :", campaign_data)
-        
         if campaign_data:
             campaign.status = campaign_data.get("status", campaign.status)
             campaign.external_campaign_id = campaign_data.get("id", campaign.external_campaign_id)

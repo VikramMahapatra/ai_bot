@@ -36,9 +36,9 @@ import { formatDateTime } from '../../utils/dateUtils';
 
 const getStatusColor = (status: string) => {
     switch (status) {
-        case 'Completed': return 'primary';
-        case 'Missed': return 'error';
-        case 'Voicemail': return 'warning';
+        case 'ended': return 'primary';
+        case 'queued': return 'warning';
+        case 'failed': return 'error';
         default: return 'default';
     }
 };

@@ -204,6 +204,7 @@ def sync_call_logs(
 
         for call in calls:
             process_call(db, call, agent)
+            
     elif campaign_id or (from_date and to_date):
         
         if campaign_id:
@@ -274,10 +275,13 @@ def process_call(db, call, agent):
     ).first()
 
     campaign_external_id = call["campaign_id"]
-
-    campaign = db.query(CallCampaign).filter(
-        CallCampaign.external_campaign_id == campaign_external_id
-    ).first()
+    
+    
+    campaign = None
+    if campaign_external_id:
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.external_campaign_id == campaign_external_id
+        ).first()
 
     # Prepare common values
     duration = int(call.get("duration")) if call.get("duration") else None
@@ -310,7 +314,6 @@ def process_call(db, call, agent):
         existing.audio_url = call.get("recording_url")
         existing.cost = float(call.get("cost")) if call.get("cost") else None
 
-        # ✅ NEW FIELDS
         existing.duration = duration
         existing.ended_reason = ended_reason
         existing.call_summary = call_summary
@@ -380,7 +383,7 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
             text = line.replace("AI:", "").strip()
 
         elif line.startswith("User:"):
-            speaker = "Contact"
+            speaker = "User"
             text = line.replace("User:", "").strip()
 
         else:

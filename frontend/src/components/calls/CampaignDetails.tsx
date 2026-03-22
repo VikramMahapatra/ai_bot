@@ -44,10 +44,28 @@ interface Props {
 const getStatusColor = (status: string) => {
     switch (status) {
         case 'ended': return 'primary';
-        case 'queued': return 'error';
-        case 'failed': return 'warning';
+        case 'queued': return 'warning';
+        case 'failed': return 'error';
         default: return 'default';
     }
+};
+
+const formatEndedReason = (reason?: string) => {
+    if (!reason) return "-";
+
+    // Handle problematic long reasons
+    if (reason.includes("failed-to-connect")) {
+        return "Failed to Connect";
+    }
+
+    if (reason.includes("temporarily-unavailable")) {
+        return "Temporarily Unavailable";
+    }
+
+    // Default: clean normal ones
+    return reason
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
 };
 
 export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
@@ -248,9 +266,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             alignItems="center"
                             mt={3}   // 👈 tweak this value
                         >
-                            <Button variant="outlined" startIcon={<DownloadIcon />}>
+                            {/* <Button variant="outlined" startIcon={<DownloadIcon />}>
                                 Export
-                            </Button>
+                            </Button> */}
 
                             <Button
                                 variant="outlined"
@@ -358,7 +376,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                                                 <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
                                             </TableCell>
                                             <TableCell>
-                                                <Chip label={log.ended_reason} color="error" size="small" />
+                                                {formatEndedReason(log.ended_reason)}
                                             </TableCell>
                                             <TableCell>{log.duration || "N/A"}</TableCell>
                                             <TableCell>{log.sentiment || "-"}</TableCell>
