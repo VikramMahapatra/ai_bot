@@ -28,7 +28,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 interface Props {
     open: boolean;
-    onClose: () => void;
+    onClose: (response: any) => void;
     agent: CallingAgent | null;
 }
 
@@ -57,9 +57,9 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
 
         // API CALL
         try {
-            await callingAgentService.testCall(agent.id, fullNumber)
+            const response = await callingAgentService.testCall(agent.id, fullNumber)
             setTimeout(() => {
-                onClose();
+                onClose(response);
                 setPhoneNumber("");
             }, 2000);
         }

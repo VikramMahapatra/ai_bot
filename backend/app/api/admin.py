@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
-DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 DEFAULT_GOOGLE_MEET_LINK = "https://meet.google.com/new"
 
@@ -30,10 +28,10 @@ DEFAULT_GOOGLE_MEET_LINK = "https://meet.google.com/new"
 def _ensure_widget_escalation_contacts(config) -> bool:
     changed = False
     if not getattr(config, "escalation_contact_level_1", None):
-        config.escalation_contact_level_1 = DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        config.escalation_contact_level_1 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
         changed = True
     if not getattr(config, "escalation_contact_level_2", None):
-        config.escalation_contact_level_2 = DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        config.escalation_contact_level_2 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
         changed = True
     return changed
 
@@ -451,8 +449,8 @@ async def create_widget_config(
         position=config_data.get("position", "bottom-right"),
         lead_capture_enabled=config_data.get("lead_capture_enabled", True),
         lead_fields=config_data.get("lead_fields"),
-        escalation_contact_level_1=config_data.get("escalation_contact_level_1", DEFAULT_ESCALATION_CONTACT_LEVEL_1),
-        escalation_contact_level_2=config_data.get("escalation_contact_level_2", DEFAULT_ESCALATION_CONTACT_LEVEL_2),
+        escalation_contact_level_1=config_data.get("escalation_contact_level_1", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1),
+        escalation_contact_level_2=config_data.get("escalation_contact_level_2", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2),
     )
     db.add(config)
     db.commit()
