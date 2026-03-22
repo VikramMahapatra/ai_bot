@@ -282,6 +282,12 @@ def process_call(db, call, agent):
         campaign = db.query(CallCampaign).filter(
             CallCampaign.external_campaign_id == campaign_external_id
         ).first()
+        
+    contact = None
+    if call.get("contact_id"):
+        contact = db.query(Contact).filter(
+            Contact.external_contact_id == call.get("contact_id")
+        ).first()
 
     # Prepare common values
     duration = int(call.get("duration")) if call.get("duration") else None
@@ -304,6 +310,7 @@ def process_call(db, call, agent):
         existing.organization_id = agent.organization_id
         existing.agent_id = agent.id
         existing.campaign_id = campaign.id if campaign else None
+        existing.contact_id = contact.id if contact else None
         existing.type = agent.type
         existing.mode = "Voice"
         existing.phone = call.get("phone")
@@ -332,6 +339,7 @@ def process_call(db, call, agent):
             organization_id=agent.organization_id,
             agent_id=agent.id,
             campaign_id=campaign.id if campaign else None,
+            contact_id = contact.id if contact else None,
             type=agent.type,
             mode="Voice",
             phone=call.get("phone"),
