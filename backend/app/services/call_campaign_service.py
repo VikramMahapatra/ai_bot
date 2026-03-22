@@ -649,7 +649,7 @@ def get_contacts(
         },
     }
     
-def get_contacts_lookup(db: Session):
+def get_contacts_lookup(db: Session, organization_id: int):
 
     rows = (
         db.query(Contact)
