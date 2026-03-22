@@ -584,6 +584,7 @@ def get_contacts_by_ids(db: Session, ids: list[int]):
 
 def get_contacts(
     db: Session,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50
@@ -592,6 +593,7 @@ def get_contacts(
     query = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(ContactList.organization_id == organization_id)
     )
 
     # ---------------------------
@@ -651,6 +653,8 @@ def get_contacts_lookup(db: Session):
 
     rows = (
         db.query(Contact)
+        .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(ContactList.organization_id == organization_id)
         .order_by(Contact.name.asc())
         .all()
     )
