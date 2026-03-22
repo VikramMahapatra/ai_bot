@@ -7,7 +7,7 @@ export interface CallingAgent {
     type: 'outbound' | 'inbound'
     name: string
     calling_no?: string
-    status: 'active' | 'paused' | 'draft' | 'pending'
+    status: 'pending' | 'testing' | 'active' | 'paused'
 
     server_location?: "IN" | "US"
 
@@ -112,6 +112,7 @@ export interface CallingAgentStatusResponse {
     message: string;
     agent_id: string;
     status: string;
+    success: boolean;
 }
 
 

@@ -39,6 +39,8 @@ from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 import logging
 
+from app.models.organization_subscription import OrganizationSubscription
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/superadmin", tags=["superadmin"])
@@ -118,6 +120,12 @@ async def create_organization_with_admin(
     db.refresh(admin_user)
 
     limits_payload = request.limits.dict(exclude_unset=True) if request.limits else {}
+    
+    if request.trial_days and request.trial_days > 0:
+        limits_payload.setdefault("max_agents", 1)
+        limits_payload.setdefault("max_campaigns", 1)
+        limits_payload.setdefault("max_calls", 10)
+    
     limits = update_limits(db, org.id, limits_payload)
     limits.plan_id = request.plan_id
     db.commit()
@@ -217,7 +225,8 @@ async def update_organization_limits(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin)
 ):
-    limits = update_limits(db, org_id, updates.dict(exclude_unset=True))
+    update_data = updates.dict(exclude_unset=True)   
+    limits = update_limits(db, org_id, update_data)
     return limits
 
 
@@ -242,6 +251,13 @@ async def assign_subscription(
 
     limits = get_or_create_limits(db, org_id)
     limits.plan_id = payload.plan_id
+    
+    if sub and sub.status == "trial":
+        # Enforce trial limits
+        limits.max_agents = 1
+        limits.max_campaigns = 1
+        limits.max_calls = 10  # set whatever default you want
+        
     db.commit()
 
     return SubscriptionResponse(

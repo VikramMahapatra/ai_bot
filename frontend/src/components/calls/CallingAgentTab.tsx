@@ -121,6 +121,7 @@ export const CallingAgentTab: React.FC = () => {
         }
     }, [loading]);
 
+
     const handleSaveAgent = async (data: FormData) => {
         setLoading(true);
         setError("");
@@ -157,7 +158,7 @@ export const CallingAgentTab: React.FC = () => {
                 showError("Network error occurred. Data might have been saved. Please verify before retrying.");
             } else {
                 // API returned error
-                showError("Failed to save the data");
+                showError(err?.response?.data?.detail || err?.detail || "Failed to save the data");
             }
         } finally {
             setLoading(false);
@@ -166,12 +167,18 @@ export const CallingAgentTab: React.FC = () => {
 
     const handlePublish = async (agent: CallingAgent) => {
         setLoading(true);
+        showError('');
+        showSuccess('');
         try {
-            await callingAgentService.publishAgent(agent.id!);
-            loadCallingAgents();
-            showSuccess(`Agent published successfully`)
-        } catch (error) {
-            showError(`Failed to publish agent`);
+            const response = await callingAgentService.publishAgent(agent.id!);
+            if (response.success) {
+                showSuccess(response.message)
+                loadCallingAgents();
+            }
+            else
+                showError(response.message)
+        } catch (error: any) {
+            showError(error?.response?.data?.detail || error?.detail || 'Failed to publish agent');
         } finally {
             setLoading(false);
         }
@@ -381,7 +388,7 @@ export const CallingAgentTab: React.FC = () => {
                                                         <Button
                                                             variant="contained"
                                                             startIcon={<AddIcon />}
-                                                            onClick={() => setShowForm(true)}
+                                                            onClick={handleAddAgent}
                                                         >
                                                             Create Agent
                                                         </Button>
@@ -555,7 +562,7 @@ export const CallingAgentTab: React.FC = () => {
                                                 <TableCell align="right">
                                                     <Stack direction="row" spacing={1} justifyContent="flex-end">
 
-                                                        {agent.status === "draft" && (
+                                                        {agent.status === "testing" && (
                                                             <Tooltip title="Publish Agent">
                                                                 <IconButton
                                                                     size="small"
@@ -565,18 +572,20 @@ export const CallingAgentTab: React.FC = () => {
                                                                     <PublishIcon />
                                                                 </IconButton>
                                                             </Tooltip>
-                                                        )}
 
-                                                        {agent.status !== "draft" && (
+                                                        )}
+                                                        {agent.status !== "pending" && (
+                                                            <Tooltip title="Test Call">
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={() => handleTestCall(agent)}
+                                                                >
+                                                                    <CallIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        )}
+                                                        {agent.status !== "testing" && (
                                                             <>
-                                                                <Tooltip title="Test Call">
-                                                                    <IconButton
-                                                                        size="small"
-                                                                        onClick={() => handleTestCall(agent)}
-                                                                    >
-                                                                        <CallIcon />
-                                                                    </IconButton>
-                                                                </Tooltip>
 
                                                                 <Tooltip
                                                                     title={
@@ -737,7 +746,13 @@ export const CallingAgentTab: React.FC = () => {
             {selectedAgent && (
                 <TestCallDialog
                     open={openTestDialog}
-                    onClose={() => setOpenTestDialog(false)}
+                    onClose={(response) => {
+                        setOpenTestDialog(false)
+                        if (response.status == "failed")
+                            showError(response.message)
+                        else
+                            showSuccess(response.message)
+                    }}
                     agent={selectedAgent}
                 />
             )}

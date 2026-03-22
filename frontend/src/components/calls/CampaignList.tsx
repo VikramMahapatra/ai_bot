@@ -138,6 +138,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         switch (status) {
             case "active":
                 return "#dcfce7";
+            case "running":
+                return "#dcfce7";
             case "paused":
                 return "#fef3c7";
             case "completed":
@@ -404,18 +406,18 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
-                                        <Tooltip title="View Insights">
+                                        {/* <Tooltip title="View Insights">
                                             <IconButton onClick={() => openDrawer(campaign)}>
                                                 <InsightsIcon color="primary" />
                                             </IconButton>
-                                        </Tooltip>
+                                        </Tooltip> */}
                                         <IconButton
                                             size="small"
                                             onClick={() => onViewCampaign(campaign.id)}
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
-                                        {["active", "running", "draft", "pending"].includes(campaign.status) && (
+                                        {["active", "running", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 onClick={() => onEditCampaign(campaign.id)}
@@ -423,7 +425,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 <EditIcon />
                                             </IconButton>
                                         )}
-                                        {["completed", "draft", "pending"].includes(campaign.status) && (
+                                        {/* {["completed", "pending"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 color="error"
@@ -431,7 +433,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                             >
                                                 <DeleteIcon />
                                             </IconButton>
-                                        )}
+                                        )} */}
                                     </TableCell>
 
                                 </TableRow>
