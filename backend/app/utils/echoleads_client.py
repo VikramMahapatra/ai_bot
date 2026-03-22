@@ -179,6 +179,12 @@ class EcholeadsClient:
     def create_contact(self, payload: dict):
         return self._post("/contact", payload)
     
+    def create_contacts_bulk(self, contacts: list):
+        payload = {
+            "contacts": contacts
+        }
+        return self._post("/contacts/bulk", payload)
+    
     def delete_agent(self, agent_id: str):
         return self._delete(f"/agent-tables/{agent_id}")
     

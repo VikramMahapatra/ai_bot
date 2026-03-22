@@ -8,7 +8,8 @@ import {
     IconButton,
     Stack,
     Button,
-    Tooltip
+    Tooltip,
+    Avatar
 } from '@mui/material';
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
@@ -19,12 +20,32 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DescriptionIcon from '@mui/icons-material/Description';
 import TimerIcon from "@mui/icons-material/Timer";
 import CallEndIcon from "@mui/icons-material/CallEnd";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import { formatDateTime } from '../../utils/dateUtils';
 
 interface CallDetailDrawerProps {
     open: boolean;
     onClose: () => void;
     selectedCall: any;
 }
+
+const formatEndedReason = (reason?: string) => {
+    if (!reason) return "-";
+
+    // Handle problematic long reasons
+    if (reason.includes("failed-to-connect")) {
+        return "Failed to Connect";
+    }
+
+    if (reason.includes("temporarily-unavailable")) {
+        return "Temporarily Unavailable";
+    }
+
+    // Default: clean normal ones
+    return reason
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
+};
 
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
@@ -40,7 +61,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
             onClose={onClose}
             PaperProps={{
                 sx: {
-                    width: { xs: '100%', md: 800 },
+                    width: { xs: '100%', md: 850 },
                     p: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -81,7 +102,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.startTime
-                                        ? new Date(selectedCall.startTime).toLocaleString()
+                                        ? formatDateTime(selectedCall.startTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -93,7 +114,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.endTime
-                                        ? new Date(selectedCall.endTime).toLocaleString()
+                                        ? formatDateTime(selectedCall.endTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -120,7 +141,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                             </Box>
 
-                            <Box display="flex" alignItems="center" gap={1}>
+                            {/* <Box display="flex" alignItems="center" gap={1}>
                                 <AttachMoneyIcon fontSize="small" />
                                 <Typography variant="body2" color="text.secondary">
                                     Cost:
@@ -128,7 +149,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 <Typography variant="body2" fontWeight={600} color="success.main">
                                     {selectedCall.cost || "N/A"}
                                 </Typography>
-                            </Box>
+                            </Box> */}
 
                             <Box display="flex" alignItems="center" gap={1}>
                                 <CallEndIcon fontSize="small" />
@@ -136,7 +157,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     Disconnected By:
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600} color="error.main">
-                                    {selectedCall.ended_reason || "N/A"}
+                                    {formatEndedReason(selectedCall.ended_reason) || "N/A"}
                                 </Typography>
                             </Box>
                         </Stack>
@@ -213,40 +234,60 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             if (el) el.scrollTop = el.scrollHeight;
                         }}
                     >
-                        {selectedCall.transcript.map((msg: any, index: number) => (
-                            <Box
-                                key={index}
-                                display="flex"
-                                justifyContent={msg.speaker === 'Agent' ? 'flex-start' : 'flex-end'}
-                            >
+                        {selectedCall.transcript.map((msg: any, index: number) => {
+                            const isAgent = msg.speaker === "Agent";
+
+                            return (
                                 <Box
-                                    sx={{
-                                        backgroundColor: msg.speaker === 'Agent' ? 'primary.main' : 'secondary.main',
-                                        color: 'white',
-                                        p: 1.5,
-                                        pr: 2.5, // extra right padding so timestamp has space
-                                        pb: 3,   // extra bottom padding so timestamp doesn't touch text
-                                        borderRadius: 2,
-                                        boxShadow: 1,
-                                        maxWidth: '75%',
-                                        position: 'relative',
-                                    }}
+                                    key={index}
+                                    display="flex"
+                                    justifyContent={isAgent ? "flex-start" : "flex-end"}
+                                    alignItems="flex-end"
+                                    gap={1}
                                 >
-                                    <Typography variant="body2">{msg.text}</Typography>
-                                    <Typography
-                                        variant="caption"
+                                    {/* Agent Avatar with Tooltip */}
+                                    {isAgent && (
+                                        <Tooltip title="AI Assistant" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
+
+                                    {/* Message Bubble */}
+                                    <Box
                                         sx={{
-                                            position: 'absolute',
-                                            bottom: 4, // move a little higher
-                                            right: 8,
-                                            color: 'rgba(255,255,255,0.7)',
+                                            backgroundColor: isAgent ? "primary.main" : "secondary.main",
+                                            color: "white",
+                                            p: 1.5,
+                                            borderRadius: 2,
+                                            boxShadow: 1,
+                                            maxWidth: "75%",
                                         }}
                                     >
-                                        {msg.timestamp || '10:25 AM'}
-                                    </Typography>
+                                        <Typography variant="body2">{msg.text}</Typography>
+
+                                        <Box display="flex" justifyContent="flex-end" mt={0.5}>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{ color: "rgba(255,255,255,0.7)" }}
+                                            >
+                                                {msg.timestamp || "10:25 AM"}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+
+                                    {/* User Avatar with Tooltip */}
+                                    {!isAgent && (
+                                        <Tooltip title="User" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "secondary.main", width: 32, height: 32 }}>
+                                                <PersonIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
                                 </Box>
-                            </Box>
-                        ))}
+                            );
+                        })}
                     </Box>
                 </Grid>
             </Grid>

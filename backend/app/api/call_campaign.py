@@ -71,12 +71,14 @@ def get_contacts(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db)):
-    return service.get_contacts(db, search, skip, limit)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+    ):
+    return service.get_contacts(db, current_user.organization_id, search, skip, limit)
 
 @router.get("/contacts/lookup")
-def contacts_lookup(db: Session = Depends(get_db)):
-    return service.get_contacts_lookup(db)
+def contacts_lookup(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return service.get_contacts_lookup(db, current_user.organization_id)
 
 @router.get("/contact-lists")
 def get_contact_lists(db: Session = Depends(get_db)):

@@ -1419,7 +1419,7 @@ const AgentTestPage: React.FC = () => {
                 session: {sessionId ? sessionId.slice(-10) : 'n/a'}
               </Typography>
             </Box>
-            <Stack direction="row" spacing={0.5}>
+            <Stack direction="row" spacing={0.85}>
               <Button
                 size="small"
                 onClick={startFreshSession}
@@ -1566,14 +1566,14 @@ const AgentTestPage: React.FC = () => {
             ref={messagesContainerRef}
             sx={{
               flex: 1,
-              p: 1,
+              p: 1.45,
               overflowY: 'auto',
               bgcolor: widgetLookDark ? '#0f172a' : '#eef2f7',
             }}
           >
             <Stack spacing={0.95}>
               {messages.map((message, index) => (
-                
+
                 <Box
                   key={`${message.role}-${index}`}
                   sx={{
@@ -1596,24 +1596,24 @@ const AgentTestPage: React.FC = () => {
                       <>
                   <Box
                     sx={{
-                      width: 22,
-                      height: 22,
+                      width: 28,
+                      height: 28,
                       borderRadius: '50%',
                       border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
                       bgcolor: '#ffffff',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '0.76rem',
-                      flex: '0 0 22px',
+                      fontSize: '0.95rem',
+                      flex: '0 0 28px',
                     }}
                   >
                     {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
                   </Box>
                   <Box
                     sx={{
-                      px: 1.05,
-                      py: 0.8,
+                      px: 1.45,
+                      py: 1.05,
                       borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
                       bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
                       background: message.role === 'user'
@@ -1622,8 +1622,8 @@ const AgentTestPage: React.FC = () => {
                       color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
                       border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
                       whiteSpace: 'pre-wrap',
-                      fontSize: { xs: '0.73rem', md: '0.79rem' },
-                      lineHeight: 1.4,
+                      fontSize: { xs: '0.8rem', md: '0.86rem' },
+                      lineHeight: 1.45,
                       boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
                       minHeight: isPendingAssistantMessage ? 30 : undefined,
                       minWidth: isPendingAssistantMessage ? 46 : undefined,
@@ -1881,9 +1881,9 @@ const AgentTestPage: React.FC = () => {
             </Stack>
           </Box>
 
-          <Box sx={{ p: 0.95, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
+          <Box sx={{ p: 1.35, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
             <Stack spacing={0.7}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <TextField
                 value={input}
                 onChange={(e) => {
@@ -1905,7 +1905,7 @@ const AgentTestPage: React.FC = () => {
                     '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
                     '&.Mui-focused fieldset': { borderColor: primaryColor },
                   },
-                  '& .MuiInputBase-input': { fontSize: '0.8rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
+                  '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1919,13 +1919,12 @@ const AgentTestPage: React.FC = () => {
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
-                  minWidth: 74,
-                  height: 38,
+                  minWidth: 92,
+                  height: 48,
                   borderRadius: '14px',
                   background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
                   boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
                   fontWeight: 700,
-                  fontSize: '0.78rem',
                   textTransform: 'none',
                 }}
               >

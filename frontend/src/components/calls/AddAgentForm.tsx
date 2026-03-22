@@ -306,6 +306,15 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                 newErrors.call_forwarding_number = "Phone number is required";
             }
         }
+        else {
+            if (formData.enable_call_forwarding && !formData.call_forwarding_number) {
+                newErrors.call_forwarding_number = "Phone number is required";
+            }
+
+            if (formData.enable_call_forwarding && !formData.call_forwarding_role) {
+                newErrors.call_forwarding_role = "Message is required";
+            }
+        }
 
         if (!formData.transcriber_provider) {
             newErrors.transcriber_provider = "Provider is required";
@@ -453,7 +462,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             value={formData.prompt}
                             onChange={handleInputChange}
                             multiline
-                            rows={10}
+                            rows={15}
                             error={!!errors.prompt}
                             helperText={errors.prompt}
                             inputProps={{
@@ -816,20 +825,30 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                             onChange={handleInputChange}
                                             type="tel"
                                             fullWidth
+                                            error={!!errors.call_forwarding_number}
+                                            helperText={
+                                                errors.call_forwarding_number
+                                            }
                                         />
 
                                         <TextField
-                                            label="Role"
+                                            label="Message"
                                             name="call_forwarding_role"
+                                            placeholder="eg. Please hold on"
                                             value={formData.call_forwarding_role}
                                             onChange={handleInputChange}
                                             fullWidth
+                                            error={!!errors.call_forwarding_role}
+                                            helperText={
+                                                errors.call_forwarding_role
+                                            }
                                         />
 
                                         <TextField
                                             label="Action Description"
                                             name="call_forwarding_action_desc"
                                             value={formData.call_forwarding_action_desc}
+                                            placeholder="Describe when calls should be forwarded (e.g., 'Forward to manager when customer requests escalation')"
                                             onChange={handleInputChange}
                                             multiline
                                             rows={3}

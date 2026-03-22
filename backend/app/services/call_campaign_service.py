@@ -1,5 +1,5 @@
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from typing import List, Optional
 from fastapi import HTTPException
@@ -15,17 +15,18 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import process_call, save_transcripts
 from app.models.user import Organization
+from app.models.organization_limits import OrganizationLimits
 
 
 STALE_MINUTES = 1
-SYNC_STATUSES = ["active", "pending"] 
+SYNC_STATUSES = ["active", "running", "pending", "scheduled"] 
 
 def should_sync(campaign):
     if campaign.status not in SYNC_STATUSES:
         return False
 
-    if not campaign.updated_at:
-        return True
+    # if not campaign.updated_at:
+    #     return True
 
     return campaign.updated_at < datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
 
@@ -96,7 +97,8 @@ def list_campaigns(
             CallingAgent.name.label("agent_name"),
             CallingAgent.calling_no.label("from_number"),
             CallCampaign.total_calls,
-            CallCampaign.completed_calls
+            CallCampaign.completed_calls,
+            func.count(CampaignContact.id).label("contact_count")
         )
         .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
@@ -136,9 +138,9 @@ def list_campaigns(
             "agent_name": campaign.agent_name,
             "from_number": campaign.from_number,
             "status": campaign.status,
-            "contacts": campaign.total_calls,
+            "contacts": campaign.contact_count,
             "progress": progress,
-            "created_at": campaign.created_at
+            "created_at": campaign.created_at.replace(tzinfo=timezone.utc).isoformat()
         })
 
     return {
@@ -236,7 +238,42 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     org = db.query(Organization).filter(
         Organization.id == organization_id
     ).first()
+    
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == organization_id
+    ).first()
 
+    # Count existing agents
+    existing_campaigns_count = db.query(CallCampaign).filter(
+        CallCampaign.organization_id == organization_id,
+        CallCampaign.status.in_(["completed", "running", "scheduled"]) 
+    ).count()
+
+    # Check max_agents limit
+    if limits and limits.max_agents is not None and limits.max_agents > 0:
+        if existing_campaigns_count >= limits.max_campaigns:
+            raise HTTPException(
+                status_code=400,
+                detail = f"Cannot create campaign. Maximum allowed agents: {limits.max_campaigns}"
+            )
+            
+    total_calls_used = db.query(CallLog).filter(
+        CallLog.organization_id == organization_id,
+        CallLog.status.in_(["queued", "ended", "completed"])
+    ).count()
+    
+    contacts_count = len(data.contacts)
+    retries = data.max_retry_attempts or 0
+
+    calls_needed = contacts_count * (1 + retries)
+            
+    if limits and limits.max_calls is not None and limits.max_calls > 0:
+        if total_calls_used + calls_needed > limits.max_calls:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Call limit exceeded. Allowed: {limits.max_calls}, Used: {total_calls_used}, Required: {calls_needed}"
+            )
+            
     if data.start_datetime:
         status = "scheduled"
         send_option = "schedule"
@@ -291,7 +328,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     external_contact_ids = get_external_contact_ids(db, data.contacts)
     
     payload = {
-        "campaign_name": data.name,
+        "campaign_name": f"{org.name}-{data.name}",
         "agent_id": agent.external_agent_id,
         "from_number": agent.calling_no,
         "send_option": send_option,
@@ -311,7 +348,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     echoleads_campaign_status = "pending"
     try:
         echo_response = client.create_campaign(payload)
-        if echo_response and "data" in echo_response:
+        if echo_response and "campaign" in echo_response:
             echoleads_campaign_id = echo_response["campaign"]["id"]
             echoleads_campaign_status = echo_response["campaign"]["status"]
         else:
@@ -328,10 +365,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
     else:
-        message = "AgeCampaignnt created successfully"
+        message = "Campaign created successfully"
 
     return {
-        "message": "Campaign created",
+        "message": message,
         "campaign_id": campaign.id,
         "echoleads_campaign_id": echoleads_campaign_id
     }
@@ -547,6 +584,7 @@ def get_contacts_by_ids(db: Session, ids: list[int]):
 
 def get_contacts(
     db: Session,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50
@@ -555,6 +593,7 @@ def get_contacts(
     query = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(ContactList.organization_id == organization_id)
     )
 
     # ---------------------------
@@ -610,10 +649,12 @@ def get_contacts(
         },
     }
     
-def get_contacts_lookup(db: Session):
+def get_contacts_lookup(db: Session, organization_id: int):
 
     rows = (
         db.query(Contact)
+        .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(ContactList.organization_id == organization_id)
         .order_by(Contact.name.asc())
         .all()
     )
@@ -662,11 +703,12 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
     external_contact_ids = []
 
     contacts = db.query(Contact).filter(Contact.id.in_(contact_ids)).all()
-
     contact_map = {c.id: c for c in contacts}
 
-    for cid in contact_ids:
+    contacts_to_create = []
+    unsynced_contacts = []
 
+    for cid in contact_ids:
         contact = contact_map.get(cid)
 
         if not contact:
@@ -675,58 +717,101 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
         # Already synced
         if contact.external_contact_id:
             external_contact_ids.append(contact.external_contact_id)
-            continue
+        else:
+            contacts_to_create.append({
+                "firstName": contact.name,
+                "phone": normalize_phone(contact.phone)
+            })
+            unsynced_contacts.append(contact)
 
-        # Create contact in EchoLeads
-        payload = {
-            "firstName": contact.name,
-            "phone": contact.phone
-        }
-
-        response = client.create_contact(payload)
+    if contacts_to_create:
+        response = client.create_contacts_bulk(contacts_to_create)
+        
+        
+        print(response)
 
         if not response.get("success"):
-            raise HTTPException(status_code=400, detail="Failed to create contact in Echoleads")
+            raise HTTPException(status_code=400, detail="Bulk contact creation failed")
 
-        external_id = response["contact"]["id"]
+        created_contacts = response.get("contacts", [])
+        skipped_contacts = response.get("skipped", [])
 
-        contact.external_contact_id = external_id
-        external_contact_ids.append(external_id)
+        created_map = {
+            normalize_phone(c["phone"]): c["id"]
+            for c in created_contacts
+        }
+
+        skipped_map = {
+            normalize_phone(c["phone"]): c["id"]
+            for c in skipped_contacts
+        }
+
+        combined_map = {**created_map, **skipped_map}
+        
+        for c in unsynced_contacts:
+            print(c.id, c.name, c.phone)
+
+        for contact in unsynced_contacts:
+            normalized_phone = normalize_phone(contact.phone)
+            external_id = combined_map.get(normalized_phone)
+
+            if not external_id:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to map contact {contact.phone}"
+                )
+
+            contact.external_contact_id = external_id
+            external_contact_ids.append(external_id)
 
     db.commit()
 
     return external_contact_ids
+
+def normalize_phone(phone: str):
+    if not phone:
+        return None
+
+    phone = phone.strip().replace(" ", "")
+
+    # Add default country code if missing (India example)
+    if not phone.startswith("+"):
+        phone = "+91" + phone
+
+    return phone
 
 
 def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, campaign: CallCampaign):
     try:
         if campaign.external_campaign_id:
             response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
+            campaign_data = response.get("campaign") if response else None
         else:
             response = echolead_client.get_campaign_by_name(campaign.external_campaign_name)
-    except Exception as e:
-        print("Sync failed:", str(e))
+            campaigns = response.get("campaigns", []) if response else []
+            campaign_data = campaigns[0] if campaigns else None  
+            
+        if campaign_data:
+            campaign.status = campaign_data.get("status", campaign.status)
+            campaign.external_campaign_id = campaign_data.get("id", campaign.external_campaign_id)
+            campaign.updated_at = datetime.utcnow()
+            campaign.total_calls = campaign_data.get("total_calls", 0)
+            campaign.completed_calls = campaign_data.get("completed_calls", 0)
+            campaign.success_rate = campaign_data.get("success_rate", 0.0)
+            campaign.response_rate = campaign_data.get("response_rate", 0.0)
         
-    if response and response.get("campaign"):
-        data = response["campaign"]
-
-        campaign.status = data.get("status", campaign.status)
-        campaign.updated_at = datetime.utcnow()
-        campaign.total_calls = data.get("total_calls", 0)
-        campaign.completed_calls = data.get("completed_calls", 0)
-        campaign.success_rate = data.get("success_rate", 0.0)
-        campaign.response_rate = data.get("response_rate", 0.0)
-
-        for call in data.get("calls", []):
-                
-            agent = db.query(CallingAgent).filter(
+            for call in campaign_data.get("calls", []):
+                agent = db.query(CallingAgent).filter(
                     CallingAgent.external_agent_id == call.get("agent_id")
                 ).first()
 
-            if agent:
-                process_call(db, call, agent)
+                if agent:
+                    process_call(db, call, agent)
 
-        db.commit()
+            db.commit()
+    except Exception as e:
+        print("Sync failed:", str(e))
+    
 
 def parse_datetime(dt):
     if not dt:

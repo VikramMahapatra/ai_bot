@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
 
-from app.models.calling_agents import CallingAgent
+from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from app.models.lead import Lead
 from app.schemas.call_log import CallLogCreate, CallLogRequest
 from app.utils.echoleads_client import EcholeadsClient
@@ -20,7 +20,10 @@ def get_call_logs(
     params: CallLogRequest
 ):
     ### SYNC WITH ECHOLEADS
-    sync_call_logs(db, organization_id, params.campaign_id, params.from_date, params.end_date)
+    try:
+        sync_call_logs(db, organization_id, params.campaign_id, params.from_date, params.end_date)
+    except Exception as e:
+        print(f"Sync failed: {str(e)}")
 
     query = (
         db.query(
@@ -86,7 +89,7 @@ def get_call_logs(
         duration = None
         if log.start_time and log.end_time:
             duration = int((log.end_time - log.start_time).total_seconds())
-
+            
         rows.append({
             "id": log.id,
             "contact": contact_name,
@@ -96,9 +99,9 @@ def get_call_logs(
             "mode": log.mode,
             "phone": log.phone,
             "status": log.status,
-            "date": log.created_at,
-            "startTime": log.start_time,
-            "endTime": log.end_time,
+            "date": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
+            "startTime": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
+            "endTime": log.end_time.replace(tzinfo=timezone.utc).isoformat() if log.end_time else None,
             "duration": duration,
             "industry": log.industry,
             "cost": float(log.cost) if log.cost else 0,
@@ -163,14 +166,46 @@ def create_call_log(db: Session, data: CallLogCreate):
     return {"message": "Call log created"}
 
 
-def sync_call_logs(db: Session, organization_id: int, campaign_id=None, from_date=None, to_date=None):
+def sync_call_logs(
+    db: Session, 
+    organization_id: int, 
+    campaign_id=None, 
+    from_date=None, 
+    to_date=None,
+    agent_id=None
+):
     client = EcholeadsClient()
     
     print(f"campaign : {campaign_id}")
     print(f"from date : {from_date}")
     print(f"to date : {to_date}")
     
-    if campaign_id or (from_date and to_date):
+    if agent_id:
+        print("Syncing WITH agent_id (direct agent mode)")
+
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == agent_id,
+            CallingAgent.organization_id == organization_id
+        ).first()
+
+        if not agent:
+            print("Agent not found")
+            return
+
+        from_date, to_date = get_default_dates(from_date, to_date)
+
+        response = client.fetch_calls(
+            agent_id=agent.external_agent_id,
+            from_date=from_date.isoformat(),
+            to_date=to_date.isoformat()
+        )
+
+        calls = response.get("calls", [])
+
+        for call in calls:
+            process_call(db, call, agent)
+            
+    elif campaign_id or (from_date and to_date):
         
         if campaign_id:
             print("Syncing WITH campaign_id (campaign wise mode)")
@@ -178,7 +213,9 @@ def sync_call_logs(db: Session, organization_id: int, campaign_id=None, from_dat
                 CallCampaign.id == campaign_id
             ).first()
             
-            response = client.fetch_campaign_calls(campaign.external_campaign_id)
+            response = []
+            if campaign.external_campaign_id:
+                response = client.fetch_campaign_calls(campaign.external_campaign_id)
         else:
             print("Syncing WITH dates (date range wise mode)")
             from_date, to_date = get_default_dates(from_date, to_date)
@@ -196,7 +233,7 @@ def sync_call_logs(db: Session, organization_id: int, campaign_id=None, from_dat
                 continue
 
             agent = db.query(CallingAgent).filter(
-                CallingAgent.external_agent_id == call.get("agent_id"),
+                CallingAgent.external_agent_a_id == call.get("a_id"),
                 CallingAgent.organization_id == organization_id
             ).first()
 
@@ -238,10 +275,19 @@ def process_call(db, call, agent):
     ).first()
 
     campaign_external_id = call["campaign_id"]
-
-    campaign = db.query(CallCampaign).filter(
-        CallCampaign.external_campaign_id == campaign_external_id
-    ).first()
+    
+    
+    campaign = None
+    if campaign_external_id:
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.external_campaign_id == campaign_external_id
+        ).first()
+        
+    contact = None
+    if call.get("contact_id"):
+        contact = db.query(Contact).filter(
+            Contact.external_contact_id == call.get("contact_id")
+        ).first()
 
     # Prepare common values
     duration = int(call.get("duration")) if call.get("duration") else None
@@ -264,17 +310,17 @@ def process_call(db, call, agent):
         existing.organization_id = agent.organization_id
         existing.agent_id = agent.id
         existing.campaign_id = campaign.id if campaign else None
+        existing.contact_id = contact.id if contact else None
         existing.type = agent.type
         existing.mode = "Voice"
         existing.phone = call.get("phone")
-        existing.status = call.get("status")
+        existing.status = call.get("status").lower() if call.get("status") else existing.status
 
         existing.start_time = call_start
         existing.end_time = parse_datetime(call.get("call_ended_at"))
         existing.audio_url = call.get("recording_url")
         existing.cost = float(call.get("cost")) if call.get("cost") else None
 
-        # ✅ NEW FIELDS
         existing.duration = duration
         existing.ended_reason = ended_reason
         existing.call_summary = call_summary
@@ -283,7 +329,7 @@ def process_call(db, call, agent):
         existing.extract_data = extract_data
         existing.lead_info = lead_info
         existing.success_evaluation = success_eval_str.lower() == "true"
-
+        
         db.flush()
         save_transcripts(db, existing.id, call.get("transcript"))
 
@@ -293,14 +339,15 @@ def process_call(db, call, agent):
             organization_id=agent.organization_id,
             agent_id=agent.id,
             campaign_id=campaign.id if campaign else None,
+            contact_id = contact.id if contact else None,
             type=agent.type,
             mode="Voice",
             phone=call.get("phone"),
-            status=call.get("status"),
+            status=call.get("status").lower() if call.get("status") else "queued",
 
             start_time=call_start,
             end_time=parse_datetime(call.get("call_ended_at")),
-            audio_url=call.get("recording_url"),
+            audio_url=call.get("recording_url"), 
             cost=float(call.get("cost")) if call.get("cost") else None,
 
             duration=duration,
@@ -318,6 +365,14 @@ def process_call(db, call, agent):
         db.flush()
         save_transcripts(db, call_log.id, call.get("transcript"))
     
+    test_call = db.query(CallingAgentTestCall).filter(
+        CallingAgentTestCall.external_call_id ==call["id"]
+    ).first()
+
+    if test_call:
+        test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
+        db.commit()
+
 def save_transcripts(db: Session, call_log_id: int, transcript):
 
     if not transcript:
@@ -336,7 +391,7 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
             text = line.replace("AI:", "").strip()
 
         elif line.startswith("User:"):
-            speaker = "Contact"
+            speaker = "User"
             text = line.replace("User:", "").strip()
 
         else:

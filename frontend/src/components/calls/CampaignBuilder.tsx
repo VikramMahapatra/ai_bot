@@ -162,7 +162,7 @@ const CampaignBuilder = () => {
             setView("list");
         }
         catch (err: any) {
-            showError(err?.response?.data?.detail || 'Failed to save the campaign data');
+            showError(err?.response?.data?.detail || err?.detail || 'Failed to save the campaign data');
             window.scrollTo({ top: 0, behavior: "smooth" });
         }
         finally {
