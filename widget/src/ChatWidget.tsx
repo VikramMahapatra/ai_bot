@@ -14,6 +14,7 @@ interface WidgetConfig {
   welcomeMessage?: string;
   primaryColor?: string;
   secondaryColor?: string;
+  chatHeaderFontColor?: string;
   position?: string;
   botIcon?: string;
   userIcon?: string;
@@ -26,6 +27,10 @@ const BOT_ICON_GLYPHS: Record<string, string> = {
   'bot-spark': '✨',
   'bot-brain': '🧠',
   'bot-guide': '🛰️',
+  'bot-helper': '🧑‍🔧',
+  'bot-assistant': '🤝',
+  'bot-shield': '🛡️',
+  'bot-light': '💡',
 };
 
 const USER_ICON_GLYPHS: Record<string, string> = {
@@ -33,6 +38,10 @@ const USER_ICON_GLYPHS: Record<string, string> = {
   'user-smile': '🙂',
   'user-chat': '💬',
   'user-brief': '🧑‍💼',
+  'user-student': '🧑‍🎓',
+  'user-creative': '🎨',
+  'user-tech': '🧑‍💻',
+  'user-star': '🌟',
 };
 
 const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -110,6 +119,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   welcomeMessage = 'Hi! How can I help you?',
   primaryColor = '#269b9f',
   secondaryColor = '#34d399',
+  chatHeaderFontColor,
   position = 'bottom-right',
   botIcon = 'bot-robot',
   userIcon = 'user-person',
@@ -181,6 +191,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const chatAPI = useRef(new ChatAPI(apiUrl));
   const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS['bot-robot'];
   const userIconGlyph = USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS['user-person'];
+  const headerTextColor = (chatHeaderFontColor || '').trim() || '#ffffff';
 
   const shopDomain = useMemo(() => shop?.domain || shop?.shop_domain || undefined, [shop]);
   const customerId = useMemo(() => user?.id || user?.customer_id || undefined, [user]);
@@ -541,6 +552,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       );
     };
 
+    const removeAssistantPlaceholder = () => {
+      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+    };
+
     const applyUiAction = (payload?: {
       ui_action?: string;
       handoff_chat_id?: string;
@@ -659,16 +674,22 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           customerId ? String(customerId) : undefined
         );
 
-        const rawAssistantText = typeof response?.response === 'string'
-          ? response.response
-          : 'I could not generate a response right now.';
-        replaceAssistantMessage(rawAssistantText);
+        const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
+        const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
+        if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
+          removeAssistantPlaceholder();
+        } else {
+          replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+        }
         applyUiAction(response);
       }
 
       applyUiAction(streamDonePayload);
 
-      if (!receivedToken && !streamDonePayload?.ui_action) {
+      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
+      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+        removeAssistantPlaceholder();
+      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
         replaceAssistantMessage('I could not generate a response right now.');
       }
 
@@ -872,7 +893,13 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
       {isOpen && (
         <div className="chatbot-widget-window chatbot-slide-in">
-          <div className="chatbot-widget-header" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}>
+          <div
+            className="chatbot-widget-header"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
+              color: headerTextColor,
+            }}
+          >
             <h3>{name}</h3>
             <div className="chatbot-widget-header-actions">
               <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>

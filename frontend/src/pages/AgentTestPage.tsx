@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -19,8 +19,7 @@ import LanguageIcon from '@mui/icons-material/Language';
 import InsightsIcon from '@mui/icons-material/Insights';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import ChatBubbleRoundedIcon from '@mui/icons-material/ChatBubbleRounded';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { appEnv } from '../config/env';
 
@@ -74,6 +73,10 @@ const BOT_ICON_GLYPHS: Record<string, string> = {
   'bot-spark': '✨',
   'bot-brain': '🧠',
   'bot-guide': '🛰️',
+  'bot-helper': '🧑‍🔧',
+  'bot-assistant': '🤝',
+  'bot-shield': '🛡️',
+  'bot-light': '💡',
 };
 
 const USER_ICON_GLYPHS: Record<string, string> = {
@@ -81,9 +84,13 @@ const USER_ICON_GLYPHS: Record<string, string> = {
   'user-smile': '🙂',
   'user-chat': '💬',
   'user-brief': '🧑‍💼',
+  'user-student': '🧑‍🎓',
+  'user-creative': '🎨',
+  'user-tech': '🧑‍💻',
+  'user-star': '🌟',
 };
 
-const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string } => {
+const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string; chatHeaderFontColor?: string } => {
   if (!leadFieldsRaw) return {};
   try {
     const parsed = JSON.parse(leadFieldsRaw);
@@ -93,6 +100,10 @@ const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIco
     return {
       botIcon: typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined,
       userIcon: typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined,
+      chatHeaderFontColor:
+        typeof (parsed as any).chat_header_font_color === 'string'
+          ? (parsed as any).chat_header_font_color
+          : undefined,
     };
   } catch {
     return {};
@@ -266,6 +277,7 @@ const AgentTestPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const testToken = (searchParams.get('token') || '').trim();
   const [isOpen, setIsOpen] = useState(false);
+  const [widgetLookDark, setWidgetLookDark] = useState(false);
   const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(null);
   const [accessError, setAccessError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -317,9 +329,10 @@ const AgentTestPage: React.FC = () => {
   const secondaryColor = widgetConfig?.secondary_color || '#2d8ef0';
   const assistantName = widgetConfig?.name?.trim() || 'AI Assistant';
   const welcomeText = (widgetConfig?.welcome_message || 'Hi! How can I help you today?').trim() || 'Hi! How can I help you today?';
-  const iconSelection = useMemo(() => parseIconSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
-  const botIconGlyph = BOT_ICON_GLYPHS[iconSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
-  const userIconGlyph = USER_ICON_GLYPHS[iconSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
+  const styleSelection = useMemo(() => parseStyleSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
+  const botIconGlyph = BOT_ICON_GLYPHS[styleSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
+  const userIconGlyph = USER_ICON_GLYPHS[styleSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
+  const chatHeaderFontColor = (styleSelection.chatHeaderFontColor || '').trim() || '#f8fafc';
   const testTokenExpiryMs = useMemo(() => parseJwtExpiryMs(testToken), [testToken]);
   const testTokenRemainingMs = useMemo(
     () => (testTokenExpiryMs ? testTokenExpiryMs - nowMs : null),
@@ -400,11 +413,13 @@ const AgentTestPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages, showLeadForm, showAppointmentForm, sending]);
 
-  useEffect(() => {
-    const loadWidgetConfig = async () => {
+  const loadWidgetConfig = useCallback(
+    async (silent = false) => {
       if (!widgetId) return;
       if (!testToken) {
-        setAccessError('Missing test access token. Please request a new share link.');
+        if (!silent) {
+          setAccessError('Missing test access token. Please request a new share link.');
+        }
         return;
       }
 
@@ -413,6 +428,9 @@ const AgentTestPage: React.FC = () => {
           `${apiBaseUrl}/api/admin/widget/test/config/${encodeURIComponent(widgetId)}?token=${encodeURIComponent(testToken)}`
         );
         if (!response.ok) {
+          if (silent) {
+            return;
+          }
           if (response.status === 401) {
             setAccessError('This test link is invalid or has expired. Please request a new one.');
           } else if (response.status === 404) {
@@ -434,13 +452,28 @@ const AgentTestPage: React.FC = () => {
           return prev;
         });
       } catch {
-        setAccessError('Unable to validate this test link right now. Please try again later.');
-        // Keep defaults when config fetch fails.
+        if (!silent) {
+          setAccessError('Unable to validate this test link right now. Please try again later.');
+        }
+        // Keep existing style/config when refresh fails.
       }
-    };
+    },
+    [apiBaseUrl, testToken, widgetId]
+  );
 
-    loadWidgetConfig();
-  }, [apiBaseUrl, testToken, widgetId]);
+  useEffect(() => {
+    loadWidgetConfig(false);
+  }, [loadWidgetConfig]);
+
+  useEffect(() => {
+    if (!widgetId || !testToken || accessError) return;
+
+    const timer = window.setInterval(() => {
+      loadWidgetConfig(true);
+    }, 10000);
+
+    return () => window.clearInterval(timer);
+  }, [accessError, loadWidgetConfig, testToken, widgetId]);
 
   const startFreshSession = () => {
     const created = createPublicSessionId();
@@ -742,6 +775,10 @@ const AgentTestPage: React.FC = () => {
       );
     };
 
+    const removeAssistantPlaceholder = () => {
+      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+    };
+
     const applyUiAction = (payload?: {
       ui_action?: string;
       handoff_chat_id?: string;
@@ -892,17 +929,26 @@ const AgentTestPage: React.FC = () => {
         }
 
         const data = (await response.json()) as ChatApiResponse;
-        const rawReply = typeof data?.response === 'string'
-          ? data.response
-          : 'I could not generate a response right now.';
-        const reply = data?.ui_action === 'open_appointment_form' ? APPOINTMENT_FORM_PROMPT : rawReply;
-        replaceAssistantMessage(reply);
+        const hasHandoffMeta = Boolean(data?.handoff_chat_id || data?.handoff_status);
+        const rawReply = typeof data?.response === 'string' ? data.response.trim() : '';
+        const reply = data?.ui_action === 'open_appointment_form'
+          ? APPOINTMENT_FORM_PROMPT
+          : (rawReply || 'I could not generate a response right now.');
+
+        if (!rawReply && hasHandoffMeta && !data?.ui_action) {
+          removeAssistantPlaceholder();
+        } else {
+          replaceAssistantMessage(reply);
+        }
         applyUiAction(data);
       }
 
       applyUiAction(streamDonePayload);
 
-      if (!receivedToken && !streamDonePayload?.ui_action) {
+      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
+      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+        removeAssistantPlaceholder();
+      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
         replaceAssistantMessage('I could not generate a response right now.');
       }
 
@@ -1318,7 +1364,22 @@ const AgentTestPage: React.FC = () => {
             zIndex: 1200,
           }}
         >
-          💬
+          <Box sx={{ position: 'relative', width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ChatBubbleRoundedIcon sx={{ fontSize: 30, color: 'rgba(255,255,255,0.95)' }} />
+            <Typography
+              component="span"
+              sx={{
+                position: 'absolute',
+                fontSize: '0.7rem',
+                fontWeight: 800,
+                color: primaryColor,
+                lineHeight: 1,
+                mt: '1px',
+              }}
+            >
+              Z
+            </Typography>
+          </Box>
         </Button>
       )}
 
@@ -1330,19 +1391,21 @@ const AgentTestPage: React.FC = () => {
             ...panelPositionSx,
             width: { xs: 'calc(100vw - 20px)', sm: 430 },
             height: { xs: '76vh', sm: 650 },
-            borderRadius: 5,
+            borderRadius: 4,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1300,
-            border: '1px solid rgba(148,163,184,0.35)',
-            boxShadow: '0 28px 62px rgba(15,23,42,0.34)',
+            border: widgetLookDark ? '1px solid rgba(148,163,184,0.22)' : '1px solid #cbd5e1',
+            boxShadow: widgetLookDark ? '0 24px 54px rgba(2,6,23,0.5)' : '0 28px 62px rgba(15,23,42,0.34)',
             backdropFilter: 'blur(8px)',
+            fontFamily: 'inherit',
+            backgroundColor: widgetLookDark ? '#111827' : '#ffffff',
           }}
         >
           <Box sx={{
-            background: `linear-gradient(115deg, #0f172a 0%, ${primaryColor} 55%, ${secondaryColor} 100%)`,
-            color: '#f8fafc',
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            color: chatHeaderFontColor,
             px: 1.8,
             py: 1.4,
             display: 'flex',
@@ -1351,66 +1414,74 @@ const AgentTestPage: React.FC = () => {
             borderBottom: '1px solid rgba(255,255,255,0.22)',
           }}>
             <Box>
-              <Typography sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em' }}>{assistantName}</Typography>
-              <Stack direction="row" spacing={0.8} sx={{ mt: 0.35, alignItems: 'center' }}>
-                <Chip
-                  size="small"
-                  label={sending ? 'Replying...' : 'Live'}
-                  sx={{
-                    height: 20,
-                    bgcolor: 'rgba(255,255,255,0.2)',
-                    color: '#f8fafc',
-                    fontWeight: 700,
-                    '& .MuiChip-label': { px: 1, fontSize: '0.66rem' },
-                  }}
-                />
-                <Typography sx={{ fontSize: '0.7rem', opacity: 0.88 }}>
-                  Test Link Mode
-                </Typography>
-              </Stack>
-              <Typography sx={{ fontSize: '0.66rem', opacity: 0.82, mt: 0.4, fontFamily: 'Consolas, Menlo, monospace' }}>
+              <Typography sx={{ color: 'inherit', fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em', fontSize: '1.06rem' }}>{assistantName}</Typography>
+              <Typography sx={{ color: 'inherit', fontSize: '0.72rem', opacity: 0.9, mt: 0.45, fontFamily: 'Consolas, Menlo, monospace' }}>
                 session: {sessionId ? sessionId.slice(-10) : 'n/a'}
               </Typography>
             </Box>
-            <Button
-              size="small"
-              sx={{
-                color: '#f8fafc',
-                minWidth: 34,
-                width: 34,
-                height: 34,
-                borderRadius: '10px',
-                border: '1px solid rgba(255,255,255,0.35)',
-                bgcolor: 'rgba(255,255,255,0.08)',
-              }}
-              onClick={() => setIsOpen(false)}
-            >
-              ×
-            </Button>
-          </Box>
-
-          <Box sx={{ px: 1.35, py: 1.05, borderBottom: '1px solid #e2e8f0', bgcolor: '#f8fbff' }}>
-            <Stack direction="row" spacing={0.9}>
+            <Stack direction="row" spacing={0.85}>
               <Button
-                variant="outlined"
-                startIcon={<CalendarMonthIcon />}
-                onClick={openAppointmentDialog}
-                disabled={!canUseChat || sending}
                 size="small"
-                fullWidth
-                sx={{ borderRadius: '11px', fontWeight: 700, textTransform: 'none' }}
+                onClick={startFreshSession}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 34,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title="New session"
               >
-                Book
+                ⟳
               </Button>
               <Button
-                variant="outlined"
-                onClick={startFreshSession}
-                disabled={sending}
                 size="small"
-                fullWidth
-                sx={{ borderRadius: '11px', fontWeight: 700, textTransform: 'none' }}
+                onClick={openAppointmentDialog}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 34,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title="Book appointment"
               >
-                New Session
+                📅
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setWidgetLookDark((v) => !v)}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 34,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title={widgetLookDark ? 'Light mode' : 'Dark mode'}
+              >
+                {widgetLookDark ? '☀' : '🌙'}
+              </Button>
+              <Button
+                size="small"
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 34,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.12)',
+                }}
+                onClick={() => setIsOpen(false)}
+              >
+                ×
               </Button>
             </Stack>
           </Box>
@@ -1495,11 +1566,9 @@ const AgentTestPage: React.FC = () => {
             ref={messagesContainerRef}
             sx={{
               flex: 1,
-              p: 1.35,
+              p: 1.45,
               overflowY: 'auto',
-              bgcolor: '#f4f8ff',
-              backgroundImage:
-                'radial-gradient(circle at 0% 0%, rgba(56,189,248,0.08), transparent 34%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.08), transparent 38%)',
+              bgcolor: widgetLookDark ? '#0f172a' : '#eef2f7',
             }}
           >
             <Stack spacing={1.35}>
@@ -1509,10 +1578,10 @@ const AgentTestPage: React.FC = () => {
                   key={`${message.role}-${index}`}
                   sx={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '94%',
+                    maxWidth: '96%',
                     display: 'flex',
                     alignItems: 'flex-end',
-                    gap: 0.72,
+                    gap: 0.78,
                     flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
                   }}
                 >
@@ -1527,17 +1596,16 @@ const AgentTestPage: React.FC = () => {
                       <>
                   <Box
                     sx={{
-                      width: 30,
-                      height: 30,
+                      width: 28,
+                      height: 28,
                       borderRadius: '50%',
-                      border: message.role === 'assistant' ? '1px solid #bfdbfe' : '1px solid rgba(255,255,255,0.65)',
-                      bgcolor: message.role === 'assistant' ? '#ffffff' : 'rgba(255,255,255,0.22)',
+                      border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
+                      bgcolor: '#ffffff',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '0.95rem',
-                      flex: '0 0 30px',
-                      boxShadow: '0 6px 14px rgba(15,23,42,0.08)',
+                      flex: '0 0 28px',
                     }}
                   >
                     {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
@@ -1547,18 +1615,16 @@ const AgentTestPage: React.FC = () => {
                       px: 1.45,
                       py: 1.05,
                       borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
-                      bgcolor: message.role === 'user' ? undefined : '#ffffff',
+                      bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
                       background: message.role === 'user'
-                        ? `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
+                        ? `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
                         : undefined,
-                      color: message.role === 'user' ? '#fff' : '#0f172a',
-                      border: message.role === 'assistant' ? '1px solid #dbeafe' : 'none',
+                      color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
+                      border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
                       whiteSpace: 'pre-wrap',
-                      fontSize: '0.91rem',
-                      lineHeight: 1.38,
-                      boxShadow: message.role === 'assistant'
-                        ? '0 8px 18px rgba(15,23,42,0.06)'
-                        : '0 10px 20px rgba(2,132,199,0.28)',
+                      fontSize: { xs: '0.8rem', md: '0.86rem' },
+                      lineHeight: 1.45,
+                      boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
                       minHeight: isPendingAssistantMessage ? 30 : undefined,
                       minWidth: isPendingAssistantMessage ? 46 : undefined,
                       display: isPendingAssistantMessage ? 'flex' : 'block',
@@ -1815,7 +1881,7 @@ const AgentTestPage: React.FC = () => {
             </Stack>
           </Box>
 
-          <Box sx={{ p: 1.35, borderTop: '1px solid #dbeafe', bgcolor: '#ffffff' }}>
+          <Box sx={{ p: 1.35, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
             <Stack spacing={0.7}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <TextField
@@ -1833,13 +1899,13 @@ const AgentTestPage: React.FC = () => {
                 size="small"
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    borderRadius: '12px',
-                    bgcolor: '#f8fbff',
-                    '& fieldset': { borderColor: '#cbd5e1' },
-                    '&:hover fieldset': { borderColor: '#93c5fd' },
-                    '&.Mui-focused fieldset': { borderColor: '#60a5fa' },
+                    borderRadius: '14px',
+                    bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
+                    '& fieldset': { borderColor: widgetLookDark ? '#334155' : '#cbd5e1' },
+                    '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
+                    '&.Mui-focused fieldset': { borderColor: primaryColor },
                   },
-                  '& .MuiInputBase-input': { fontSize: '0.94rem' },
+                  '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1853,18 +1919,19 @@ const AgentTestPage: React.FC = () => {
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
-                  minWidth: 46,
-                  width: 48,
-                  height: 40,
-                  borderRadius: '12px',
-                  background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-                  boxShadow: '0 10px 18px rgba(2,132,199,0.3)',
+                  minWidth: 92,
+                  height: 48,
+                  borderRadius: '14px',
+                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                  boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
+                  fontWeight: 700,
+                  textTransform: 'none',
                 }}
               >
-                <SendRoundedIcon fontSize="small" />
+                Send
               </Button>
               </Box>
-              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 500 }}>
+              <Typography variant="caption" sx={{ color: widgetLookDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
                 Press Enter to send. Appointment booking is available anytime.
               </Typography>
               {typeof inactivityRemainingSeconds === 'number' ? (
@@ -1879,6 +1946,19 @@ const AgentTestPage: React.FC = () => {
                 </Typography>
               ) : null}
             </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              py: 0.85,
+              textAlign: 'center',
+              fontSize: '0.82rem',
+              color: widgetLookDark ? '#94a3b8' : '#64748b',
+              borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #e2e8f0',
+              bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
+            }}
+          >
+            Powered by Zentrixel AI
           </Box>
         </Paper>
       )}
