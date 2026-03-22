@@ -1350,10 +1350,10 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...launcherPositionSx,
-            borderRadius: '18px',
-            minWidth: 68,
-            height: 68,
-            fontSize: 30,
+            borderRadius: '15px',
+            minWidth: 56,
+            height: 56,
+            fontSize: 24,
             background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
             boxShadow: '0 18px 36px rgba(15,23,42,0.32)',
             border: '1px solid rgba(255,255,255,0.35)',
@@ -1364,13 +1364,13 @@ const AgentTestPage: React.FC = () => {
             zIndex: 1200,
           }}
         >
-          <Box sx={{ position: 'relative', width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ChatBubbleRoundedIcon sx={{ fontSize: 30, color: 'rgba(255,255,255,0.95)' }} />
+          <Box sx={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ChatBubbleRoundedIcon sx={{ fontSize: 24, color: 'rgba(255,255,255,0.95)' }} />
             <Typography
               component="span"
               sx={{
                 position: 'absolute',
-                fontSize: '0.7rem',
+                fontSize: '0.6rem',
                 fontWeight: 800,
                 color: primaryColor,
                 lineHeight: 1,
@@ -1389,8 +1389,8 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...panelPositionSx,
-            width: { xs: 'calc(100vw - 20px)', sm: 430 },
-            height: { xs: '76vh', sm: 650 },
+            width: { xs: 'calc(100vw - 32px)', sm: 360 },
+            height: { xs: '66vh', sm: 550 },
             borderRadius: 4,
             overflow: 'hidden',
             display: 'flex',
@@ -1406,28 +1406,28 @@ const AgentTestPage: React.FC = () => {
           <Box sx={{
             background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
             color: chatHeaderFontColor,
-            px: 1.8,
-            py: 1.4,
+            px: 1.3,
+            py: 1,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             borderBottom: '1px solid rgba(255,255,255,0.22)',
           }}>
             <Box>
-              <Typography sx={{ color: 'inherit', fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em', fontSize: '1.06rem' }}>{assistantName}</Typography>
-              <Typography sx={{ color: 'inherit', fontSize: '0.72rem', opacity: 0.9, mt: 0.45, fontFamily: 'Consolas, Menlo, monospace' }}>
+              <Typography sx={{ color: 'inherit', fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em', fontSize: '0.92rem' }}>{assistantName}</Typography>
+              <Typography sx={{ color: 'inherit', fontSize: '0.62rem', opacity: 0.9, mt: 0.3, fontFamily: 'Consolas, Menlo, monospace' }}>
                 session: {sessionId ? sessionId.slice(-10) : 'n/a'}
               </Typography>
             </Box>
-            <Stack direction="row" spacing={0.85}>
+            <Stack direction="row" spacing={0.5}>
               <Button
                 size="small"
                 onClick={startFreshSession}
                 sx={{
                   color: chatHeaderFontColor,
-                  minWidth: 34,
-                  width: 34,
-                  height: 34,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
                   borderRadius: '10px',
                   border: '1px solid rgba(255,255,255,0.3)',
                   bgcolor: 'rgba(255,255,255,0.18)',
@@ -1441,9 +1441,9 @@ const AgentTestPage: React.FC = () => {
                 onClick={openAppointmentDialog}
                 sx={{
                   color: chatHeaderFontColor,
-                  minWidth: 34,
-                  width: 34,
-                  height: 34,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
                   borderRadius: '10px',
                   border: '1px solid rgba(255,255,255,0.3)',
                   bgcolor: 'rgba(255,255,255,0.18)',
@@ -1457,9 +1457,9 @@ const AgentTestPage: React.FC = () => {
                 onClick={() => setWidgetLookDark((v) => !v)}
                 sx={{
                   color: chatHeaderFontColor,
-                  minWidth: 34,
-                  width: 34,
-                  height: 34,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
                   borderRadius: '10px',
                   border: '1px solid rgba(255,255,255,0.3)',
                   bgcolor: 'rgba(255,255,255,0.18)',
@@ -1472,9 +1472,9 @@ const AgentTestPage: React.FC = () => {
                 size="small"
                 sx={{
                   color: chatHeaderFontColor,
-                  minWidth: 34,
-                  width: 34,
-                  height: 34,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
                   borderRadius: '10px',
                   border: '1px solid rgba(255,255,255,0.3)',
                   bgcolor: 'rgba(255,255,255,0.12)',
@@ -1566,12 +1566,12 @@ const AgentTestPage: React.FC = () => {
             ref={messagesContainerRef}
             sx={{
               flex: 1,
-              p: 1.45,
+              p: 1,
               overflowY: 'auto',
               bgcolor: widgetLookDark ? '#0f172a' : '#eef2f7',
             }}
           >
-            <Stack spacing={1.35}>
+            <Stack spacing={0.95}>
               {messages.map((message, index) => (
                 
                 <Box
@@ -1596,24 +1596,24 @@ const AgentTestPage: React.FC = () => {
                       <>
                   <Box
                     sx={{
-                      width: 28,
-                      height: 28,
+                      width: 22,
+                      height: 22,
                       borderRadius: '50%',
                       border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
                       bgcolor: '#ffffff',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '0.95rem',
-                      flex: '0 0 28px',
+                      fontSize: '0.76rem',
+                      flex: '0 0 22px',
                     }}
                   >
                     {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
                   </Box>
                   <Box
                     sx={{
-                      px: 1.45,
-                      py: 1.05,
+                      px: 1.05,
+                      py: 0.8,
                       borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
                       bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
                       background: message.role === 'user'
@@ -1622,8 +1622,8 @@ const AgentTestPage: React.FC = () => {
                       color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
                       border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
                       whiteSpace: 'pre-wrap',
-                      fontSize: { xs: '0.8rem', md: '0.86rem' },
-                      lineHeight: 1.45,
+                      fontSize: { xs: '0.73rem', md: '0.79rem' },
+                      lineHeight: 1.4,
                       boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
                       minHeight: isPendingAssistantMessage ? 30 : undefined,
                       minWidth: isPendingAssistantMessage ? 46 : undefined,
@@ -1881,9 +1881,9 @@ const AgentTestPage: React.FC = () => {
             </Stack>
           </Box>
 
-          <Box sx={{ p: 1.35, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
+          <Box sx={{ p: 0.95, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
             <Stack spacing={0.7}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
               <TextField
                 value={input}
                 onChange={(e) => {
@@ -1905,7 +1905,7 @@ const AgentTestPage: React.FC = () => {
                     '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
                     '&.Mui-focused fieldset': { borderColor: primaryColor },
                   },
-                  '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
+                  '& .MuiInputBase-input': { fontSize: '0.8rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1919,19 +1919,20 @@ const AgentTestPage: React.FC = () => {
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
-                  minWidth: 92,
-                  height: 48,
+                  minWidth: 74,
+                  height: 38,
                   borderRadius: '14px',
                   background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
                   boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
                   fontWeight: 700,
+                  fontSize: '0.78rem',
                   textTransform: 'none',
                 }}
               >
                 Send
               </Button>
               </Box>
-              <Typography variant="caption" sx={{ color: widgetLookDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+              <Typography variant="caption" sx={{ color: widgetLookDark ? '#94a3b8' : '#64748b', fontWeight: 500, fontSize: '0.68rem' }}>
                 Press Enter to send. Appointment booking is available anytime.
               </Typography>
               {typeof inactivityRemainingSeconds === 'number' ? (
@@ -1950,9 +1951,9 @@ const AgentTestPage: React.FC = () => {
 
           <Box
             sx={{
-              py: 0.85,
+              py: 0.6,
               textAlign: 'center',
-              fontSize: '0.82rem',
+              fontSize: '0.72rem',
               color: widgetLookDark ? '#94a3b8' : '#64748b',
               borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #e2e8f0',
               bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
