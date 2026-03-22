@@ -462,7 +462,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             value={formData.prompt}
                             onChange={handleInputChange}
                             multiline
-                            rows={10}
+                            rows={15}
                             error={!!errors.prompt}
                             helperText={errors.prompt}
                             inputProps={{
