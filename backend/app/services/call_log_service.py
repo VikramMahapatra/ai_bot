@@ -89,7 +89,7 @@ def get_call_logs(
         duration = None
         if log.start_time and log.end_time:
             duration = int((log.end_time - log.start_time).total_seconds())
-
+            
         rows.append({
             "id": log.id,
             "contact": contact_name,
@@ -99,9 +99,9 @@ def get_call_logs(
             "mode": log.mode,
             "phone": log.phone,
             "status": log.status,
-            "date": log.created_at,
-            "startTime": log.start_time,
-            "endTime": log.end_time,
+            "date": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
+            "startTime": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
+            "endTime": log.end_time.replace(tzinfo=timezone.utc).isoformat() if log.end_time else None,
             "duration": duration,
             "industry": log.industry,
             "cost": float(log.cost) if log.cost else 0,
@@ -212,7 +212,9 @@ def sync_call_logs(
                 CallCampaign.id == campaign_id
             ).first()
             
-            response = client.fetch_campaign_calls(campaign.external_campaign_id)
+            response = []
+            if campaign.external_campaign_id:
+                response = client.fetch_campaign_calls(campaign.external_campaign_id)
         else:
             print("Syncing WITH dates (date range wise mode)")
             from_date, to_date = get_default_dates(from_date, to_date)

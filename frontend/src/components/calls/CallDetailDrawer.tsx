@@ -19,6 +19,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DescriptionIcon from '@mui/icons-material/Description';
 import TimerIcon from "@mui/icons-material/Timer";
 import CallEndIcon from "@mui/icons-material/CallEnd";
+import { formatDateTime } from '../../utils/dateUtils';
 
 interface CallDetailDrawerProps {
     open: boolean;
@@ -81,7 +82,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.startTime
-                                        ? new Date(selectedCall.startTime).toLocaleString()
+                                        ? formatDateTime(selectedCall.startTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -93,7 +94,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.endTime
-                                        ? new Date(selectedCall.endTime).toLocaleString()
+                                        ? formatDateTime(selectedCall.endTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -120,7 +121,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                             </Box>
 
-                            <Box display="flex" alignItems="center" gap={1}>
+                            {/* <Box display="flex" alignItems="center" gap={1}>
                                 <AttachMoneyIcon fontSize="small" />
                                 <Typography variant="body2" color="text.secondary">
                                     Cost:
@@ -128,7 +129,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 <Typography variant="body2" fontWeight={600} color="success.main">
                                     {selectedCall.cost || "N/A"}
                                 </Typography>
-                            </Box>
+                            </Box> */}
 
                             <Box display="flex" alignItems="center" gap={1}>
                                 <CallEndIcon fontSize="small" />

@@ -1,5 +1,5 @@
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from typing import List, Optional
 from fastapi import HTTPException
@@ -19,14 +19,14 @@ from app.models.organization_limits import OrganizationLimits
 
 
 STALE_MINUTES = 1
-SYNC_STATUSES = ["active", "pending"] 
+SYNC_STATUSES = ["active", "running", "pending"] 
 
 def should_sync(campaign):
     if campaign.status not in SYNC_STATUSES:
         return False
 
-    if not campaign.updated_at:
-        return True
+    # if not campaign.updated_at:
+    #     return True
 
     return campaign.updated_at < datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
 
@@ -139,7 +139,7 @@ def list_campaigns(
             "status": campaign.status,
             "contacts": campaign.total_calls,
             "progress": progress,
-            "created_at": campaign.created_at
+            "created_at": campaign.created_at.replace(tzinfo=timezone.utc).isoformat()
         })
 
     return {
@@ -780,33 +780,35 @@ def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, 
     try:
         if campaign.external_campaign_id:
             response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
+            campaign_data = response.get("campaign") if response else None
         else:
             response = echolead_client.get_campaign_by_name(campaign.external_campaign_name)
+            campaigns = response.get("campaigns", []) if response else []
+            campaign_data = campaigns[0] if campaigns else None  
             
-        print(response)
-    except Exception as e:
-        print("Sync failed:", str(e))
+            print("Campaign Data :", campaign_data)
         
-    if response and response.get("campaign"):
-        data = response["campaign"]
-
-        campaign.status = data.get("status", campaign.status)
-        campaign.updated_at = datetime.utcnow()
-        campaign.total_calls = data.get("total_calls", 0)
-        campaign.completed_calls = data.get("completed_calls", 0)
-        campaign.success_rate = data.get("success_rate", 0.0)
-        campaign.response_rate = data.get("response_rate", 0.0)
-
-        for call in data.get("calls", []):
-                
-            agent = db.query(CallingAgent).filter(
+        if campaign_data:
+            campaign.status = campaign_data.get("status", campaign.status)
+            campaign.external_campaign_id = campaign_data.get("id", campaign.external_campaign_id)
+            campaign.updated_at = datetime.utcnow()
+            campaign.total_calls = campaign_data.get("total_calls", 0)
+            campaign.completed_calls = campaign_data.get("completed_calls", 0)
+            campaign.success_rate = campaign_data.get("success_rate", 0.0)
+            campaign.response_rate = campaign_data.get("response_rate", 0.0)
+        
+            for call in campaign_data.get("calls", []):
+                agent = db.query(CallingAgent).filter(
                     CallingAgent.external_agent_id == call.get("agent_id")
                 ).first()
 
-            if agent:
-                process_call(db, call, agent)
+                if agent:
+                    process_call(db, call, agent)
 
-        db.commit()
+            db.commit()
+    except Exception as e:
+        print("Sync failed:", str(e))
+    
 
 def parse_datetime(dt):
     if not dt:

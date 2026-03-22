@@ -31,6 +31,7 @@ import CallDetailDrawer from './CallDetailDrawer';
 import SyncIcon from "@mui/icons-material/Sync";
 import CloseIcon from "@mui/icons-material/Close";
 import { CallLog, callLogService } from '../../services/callLogService';
+import { formatDateTime } from '../../utils/dateUtils';
 
 
 const getStatusColor = (status: string) => {
@@ -240,7 +241,7 @@ export const CallLogsTab = () => {
                             <TableCell>Test Call</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Duration</TableCell>
-                            <TableCell>Cost</TableCell>
+                            {/* <TableCell>Cost</TableCell> */}
                             <TableCell>Date</TableCell>
                             <TableCell>View</TableCell>
                         </TableRow>
@@ -248,7 +249,7 @@ export const CallLogsTab = () => {
                     <TableBody>
                         {callLogs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={10} sx={{ py: 8 }}>
+                                <TableCell colSpan={9} sx={{ py: 8 }}>
                                     <Box
                                         display="flex"
                                         flexDirection="column"
@@ -288,15 +289,9 @@ export const CallLogsTab = () => {
                                         <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
                                     </TableCell>
                                     <TableCell>{log.duration || "N/A"}</TableCell>
-                                    <TableCell>{log.cost || "0.00"}</TableCell>
+                                    {/* <TableCell>{log.cost || "0.00"}</TableCell> */}
                                     <TableCell>
-                                        {log.date ? new Date(log.date).toLocaleString("en-IN", {
-                                            day: "2-digit",
-                                            month: "short",
-                                            year: "numeric",
-                                            hour: "2-digit",
-                                            minute: "2-digit"
-                                        }) : "-"}
+                                        {log.date ? formatDateTime(log.date) : "-"}
                                     </TableCell>
                                     <TableCell>
                                         <IconButton

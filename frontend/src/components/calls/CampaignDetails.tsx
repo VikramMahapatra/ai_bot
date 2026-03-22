@@ -34,6 +34,7 @@ import CallDetailDrawer from "./CallDetailDrawer";
 import { CallLog, callLogService } from "../../services/callLogService";
 import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
+import { formatDateTime } from "../../utils/dateUtils";
 interface Props {
     campaignId: number;
     onBack: () => void;
@@ -363,13 +364,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                                             <TableCell>{log.sentiment || "-"}</TableCell>
 
                                             <TableCell>
-                                                {log.date ? new Date(log.date).toLocaleString("en-IN", {
-                                                    day: "2-digit",
-                                                    month: "short",
-                                                    year: "numeric",
-                                                    hour: "2-digit",
-                                                    minute: "2-digit"
-                                                }) : "-"}
+                                                {log.date ? formatDateTime(log.date) : "-"}
                                             </TableCell>
                                             <TableCell>
                                                 <Tooltip title="View Insights">
