@@ -472,17 +472,40 @@ export const CallingAgentTab: React.FC = () => {
 
                                                 {/* Campaigns */}
                                                 <TableCell>
-                                                    <Box display="flex" flexWrap="wrap" gap={1}>
+                                                    <Box display="flex" flexDirection="column" gap={0.8}>
 
                                                         {/* Pending */}
+
+
+                                                        {/* Active */}
                                                         <Box
                                                             sx={{
                                                                 display: "inline-flex",
                                                                 alignItems: "center",
                                                                 px: 1.2,
                                                                 py: 0.3,
-                                                                borderRadius: "999px",
-                                                                bgcolor: "rgba(59, 130, 246, 0.1)", // blue-50
+                                                                color: "#1d4ed8",
+                                                                fontSize: 12,
+                                                                fontWeight: 500
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                sx={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: "50%",
+                                                                    bgcolor: "#3b82f6",
+                                                                    mr: 0.8
+                                                                }}
+                                                            />
+                                                            Running {agent.active_campaigns}
+                                                        </Box>
+                                                        {/* <Box
+                                                            sx={{
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                px: 1.2,
+                                                                py: 0.3,
                                                                 color: "#1d4ed8", // blue-700
                                                                 fontSize: 12,
                                                                 fontWeight: 500
@@ -497,34 +520,8 @@ export const CallingAgentTab: React.FC = () => {
                                                                     mr: 0.8
                                                                 }}
                                                             />
-                                                            Pending {agent.pending_campaigns}
-                                                        </Box>
-
-                                                        {/* Active */}
-                                                        <Box
-                                                            sx={{
-                                                                display: "inline-flex",
-                                                                alignItems: "center",
-                                                                px: 1.2,
-                                                                py: 0.3,
-                                                                borderRadius: "999px",
-                                                                bgcolor: "rgba(168, 85, 247, 0.1)", // purple
-                                                                color: "#6b21a8",
-                                                                fontSize: 12,
-                                                                fontWeight: 500
-                                                            }}
-                                                        >
-                                                            <Box
-                                                                sx={{
-                                                                    width: 6,
-                                                                    height: 6,
-                                                                    borderRadius: "50%",
-                                                                    bgcolor: "#a855f7",
-                                                                    mr: 0.8
-                                                                }}
-                                                            />
-                                                            Running {agent.active_campaigns}
-                                                        </Box>
+                                                            Paused {agent.paused_campaigns}
+                                                        </Box> */}
 
                                                         {/* Completed */}
                                                         <Box
@@ -533,8 +530,6 @@ export const CallingAgentTab: React.FC = () => {
                                                                 alignItems: "center",
                                                                 px: 1.2,
                                                                 py: 0.3,
-                                                                borderRadius: "999px",
-                                                                bgcolor: "rgba(16, 185, 129, 0.1)", // green-50
                                                                 color: "#047857", // green-700
                                                                 fontSize: 12,
                                                                 fontWeight: 500

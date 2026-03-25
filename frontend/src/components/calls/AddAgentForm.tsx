@@ -181,6 +181,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         transcriber_language: agent?.transcriber_language || "en-IN",
         transcriber_model: agent?.transcriber_model || "nova-2",
     });
+    const topRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         const fetchVoices = async () => {
@@ -335,7 +336,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
     const handleSubmit = () => {
         if (!validate()) {
-            console.log("Form is invalid")
+            window.scrollTo({ top: 0, behavior: "smooth" });
             console.log("Validation Errors:", errors);
             return;
         }
@@ -427,6 +428,78 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         </Button>
                     </Box>
                 </Stack>
+
+                {/* ✅ ERROR SUMMARY HERE */}
+                {Object.keys(errors).length > 0 && (
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: "#fff5f5",
+                            border: "1px solid #fecaca",
+                            boxShadow: "0 4px 12px rgba(239,68,68,0.08)"
+                        }}
+                    >
+                        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                            <Typography fontWeight={700} color="error">
+                                Fix these issues before saving
+                            </Typography>
+                        </Stack>
+
+                        <Stack spacing={1}>
+                            {Object.entries(errors).map(([key, value]) => {
+                                const labelMap: Record<string, string> = {
+                                    name: "Agent Name",
+                                    prompt: "Agent Prompt",
+                                    voice: "Voice Selection",
+                                    server_location: "Server Location",
+                                    call_forwarding_number: "Forwarding Number",
+                                    call_forwarding_role: "Forwarding Message",
+                                    summary_prompt: "Summary Prompt",
+                                    prompt_timezone: "Timezone"
+                                };
+
+                                const label = labelMap[key] || key;
+
+                                return (
+                                    <Box
+                                        key={key}
+                                        onClick={() => {
+                                            const el = document.querySelector(`[name="${key}"]`);
+                                            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                            (el as HTMLElement)?.focus();
+                                        }}
+                                        sx={{
+                                            px: 1.5,
+                                            py: 1,
+                                            borderRadius: 1.5,
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                            backgroundColor: "#fff",
+                                            border: "1px solid #fee2e2",
+                                            transition: "all 0.2s",
+                                            "&:hover": {
+                                                backgroundColor: "#fef2f2",
+                                                transform: "translateX(4px)"
+                                            }
+                                        }}
+                                    >
+                                        <Typography variant="body2" fontWeight={500}>
+                                            {label}
+                                        </Typography>
+
+                                        <Typography variant="caption" color="error">
+                                            {String(value)}
+                                        </Typography>
+                                    </Box>
+                                );
+                            })}
+                        </Stack>
+                    </Box>
+                )}
+
 
                 {/* Agent Information */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>

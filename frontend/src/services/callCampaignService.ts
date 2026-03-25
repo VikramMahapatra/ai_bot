@@ -38,7 +38,7 @@ export interface Campaign {
     agent_name?: string;
     from_number?: string;
     category?: string;
-    status: "running" | "paused" | "completed" | "scheduled";
+    status: "draft" | "pending" | "running" | "paused" | "completed" | "scheduled";
     contacts?: number;
     progress?: number;
     created_at?: string;
@@ -130,8 +130,9 @@ export interface CallCampaign {
 
 }
 
-export interface CreateCampaignResponse {
+export interface CampaignResponse {
     message: string;
+    success: boolean;
 }
 
 export const callCampaignService = {
@@ -160,17 +161,17 @@ export const callCampaignService = {
         return response.data;
     },
 
-    async createCampaign(payload: any): Promise<CreateCampaignResponse> {
+    async createCampaign(payload: any): Promise<CampaignResponse> {
         const response = await api.post('/api/call-campaigns/create', payload);
         return response.data;
     },
 
-    async updateCampaign(payload: any, campaign_id: number): Promise<CreateCampaignResponse> {
+    async updateCampaign(payload: any, campaign_id: number): Promise<CampaignResponse> {
         const response = await api.put(`/api/call-campaigns/update/${campaign_id}`, payload);
         return response.data;
     },
 
-    async deleteCampaign(campaign_id: number): Promise<CreateCampaignResponse> {
+    async deleteCampaign(campaign_id: number): Promise<CampaignResponse> {
         const response = await api.delete(`/api/call-campaigns/${campaign_id}/delete`);
         return response.data;
     },
@@ -198,6 +199,18 @@ export const callCampaignService = {
 
     async campaignStats(): Promise<CampaignStats> {
         const response = await api.get('/api/call-campaigns/stats');
+        return response.data;
+    },
+
+    async updateCampaignStatus(campaign_id: number, status: string): Promise<CampaignResponse> {
+        const response = await api.post(`/api/call-campaigns/${campaign_id}/status`, {
+            status
+        });
+        return response.data;
+    },
+
+    async getCampaignAnalytics(campaign_id: number): Promise<Campaign> {
+        const response = await api.get(`/api/call-campaigns/${campaign_id}/analytics`);
         return response.data;
     },
 };

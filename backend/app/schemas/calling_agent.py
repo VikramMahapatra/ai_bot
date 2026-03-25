@@ -1,7 +1,7 @@
 # schemas.py
 
 from pydantic import BaseModel, field_validator
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 from sqlalchemy import Float
 
@@ -133,8 +133,7 @@ class CallingAgentRead(CallingAgentCreate):
         
 class TestCallRequest(BaseModel):
     phone_no: str
-    name: Optional[str] = None
-    
+    variables: Optional[Dict[str, str]] = {}
 
 class AgentStatusUpdate(BaseModel):
     status: str  # Active | Paused | Draft

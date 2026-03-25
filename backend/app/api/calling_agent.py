@@ -99,6 +99,14 @@ def get_agent_lookup(
 ):
     return service.agent_lookup(db, current_user.organization_id, search)
 
+@router.get("/all-agent-lookup")
+def all_agent_lookup(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.agent_lookup(db, current_user.organization_id, search)
+
 @router.get("/voices")
 def get_voices(db: Session= Depends(get_db), current_user: User = Depends(get_current_user)) :
     return service.get_voices(db)

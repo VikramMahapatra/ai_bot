@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { alpha, useTheme } from '@mui/material/styles';
+import { IconButton } from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
 import {
     Grid,
     Button,
@@ -246,6 +248,19 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         }
     };
 
+    const handleRemove = (contactId: number) => {
+        // Remove from UI list
+        setCampaignContacts((prev: any[]) =>
+            prev.filter((c) => c.id !== contactId)
+        );
+
+        // Remove from form.contacts
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: prev.contacts.filter((id: number) => id !== contactId)
+        }));
+    };
+
     return (
         <Grid container spacing={2}>
 
@@ -291,13 +306,14 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                             <TableCell>Name</TableCell>
                             <TableCell>Phone</TableCell>
                             <TableCell>Email</TableCell>
+                            <TableCell align="center">Action</TableCell>
                         </TableRow>
                     </TableHead>
 
                     <TableBody>
                         {campaignContacts.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={3} align="center">
+                                <TableCell colSpan={4} align="center">
                                     No contacts added
                                 </TableCell>
                             </TableRow>
@@ -307,6 +323,14 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                                     <TableCell>{contact.name}</TableCell>
                                     <TableCell>{contact.phone}</TableCell>
                                     <TableCell>{contact.email}</TableCell>
+                                    <TableCell align="center">
+                                        <IconButton
+                                            color="error"
+                                            onClick={() => handleRemove(contact.id)}
+                                        >
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </TableCell>
                                 </TableRow>
                             ))
                         )}
