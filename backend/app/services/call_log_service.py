@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import json
 from typing import Optional, Tuple, Union
 
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ def get_call_logs(
 ):
     ### SYNC WITH ECHOLEADS
     try:
-        sync_call_logs(db, organization_id, params.campaign_id, params.from_date, params.end_date)
+        sync_call_logs(db, organization_id, params.campaign_id, params.from_date, params.end_date, params.agent_id)
     except Exception as e:
         print(f"Sync failed: {str(e)}")
 
@@ -62,18 +62,54 @@ def get_call_logs(
     if params.end_date:
         end_datetime = datetime.combine(params.end_date, time.max)
         query = query.filter(CallLog.start_time <= end_datetime)
+        
+    # STATUS FILTER
+    if params.status:
+        query = query.filter(CallLog.status == params.status)
+
+    # CALL END REASON
+    if params.call_end_reason:
+        query = query.filter(CallLog.ended_reason == params.call_end_reason)
+
+    # SENTIMENT
+    if params.sentiment:
+        query = query.filter(CallLog.sentiment == params.sentiment)
+
+    # EVALUATION (boolean)
+    if params.evaluation is not None:
+        query = query.filter(CallLog.success_evaluation == params.evaluation)
 
     # TOTAL COUNT
-    total = query.count()
+    summary = query.with_entities(
+        func.count(CallLog.id).label("total_calls"),
+        func.sum(
+            case((CallLog.campaign_id != None, 1), else_=0)
+        ).label("campaign_calls"),
+        func.sum(
+            case((CallLog.campaign_id == None, 1), else_=0)
+        ).label("test_calls")
+    ).first()
+
+    total_calls = summary.total_calls or 0
+    campaign_calls = summary.campaign_calls or 0
+    test_calls = summary.test_calls or 0
 
     # PAGINATION
-    logs = (
-        query
-        .order_by(CallLog.created_at.desc())
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
+    if params.skip is not None and params.limit is not None:
+        logs = (
+            query
+            .order_by(CallLog.created_at.desc())
+            .offset(params.skip)
+            .limit(params.limit)
+            .all()
+        )
+    else:
+        # Export case → fetch all
+        logs = (
+            query
+            .order_by(CallLog.created_at.desc())
+            .all()
+        )
 
     rows = []
 
@@ -126,8 +162,11 @@ def get_call_logs(
 
     return {
         "items": rows,
+        "total_calls": total_calls,
+        "campaign_calls": campaign_calls,
+        "test_calls": test_calls,
         "pagination": {
-            "total": total,
+            "total": total_calls,
             "skip": params.skip,
             "limit": params.limit
         }

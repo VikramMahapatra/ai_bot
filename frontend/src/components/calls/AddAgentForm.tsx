@@ -126,61 +126,111 @@ Guidelines:
 Always begin with the greeting provided.`
 };
 
+const emptyFormData = {
+    name: '',
+    greeting: OUTGOING_DEFAULTS.greeting,
+    prompt: OUTGOING_DEFAULTS.prompt,
+    destination: [],
+    server_location: "US",
+
+    gender: "Male",
+    accent: "",
+    voice: "",
+
+    who_speaks_first: "ai",
+
+    enable_prompt_timezone: false,
+    prompt_timezone: "",
+
+    enable_call_forwarding: false,
+    call_forwarding_number: "",
+    call_forwarding_role: "",
+    call_forwarding_action_desc: "",
+
+    silence_timeout: 10,
+    talking_speed: 1.0,
+    max_call_duration: 120,
+    calendar_sync: false,
+    enable_sentiment: false,
+    voice_mail_detection: false,
+    enable_call_recording: false,
+
+    success_parameters: '',
+    enable_call_summary: false,
+    summary_prompt: '',
+    follow_up_whatsapp: false,
+    important_data_points: "",
+    enable_background_sound: false,
+    background_sound_url: "",
+    start_speaking_wait_seconds: "0.1",
+    stop_speaking_voice_seconds: "0.3",
+
+    transcriber_provider: "deepgram",
+    transcriber_language: "en-IN",
+    transcriber_model: "nova-2",
+};
+
 export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave, loading }) => {
     const [errors, setErrors] = useState<any>({});
     const [files, setFiles] = useState<File[]>([]);
     const [voiceOptions, setVoiceOptions] = useState<Voice[]>([]);
-
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isDisabled, setIsDisabled] = useState(false);
+    const [formData, setFormData] = useState(emptyFormData);
 
-    const defaults = agentType === "inbound"
-        ? INCOMING_DEFAULTS
-        : OUTGOING_DEFAULTS;
+    useEffect(() => {
+        const defaults = agentType === "inbound"
+            ? INCOMING_DEFAULTS
+            : OUTGOING_DEFAULTS;
 
-    const [formData, setFormData] = useState({
-        name: agent?.name || '',
-        greeting: agent?.greeting || defaults.greeting,
-        prompt: agent?.prompt || defaults.prompt,
-        destination: agent?.destination || [],
-        server_location: agent?.server_location || "US",
+        setFormData({
+            name: agent?.name || '',
+            greeting: agent?.greeting || defaults.greeting,
+            prompt: agent?.prompt || defaults.prompt,
+            destination: agent?.destination || [],
+            server_location: agent?.server_location || "US",
 
-        gender: agent?.gender || "Male",
-        accent: agent?.accent || "",
-        voice: agent?.voice || "",
+            gender: agent?.gender || "Male",
+            accent: agent?.accent || "",
+            voice: agent?.voice || "",
 
-        who_speaks_first: agent?.who_speaks_first || "ai",
+            who_speaks_first: agent?.who_speaks_first || "ai",
 
-        enable_prompt_timezone: agent?.enable_prompt_timezone || false,
-        prompt_timezone: agent?.prompt_timezone || "",
+            enable_prompt_timezone: agent?.enable_prompt_timezone || false,
+            prompt_timezone: agent?.prompt_timezone || "",
 
-        enable_call_forwarding: agent?.enable_call_forwarding || false,
-        call_forwarding_number: agent?.call_forwarding_number || "",
-        call_forwarding_role: agent?.call_forwarding_role || "",
-        call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
+            enable_call_forwarding: agent?.enable_call_forwarding || false,
+            call_forwarding_number: agent?.call_forwarding_number || "",
+            call_forwarding_role: agent?.call_forwarding_role || "",
+            call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
 
-        silence_timeout: agent?.silence_timeout || 10,
-        talking_speed: agent?.talking_speed || 1.0,
-        max_call_duration: agent?.max_call_duration || 120,
-        calendar_sync: agent?.calendar_sync || false,
-        enable_sentiment: agent?.enable_sentiment || false,
-        voice_mail_detection: agent?.voice_mail_detection || false,
-        enable_call_recording: agent?.enable_call_recording || false,
+            silence_timeout: agent?.silence_timeout || 10,
+            talking_speed: agent?.talking_speed || 1.0,
+            max_call_duration: agent?.max_call_duration || 120,
+            calendar_sync: agent?.calendar_sync || false,
+            enable_sentiment: agent?.enable_sentiment || false,
+            voice_mail_detection: agent?.voice_mail_detection || false,
+            enable_call_recording: agent?.enable_call_recording || false,
 
-        success_parameters: agent?.success_parameters || '',
-        enable_call_summary: agent?.enable_call_summary || false,
-        summary_prompt: agent?.summary_prompt || '',
-        follow_up_whatsapp: agent?.follow_up_whatsapp || false,
-        important_data_points: agent?.important_data_points || "",
-        enable_background_sound: agent?.enable_background_sound || false,
-        background_sound_url: agent?.background_sound_url || "",
-        start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
-        stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
-        transcriber_provider: agent?.transcriber_provider || "deepgram",
-        transcriber_language: agent?.transcriber_language || "en-IN",
-        transcriber_model: agent?.transcriber_model || "nova-2",
-    });
+            success_parameters: agent?.success_parameters || '',
+            enable_call_summary: agent?.enable_call_summary || false,
+            summary_prompt: agent?.summary_prompt || '',
+            follow_up_whatsapp: agent?.follow_up_whatsapp || false,
+            important_data_points: agent?.important_data_points || "",
+            enable_background_sound: agent?.enable_background_sound || false,
+            background_sound_url: agent?.background_sound_url || "",
+            start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
+            stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
+            transcriber_provider: agent?.transcriber_provider || "deepgram",
+            transcriber_language: agent?.transcriber_language || "en-IN",
+            transcriber_model: agent?.transcriber_model || "nova-2",
+        });
+
+        setExistingFiles(
+            agent?.training_doc ? agent.training_doc.split(",") : []
+        );
+
+    }, [agent, agentType]);
 
     useEffect(() => {
         const fetchVoices = async () => {
@@ -335,7 +385,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
     const handleSubmit = () => {
         if (!validate()) {
-            console.log("Form is invalid")
+            window.scrollTo({ top: 0, behavior: "smooth" });
             console.log("Validation Errors:", errors);
             return;
         }
@@ -427,6 +477,78 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         </Button>
                     </Box>
                 </Stack>
+
+                {/* ✅ ERROR SUMMARY HERE */}
+                {Object.keys(errors).length > 0 && (
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: "#fff5f5",
+                            border: "1px solid #fecaca",
+                            boxShadow: "0 4px 12px rgba(239,68,68,0.08)"
+                        }}
+                    >
+                        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                            <Typography fontWeight={700} color="error">
+                                Fix these issues before saving
+                            </Typography>
+                        </Stack>
+
+                        <Stack spacing={1}>
+                            {Object.entries(errors).map(([key, value]) => {
+                                const labelMap: Record<string, string> = {
+                                    name: "Agent Name",
+                                    prompt: "Agent Prompt",
+                                    voice: "Voice Selection",
+                                    server_location: "Server Location",
+                                    call_forwarding_number: "Forwarding Number",
+                                    call_forwarding_role: "Forwarding Message",
+                                    summary_prompt: "Summary Prompt",
+                                    prompt_timezone: "Timezone"
+                                };
+
+                                const label = labelMap[key] || key;
+
+                                return (
+                                    <Box
+                                        key={key}
+                                        onClick={() => {
+                                            const el = document.querySelector(`[name="${key}"]`);
+                                            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                            (el as HTMLElement)?.focus();
+                                        }}
+                                        sx={{
+                                            px: 1.5,
+                                            py: 1,
+                                            borderRadius: 1.5,
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                            backgroundColor: "#fff",
+                                            border: "1px solid #fee2e2",
+                                            transition: "all 0.2s",
+                                            "&:hover": {
+                                                backgroundColor: "#fef2f2",
+                                                transform: "translateX(4px)"
+                                            }
+                                        }}
+                                    >
+                                        <Typography variant="body2" fontWeight={500}>
+                                            {label}
+                                        </Typography>
+
+                                        <Typography variant="caption" color="error">
+                                            {String(value)}
+                                        </Typography>
+                                    </Box>
+                                );
+                            })}
+                        </Stack>
+                    </Box>
+                )}
+
 
                 {/* Agent Information */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -1168,8 +1290,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 Maximum duration for a single call
                             </Typography>
                         </Box>
-                        {/* <Stack spacing={1} sx={{ mt: 3 }}>
-                        <FormControlLabel
+                        <Stack spacing={1} sx={{ mt: 3 }}>
+                            {/* <FormControlLabel
                             control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
                             label="Enable Sentiment Detection"
                         /> 
@@ -1180,22 +1302,22 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                          <FormControlLabel
                             control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
                             label="Enable Call Recording"
-                        /> 
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={formData.calendar_sync}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            calendar_sync: e.target.checked
-                                        })
-                                    }
-                                />
-                            }
-                            label="Calendar Sync"
-                        />
-                    </Stack> */}
+                        />  */}
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={formData.calendar_sync}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                calendar_sync: e.target.checked
+                                            })
+                                        }
+                                    />
+                                }
+                                label="Calendar Sync"
+                            />
+                        </Stack>
                     </Card >
                 </>
 

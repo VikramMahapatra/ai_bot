@@ -31,6 +31,8 @@ import GroupIcon from "@mui/icons-material/Group";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import InsightsIcon from "@mui/icons-material/Insights";
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
@@ -133,6 +135,20 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         };
         run();
     }, [search, campaignPage, campaignRowsPerPage]);
+
+
+    const handlePause = async (campaign: Campaign) => {
+        setLoading(true);
+        const newStatus = campaign.status === "paused" ? "running" : "paused";
+        try {
+            await callCampaignService.updateCampaignStatus(campaign.id!, newStatus);
+            loadCampaigns();
+        } catch (error: any) {
+            showError(error?.response?.data?.detail || `Failed to update the status`);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const getStatusBg = (status: string) => {
         switch (status) {
@@ -406,18 +422,42 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
-                                        {/* <Tooltip title="View Insights">
+
+                                        {["running", "paused"].includes(campaign.status) && (
+                                            <>
+
+                                                <Tooltip
+                                                    title={
+                                                        campaign.status === "running"
+                                                            ? "Pause Campaign"
+                                                            : "Start Campaign"
+                                                    }
+                                                >
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => handlePause(campaign)}
+                                                    >
+                                                        {campaign.status === "running" ? (
+                                                            <PauseIcon />
+                                                        ) : (
+                                                            <PlayArrowIcon />
+                                                        )}
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </>
+                                        )}
+                                        <Tooltip title="View Insights">
                                             <IconButton onClick={() => openDrawer(campaign)}>
                                                 <InsightsIcon color="primary" />
                                             </IconButton>
-                                        </Tooltip> */}
+                                        </Tooltip>
                                         <IconButton
                                             size="small"
                                             onClick={() => onViewCampaign(campaign.id)}
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
-                                        {["active", "running", "pending"].includes(campaign.status) && (
+                                        {["draft", "scheduled"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 onClick={() => onEditCampaign(campaign.id)}

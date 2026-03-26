@@ -43,6 +43,13 @@ class CallLogRequest(BaseModel):
     from_date: Optional[date] = None
     end_date: Optional[date] = None
     search: Optional[str] = None
-    skip: int = 0
-    limit: int = 10
+
+    skip: Optional[int] = None
+    limit: Optional[int] = None
+    agent_id: Optional[int] = None
     campaign_id: Optional[int] = None
+
+    status: Optional[str] = None
+    call_end_reason: Optional[str] = None
+    sentiment: Optional[str] = None
+    evaluation: Optional[bool] = None

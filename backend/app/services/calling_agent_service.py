@@ -272,7 +272,6 @@ def update_agent(
         "sentiment_detection": "1" if agent.enable_sentiment else "0",
         "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
         "calendar_sync": agent.calendar_sync,
-        "prompt_timezone": agent.prompt_timezone or db_agent.prompt_timezone,
         "speaks_first":agent.who_speaks_first,
         "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
         "silence_timeout": str(agent.silence_timeout),
@@ -292,7 +291,9 @@ def update_agent(
         "transcriber_model": agent.transcriber_model,       
         "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
     }
-    # 🔹 Call Echoleads update
+    
+    print(echo_payload)
+    # Call Echoleads update
     echo_failed = False
     if db_agent.external_agent_id:
         try:
@@ -552,20 +553,24 @@ def test_call(
     
     # Prepare API request
     echoleads = EcholeadsClient()
-    customer_name = data.name if data.name else "Customer"
+    
+    dynamic_values = []
+    if data.variables:
+        for key, value in data.variables.items():
+            dynamic_values.append({
+                "field": key,
+                "value": value
+            })
+                        
     payload = {
-    "a_id": agent.external_agent_a_id,
-    "phone": data.phone_no,
-    "from_number": agent.calling_no,
-    "firstMessage": agent.greeting.format(name=customer_name),
-    "dynamicFieldValues": [
-            {
-                "key": "customer_name",
-                "value": customer_name
-            }
-        ]
+        "a_id": agent.external_agent_a_id,
+        "phone": data.phone_no,
+        "from_number": agent.calling_no,
+        "firstMessage": agent.greeting,
+        "dynamicFieldValues": dynamic_values
     }
 
+    print(payload)
     echo_success = True
     external_call_id = None
     call_status = "failed"
@@ -575,10 +580,10 @@ def test_call(
         if api_response and "data" in api_response:
             sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
             
-            print("Call response : ", api_response["data"])
-            
             external_call_id = api_response["data"].get("id")
             call_status = api_response["data"].get("status")
+        else:
+            echo_success = False
     except Exception as e:
         print(f"Sync failed: {str(e)}")
         echo_success = False
@@ -588,7 +593,6 @@ def test_call(
     test_call = CallingAgentTestCall(
         agent_id=agent_id,
         phone_no=data.phone_no,
-        name=data.name,
         external_call_id=external_call_id,
         status=call_status
     )
@@ -600,10 +604,10 @@ def test_call(
     return {
         "message": "Please wait while we connect your test call…" if echo_success else "Failed to initiate test call. Please try again.",
         "phone_no": data.phone_no,
-        "name": data.name,
         "external_call_id": external_call_id,
-        "status": call_status
-    }
+        "status": call_status,
+        "success": echo_success
+    }       
     
 def publish_agent(
     db: Session,
@@ -783,6 +787,34 @@ def agent_lookup(
         CallingAgent.organization_id == organization_id, 
         CallingAgent.is_deleted == False,
         CallingAgent.status == "active"
+    )
+
+    if search:
+        query = query.filter(
+            CallingAgent.name.ilike(f"%{search}%")
+        )
+
+    agents = query.order_by(CallingAgent.name.asc()).all()
+
+    return [
+        {
+            "id": agent.id,
+            "name": agent.name
+        }
+        for agent in agents
+    ]
+    
+def all_agent_lookup(
+    db: Session, 
+    organization_id: int,
+    search: Optional[str] = None):
+
+    query = db.query(
+        CallingAgent.id,
+        CallingAgent.name
+    ).filter(
+        CallingAgent.organization_id == organization_id, 
+        CallingAgent.is_deleted == False
     )
 
     if search:

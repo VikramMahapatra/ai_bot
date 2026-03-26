@@ -21,6 +21,12 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import TimerIcon from "@mui/icons-material/Timer";
 import CallEndIcon from "@mui/icons-material/CallEnd";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
+import CampaignIcon from "@mui/icons-material/Campaign";
+import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import BugReportIcon from "@mui/icons-material/BugReport";
+import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
+import CallMadeIcon from '@mui/icons-material/CallMade';
+import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import { formatDateTime } from '../../utils/dateUtils';
 
 interface CallDetailDrawerProps {
@@ -29,7 +35,7 @@ interface CallDetailDrawerProps {
     selectedCall: any;
 }
 
-const formatEndedReason = (reason?: string) => {
+export const formatEndedReason = (reason?: string) => {
     if (!reason) return "-";
 
     // Handle problematic long reasons
@@ -46,6 +52,8 @@ const formatEndedReason = (reason?: string) => {
         .replace(/-/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
 };
+
+const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSize="small" color='primary' /> : <CallReceivedIcon fontSize="small" color='primary' />;
 
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
@@ -96,7 +104,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
 
                         <Stack spacing={1}>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <AccessTimeIcon fontSize="small" />
+                                <AccessTimeIcon fontSize="small" color="warning" />
                                 <Typography variant="body2" color="text.secondary">
                                     Start:
                                 </Typography>
@@ -108,7 +116,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             </Box>
 
                             <Box display="flex" alignItems="center" gap={1}>
-                                <AccessTimeIcon fontSize="small" />
+                                <AccessTimeIcon fontSize="small" color="warning" />
                                 <Typography variant="body2" color="text.secondary">
                                     End:
                                 </Typography>
@@ -118,9 +126,17 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         : "-"}
                                 </Typography>
                             </Box>
-
                             <Box display="flex" alignItems="center" gap={1}>
-                                <PersonIcon fontSize="small" />
+                                {getTypeIcon(selectedCall.type)}
+                                <Typography variant="body2" color="text.secondary">
+                                    Call type:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.type}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <SupportAgentIcon fontSize="small" color="secondary" />
                                 <Typography variant="body2" color="text.secondary">
                                     Agent:
                                 </Typography>
@@ -128,9 +144,35 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     {selectedCall.agent || "N/A"}
                                 </Typography>
                             </Box>
-
                             <Box display="flex" alignItems="center" gap={1}>
-                                <TimerIcon fontSize="small" />
+                                <CampaignIcon fontSize="small" color="primary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Campaign:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.campaign || "N/A"}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <PersonIcon fontSize="small" color="primary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Contact:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.contact || "N/A"}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <BugReportIcon fontSize="small" color="warning" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Test Call:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.testCall ? "Yes" : "No"}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <TimerIcon fontSize="small" color="primary" />
                                 <Typography variant="body2" color="text.secondary">
                                     Duration:
                                 </Typography>
@@ -140,7 +182,15 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         : "N/A"}
                                 </Typography>
                             </Box>
-
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <SentimentSatisfiedAltIcon fontSize="small" color="info" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Sentiment:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.sentiment}
+                                </Typography>
+                            </Box>
                             {/* <Box display="flex" alignItems="center" gap={1}>
                                 <AttachMoneyIcon fontSize="small" />
                                 <Typography variant="body2" color="text.secondary">
@@ -152,7 +202,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             </Box> */}
 
                             <Box display="flex" alignItems="center" gap={1}>
-                                <CallEndIcon fontSize="small" />
+                                <CallEndIcon fontSize="small" color="error" />
                                 <Typography variant="body2" color="text.secondary">
                                     Disconnected By:
                                 </Typography>

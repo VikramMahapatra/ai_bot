@@ -10,7 +10,8 @@ import {
     TextField,
     Autocomplete,
     FormControlLabel,
-    Checkbox
+    Checkbox,
+    Alert
 } from "@mui/material";
 import { Send, CalendarToday } from "@mui/icons-material";
 import moment from "moment-timezone";
@@ -59,6 +60,15 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
             newErrors.call_end_time = "End time must be after start time";
         }
 
+        if (sendOption === "now") {
+            const now = moment(); // current time
+            const currentHour = now.hour(); // 0–23
+
+            if (currentHour < 9 || currentHour >= 21) {
+                newErrors.send_now = "Calls can only be sent between 9:00 AM and 9:00 PM";
+            }
+        }
+
         setErrors(newErrors);
         if (Object.keys(newErrors).length > 0) return;
 
@@ -80,72 +90,56 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
                         onChange={(e, value) => value && setSendOption(value)}
                         sx={{ display: "flex", gap: 2 }}
                     >
-                        <ToggleButton
-                            value="now"
-                            sx={{
-                                flex: 1,
-                                borderRadius: 2,
-                                borderColor: sendOption === "now" ? "success.main" : "grey.300",
-                                background: sendOption === "now" ? "linear-gradient(135deg, #d1fae5, #ffffff)" : "white",
-                                "&.Mui-selected": {
-                                    background: "linear-gradient(135deg, #10b981, #d1fae5)",
-                                    color: "#fff",
-                                    borderColor: "success.main"
-                                }
-                            }}
-                        >
-                            <Box display="flex" flexDirection="column" alignItems="center">
-                                <Box
-                                    mb={1}
-                                    display="flex"
-                                    justifyContent="center"
-                                    alignItems="center"
-                                    width={40}
-                                    height={40}
-                                    borderRadius="50%"
-                                    bgcolor={sendOption === "now" ? "success.main" : "grey.100"}
-                                    color={sendOption === "now" ? "#fff" : "grey.600"}
-                                >
-                                    <Send fontSize="small" />
-                                </Box>
-                                <Typography fontWeight={600}>Send Now</Typography>
-                                <Typography variant="caption">Start immediately</Typography>
-                            </Box>
-                        </ToggleButton>
+                        {[
+                            { value: "now", label: "Send Now", icon: <Send fontSize="small" />, sub: "Start immediately" },
+                            { value: "schedule", label: "Schedule", icon: <CalendarToday fontSize="small" />, sub: "Pick date & time" }
+                        ].map((item) => (
+                            <ToggleButton
+                                key={item.value}
+                                value={item.value}
+                                sx={{
+                                    flex: 1,
+                                    borderRadius: 2,
+                                    borderColor: "grey.300",
+                                    backgroundColor: "#fff",
 
-                        <ToggleButton
-                            value="schedule"
-                            sx={{
-                                flex: 1,
-                                borderRadius: 2,
-                                borderColor: sendOption === "schedule" ? "primary.main" : "grey.300",
-                                background: sendOption === "schedule" ? "linear-gradient(135deg, #93c5fd, #ffffff)" : "white",
-                                "&.Mui-selected": {
-                                    background: "linear-gradient(135deg, #3b82f6, #93c5fd)",
-                                    color: "#fff",
-                                    borderColor: "primary.main"
-                                }
-                            }}
-                        >
-                            <Box display="flex" flexDirection="column" alignItems="center">
-                                <Box
-                                    mb={1}
-                                    display="flex"
-                                    justifyContent="center"
-                                    alignItems="center"
-                                    width={40}
-                                    height={40}
-                                    borderRadius="50%"
-                                    bgcolor={sendOption === "schedule" ? "primary.main" : "grey.100"}
-                                    color={sendOption === "schedule" ? "#fff" : "grey.600"}
-                                >
-                                    <CalendarToday fontSize="small" />
+                                    "&.Mui-selected": {
+                                        background: "linear-gradient(135deg, #3b82f6, #93c5fd)",
+                                        color: "#fff",
+                                        borderColor: "primary.main"
+                                    },
+
+                                    "&.Mui-selected:hover": {
+                                        background: "linear-gradient(135deg, #2563eb, #60a5fa)"
+                                    }
+                                }}
+                            >
+                                <Box display="flex" flexDirection="column" alignItems="center">
+                                    <Box
+                                        mb={1}
+                                        display="flex"
+                                        justifyContent="center"
+                                        alignItems="center"
+                                        width={40}
+                                        height={40}
+                                        borderRadius="50%"
+                                        bgcolor={sendOption === item.value ? "primary.main" : "grey.100"}
+                                        color={sendOption === item.value ? "#fff" : "grey.600"}
+                                    >
+                                        {item.icon}
+                                    </Box>
+
+                                    <Typography fontWeight={600}>{item.label}</Typography>
+                                    <Typography variant="caption">{item.sub}</Typography>
                                 </Box>
-                                <Typography fontWeight={600}>Schedule</Typography>
-                                <Typography variant="caption">Pick date & time</Typography>
-                            </Box>
-                        </ToggleButton>
+                            </ToggleButton>
+                        ))}
                     </ToggleButtonGroup>
+                    {errors.send_now && (
+                        <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+                            {errors.send_now}
+                        </Alert>
+                    )}
                 </Paper>
             </Grid>
 

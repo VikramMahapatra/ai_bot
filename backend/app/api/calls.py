@@ -10,6 +10,12 @@ from app.models.call_logs import CallLog
 import logging
 from app.database import get_db
 from app.services.call_log_service import sync_call_logs
+from app.models.appointment import Appointment
+from app.utils.echoleads_client import EcholeadsClient
+from dateutil import parser
+
+from app.models.calling_agents import CallingAgent
+from app.models.widget_config import WidgetConfig
 
 logger = logging.getLogger(__name__)
 
@@ -215,3 +221,59 @@ def call_analytics(
             "intent_distribution": intent_distribution
         }
     }
+    
+@router.get("/sync-bookings")
+def get_bookings( 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+
+    # Call Echoleads API
+    client = EcholeadsClient()
+    response = client.fetch_bookings()
+
+    bookings = response.get("bookings", [])
+
+    inserted_records = []
+
+    for booking in bookings:
+
+        # Avoid duplicate insert
+        existing = (
+            db.query(Appointment)
+            .filter(Appointment.session_id == str(booking.get("id")))
+            .first()
+        )
+
+        if existing:
+            continue
+        
+        config = db.query(WidgetConfig).filter(
+            WidgetConfig.organization_id == current_user.organization_id
+        ).first()
+        
+
+        appointment = Appointment(
+            session_id=str(booking.get("id")),
+            widget_id = config.widget_id,
+            name=booking.get("title"),
+            phone=booking.get("customer_number"),
+            appointment_at=parser.parse(booking.get("start_date")),
+            status="booked",
+
+            # Optional fields
+            email=None,
+            notes=None,
+            timezone="UTC",
+
+            # If you have org/user mapping
+            organization_id= current_user.organization_id,
+            user_id=current_user.id
+        )
+
+        db.add(appointment)
+        inserted_records.append(appointment)
+
+    db.commit()
+
+    return inserted_records

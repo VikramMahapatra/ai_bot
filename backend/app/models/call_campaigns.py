@@ -30,3 +30,21 @@ class CallCampaign(Base):
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")
     schedule = relationship("CampaignSchedule", uselist=False, back_populates="campaign")
+    
+    key_insights = relationship(
+        "CampaignKeyInsight",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )
+
+    sentiments = relationship(
+        "CampaignSentiment",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )
+
+    ai_recommendations = relationship(
+        "CampaignAIRecommendation",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )

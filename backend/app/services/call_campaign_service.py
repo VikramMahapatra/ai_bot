@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
-from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactCreate
+from app.schemas.call_campaign import CampaignCreate, CampaignStatusUpdate, CampaignUpdate, ContactCreate
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
@@ -16,6 +16,7 @@ from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import process_call, save_transcripts
 from app.models.user import Organization
 from app.models.organization_limits import OrganizationLimits
+from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 
 
 STALE_MINUTES = 1
@@ -120,6 +121,7 @@ def list_campaigns(
     # PAGINATION
     campaigns = (
         base_query
+        .order_by(CallCampaign.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -292,7 +294,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         category=data.category,
         priority=data.priority,
         agent_id=data.agent_id,
-        status= "pending",
+        status= "draft",
         external_campaign_name= f"{org.name}-{data.name}"
     )
 
@@ -345,9 +347,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     client = EcholeadsClient()
     echo_failed = False
     echoleads_campaign_id = None
-    echoleads_campaign_status = "pending"
+    echoleads_campaign_status = "draft"
     try:
         echo_response = client.create_campaign(payload)
+        
         if echo_response and "campaign" in echo_response:
             echoleads_campaign_id = echo_response["campaign"]["id"]
             echoleads_campaign_status = echo_response["campaign"]["status"]
@@ -360,6 +363,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     campaign.status = echoleads_campaign_status
     campaign.external_campaign_id = echoleads_campaign_id
     
+    db.flush() 
     db.commit()    
     
     if echo_failed:
@@ -696,6 +700,210 @@ def update_contact(db: Session, contact_id: int, data: ContactCreate):
     db.commit()
     return contact
 
+def update_campaign_status(
+    db: Session,
+    campaign_id: int,
+    data: CampaignStatusUpdate,
+):
+    # Get the agent
+    campaign = db.query(CallCampaign).filter(CallCampaign.id == campaign_id).first()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if not campaign.external_campaign_id:
+        raise HTTPException(status_code=404, detail="Campaign not sync, kindly refresh the campaign list")
+
+    # If pausing, check for active campaigns
+    if data.status.lower() == "paused":
+        if campaign.status !=  "running":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only running campaign can be paused"
+            )
+    elif data.status.lower() == "running":
+        if campaign.status !=  "paused":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only paused campaign can be started"
+            )
+            
+    payload = {
+        "status": data.status
+    }
+
+    client = EcholeadsClient()
+    echo_success = True
+    try:
+        
+        if data.status.lower() == "running": 
+            response = client.update_campaign(
+                campaign.external_campaign_id,
+                payload
+            )
+            
+            if response and "campaign" in response:
+                campaign.status = response["campaign"].get("status", campaign.status)
+            else:
+                echo_success = False
+        else:
+            response = client.start_campaign(campaign.external_campaign_id)
+            campaign.status = "running"
+        
+    except Exception as e:
+        print(f"EchoLeads API failed: {str(e)}")
+        echo_success = False
+
+    
+    db.commit()
+    db.refresh(campaign)
+    
+    error_status_code = "start" if data.status.lower() == "paused" else "pause"
+
+    return {
+        "message": "Campaign status updated" if echo_success else f"Failed to {error_status_code} the campaign",
+        "agent_id": campaign.id,
+        "status": campaign.status,
+        "success": echo_success
+    }
+    
+def campaign_lookup(
+    db: Session, 
+    organization_id: int,
+    search: Optional[str] = None):
+
+    query = db.query(
+        CallCampaign.id,
+        CallCampaign.name
+    ).filter(
+        CallCampaign.organization_id == organization_id, 
+        CallCampaign.is_deleted == False,
+    )
+
+    if search:
+        query = query.filter(
+            CallCampaign.name.ilike(f"%{search}%")
+        )
+
+    campaigns = query.order_by(CallCampaign.name.asc()).all()
+
+    return [
+        {
+            "id": campaign.id,
+            "name": campaign.name
+        }
+        for campaign in campaigns
+    ]
+    
+def get_campaign_analytics(
+    db: Session,
+    campaign_id: int,
+    organization_id: int
+):
+    campaign = (
+        db.query(CallCampaign)
+        .filter(
+            CallCampaign.id == campaign_id,
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False
+        )
+        .first()
+    )
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Key Insights
+    key_insights = db.query(CampaignKeyInsight).filter(
+        CampaignKeyInsight.campaign_id == campaign_id
+    ).all()
+
+    # Sentiment
+    sentiments = db.query(CampaignSentiment).filter(
+        CampaignSentiment.campaign_id == campaign_id
+    ).all()
+
+    # AI Recommendations
+    ai_recommendations = db.query(CampaignAIRecommendation).filter(
+        CampaignAIRecommendation.campaign_id == campaign_id
+    ).all()
+
+    # Convert sentiment list to object
+    sentiment_map = {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 0
+    }
+
+    for s in sentiments:
+        sentiment_map[s.sentiment] = s.rate
+
+    return {
+        "name": campaign.name,
+        "description": campaign.description,
+        "total_calls": campaign.total_calls,
+        "completed_calls": campaign.completed_calls,
+        "avg_duration": getattr(campaign, "avg_duration", "00:00"),
+        "response_rate": f"{campaign.response_rate}%",
+        "status": campaign.status,
+
+        # Sentiment
+        "sentiment": sentiment_map,
+
+        # Timeline
+        "timeline": {
+            "created_at": campaign.created_at.strftime("%m/%d/%Y, %I:%M %p")
+            if campaign.created_at else None,
+            "updated_at": campaign.updated_at.strftime("%m/%d/%Y, %I:%M %p")
+            if campaign.updated_at else None,
+        },
+
+        # Key Insights
+        "key_insights": [
+            {
+                "title": k.title,
+                "value": f"{k.percentage}%",
+                "change": f"{k.change}%",
+                "description": k.description,
+                "color": get_insight_color(k.title)
+            }
+            for k in key_insights
+        ],
+
+        # AI Recommendations
+        "ai_recommendations": [
+            {
+                "title": r.recommendation,
+                "impact": r.impact_level
+            }
+            for r in ai_recommendations
+        ],
+
+        # Engagement
+        "engagement": {
+            "engagement_rate": campaign.response_rate,
+            "conversion": campaign.success_rate,
+            "avg_call_time": getattr(campaign, "avg_duration", "00:00")
+        }
+    }
+    
+def get_insight_color(title):
+    title = title.lower()
+
+    if "response" in title:
+        return "blue"
+    if "lead" in title:
+        return "purple"
+    if "follow" in title:
+        return "green"
+    if "performance" in title:
+        return "orange"
+
+    return "blue"
+    
+    
+############### SYNC METHODS
+
 
 def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
 
@@ -781,34 +989,114 @@ def normalize_phone(phone: str):
     return phone
 
 
-def sync_campaign_from_echoleads(db: Session, echolead_client: EcholeadsClient, campaign: CallCampaign):
+def sync_campaign_from_echoleads(
+    db: Session,
+    echolead_client: EcholeadsClient,
+    campaign: CallCampaign
+):
     try:
-        if campaign.external_campaign_id:
-            response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
-            campaign_data = response.get("campaign") if response else None
-        else:
-            response = echolead_client.get_campaign_by_name(campaign.external_campaign_name)
-            campaigns = response.get("campaigns", []) if response else []
-            campaign_data = campaigns[0] if campaigns else None  
+        # Fetch Campaign
+        if campaign.external_campaign_name:
             
-        if campaign_data:
-            campaign.status = campaign_data.get("status", campaign.status)
-            campaign.external_campaign_id = campaign_data.get("id", campaign.external_campaign_id)
-            campaign.updated_at = datetime.utcnow()
-            campaign.total_calls = campaign_data.get("total_calls", 0)
-            campaign.completed_calls = campaign_data.get("completed_calls", 0)
-            campaign.success_rate = campaign_data.get("success_rate", 0.0)
-            campaign.response_rate = campaign_data.get("response_rate", 0.0)
-        
-            for call in campaign_data.get("calls", []):
-                agent = db.query(CallingAgent).filter(
-                    CallingAgent.external_agent_id == call.get("agent_id")
-                ).first()
+            response = echolead_client.get_campaign_by_name(
+                campaign.external_campaign_name
+            )
+            campaigns = response.get("campaigns", []) if response else []
+            campaign_data = campaigns[0] if campaigns else None
+        elif  campaign.external_campaign_id:
+            response = echolead_client.get_campaign_by_id(
+                    campaign.external_campaign_id
+                )
+            campaign_data = response.get("campaign") if response else None
+            
+        print("Campaign Response :", campaign_data)
 
-                if agent:
-                    process_call(db, call, agent)
+        if not campaign_data:
+            return
 
-            db.commit()
+        # -------------------------
+        # Update Basic Campaign Data
+        # -------------------------
+        campaign.status = campaign_data.get("status", campaign.status)
+        campaign.external_campaign_id = campaign_data.get(
+            "id", campaign.external_campaign_id
+        )
+        campaign.updated_at = datetime.utcnow()
+
+        campaign.total_calls = campaign_data.get("total_calls", 0)
+        campaign.completed_calls = campaign_data.get("completed_calls", 0)
+        campaign.success_rate = campaign_data.get("success_rate", 0.0)
+        campaign.response_rate = campaign_data.get("response_rate", 0.0)
+
+        # -------------------------
+        # Sync Calls
+        # -------------------------
+        for call in campaign_data.get("calls", []):
+            agent = db.query(CallingAgent).filter(
+                CallingAgent.external_agent_id == call.get("agent_id")
+            ).first()
+
+            if agent:
+                process_call(db, call, agent)
+
+        # -------------------------
+        # Clear Old Analytics
+        # -------------------------
+        db.query(CampaignKeyInsight).filter(
+            CampaignKeyInsight.campaign_id == campaign.id
+        ).delete()
+
+        db.query(CampaignSentiment).filter(
+            CampaignSentiment.campaign_id == campaign.id
+        ).delete()
+
+        db.query(CampaignAIRecommendation).filter(
+            CampaignAIRecommendation.campaign_id == campaign.id
+        ).delete()
+
+        # -------------------------
+        # Sync Key Insights
+        # -------------------------
+        for insight in campaign_data.get("campaign_key_insights", []):
+            db.add(
+                CampaignKeyInsight(
+                    campaign_id=campaign.id,
+                    title=insight.get("key_insights_title"),
+                    description=insight.get("key_insights_desc"),
+                    percentage=insight.get("key_insights_per"),
+                    change=insight.get("key_insights_updown")
+                )
+            )
+
+        # -------------------------
+        # Sync Sentiment
+        # -------------------------
+        for sentiment in campaign_data.get(
+            "campaign_sentiment_dists", []
+        ):
+            db.add(
+                CampaignSentiment(
+                    campaign_id=campaign.id,
+                    sentiment=sentiment.get("sentiment_info"),
+                    rate=sentiment.get("sentiment_rate"),
+                    value=sentiment.get("sentiment_value")
+                )
+            )
+
+        # -------------------------
+        # Sync AI Recommendations
+        # -------------------------
+        for rec in campaign_data.get("ai_recommendations", []):
+            db.add(
+                CampaignAIRecommendation(
+                    campaign_id=campaign.id,
+                    recommendation=rec.get("recommendation"),
+                    impact_level=rec.get("impact_level")
+                )
+            )
+
+        db.commit()
+
     except Exception as e:
         print("Sync failed:", str(e))
     

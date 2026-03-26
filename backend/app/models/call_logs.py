@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from sqlalchemy import JSON, Column, Integer, Numeric, String, DateTime, ForeignKey, Text
+from sqlalchemy import JSON, Boolean, Column, Integer, Numeric, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -31,7 +31,7 @@ class CallLog(Base):
     follow_up_recommended = Column(JSON)
     extract_data = Column(JSON)
     lead_info = Column(JSON)
-    success_evaluation = Column(String, default="false")
+    success_evaluation = Column(Boolean, default=False)
     
     industry = Column(String)
     start_time = Column(DateTime)

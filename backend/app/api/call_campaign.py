@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from app.database import get_db
 from sqlalchemy.orm import Session
-from app.schemas.call_campaign import CampaignCreate, CampaignUpdate, ContactByIdsRequest, ContactCreate
+from app.schemas.call_campaign import CampaignCreate, CampaignStatusUpdate, CampaignUpdate, ContactByIdsRequest, ContactCreate
 from app.services import call_campaign_service as service
 from app.models.user import User
 from app.auth import get_current_user
@@ -91,3 +91,32 @@ def create_contact(data: ContactCreate, db: Session = Depends(get_db)):
 @router.put("/contacts/update/{contact_id:int}")
 def update_contact(contact_id: int, data: ContactCreate, db: Session = Depends(get_db)):
     return service.update_contact(db, contact_id, data)
+
+@router.post("/{campaign_id:int}/status")
+def update_campaign_status(
+    campaign_id: int,
+    data: CampaignStatusUpdate,
+     db: Session = Depends(get_db)
+):
+    return service.update_campaign_status(db, campaign_id, data)
+
+@router.get("/lookup")
+def get_campaign_lookup(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.campaign_lookup(db, current_user.organization_id, search)
+
+
+@router.get("/{campaign_id}/analytics")
+def campaign_analytics(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.get_campaign_analytics(
+        db,
+        campaign_id,
+        current_user.organization_id
+    )

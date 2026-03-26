@@ -176,6 +176,9 @@ class EcholeadsClient:
     def update_campaign(self, campaign_id: int, payload: dict):
         return self._put(f"/campaigns/{campaign_id}", payload)
     
+    def start_campaign(self, campaign_id: int):
+        return self._put(f"/campaigns/{campaign_id}/start")
+    
     def create_contact(self, payload: dict):
         return self._post("/contact", payload)
     

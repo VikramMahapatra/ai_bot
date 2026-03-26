@@ -39,17 +39,54 @@ export interface CallLog {
     transcript: CallTranscript[];
 }
 
+export type StatusType =
+    | "completed"
+    | "ended"
+    | "in_progress"
+    | "failed"
+    | "scheduled";
+
+export type SentimentType = "positive" | "negative" | "neutral";
+
+
+export interface CallLogFilterState {
+    search?: string;
+    fromDate?: string;
+    endDate?: string;
+
+    status?: StatusType | "All";
+    call_end_reason?: string | "All";
+    sentiment?: SentimentType | "All";
+    evaluation: boolean | "All";
+}
+
 export interface CallLogFilters {
     campaign_id?: number;
-    search?: string;
+    agent_id?: number;
+
+    // pagination
     skip?: number;
     limit?: number;
+
+    // search
+    search?: string;
+
+    // date range
     from_date?: string;
     end_date?: string;
+
+    //new filters
+    status?: StatusType;
+    call_end_reason?: string;
+    sentiment?: SentimentType;
+    evaluation?: boolean;
 }
 
 export interface CallLogListResponse {
     items: CallLog[];
+    total_calls: number;
+    campaign_calls: number;
+    test_calls: number;
     pagination: {
         total: number;
         skip: number;
@@ -62,6 +99,11 @@ export interface SyncCallResponse {
     count?: number;
 }
 
+export interface FilterLookupResponse {
+    id: string;
+    name: string;
+}
+
 
 export const callLogService = {
 
@@ -72,6 +114,16 @@ export const callLogService = {
 
     async syncCallLogs(params: CallLogFilters = {}): Promise<SyncCallResponse> {
         const response = await api.post(`/api/call-log/sync-call-logs`, { params });
+        return response.data;
+    },
+
+    async allAgentLookup(): Promise<FilterLookupResponse[]> {
+        const response = await api.get<FilterLookupResponse[]>('/api/calling-agent/all-agent-lookup');
+        return response.data;
+    },
+
+    async campaignLookup(): Promise<FilterLookupResponse[]> {
+        const response = await api.get<FilterLookupResponse[]>('/api/call-campaigns/lookup');
         return response.data;
     },
 

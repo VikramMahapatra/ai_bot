@@ -145,10 +145,8 @@ export const callingAgentService = {
         return response.data;
     },
 
-    async testCall(agent_id: number, phone_no: string): Promise<CallingAgentStatusResponse> {
-        const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, {
-            phone_no
-        });
+    async testCall(agent_id: number, payload: any): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, payload);
         return response.data;
     },
 

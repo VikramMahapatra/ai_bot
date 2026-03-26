@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { alpha, useTheme } from '@mui/material/styles';
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import {
     Box,
     Typography,
@@ -31,10 +33,12 @@ import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { callCampaignService } from "../../services/callCampaignService";
 import CallDetailDrawer from "./CallDetailDrawer";
-import { CallLog, callLogService } from "../../services/callLogService";
+import { CallLog, CallLogFilterState, callLogService, SentimentType, StatusType } from "../../services/callLogService";
 import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
 import { formatDateTime } from "../../utils/dateUtils";
+import CallLogFilterSection from "./CallLogFilterSection";
+import EllipsisCell from "../EllipsisCell";
 interface Props {
     campaignId: number;
     onBack: () => void;
@@ -72,16 +76,24 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     const theme = useTheme();
     const [campaign, setCampaign] = useState<any>(null);
     const [loading, setLoading] = useState(false);
-    const [search, setSearch] = useState("");
     const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
     const [callLogs, setCallLogs] = useState<CallLog[]>([]);
     const [callLogTotal, setCallLogTotal] = useState(0);
     const [callLogPage, setCallLogPage] = useState(0);
     const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
-    const [fromDate, setFromDate] = useState<string | null>(null);
-    const [endDate, setEndDate] = useState<string | null>(null);
     const [openInsights, setOpenInsights] = useState(false);
     const [openDetail, setOpenDetail] = useState(false);
+
+    const [filters, setFilters] = useState<CallLogFilterState>({
+        search: "",
+        fromDate: "",
+        endDate: "",
+        call_end_reason: "All",
+        status: "All",
+        sentiment: "All",
+        evaluation: "All"
+    });
+
 
     const loadData = async () => {
         setLoading(true);
@@ -89,7 +101,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             const data = await callCampaignService.getCampaignDetails(campaignId);
             setCampaign(data);
 
-            loadCallLogs()
+            loadCallLogs(filters)
         } catch (err) {
             console.error(err);
         } finally {
@@ -101,14 +113,35 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         loadData();
     }, [campaignId]);
 
-    const loadCallLogs = async () => {
+    useEffect(() => {
+        const delay = setTimeout(() => {
+            loadCallLogs(filters);
+        }, 400);
+
+        return () => clearTimeout(delay);
+    }, [filters]);
+
+    const handleFilterChange = (
+        newValues: Partial<CallLogFilterState>
+    ) => {
+        setFilters((prev: CallLogFilterState) => ({
+            ...prev,
+            ...newValues,
+        }));
+    };
+
+    const loadCallLogs = async (updatedFilters = filters) => {
         const data = await callLogService.allLogs({
             campaign_id: campaignId,
-            search: search || undefined,
+            search: updatedFilters.search || undefined,
             skip: callLogPage * callLogRowsPerPage,
             limit: callLogRowsPerPage,
-            from_date: fromDate || undefined,
-            end_date: endDate || undefined,
+            from_date: updatedFilters.fromDate || undefined,
+            end_date: updatedFilters.endDate || undefined,
+            call_end_reason: updatedFilters.call_end_reason !== "All" ? (updatedFilters.call_end_reason) : undefined,
+            status: updatedFilters.status !== "All" ? (updatedFilters.status as StatusType) : undefined,
+            sentiment: updatedFilters.sentiment !== "All" ? (updatedFilters.sentiment as SentimentType) : undefined,
+            evaluation: updatedFilters.evaluation !== "All" ? updatedFilters.evaluation : undefined,
         });
         setCallLogs(data.items || []);
         setCallLogTotal(data.pagination?.total || 0);
@@ -118,6 +151,66 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         ? (campaign.completed_calls / campaign.total_calls) * 100
         : 0;
 
+    const handleExport = async () => {
+        try {
+            const data = await callLogService.allLogs({
+                campaign_id: campaignId,
+                search: filters.search || undefined,
+                from_date: filters.fromDate || undefined,
+                end_date: filters.endDate || undefined,
+                call_end_reason:
+                    filters.call_end_reason !== "All"
+                        ? filters.call_end_reason
+                        : undefined,
+                status:
+                    filters.status !== "All"
+                        ? filters.status
+                        : undefined,
+                sentiment:
+                    filters.sentiment !== "All"
+                        ? filters.sentiment
+                        : undefined,
+                evaluation:
+                    filters.evaluation !== "All"
+                        ? filters.evaluation
+                        : undefined,
+            });
+
+            const exportData = data.items.map((log) => ({
+                Phone: log.phone,
+                Contact: log.contact || "-",
+                Agent: log.agent || "-",
+                Campaign: log.campaign || "-",
+                Type: log.type,
+                Status: log.status,
+                Duration: log.duration,
+                Cost: log.cost,
+                Sentiment: log.sentiment,
+                "End Reason": log.ended_reason,
+                "Test Call": log.testCall ? "Yes" : "No",
+                Date: log.date,
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Call Logs");
+
+            const excelBuffer = XLSX.write(workbook, {
+                bookType: "xlsx",
+                type: "array"
+            });
+
+            const blob = new Blob([excelBuffer], {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
+            });
+
+            saveAs(blob, `Campaign_Call_Logs_${Date.now()}.xlsx`);
+
+        } catch (error) {
+            console.error("Export failed", error);
+        }
+    };
     return (
         <Box sx={{ p: 3, bgcolor: "#f5f7fa", minHeight: "100vh" }}>
             {/* LOADING */}
@@ -163,16 +256,15 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         </Box>
                     </Box>
                 </Box>
-
-                <Button
-                    variant="outlined"
-                    onClick={() => onEdit(campaignId)}
-                >
-                    Edit
-                </Button>
+                {["pending", "scheduled"].includes(campaign?.status) && (
+                    <Button
+                        variant="outlined"
+                        onClick={() => onEdit(campaignId)}
+                    >
+                        Edit
+                    </Button>
+                )}
             </Box>
-
-
             {/* STATS */}
             <Grid container spacing={2} mb={3}>
                 <Grid item xs={12} md={2.4}>
@@ -266,14 +358,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             alignItems="center"
                             mt={3}   // 👈 tweak this value
                         >
-                            {/* <Button variant="outlined" startIcon={<DownloadIcon />}>
+                            <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
                                 Export
-                            </Button> */}
+                            </Button>
 
                             <Button
                                 variant="outlined"
                                 startIcon={<RefreshIcon />}
-                                onClick={loadCallLogs}
+                                onClick={() => loadCallLogs(filters)}
                             >
                                 Refresh
                             </Button>
@@ -281,50 +373,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                     </Box>
 
                     {/* SEARCH */}
-                    <Box mb={2}>
-                        <Grid container spacing={2} mb={2} alignItems="center">
-                            <Grid item xs={12} md={4}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    label="Search"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <SearchIcon />
-                                            </InputAdornment>
-                                        )
-                                    }}
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                                <TextField
-                                    label="From"
-                                    type="date"
-                                    size="small"
-                                    fullWidth
-                                    value={fromDate}
-                                    onChange={(e) => setFromDate(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
-                                />
-                            </Grid>
 
-                            <Grid item xs={12} md={3}>
-                                <TextField
-                                    label="To"
-                                    type="date"
-                                    size="small"
-                                    fullWidth
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
-                                />
-                            </Grid>
-
-                        </Grid>
-                    </Box>
+                    <CallLogFilterSection
+                        filters={filters}
+                        onFilterChange={handleFilterChange}
+                    />
 
                     {/* TABLE */}
 
@@ -370,7 +423,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                                 ) : (
                                     callLogs.map(log => (
                                         <TableRow key={log.id} hover>
-                                            <TableCell>{log.contact}</TableCell>
+                                            <TableCell><EllipsisCell value={log.contact} width={160} /></TableCell>
                                             <TableCell>{log.phone}</TableCell>
                                             <TableCell>
                                                 <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
