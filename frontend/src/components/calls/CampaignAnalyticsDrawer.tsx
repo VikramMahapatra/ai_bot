@@ -12,6 +12,11 @@ import {
 } from "@mui/material";
 import { callCampaignService, Campaign } from "../../services/callCampaignService";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import UpdateIcon from "@mui/icons-material/Update";
+import CallIcon from "@mui/icons-material/Call";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 
 
 interface Props {
@@ -58,7 +63,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
         <Drawer anchor="right" open={open} onClose={onClose}>
             <Box
                 sx={{
-                    width: { xs: "95vw", sm: 600 },
+                    width: { xs: "95vw", sm: 700 },
                     p: 3,
                     height: "100%",
                     display: "flex",
@@ -92,33 +97,104 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                                 <Typography variant="h6">{campaignAnalytics.name}</Typography>
                                 <Typography variant="caption">{campaignAnalytics.description}</Typography>
                             </Box>
-                            <Button onClick={onClose}>Close</Button>
+                            <Button variant="outlined" color="error" onClick={onClose}>Close</Button>
                         </Box>
 
                         {/* Metrics */}
                         <Grid container spacing={2} mb={2}>
-                            <Grid item xs={6}>
-                                <Box sx={{ p: 2, bgcolor: "#e0f2fe", borderRadius: 2 }}>
-                                    <Typography variant="caption">Total Calls</Typography>
-                                    <Typography variant="h6">{campaignAnalytics.total_calls}</Typography>
+                            <Grid item xs={12} sm={6} md={3}>
+                                <Box
+                                    sx={{
+                                        p: 2,
+                                        bgcolor: "#e0f2fe",
+                                        borderRadius: 2,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1.5
+                                    }}
+                                >
+                                    <CallIcon sx={{ color: "#0284c7" }} />
+
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Total Calls
+                                        </Typography>
+                                        <Typography variant="h6">
+                                            {campaignAnalytics.total_calls}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Grid>
-                            <Grid item xs={6}>
-                                <Box sx={{ p: 2, bgcolor: "#dcfce7", borderRadius: 2 }}>
-                                    <Typography variant="caption">Completed Calls</Typography>
-                                    <Typography variant="h6">{campaignAnalytics.completed_calls}</Typography>
+
+                            <Grid item xs={12} sm={6} md={3}>
+                                <Box
+                                    sx={{
+                                        p: 2,
+                                        bgcolor: "#dcfce7",
+                                        borderRadius: 2,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1.5
+                                    }}
+                                >
+                                    <CheckCircleIcon sx={{ color: "#16a34a" }} />
+
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Completed
+                                        </Typography>
+                                        <Typography variant="h6">
+                                            {campaignAnalytics.completed_calls}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Grid>
-                            <Grid item xs={6}>
-                                <Box sx={{ p: 2, bgcolor: "#cffafe", borderRadius: 2 }}>
-                                    <Typography variant="caption">Avg Duration</Typography>
-                                    <Typography variant="h6">{campaignAnalytics.avg_duration}</Typography>
+
+                            <Grid item xs={12} sm={6} md={3}>
+                                <Box
+                                    sx={{
+                                        p: 2,
+                                        bgcolor: "#cffafe",
+                                        borderRadius: 2,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1.5
+                                    }}
+                                >
+                                    <AccessTimeIcon sx={{ color: "#0891b2" }} />
+
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Avg Duration
+                                        </Typography>
+                                        <Typography variant="h6">
+                                            {campaignAnalytics.avg_duration}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Grid>
-                            <Grid item xs={6}>
-                                <Box sx={{ p: 2, bgcolor: "#fff7ed", borderRadius: 2 }}>
-                                    <Typography variant="caption">Response Rate</Typography>
-                                    <Typography variant="h6">{campaignAnalytics.response_rate}</Typography>
+
+                            <Grid item xs={12} sm={6} md={3}>
+                                <Box
+                                    sx={{
+                                        p: 2,
+                                        bgcolor: "#fff7ed",
+                                        borderRadius: 2,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1.5
+                                    }}
+                                >
+                                    <TrendingUpIcon sx={{ color: "#ea580c" }} />
+
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Response Rate
+                                        </Typography>
+                                        <Typography variant="h6">
+                                            {campaignAnalytics.response_rate}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Grid>
                         </Grid>
@@ -511,14 +587,66 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                         <Typography variant="subtitle1" mb={1}>
                             Campaign Timeline
                         </Typography>
-                        <Box mb={2}>
-                            <Typography variant="caption">
-                                Created: {campaignAnalytics.timeline.created_at}
-                            </Typography>
-                            <br />
-                            <Typography variant="caption">
-                                Last Updated: {campaignAnalytics.timeline.updated_at}
-                            </Typography>
+
+                        <Box
+                            sx={{
+                                border: "1px solid #e5e7eb",
+                                borderRadius: 2,
+                                p: 2,
+                                bgcolor: "#fafafa",
+                                mb: 2
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1.5,
+                                    mb: 1.5
+                                }}
+                            >
+                                <AccessTimeIcon
+                                    sx={{
+                                        fontSize: 20,
+                                        color: "#6366f1"
+                                    }}
+                                />
+
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Created
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={500}>
+                                        {campaignAnalytics.timeline.created_at}
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            <Divider sx={{ my: 1 }} />
+
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1.5
+                                }}
+                            >
+                                <UpdateIcon
+                                    sx={{
+                                        fontSize: 20,
+                                        color: "#10b981"
+                                    }}
+                                />
+
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Last Updated
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={500}>
+                                        {campaignAnalytics.timeline.updated_at}
+                                    </Typography>
+                                </Box>
+                            </Box>
                         </Box>
 
                         <Button

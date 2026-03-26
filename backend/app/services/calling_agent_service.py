@@ -292,7 +292,9 @@ def update_agent(
         "transcriber_model": agent.transcriber_model,       
         "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
     }
-    # 🔹 Call Echoleads update
+    
+    print(echo_payload)
+    # Call Echoleads update
     echo_failed = False
     if db_agent.external_agent_id:
         try:

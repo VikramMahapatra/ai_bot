@@ -45,6 +45,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Menu from "@mui/material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
 import InsightsIcon from "@mui/icons-material/Insights";
+import EllipsisCell from '../EllipsisCell';
 
 
 const getStatusColor = (status: string) => {
@@ -56,7 +57,7 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSize="small" /> : <CallReceivedIcon fontSize="small" />;
+const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSize="small" color='primary' /> : <CallReceivedIcon fontSize="small" color='primary' />;
 const getModeIcon = (mode: string) => mode === 'Voice' ? <PhoneIcon fontSize="small" /> : <VideocamIcon fontSize="small" />;
 
 export const CallLogsTab = () => {
@@ -234,6 +235,8 @@ export const CallLogsTab = () => {
         const campaignData = await callLogService.campaignLookup();
         setCampaigns(campaignData || []);
     }
+
+
 
     return (
         <Box>
@@ -533,10 +536,11 @@ export const CallLogsTab = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Phone</TableCell>
-                            <TableCell>Campaign</TableCell>
-                            <TableCell>Agent</TableCell>
                             <TableCell>Call Type</TableCell>
-                            <TableCell>Test Call</TableCell>
+                            <TableCell>Agent</TableCell>
+                            <TableCell>Campaign</TableCell>
+                            <TableCell>Contact</TableCell>
+                            {/* <TableCell>Test Call</TableCell> */}
                             <TableCell>Sentiment</TableCell>
                             <TableCell>Status</TableCell>
                             {/* <TableCell>Cost</TableCell> */}
@@ -573,16 +577,25 @@ export const CallLogsTab = () => {
                             callLogs.map(log => (
                                 <TableRow key={log.id} hover>
                                     <TableCell>{log.phone}</TableCell>
-                                    <TableCell>{log.campaign || "-"}</TableCell>
-                                    <TableCell>{log.agent || "-"}</TableCell>
                                     <TableCell>
                                         <Box display="flex" alignItems="center" gap={0.5}>
                                             {getTypeIcon(log.type)} <Typography variant="body2">{log.type}</Typography>
                                         </Box>
                                     </TableCell>
                                     <TableCell>
-                                        {log.testCall ? "Yes" : "No"}
+                                        <EllipsisCell value={log.agent} />
                                     </TableCell>
+
+                                    <TableCell>
+                                        <EllipsisCell value={log.campaign} width={160} />
+                                    </TableCell>
+
+                                    <TableCell>
+                                        <EllipsisCell value={log.contact} width={160} />
+                                    </TableCell>
+                                    {/* <TableCell>
+                                        {log.testCall ? "Yes" : "No"}
+                                    </TableCell> */}
                                     <TableCell>{log.sentiment || "N/A"}</TableCell>
                                     <TableCell>
                                         <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
@@ -592,23 +605,36 @@ export const CallLogsTab = () => {
                                         {log.date ? formatDateTime(log.date) : "-"}
                                     </TableCell>
                                     <TableCell>
-                                        <Tooltip title="View Insights">
-                                            <IconButton onClick={() => {
-                                                setSelectedCall(log)
-                                                setOpenInsights(true);
-                                            }}>
-                                                <InsightsIcon color="primary" />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => {
-                                                setSelectedCall(log);
-                                                setOpenDetail(true);
+                                        <Box
+                                            sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 0.5,
+                                                whiteSpace: "nowrap"
                                             }}
                                         >
-                                            <VisibilityIcon />
-                                        </IconButton>
+                                            <Tooltip title="View Insights">
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => {
+                                                        setSelectedCall(log)
+                                                        setOpenInsights(true);
+                                                    }}
+                                                >
+                                                    <InsightsIcon color="primary" />
+                                                </IconButton>
+                                            </Tooltip>
+
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    setSelectedCall(log);
+                                                    setOpenDetail(true);
+                                                }}
+                                            >
+                                                <VisibilityIcon />
+                                            </IconButton>
+                                        </Box>
                                     </TableCell>
                                 </TableRow>
                             )))}

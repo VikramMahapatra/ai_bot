@@ -121,6 +121,7 @@ def list_campaigns(
     # PAGINATION
     campaigns = (
         base_query
+        .order_by(CallCampaign.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()

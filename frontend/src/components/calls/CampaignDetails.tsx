@@ -38,6 +38,7 @@ import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
 import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
+import EllipsisCell from "../EllipsisCell";
 interface Props {
     campaignId: number;
     onBack: () => void;
@@ -422,7 +423,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                                 ) : (
                                     callLogs.map(log => (
                                         <TableRow key={log.id} hover>
-                                            <TableCell>{log.contact}</TableCell>
+                                            <TableCell><EllipsisCell value={log.contact} width={160} /></TableCell>
                                             <TableCell>{log.phone}</TableCell>
                                             <TableCell>
                                                 <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />

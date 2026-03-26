@@ -1241,8 +1241,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 Maximum duration for a single call
                             </Typography>
                         </Box>
-                        {/* <Stack spacing={1} sx={{ mt: 3 }}>
-                        <FormControlLabel
+                        <Stack spacing={1} sx={{ mt: 3 }}>
+                            {/* <FormControlLabel
                             control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
                             label="Enable Sentiment Detection"
                         /> 
@@ -1253,22 +1253,22 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                          <FormControlLabel
                             control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
                             label="Enable Call Recording"
-                        /> 
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={formData.calendar_sync}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            calendar_sync: e.target.checked
-                                        })
-                                    }
-                                />
-                            }
-                            label="Calendar Sync"
-                        />
-                    </Stack> */}
+                        />  */}
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={formData.calendar_sync}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                calendar_sync: e.target.checked
+                                            })
+                                        }
+                                    />
+                                }
+                                label="Calendar Sync"
+                            />
+                        </Stack>
                     </Card >
                 </>
 

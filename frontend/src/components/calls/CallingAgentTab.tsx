@@ -145,6 +145,7 @@ export const CallingAgentTab: React.FC = () => {
 
             showSuccess(message);
             setShowForm(false);
+            setSelectedAgent(null);
             loadCallingAgents();
 
             return response;
