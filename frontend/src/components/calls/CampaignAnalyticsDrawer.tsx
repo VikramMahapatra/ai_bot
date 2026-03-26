@@ -318,8 +318,17 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                                                 {insight.change && (
                                                     <Typography
                                                         variant="caption"
-                                                        color="text.secondary"
+                                                        sx={{
+                                                            fontWeight: 600,
+                                                            color:
+                                                                parseFloat(insight.change) > 0
+                                                                    ? "#16a34a"
+                                                                    : parseFloat(insight.change) < 0
+                                                                        ? "#dc2626"
+                                                                        : "text.secondary"
+                                                        }}
                                                     >
+                                                        {parseFloat(insight.change) > 0 ? "+" : ""}
                                                         {insight.change}
                                                     </Typography>
                                                 )}
