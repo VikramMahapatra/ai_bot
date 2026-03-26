@@ -32,7 +32,7 @@ import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import PhoneIcon from '@mui/icons-material/Phone';
 import VideocamIcon from '@mui/icons-material/Videocam';
-import CallDetailDrawer from './CallDetailDrawer';
+import CallDetailDrawer, { formatEndedReason } from './CallDetailDrawer';
 import SyncIcon from "@mui/icons-material/Sync";
 import CloseIcon from "@mui/icons-material/Close";
 import { CallLog, callLogService, FilterLookupResponse, StatusType } from '../../services/callLogService';
@@ -149,10 +149,13 @@ export const CallLogsTab = () => {
             showError("Syncing failed")
         } finally {
             setSyncing(false);
+            handleActionClose();
         }
     };
 
     const handleExport = async () => {
+        setLoading(true);
+        showError('');
         try {
             const data = await callLogService.allLogs({
                 search: search || undefined,
@@ -168,14 +171,16 @@ export const CallLogsTab = () => {
                 Contact: log.contact || "-",
                 Agent: log.agent || "-",
                 Campaign: log.campaign || "-",
+                "Start Time": formatDateTime(log.startTime),
+                "End Time": formatDateTime(log.endTime),
                 Type: log.type,
                 Status: log.status,
                 Duration: log.duration,
                 Cost: log.cost,
                 Sentiment: log.sentiment,
-                "End Reason": log.ended_reason,
+                "End Reason": formatEndedReason(log.ended_reason),
                 "Test Call": log.testCall ? "Yes" : "No",
-                Date: log.date,
+                Date: formatDateTime(log.date),
             }));
 
             const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -195,7 +200,10 @@ export const CallLogsTab = () => {
             saveAs(blob, `Campaign_Call_Logs_${Date.now()}.xlsx`);
 
         } catch (error) {
-            console.error("Export failed", error);
+            showError("Failed to export the logs.")
+        }
+        finally {
+            setLoading(false);
         }
     };
 
@@ -337,7 +345,6 @@ export const CallLogsTab = () => {
                             <MenuItem
                                 onClick={() => {
                                     handleSyncCalls();
-                                    handleActionClose();
                                 }}
                                 disabled={syncing}
                             >

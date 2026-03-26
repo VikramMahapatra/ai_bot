@@ -35,7 +35,7 @@ interface CallDetailDrawerProps {
     selectedCall: any;
 }
 
-const formatEndedReason = (reason?: string) => {
+export const formatEndedReason = (reason?: string) => {
     if (!reason) return "-";
 
     // Handle problematic long reasons

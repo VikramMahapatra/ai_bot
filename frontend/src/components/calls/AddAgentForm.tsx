@@ -126,62 +126,111 @@ Guidelines:
 Always begin with the greeting provided.`
 };
 
+const emptyFormData = {
+    name: '',
+    greeting: OUTGOING_DEFAULTS.greeting,
+    prompt: OUTGOING_DEFAULTS.prompt,
+    destination: [],
+    server_location: "US",
+
+    gender: "Male",
+    accent: "",
+    voice: "",
+
+    who_speaks_first: "ai",
+
+    enable_prompt_timezone: false,
+    prompt_timezone: "",
+
+    enable_call_forwarding: false,
+    call_forwarding_number: "",
+    call_forwarding_role: "",
+    call_forwarding_action_desc: "",
+
+    silence_timeout: 10,
+    talking_speed: 1.0,
+    max_call_duration: 120,
+    calendar_sync: false,
+    enable_sentiment: false,
+    voice_mail_detection: false,
+    enable_call_recording: false,
+
+    success_parameters: '',
+    enable_call_summary: false,
+    summary_prompt: '',
+    follow_up_whatsapp: false,
+    important_data_points: "",
+    enable_background_sound: false,
+    background_sound_url: "",
+    start_speaking_wait_seconds: "0.1",
+    stop_speaking_voice_seconds: "0.3",
+
+    transcriber_provider: "deepgram",
+    transcriber_language: "en-IN",
+    transcriber_model: "nova-2",
+};
+
 export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mode, onCancel, onSave, loading }) => {
     const [errors, setErrors] = useState<any>({});
     const [files, setFiles] = useState<File[]>([]);
     const [voiceOptions, setVoiceOptions] = useState<Voice[]>([]);
-
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isDisabled, setIsDisabled] = useState(false);
+    const [formData, setFormData] = useState(emptyFormData);
 
-    const defaults = agentType === "inbound"
-        ? INCOMING_DEFAULTS
-        : OUTGOING_DEFAULTS;
+    useEffect(() => {
+        const defaults = agentType === "inbound"
+            ? INCOMING_DEFAULTS
+            : OUTGOING_DEFAULTS;
 
-    const [formData, setFormData] = useState({
-        name: agent?.name || '',
-        greeting: agent?.greeting || defaults.greeting,
-        prompt: agent?.prompt || defaults.prompt,
-        destination: agent?.destination || [],
-        server_location: agent?.server_location || "US",
+        setFormData({
+            name: agent?.name || '',
+            greeting: agent?.greeting || defaults.greeting,
+            prompt: agent?.prompt || defaults.prompt,
+            destination: agent?.destination || [],
+            server_location: agent?.server_location || "US",
 
-        gender: agent?.gender || "Male",
-        accent: agent?.accent || "",
-        voice: agent?.voice || "",
+            gender: agent?.gender || "Male",
+            accent: agent?.accent || "",
+            voice: agent?.voice || "",
 
-        who_speaks_first: agent?.who_speaks_first || "ai",
+            who_speaks_first: agent?.who_speaks_first || "ai",
 
-        enable_prompt_timezone: agent?.enable_prompt_timezone || false,
-        prompt_timezone: agent?.prompt_timezone || "",
+            enable_prompt_timezone: agent?.enable_prompt_timezone || false,
+            prompt_timezone: agent?.prompt_timezone || "",
 
-        enable_call_forwarding: agent?.enable_call_forwarding || false,
-        call_forwarding_number: agent?.call_forwarding_number || "",
-        call_forwarding_role: agent?.call_forwarding_role || "",
-        call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
+            enable_call_forwarding: agent?.enable_call_forwarding || false,
+            call_forwarding_number: agent?.call_forwarding_number || "",
+            call_forwarding_role: agent?.call_forwarding_role || "",
+            call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
 
-        silence_timeout: agent?.silence_timeout || 10,
-        talking_speed: agent?.talking_speed || 1.0,
-        max_call_duration: agent?.max_call_duration || 120,
-        calendar_sync: agent?.calendar_sync || false,
-        enable_sentiment: agent?.enable_sentiment || false,
-        voice_mail_detection: agent?.voice_mail_detection || false,
-        enable_call_recording: agent?.enable_call_recording || false,
+            silence_timeout: agent?.silence_timeout || 10,
+            talking_speed: agent?.talking_speed || 1.0,
+            max_call_duration: agent?.max_call_duration || 120,
+            calendar_sync: agent?.calendar_sync || false,
+            enable_sentiment: agent?.enable_sentiment || false,
+            voice_mail_detection: agent?.voice_mail_detection || false,
+            enable_call_recording: agent?.enable_call_recording || false,
 
-        success_parameters: agent?.success_parameters || '',
-        enable_call_summary: agent?.enable_call_summary || false,
-        summary_prompt: agent?.summary_prompt || '',
-        follow_up_whatsapp: agent?.follow_up_whatsapp || false,
-        important_data_points: agent?.important_data_points || "",
-        enable_background_sound: agent?.enable_background_sound || false,
-        background_sound_url: agent?.background_sound_url || "",
-        start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
-        stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
-        transcriber_provider: agent?.transcriber_provider || "deepgram",
-        transcriber_language: agent?.transcriber_language || "en-IN",
-        transcriber_model: agent?.transcriber_model || "nova-2",
-    });
-    const topRef = useRef<HTMLDivElement | null>(null);
+            success_parameters: agent?.success_parameters || '',
+            enable_call_summary: agent?.enable_call_summary || false,
+            summary_prompt: agent?.summary_prompt || '',
+            follow_up_whatsapp: agent?.follow_up_whatsapp || false,
+            important_data_points: agent?.important_data_points || "",
+            enable_background_sound: agent?.enable_background_sound || false,
+            background_sound_url: agent?.background_sound_url || "",
+            start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
+            stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
+            transcriber_provider: agent?.transcriber_provider || "deepgram",
+            transcriber_language: agent?.transcriber_language || "en-IN",
+            transcriber_model: agent?.transcriber_model || "nova-2",
+        });
+
+        setExistingFiles(
+            agent?.training_doc ? agent.training_doc.split(",") : []
+        );
+
+    }, [agent, agentType]);
 
     useEffect(() => {
         const fetchVoices = async () => {

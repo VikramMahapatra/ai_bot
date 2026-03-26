@@ -272,7 +272,6 @@ def update_agent(
         "sentiment_detection": "1" if agent.enable_sentiment else "0",
         "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
         "calendar_sync": agent.calendar_sync,
-        "prompt_timezone": agent.prompt_timezone or db_agent.prompt_timezone,
         "speaks_first":agent.who_speaks_first,
         "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
         "silence_timeout": str(agent.silence_timeout),
