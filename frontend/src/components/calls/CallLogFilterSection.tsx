@@ -63,12 +63,6 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
             {/* Expandable Filters */}
             <Collapse in={showFilters}>
                 <Box mt={3} pt={2} borderTop="1px solid #e0e0e0">
-
-                    {/* Date Filter */}
-                    <Typography variant="subtitle2" mb={2}>
-                        Filter by Call Started Date:
-                    </Typography>
-
                     <Grid container spacing={2} mb={2}>
                         <Grid item xs={12} md={5}>
                             <TextField

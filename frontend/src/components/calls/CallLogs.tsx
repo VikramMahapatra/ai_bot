@@ -35,7 +35,7 @@ import VideocamIcon from '@mui/icons-material/Videocam';
 import CallDetailDrawer, { formatEndedReason } from './CallDetailDrawer';
 import SyncIcon from "@mui/icons-material/Sync";
 import CloseIcon from "@mui/icons-material/Close";
-import { CallLog, callLogService, FilterLookupResponse, StatusType } from '../../services/callLogService';
+import { CallLog, callLogService, FilterLookupResponse, SentimentType, StatusType } from '../../services/callLogService';
 import { formatDateTime } from '../../utils/dateUtils';
 import FilterListIcon from "@mui/icons-material/FilterList";
 import BugReportIcon from "@mui/icons-material/BugReport";
@@ -81,6 +81,10 @@ export const CallLogsTab = () => {
     const [agents, setAgents] = useState<FilterLookupResponse[]>([]);
     const [campaigns, setCampaigns] = useState<FilterLookupResponse[]>([]);
 
+    const [sentiment, setSentiment] = useState<string>("All");
+    const [callEndReason, setCallEndReason] = useState<string>("All");
+    const [evaluation, setEvaluation] = useState<string>("All");
+
     const [actionAnchor, setActionAnchor] = useState(null);
     const [openInsights, setOpenInsights] = useState(false);
 
@@ -125,6 +129,9 @@ export const CallLogsTab = () => {
             status: status !== "All" ? (status as StatusType) : undefined,
             agent_id: agent !== "All" ? Number(agent) : undefined,
             campaign_id: campaign !== "All" ? Number(campaign) : undefined,
+            call_end_reason: callEndReason !== "All" ? (callEndReason) : undefined,
+            sentiment: sentiment !== "All" ? (sentiment as SentimentType) : undefined,
+            evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
         });
         setCallLogs(data.items || []);
         setCallLogTotal(data.pagination?.total || 0);
@@ -164,6 +171,9 @@ export const CallLogsTab = () => {
                 status: status !== "All" ? (status as StatusType) : undefined,
                 agent_id: agent !== "All" ? Number(agent) : undefined,
                 campaign_id: campaign !== "All" ? Number(campaign) : undefined,
+                call_end_reason: callEndReason !== "All" ? (callEndReason) : undefined,
+                sentiment: sentiment !== "All" ? (sentiment as SentimentType) : undefined,
+                evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
             });
 
             const exportData = data.items.map((log) => ({
@@ -229,7 +239,10 @@ export const CallLogsTab = () => {
         endDate,
         status,
         agent,
-        campaign
+        campaign,
+        callEndReason,
+        sentiment,
+        evaluation
     ]);
 
     useEffect(() => {
@@ -426,6 +439,61 @@ export const CallLogsTab = () => {
                                 }
                             </TextField>
                         </Grid>
+                    </Grid>
+                    <Grid container spacing={2} mt={1}>
+
+                        {/* Call End Reason */}
+                        <Grid item xs={12} sm={6} md={4}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Call End Reason"
+                                value={callEndReason}
+                                onChange={(e) => setCallEndReason(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="busy">Customer Busy</MenuItem>
+                                <MenuItem value="no_answer">No Answer</MenuItem>
+                                <MenuItem value="voicemail">Voicemail</MenuItem>
+                                <MenuItem value="customer_end">Customer Ended</MenuItem>
+                                <MenuItem value="assistant_end">Assistant Ended</MenuItem>
+                            </TextField>
+                        </Grid>
+
+                        {/* Sentiment */}
+                        <Grid item xs={12} sm={6} md={4}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Sentiment"
+                                value={sentiment}
+                                onChange={(e) => setSentiment(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="positive">Positive</MenuItem>
+                                <MenuItem value="negative">Negative</MenuItem>
+                                <MenuItem value="neutral">Neutral</MenuItem>
+                            </TextField>
+                        </Grid>
+
+                        {/* Evaluation */}
+                        <Grid item xs={12} sm={6} md={4}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Evaluation"
+                                value={evaluation}
+                                onChange={(e) => setEvaluation(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="true">True</MenuItem>
+                                <MenuItem value="false">False</MenuItem>
+                            </TextField>
+                        </Grid>
+
                     </Grid>
                 </Collapse>
             </Paper>
