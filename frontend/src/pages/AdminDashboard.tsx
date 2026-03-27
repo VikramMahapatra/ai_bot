@@ -181,6 +181,13 @@ const percent = (used: number, limit: number | null): number => {
   return Math.min((used / limit) * 100, 100);
 };
 
+const safeHexColor = (value?: string): string => {
+  const fallback = '#4e89d5';
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
+};
+
 const formatLimitValue = (value: number | null): string => {
   if (value === null || typeof value === 'undefined') return '∞';
   return value.toLocaleString();
@@ -425,10 +432,9 @@ const AdminDashboard: React.FC = () => {
     () =>
       leadsFunnel
         .sort((a, b) => a.position - b.position)
-        .map((item, index) => ({
+        .map((item) => ({
           ...item,
-          // Keep all funnel bars in distinct shades of blue.
-          fill: ['#1f4f86', '#2968a3', '#347fbf', '#4194d1', '#58a7dd', '#74b9e7', '#94caef', '#b4dcf6'][index % 8],
+          fill: safeHexColor(item.color),
         })),
     [leadsFunnel]
   );

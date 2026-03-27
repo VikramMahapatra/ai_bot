@@ -69,6 +69,13 @@ const stageLabel = (stage?: string | null) => {
 
 const toStageKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '_');
 
+const normalizeHexColor = (value?: string) => {
+  const fallback = '#4e89d5';
+  if (!value) return fallback;
+  const trimmed = value.trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
+};
+
 const LeadManager: React.FC = () => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -291,7 +298,7 @@ const LeadManager: React.FC = () => {
       ...categoryForm,
       name: categoryForm.name.trim(),
       key: toStageKey(categoryForm.key || categoryForm.name),
-      color: categoryForm.color.trim() || '#4e89d5',
+      color: normalizeHexColor(categoryForm.color),
       position: Number(categoryForm.position) || 0,
     };
 
@@ -867,11 +874,33 @@ const LeadManager: React.FC = () => {
             />
             <Stack direction="row" spacing={2}>
               <TextField
-                label="Color"
+                label="Color Code"
                 value={categoryForm.color}
-                onChange={(event) => setCategoryForm((prev) => ({ ...prev, color: event.target.value }))}
+                onChange={(event) =>
+                  setCategoryForm((prev) => ({
+                    ...prev,
+                    color: event.target.value,
+                  }))
+                }
+                helperText="HEX value (example: #4e89d5)"
                 size="small"
                 fullWidth
+              />
+              <TextField
+                label="Pick"
+                type="color"
+                value={normalizeHexColor(categoryForm.color)}
+                onChange={(event) =>
+                  setCategoryForm((prev) => ({
+                    ...prev,
+                    color: event.target.value,
+                  }))
+                }
+                size="small"
+                sx={{ width: 88 }}
+                inputProps={{
+                  'aria-label': 'Pick category color',
+                }}
               />
               <TextField
                 label="Position"
