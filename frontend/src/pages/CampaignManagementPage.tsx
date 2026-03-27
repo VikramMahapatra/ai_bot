@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -38,6 +41,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CodeIcon from '@mui/icons-material/Code';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
@@ -89,6 +93,12 @@ const buildEmailStarterTemplate = (campaignName?: string) => `
 `.trim();
 
 const CAMPAIGN_EMAIL_MERGE_TAG_HELP = 'Merge tags: {{name}}, {{first_name}}, {{campaign_name}}';
+
+const ensureFive = (items: string[]) => {
+  const next = [...items];
+  while (next.length < 5) next.push('');
+  return next.slice(0, 5);
+};
 
 const getContactListLabel = (list: ContactListItem) => {
   const autoTag = list.is_agent_auto_list ? ' • Auto' : '';
@@ -608,6 +618,28 @@ const CampaignManagementPage: React.FC = () => {
     } finally {
       setGeneratingEmailVariants(false);
     }
+  };
+
+  const handleEditGeneratedSubject = (index: number, value: string) => {
+    setGeneratedSubjects((prev) => {
+      const next = ensureFive(prev);
+      next[index] = value;
+      if (index === 0) {
+        setEmailSubject(value);
+      }
+      return next;
+    });
+  };
+
+  const handleEditGeneratedBody = (index: number, value: string) => {
+    setGeneratedBodies((prev) => {
+      const next = ensureFive(prev);
+      next[index] = value;
+      if (index === 0) {
+        setCreateMessageTemplate(value);
+      }
+      return next;
+    });
   };
 
   const handleCreateCampaign = async () => {
@@ -1251,20 +1283,53 @@ const CampaignManagementPage: React.FC = () => {
                             <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.primary.main, 0.2) }}>
                               <Grid container spacing={1.5}>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Subjects</Typography>
-                                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                    {generatedSubjects.map((subject, idx) => (
-                                      <Typography key={`subject-${idx}`} variant="body2">{idx + 1}. {subject}</Typography>
+                                  <Typography variant="caption" color="text.secondary">Generated Subjects (Editable)</Typography>
+                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
+                                    {ensureFive(generatedSubjects).map((subject, idx) => (
+                                      <TextField
+                                        key={`subject-edit-${idx}`}
+                                        size="small"
+                                        label={`Subject ${idx + 1}`}
+                                        value={subject}
+                                        onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
+                                      />
                                     ))}
                                   </Stack>
                                 </Grid>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Bodies</Typography>
-                                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                    {generatedBodies.map((body, idx) => (
-                                      <Typography key={`body-${idx}`} variant="body2" color="text.secondary">
-                                        {idx + 1}. {(body || '').slice(0, 120)}{(body || '').length > 120 ? '...' : ''}
-                                      </Typography>
+                                  <Typography variant="caption" color="text.secondary">Generated Bodies (Editable)</Typography>
+                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
+                                    {ensureFive(generatedBodies).map((body, idx) => (
+                                      <Accordion
+                                        key={`body-edit-${idx}`}
+                                        disableGutters
+                                        defaultExpanded={idx === 0}
+                                        sx={{
+                                          borderRadius: '8px',
+                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                          boxShadow: 'none',
+                                          '&:before': { display: 'none' },
+                                        }}
+                                      >
+                                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                            {`Body ${idx + 1}`}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                            {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
+                                          </Typography>
+                                        </AccordionSummary>
+                                        <AccordionDetails sx={{ pt: 0.5 }}>
+                                          <TextField
+                                            fullWidth
+                                            size="small"
+                                            multiline
+                                            minRows={4}
+                                            value={body}
+                                            onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
+                                          />
+                                        </AccordionDetails>
+                                      </Accordion>
                                     ))}
                                   </Stack>
                                 </Grid>

@@ -358,9 +358,22 @@ def _html_to_plain_text(content: str) -> str:
         return plain.strip()
 
 
-def _render_campaign_wrapper(recipient_name: str, campaign_name: str, body_html: str) -> str:
+def _starts_with_greeting(content: str) -> bool:
+        plain = _html_to_plain_text(content or "").strip().lower()
+        if not plain:
+                return False
+        return bool(re.match(r"^(hi|hello|hey|dear)\b", plain))
+
+
+def _render_campaign_wrapper(
+        recipient_name: str,
+        campaign_name: str,
+        body_html: str,
+        include_greeting: bool = True,
+) -> str:
         safe_name = _escape_html((recipient_name or "there").strip() or "there")
         safe_campaign = _escape_html(campaign_name or "Campaign Update")
+        greeting_html = f'<p style="margin-top:0; color:#425b84; font-size:15px;">Hi {safe_name},</p>' if include_greeting else ""
         return f"""
         <!DOCTYPE html>
         <html>
@@ -374,7 +387,7 @@ def _render_campaign_wrapper(recipient_name: str, campaign_name: str, body_html:
                         <h1 style=\"margin:0; font-size:20px; line-height:1.3; color:#ffffff;\">{safe_campaign}</h1>
                     </div>
                     <div style=\"padding:24px;\">
-                        <p style=\"margin-top:0; color:#425b84; font-size:15px;\">Hi {safe_name},</p>
+                        {greeting_html}
                         <div style=\"font-size:15px; line-height:1.65; color:#253757;\">{body_html}</div>
                     </div>
                     <div style=\"padding:16px 24px; border-top:1px solid #e4ecf8; font-size:12px; color:#6b7fa5;\">
@@ -533,16 +546,21 @@ def send_campaign_email(
             if _looks_like_full_email_html(html_source):
                 final_html = html_source
             else:
+                include_greeting = not _starts_with_greeting(html_source)
                 final_html = _render_campaign_wrapper(
                     recipient_name=recipient_name,
                     campaign_name=campaign_name,
                     body_html=html_source,
+                    include_greeting=include_greeting,
                 )
         else:
+            escaped_body = _escape_html(personalized_template)
+            include_greeting = not _starts_with_greeting(escaped_body)
             final_html = _render_campaign_wrapper(
                 recipient_name=recipient_name,
                 campaign_name=campaign_name,
-                body_html=_escape_html(personalized_template),
+                body_html=escaped_body,
+                include_greeting=include_greeting,
             )
 
         plain_fallback = _html_to_plain_text(final_html) or (personalized_template or "")
