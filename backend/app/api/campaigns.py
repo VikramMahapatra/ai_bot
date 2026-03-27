@@ -1,6 +1,7 @@
 from datetime import datetime
 from io import StringIO
 import csv
+import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -12,6 +13,7 @@ from app.auth import require_admin
 from app.database import get_db
 from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
 from app.services.email_service import send_campaign_email
+from app.services.campaign_email_ai_service import generate_email_variants_from_prompt
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 
 
@@ -45,6 +47,16 @@ class CampaignCreateRequest(BaseModel):
     contact_list_id: int
     scheduled_time: Optional[datetime] = None
     status: Optional[str] = "draft"
+    email_content_mode: Optional[str] = "manual"
+    email_subject: Optional[str] = None
+    email_prompt_context: Optional[str] = None
+    email_subject_variants: Optional[List[str]] = None
+    email_body_variants: Optional[List[str]] = None
+
+
+class EmailVariantGenerateRequest(BaseModel):
+    campaign_name: Optional[str] = None
+    prompt_context: str
 
 
 class CampaignStatusRequest(BaseModel):
@@ -87,6 +99,100 @@ def _serialize_campaign(campaign: Campaign, contact_list_name: Optional[str] = N
     }
 
 
+def _normalize_text_list(values: Optional[List[str]], limit: int = 5) -> List[str]:
+    cleaned: List[str] = []
+    for item in values or []:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        if text not in cleaned:
+            cleaned.append(text)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def _build_email_template_payload(
+    campaign_name: str,
+    message_template: str,
+    payload: CampaignCreateRequest,
+) -> str:
+    mode = (payload.email_content_mode or "manual").strip().lower()
+    if mode not in {"manual", "prompt"}:
+        raise HTTPException(status_code=400, detail="email_content_mode must be manual or prompt")
+
+    default_subject = (payload.email_subject or campaign_name).strip() or campaign_name
+    default_body = (message_template or "").strip()
+    subjects = _normalize_text_list(payload.email_subject_variants)
+    bodies = _normalize_text_list(payload.email_body_variants)
+
+    if mode == "prompt":
+        prompt_context = (payload.email_prompt_context or "").strip()
+        if not prompt_context:
+            raise HTTPException(status_code=400, detail="email_prompt_context is required for prompt mode")
+
+        if len(subjects) < 5 or len(bodies) < 5:
+            generated = generate_email_variants_from_prompt(campaign_name=campaign_name, prompt_context=prompt_context)
+            subjects = _normalize_text_list(generated.get("subjects"), limit=5)
+            bodies = _normalize_text_list(generated.get("bodies"), limit=5)
+
+        if len(subjects) < 5 or len(bodies) < 5:
+            raise HTTPException(status_code=500, detail="Unable to generate 5 email subjects and 5 email bodies")
+
+        default_subject = subjects[0]
+        default_body = bodies[0]
+    else:
+        if not default_body:
+            raise HTTPException(status_code=400, detail="message_template is required")
+        if not subjects:
+            subjects = [default_subject]
+        if not bodies:
+            bodies = [default_body]
+
+    serialized = {
+        "format": "email_v2",
+        "mode": mode,
+        "default_subject": default_subject,
+        "default_body": default_body,
+        "subjects": subjects,
+        "bodies": bodies,
+        "prompt_context": (payload.email_prompt_context or "").strip() or None,
+    }
+    return json.dumps(serialized, ensure_ascii=True)
+
+
+def _resolve_email_payload_for_contact(campaign_name: str, template_blob: str, contact_index: int) -> tuple[str, str]:
+    raw_template = (template_blob or "").strip()
+    fallback_subject = (campaign_name or "Campaign Update").strip() or "Campaign Update"
+
+    if not raw_template:
+        return fallback_subject, ""
+
+    try:
+        parsed = json.loads(raw_template)
+    except Exception:
+        return fallback_subject, raw_template
+
+    if not isinstance(parsed, dict) or parsed.get("format") != "email_v2":
+        return fallback_subject, raw_template
+
+    subjects = _normalize_text_list(parsed.get("subjects"))
+    bodies = _normalize_text_list(parsed.get("bodies"))
+
+    if subjects and bodies:
+        combos = [(subject, body) for subject in subjects for body in bodies]
+        selected_subject, selected_body = combos[contact_index % len(combos)]
+        return selected_subject, selected_body
+
+    default_subject = str(parsed.get("default_subject") or fallback_subject).strip() or fallback_subject
+    default_body = str(parsed.get("default_body") or "").strip()
+
+    if not default_body:
+        default_body = raw_template
+
+    return default_subject, default_body
+
+
 def _get_active_twilio_sms_config(db: Session, organization_id: int) -> Optional[TwilioSmsChannel]:
     return db.query(TwilioSmsChannel).filter(
         TwilioSmsChannel.organization_id == organization_id,
@@ -97,6 +203,7 @@ def _get_active_twilio_sms_config(db: Session, organization_id: int) -> Optional
 def _send_campaign_message(
     campaign: Campaign,
     contact: Contact,
+    contact_index: int,
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> tuple[bool, Optional[str]]:
     """Send campaign message for the selected channel.
@@ -104,11 +211,17 @@ def _send_campaign_message(
     Email sends via SMTP, WhatsApp remains placeholder, SMS sends via Twilio.
     """
     if campaign.campaign_type == "email":
+        subject, body = _resolve_email_payload_for_contact(
+            campaign_name=campaign.campaign_name,
+            template_blob=campaign.message_template,
+            contact_index=contact_index,
+        )
         return send_campaign_email(
             recipient_email=contact.email or "",
             recipient_name=contact.name or "",
             campaign_name=campaign.campaign_name,
-            message_template=campaign.message_template,
+            message_template=body,
+            subject=subject,
         )
 
     if campaign.campaign_type == "whatsapp":
@@ -151,7 +264,13 @@ def _execute_campaign_now(
     failed_count = 0
 
     for contact in contacts:
-        is_sent, error_message = _send_campaign_message(campaign, contact, twilio_sms_config=twilio_sms_config)
+        for_index = sent_count + failed_count
+        is_sent, error_message = _send_campaign_message(
+            campaign,
+            contact,
+            contact_index=for_index,
+            twilio_sms_config=twilio_sms_config,
+        )
 
         log = CampaignLog(
             campaign_id=campaign.id,
@@ -180,6 +299,28 @@ def _execute_campaign_now(
         "number_failed": failed_count,
         "total_contacts": len(contacts),
     }
+
+
+@router.post("/email/generate-variants")
+async def generate_email_variants(
+    payload: EmailVariantGenerateRequest,
+    current_user: User = Depends(require_admin),
+):
+    del current_user
+    try:
+        data = generate_email_variants_from_prompt(
+            campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
+            prompt_context=payload.prompt_context,
+        )
+        return {
+            "subjects": data["subjects"],
+            "bodies": data["bodies"],
+            "combinations": len(data["subjects"]) * len(data["bodies"]),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate email variants: {str(exc)}")
 
 
 @router.get("/dashboard/stats")
@@ -549,7 +690,7 @@ async def create_campaign(
         raise HTTPException(status_code=400, detail="campaign_type must be email, whatsapp, or sms")
 
     message_template = payload.message_template.strip()
-    if not message_template:
+    if not message_template and campaign_type != "email":
         raise HTTPException(status_code=400, detail="message_template is required")
 
     status_value = (payload.status or "draft").strip().lower()
@@ -572,6 +713,13 @@ async def create_campaign(
 
     if payload.scheduled_time and compare_now and payload.scheduled_time > compare_now and status_value == "draft":
         status_value = "scheduled"
+
+    if campaign_type == "email":
+        message_template = _build_email_template_payload(
+            campaign_name=campaign_name,
+            message_template=message_template,
+            payload=payload,
+        )
 
     campaign = Campaign(
         organization_id=current_user.organization_id,

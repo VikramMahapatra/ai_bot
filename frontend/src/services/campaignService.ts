@@ -100,6 +100,22 @@ export interface CreateCampaignPayload {
   scheduled_time?: string;
   contact_list_id: number;
   status?: 'draft' | 'scheduled';
+  email_content_mode?: 'manual' | 'prompt';
+  email_subject?: string;
+  email_prompt_context?: string;
+  email_subject_variants?: string[];
+  email_body_variants?: string[];
+}
+
+export interface GenerateEmailVariantsPayload {
+  campaign_name?: string;
+  prompt_context: string;
+}
+
+export interface GenerateEmailVariantsResponse {
+  subjects: string[];
+  bodies: string[];
+  combinations: number;
 }
 
 export interface CampaignFilters {
@@ -137,6 +153,11 @@ export const campaignService = {
 
   async createCampaign(payload: CreateCampaignPayload): Promise<CampaignItem> {
     const response = await api.post('/api/admin/campaigns', payload);
+    return response.data;
+  },
+
+  async generateEmailVariants(payload: GenerateEmailVariantsPayload): Promise<GenerateEmailVariantsResponse> {
+    const response = await api.post('/api/admin/campaigns/email/generate-variants', payload);
     return response.data;
   },
 

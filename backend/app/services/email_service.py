@@ -491,7 +491,13 @@ def send_new_lead_notification(
         return False
 
 
-def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name: str, message_template: str) -> tuple[bool, str | None]:
+def send_campaign_email(
+    recipient_email: str,
+    recipient_name: str,
+    campaign_name: str,
+    message_template: str,
+    subject: Optional[str] = None,
+) -> tuple[bool, str | None]:
     """Send a campaign email and return success/failure with an optional error message."""
     normalized_email, validation_error = _validate_email_address(recipient_email)
     if not normalized_email:
@@ -510,7 +516,7 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = campaign_name or "Campaign Update"
+        msg["Subject"] = (subject or campaign_name or "Campaign Update").strip() or "Campaign Update"
         msg["From"] = sender_email
         msg["Reply-To"] = sender_email
         msg["To"] = normalized_email
