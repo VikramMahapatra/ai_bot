@@ -32,6 +32,11 @@ export const dashboardService = {
     return response.data;
   },
 
+  async getLeadsFunnel() {
+    const response = await api.get('/api/admin/dashboard/leads/funnel');
+    return response.data;
+  },
+
   async getTopSessions(limit: number = 10) {
     const response = await api.get(`/api/admin/dashboard/top-sessions?limit=${limit}`);
     return response.data;

@@ -983,6 +983,7 @@ const AgentTestPage: React.FC = () => {
           email: leadForm.email.trim() || undefined,
           phone: leadForm.phone.trim() || undefined,
           company: leadForm.company.trim() || undefined,
+          source: 'chat',
         }),
       });
 

@@ -92,6 +92,11 @@ interface LeadSourcePoint {
   count: number;
 }
 
+interface FunnelStagePoint {
+  stage: string;
+  count: number;
+}
+
 interface LeadItem {
   id: number;
   name?: string;
@@ -166,6 +171,14 @@ const formatDateTime = (value?: string): string => {
   return date.toLocaleString();
 };
 
+const formatFunnelStage = (value?: string): string => {
+  if (!value) return 'Unassigned';
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
 const percent = (used: number, limit: number | null): number => {
   if (!limit || limit <= 0) return 0;
   return Math.min((used / limit) * 100, 100);
@@ -187,6 +200,7 @@ const AdminDashboard: React.FC = () => {
   const [dailyConversations, setDailyConversations] = useState<DailyConversationPoint[]>([]);
   const [conversationTrend, setConversationTrend] = useState<TrendPoint[]>([]);
   const [leadsBySource, setLeadsBySource] = useState<LeadSourcePoint[]>([]);
+  const [leadsFunnel, setLeadsFunnel] = useState<FunnelStagePoint[]>([]);
   const [recentLeads, setRecentLeads] = useState<LeadItem[]>([]);
   const [topSessions, setTopSessions] = useState<SessionItem[]>([]);
   const [widgets, setWidgets] = useState<WidgetItem[]>([]);
@@ -204,6 +218,7 @@ const AdminDashboard: React.FC = () => {
         widgetsRes,
         sourcesRes,
         bySourceRes,
+        funnelRes,
         topSessionsRes,
         trendRes,
       ] = await Promise.allSettled([
@@ -213,6 +228,7 @@ const AdminDashboard: React.FC = () => {
         dashboardService.getWidgets(),
         dashboardService.getKnowledgeSources(),
         dashboardService.getLeadsBySource(),
+        dashboardService.getLeadsFunnel(),
         dashboardService.getTopSessions(10),
         dashboardService.getConversationTrend(30),
       ]);
@@ -261,6 +277,16 @@ const AdminDashboard: React.FC = () => {
         setLeadsBySource(
           data.map((row: any) => ({
             source: String(row?.source || 'Unknown'),
+            count: numberOrZero(row?.count),
+          }))
+        );
+      }
+
+      if (funnelRes.status === 'fulfilled') {
+        const data = Array.isArray((funnelRes.value as any)?.data) ? (funnelRes.value as any).data : [];
+        setLeadsFunnel(
+          data.map((row: any) => ({
+            stage: String(row?.stage || 'unassigned'),
             count: numberOrZero(row?.count),
           }))
         );
@@ -650,28 +676,31 @@ const AdminDashboard: React.FC = () => {
             </Paper>
 
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Top Sessions</Typography>
-              {topSessions.length > 0 ? (
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Funnel Dashboard</Typography>
+              {leadsFunnel.length > 0 ? (
                 <ResponsiveContainer width="100%" height={290}>
-                  <BarChart data={topSessions.slice(0, 6)} layout="vertical">
+                  <BarChart data={leadsFunnel} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
                     <XAxis type="number" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
                     <YAxis
                       type="category"
-                      dataKey="session_id"
+                      dataKey="stage"
                       stroke={theme.palette.text.secondary}
-                      width={108}
-                      tickFormatter={(value: string) => shortText(value, 10)}
+                      width={136}
+                      tickFormatter={(value: string) => shortText(formatFunnelStage(value), 16)}
                       tick={{ fontSize: 11 }}
                     />
                     <ChartTooltip
-                      formatter={(value: number | string | undefined) => [`${numberOrZero(value)} messages`, 'Volume']}
+                      formatter={(value: number | string | undefined, _name, item) => [
+                        `${numberOrZero(value)} leads`,
+                        formatFunnelStage((item?.payload as FunnelStagePoint)?.stage),
+                      ]}
                     />
-                    <Bar dataKey="message_count" fill="#4e89d5" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="count" fill="#4e89d5" radius={[0, 6, 6, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <Typography variant="body2" color="text.secondary">No session data available.</Typography>
+                <Typography variant="body2" color="text.secondary">No funnel data available.</Typography>
               )}
             </Paper>
           </Grid>

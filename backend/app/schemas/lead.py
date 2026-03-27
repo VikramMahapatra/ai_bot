@@ -11,6 +11,8 @@ class LeadCreate(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     custom_fields: Optional[str] = None
+    source: Optional[str] = "chat"
+    funnel_stage: Optional[str] = None
 
 
 class LeadResponse(BaseModel):
@@ -24,10 +26,16 @@ class LeadResponse(BaseModel):
     phone: Optional[str]
     company: Optional[str]
     custom_fields: Optional[str]
+    source: str
+    funnel_stage: Optional[str]
     created_at: datetime
     
     class Config:
         from_attributes = True
+
+
+class LeadFunnelStageUpdate(BaseModel):
+    funnel_stage: Optional[str] = None
 
 
 class WidgetConfigBase(BaseModel):

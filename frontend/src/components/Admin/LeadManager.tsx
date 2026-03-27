@@ -1,30 +1,36 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  LinearProgress,
+  MenuItem,
   Paper,
-  Typography,
+  Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Button,
-  Alert,
-  Chip,
-  Grid,
-  Card,
-  CardContent,
-  Avatar,
-  Stack,
-  FormControl,
-  Select,
-  MenuItem,
-  LinearProgress,
+  Typography,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { alpha, useTheme } from '@mui/material/styles';
 import DownloadIcon from '@mui/icons-material/Download';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import MoveDownIcon from '@mui/icons-material/MoveDown';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -36,12 +42,54 @@ import { leadService } from '../../services/leadService';
 import { dashboardService } from '../../services/dashboardService';
 import { Lead } from '../../types';
 
+const LEAD_SOURCES = ['chat', 'voice', 'email', 'sms', 'whatsapp'] as const;
+const FUNNEL_STAGE_OPTIONS = [
+  'lead_qualification',
+  'initial_contact',
+  'needs_analysis',
+  'proposal_quote',
+  'negotiation',
+  'closed_won',
+  'closed_lost',
+] as const;
+
+const titleCase = (value: string) =>
+  value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const sourceLabel = (source?: string) => titleCase((source || 'chat').toLowerCase());
+
+const stageLabel = (stage?: string | null) => {
+  if (!stage || !stage.trim()) return 'Unassigned';
+  return titleCase(stage.toLowerCase());
+};
+
+const readCallOutcome = (lead: Lead): string | null => {
+  if (!lead.custom_fields) return null;
+  try {
+    const parsed = JSON.parse(lead.custom_fields);
+    const candidate = parsed?.call_outcome || parsed?.outcome || parsed?.callOutcome;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+  } catch {
+    return null;
+  }
+};
+
 const LeadManager: React.FC = () => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>('all');
+  const [selectedSource, setSelectedSource] = useState<string>('all');
+  const [selectedFunnelStage, setSelectedFunnelStage] = useState<string>('all');
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveStage, setMoveStage] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [error, setError] = useState('');
 
   const panelSx = {
@@ -125,9 +173,6 @@ const LeadManager: React.FC = () => {
     ]
   );
 
-  const shortSessionId = (sessionId: string) =>
-    sessionId.length > 12 ? `${sessionId.slice(0, 12)}...` : sessionId;
-
   const loadWidgets = async () => {
     try {
       const data = await dashboardService.getWidgets();
@@ -138,11 +183,11 @@ const LeadManager: React.FC = () => {
     }
   };
 
-  const loadLeads = async (widgetId?: string) => {
+  const loadLeads = async (widgetId?: string, source?: string, funnelStage?: string) => {
     try {
       setLoading(true);
       setError('');
-      const data = await leadService.listLeads(0, 100, widgetId);
+      const data = await leadService.listLeads(0, 100, widgetId, source, funnelStage);
       setLeads(data);
     } catch {
       setError('Failed to load leads');
@@ -157,8 +202,10 @@ const LeadManager: React.FC = () => {
 
   useEffect(() => {
     const widgetId = selectedWidgetId === 'all' ? undefined : selectedWidgetId;
-    loadLeads(widgetId);
-  }, [selectedWidgetId]);
+    const source = selectedSource === 'all' ? undefined : selectedSource;
+    const funnelStage = selectedFunnelStage === 'all' ? undefined : selectedFunnelStage;
+    loadLeads(widgetId, source, funnelStage);
+  }, [selectedWidgetId, selectedSource, selectedFunnelStage]);
 
   const handleExport = async () => {
     try {
@@ -175,19 +222,41 @@ const LeadManager: React.FC = () => {
     }
   };
 
-  const handleWidgetFilterChange = (event: SelectChangeEvent<string>) => {
-    setSelectedWidgetId(event.target.value);
+  const openDetails = (lead: Lead) => {
+    setSelectedLead(lead);
+    setDetailsOpen(true);
   };
 
-  const getWidgetLabel = (widgetId?: string) => {
-    if (!widgetId) return 'Unknown Agent';
-    const widget = widgets.find((item) => item.widget_id === widgetId);
-    return widget ? `${widget.name} (${widget.widget_id})` : widgetId;
+  const openMoveDialog = (lead: Lead) => {
+    setMoveStage(lead.funnel_stage || '');
+    setSelectedLead(lead);
+    setMoveOpen(true);
   };
 
-  const selectedWidget = selectedWidgetId === 'all'
-    ? null
-    : widgets.find((widget) => widget.widget_id === selectedWidgetId);
+  const handleMoveLead = async () => {
+    if (!selectedLead) return;
+    if (!moveStage) {
+      setError('Please select a funnel stage before confirming.');
+      return;
+    }
+
+    try {
+      setMoving(true);
+      setError('');
+      const updated = await leadService.moveLeadToFunnel(selectedLead.id, moveStage);
+      setLeads((prev) => prev.map((lead) => (lead.id === updated.id ? updated : lead)));
+      setSelectedLead(updated);
+      setMoveOpen(false);
+      setDetailsOpen(true);
+    } catch {
+      setError('Failed to move lead to funnel stage');
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const selectedWidget =
+    selectedWidgetId === 'all' ? null : widgets.find((widget) => widget.widget_id === selectedWidgetId);
 
   return (
     <Box>
@@ -206,92 +275,54 @@ const LeadManager: React.FC = () => {
               Lead Overview
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Review lead quality, conversion readiness, and export data for your sales workflow.
+              Review lead quality, source channels, funnel stage, and export data for your sales workflow.
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.9 }}>
               {selectedWidget
-                ? `Filtered by: ${selectedWidget.name} (${selectedWidget.widget_id})`
-                : 'Showing leads from all agents/widgets'}
+                ? `Filtered by widget: ${selectedWidget.name} (${selectedWidget.widget_id})`
+                : 'Showing leads from all widgets'}
             </Typography>
           </Box>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.1} sx={{ width: { xs: '100%', md: 'auto' } }}>
-            <Box
-              sx={{
-                width: { xs: '100%', sm: 220 },
-                p: 0.45,
-                borderRadius: '12px',
-                border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
-                background: `linear-gradient(135deg, ${alpha('#edf5ff', 0.86)} 0%, ${alpha(
-                  theme.palette.background.paper,
-                  0.84
-                )} 72%, ${alpha('#d4e5fa', 0.88)} 100%)`,
-                boxShadow: `0 8px 18px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                position: 'relative',
-                overflow: 'hidden',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  inset: 0,
-                  pointerEvents: 'none',
-                  background:
-                    'linear-gradient(145deg, rgba(255,255,255,0.22) 8%, transparent 34%), linear-gradient(25deg, transparent 58%, rgba(78,137,213,0.14) 59%, transparent 84%)',
-                },
-                '& > *': {
-                  position: 'relative',
-                  zIndex: 1,
-                },
-              }}
-            >
-                <Typography
-                  variant="caption"
-                  sx={{
-                    display: 'block',
-                    px: 0.8,
-                    pb: 0.35,
-                    fontSize: '0.74rem',
-                    lineHeight: 1.2,
-                    color: 'text.secondary',
-                  }}
-                >
-                  Agent / Widget
-                </Typography>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.1}
+            sx={{ width: { xs: '100%', md: 'auto' }, alignItems: 'stretch' }}
+          >
+            <FormControl size="small" sx={{ minWidth: 190 }}>
+              <Select value={selectedWidgetId} onChange={(event: SelectChangeEvent<string>) => setSelectedWidgetId(event.target.value)}>
+                <MenuItem value="all">All Widgets</MenuItem>
+                {widgets.map((widget) => (
+                  <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                    {widget.name} ({widget.widget_id})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-              <FormControl
-                size="small"
-                fullWidth
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    height: 36,
-                    borderRadius: '10px',
-                    backgroundColor: alpha(theme.palette.common.white, 0.7),
-                    '& fieldset': {
-                      borderColor: alpha(theme.palette.primary.main, 0.22),
-                    },
-                    '&:hover fieldset': {
-                      borderColor: alpha(theme.palette.primary.main, 0.34),
-                    },
-                  },
-                  '& .MuiSelect-select': {
-                    py: 0.75,
-                    fontSize: '0.84rem',
-                    lineHeight: 1.2,
-                  },
-                }}
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <Select value={selectedSource} onChange={(event: SelectChangeEvent<string>) => setSelectedSource(event.target.value)}>
+                <MenuItem value="all">All Sources</MenuItem>
+                {LEAD_SOURCES.map((source) => (
+                  <MenuItem key={source} value={source}>
+                    {sourceLabel(source)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={selectedFunnelStage}
+                onChange={(event: SelectChangeEvent<string>) => setSelectedFunnelStage(event.target.value)}
               >
-                <Select
-                  value={selectedWidgetId}
-                  displayEmpty
-                  onChange={handleWidgetFilterChange}
-                >
-                  <MenuItem value="all">All Agents / Widgets</MenuItem>
-                  {widgets.map((widget) => (
-                    <MenuItem key={widget.widget_id} value={widget.widget_id}>
-                      {widget.name} ({widget.widget_id})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+                <MenuItem value="all">All Funnel Stages</MenuItem>
+                {FUNNEL_STAGE_OPTIONS.map((stage) => (
+                  <MenuItem key={stage} value={stage}>
+                    {stageLabel(stage)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <Button
               variant="contained"
@@ -460,12 +491,10 @@ const LeadManager: React.FC = () => {
                     />
                   </Box>
 
-                  <Chip
-                    size="small"
-                    label={getWidgetLabel(lead.widget_id)}
-                    variant="outlined"
-                    sx={{ mb: 1.4, maxWidth: '100%' }}
-                  />
+                  <Stack direction="row" spacing={1} sx={{ mb: 1.2, flexWrap: 'wrap' }}>
+                    <Chip size="small" label={sourceLabel(lead.source)} variant="outlined" />
+                    <Chip size="small" label={stageLabel(lead.funnel_stage)} color="primary" variant="outlined" />
+                  </Stack>
 
                   <Stack spacing={1}>
                     {lead.email && (
@@ -527,12 +556,13 @@ const LeadManager: React.FC = () => {
                 }}
               >
                 <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Agent / Widget</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -546,29 +576,32 @@ const LeadManager: React.FC = () => {
                   }}
                 >
                   <TableCell>{lead.name || '-'}</TableCell>
-                  <TableCell>
-                    <Chip label={getWidgetLabel(lead.widget_id)} size="small" variant="outlined" sx={{ maxWidth: 220 }} />
-                  </TableCell>
                   <TableCell>{lead.email || '-'}</TableCell>
                   <TableCell>{lead.phone || '-'}</TableCell>
                   <TableCell>{lead.company || '-'}</TableCell>
                   <TableCell>
-                    <Chip
-                      label={shortSessionId(lead.session_id)}
-                      size="small"
-                      variant="outlined"
-                      sx={{ fontFamily: 'monospace' }}
-                    />
+                    <Chip label={sourceLabel(lead.source)} size="small" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={stageLabel(lead.funnel_stage)} size="small" color="primary" variant="outlined" />
                   </TableCell>
                   <TableCell>{new Date(lead.created_at).toLocaleString()}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => openDetails(lead)}
+                    >
+                      Actions
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {leads.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">
-                      {selectedWidget ? 'No leads found for the selected agent/widget' : 'No leads found'}
-                    </Typography>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">No leads found for the selected filters.</Typography>
                   </TableCell>
                 </TableRow>
               )}
@@ -576,6 +609,95 @@ const LeadManager: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Lead Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedLead && (
+            <Stack spacing={1.5}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.14), color: 'primary.dark' }}>
+                  <PersonIcon />
+                </Avatar>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    {selectedLead.name || 'Anonymous'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Created: {new Date(selectedLead.created_at).toLocaleString()}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Typography variant="body2"><strong>Email:</strong> {selectedLead.email || '-'}</Typography>
+              <Typography variant="body2"><strong>Phone:</strong> {selectedLead.phone || '-'}</Typography>
+              <Typography variant="body2"><strong>Company:</strong> {selectedLead.company || '-'}</Typography>
+              <Typography variant="body2"><strong>Source:</strong> {sourceLabel(selectedLead.source)}</Typography>
+              <Typography variant="body2"><strong>Funnel Stage:</strong> {stageLabel(selectedLead.funnel_stage)}</Typography>
+              <Typography variant="body2"><strong>Session ID:</strong> {selectedLead.session_id || '-'}</Typography>
+              <Typography variant="body2"><strong>Widget ID:</strong> {selectedLead.widget_id || '-'}</Typography>
+              <Typography variant="body2"><strong>Call Outcome:</strong> {readCallOutcome(selectedLead) || '-'}</Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<MoveDownIcon />}
+            onClick={() => {
+              if (!selectedLead) return;
+              setDetailsOpen(false);
+              openMoveDialog(selectedLead);
+            }}
+          >
+            Move to Funnel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={moveOpen} onClose={() => setMoveOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Move to Sales Funnel</DialogTitle>
+        <DialogContent dividers>
+          {selectedLead && (
+            <Stack spacing={2}>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  {selectedLead.name || 'Anonymous'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedLead.phone || selectedLead.email || '-'}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Call Outcome: {readCallOutcome(selectedLead) || '-'}
+                </Typography>
+              </Paper>
+
+              <FormControl fullWidth size="small">
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Select Funnel Stage
+                </Typography>
+                <Select value={moveStage} onChange={(event: SelectChangeEvent<string>) => setMoveStage(event.target.value)}>
+                  <MenuItem value="">
+                    <em>Select a stage...</em>
+                  </MenuItem>
+                  {FUNNEL_STAGE_OPTIONS.map((stage) => (
+                    <MenuItem key={stage} value={stage}>
+                      {stageLabel(stage)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMoveOpen(false)}>Back</Button>
+          <Button variant="contained" onClick={handleMoveLead} disabled={moving || !moveStage}>
+            {moving ? 'Moving...' : 'Confirm & Move'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

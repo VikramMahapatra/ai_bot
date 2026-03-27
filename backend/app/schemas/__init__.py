@@ -18,6 +18,7 @@ from app.schemas.chat import (
 from app.schemas.lead import (
     LeadCreate,
     LeadResponse,
+    LeadFunnelStageUpdate,
     WidgetConfigCreate,
     WidgetConfigUpdate,
     WidgetConfigResponse,
@@ -63,6 +64,7 @@ __all__ = [
     "SuggestedQuestionsResponse",
     "LeadCreate",
     "LeadResponse",
+    "LeadFunnelStageUpdate",
     "WidgetConfigCreate",
     "WidgetConfigUpdate",
     "WidgetConfigResponse",

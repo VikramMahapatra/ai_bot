@@ -24,6 +24,18 @@ def _to_iso_string(dt_value):
     return str(dt_value)
 
 
+LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"]
+FUNNEL_STAGE_ORDER = [
+    "lead_qualification",
+    "initial_contact",
+    "needs_analysis",
+    "proposal_quote",
+    "negotiation",
+    "closed_won",
+    "closed_lost",
+]
+
+
 @router.get("/stats")
 async def get_dashboard_stats(
     db: Session = Depends(get_db),
@@ -167,6 +179,8 @@ async def get_recent_leads(
                     "email": lead.email,
                     "phone": lead.phone,
                     "company": lead.company,
+                    "source": lead.source,
+                    "funnel_stage": lead.funnel_stage,
                     "session_id": lead.session_id,
                     "created_at": _to_iso_string(lead.created_at),
                 }
@@ -261,36 +275,64 @@ async def get_leads_by_source(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """Get leads distribution by widget/source"""
+    """Get leads distribution by lead source"""
     try:
         org_id = current_user.organization_id
-        
-        leads_by_widget = db.query(
-            Lead.widget_id,
+
+        leads_by_source = db.query(
+            Lead.source,
             func.count(Lead.id).label('count')
         ).filter(
             Lead.organization_id == org_id
-        ).group_by(Lead.widget_id).all()
-        
-        data = []
-        for widget_id, count in leads_by_widget:
-            widget_name = "Direct (No Widget)"
-            if widget_id:
-                widget = db.query(WidgetConfig).filter(
-                    WidgetConfig.widget_id == widget_id
-                ).first()
-                if widget:
-                    widget_name = widget.name
-            
-            data.append({
-                "source": widget_name,
-                "count": count,
-                "widget_id": widget_id
-            })
-        
+        ).group_by(Lead.source).all()
+
+        counts = {source: 0 for source in LEAD_SOURCES}
+        for source, count in leads_by_source:
+            key = (source or "chat").strip().lower()
+            if key in counts:
+                counts[key] = int(count)
+
+        data = [{"source": source, "count": counts[source]} for source in LEAD_SOURCES]
+
         return {"data": data}
     except Exception as e:
         logger.error(f"Error getting leads by source: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/leads/funnel")
+async def get_leads_funnel(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get lead counts by funnel stage"""
+    try:
+        org_id = current_user.organization_id
+
+        rows = db.query(
+            Lead.funnel_stage,
+            func.count(Lead.id).label('count')
+        ).filter(
+            Lead.organization_id == org_id
+        ).group_by(Lead.funnel_stage).all()
+
+        counts = {stage: 0 for stage in FUNNEL_STAGE_ORDER}
+        unassigned = 0
+
+        for stage, count in rows:
+            normalized = (stage or "").strip().lower()
+            if normalized in counts:
+                counts[normalized] = int(count)
+            else:
+                unassigned += int(count)
+
+        data = [{"stage": stage, "count": counts[stage]} for stage in FUNNEL_STAGE_ORDER]
+        if unassigned:
+            data.append({"stage": "unassigned", "count": unassigned})
+
+        return {"data": data}
+    except Exception as e:
+        logger.error(f"Error getting leads funnel: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

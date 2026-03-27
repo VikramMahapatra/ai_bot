@@ -18,6 +18,7 @@ cd ai_bot
 ```bash
 cd backend
 python -m venv venv
+py -3.12 -m venv venv
 # Windows
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass                                    
 venv\Scripts\activate

@@ -598,6 +598,7 @@ const ChatInterface: React.FC = () => {
         email: leadEmail,
         phone: leadPhone,
         company: leadCompany || undefined,
+        source: 'chat',
       });
       setShowLeadForm(false);
       setLeadName('');
