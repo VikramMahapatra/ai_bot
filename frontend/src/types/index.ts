@@ -148,6 +148,7 @@ export interface Lead {
   email?: string;
   phone?: string;
   company?: string;
+  lead_outcome?: string;
   source: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
   funnel_stage?: string;
   custom_fields?: string;
@@ -169,8 +170,28 @@ export interface LeadCreate {
   email?: string;
   phone?: string;
   company?: string;
+  lead_outcome?: string;
   source?: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
   funnel_stage?: string;
+}
+
+export interface FunnelCategory {
+  id: number;
+  organization_id: number;
+  name: string;
+  key: string;
+  color: string;
+  position: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface FunnelCategoryPayload {
+  name: string;
+  key: string;
+  color: string;
+  position: number;
+  is_active: boolean;
 }
 
 export interface WidgetConfig {

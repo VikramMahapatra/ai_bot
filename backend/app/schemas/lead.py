@@ -11,6 +11,7 @@ class LeadCreate(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     custom_fields: Optional[str] = None
+    lead_outcome: Optional[str] = None
     source: Optional[str] = "chat"
     funnel_stage: Optional[str] = None
 
@@ -26,6 +27,7 @@ class LeadResponse(BaseModel):
     phone: Optional[str]
     company: Optional[str]
     custom_fields: Optional[str]
+    lead_outcome: Optional[str]
     source: str
     funnel_stage: Optional[str]
     created_at: datetime

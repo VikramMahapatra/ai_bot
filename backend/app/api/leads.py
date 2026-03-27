@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 from app.database import get_db
 from app.auth import require_admin, get_current_user_optional
 from app.models import User, Lead, WidgetConfig
@@ -8,6 +9,7 @@ from app.schemas import LeadCreate, LeadResponse, LeadFunnelStageUpdate
 from app.utils import export_leads_to_csv
 from app.services.email_service import send_new_lead_notification
 from app.services.limits_service import get_effective_limits, increment_usage
+from app.services.funnel_category_service import is_valid_funnel_stage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,15 +17,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/leads", tags=["leads"])
 
 ALLOWED_LEAD_SOURCES = {"chat", "voice", "email", "sms", "whatsapp"}
-ALLOWED_FUNNEL_STAGES = {
-    "lead_qualification",
-    "initial_contact",
-    "needs_analysis",
-    "proposal_quote",
-    "negotiation",
-    "closed_won",
-    "closed_lost",
-}
 
 
 def _normalize_source(source: Optional[str]) -> str:
@@ -39,9 +32,30 @@ def _normalize_funnel_stage(stage: Optional[str]) -> Optional[str]:
     normalized = stage.strip().lower().replace(" ", "_")
     if not normalized:
         return None
-    if normalized not in ALLOWED_FUNNEL_STAGES:
+    return normalized
+
+
+def _validate_funnel_stage_for_org(db: Session, organization_id: Optional[int], stage: Optional[str]) -> Optional[str]:
+    normalized = _normalize_funnel_stage(stage)
+    if not normalized:
+        return None
+    if organization_id and not is_valid_funnel_stage(db, organization_id, normalized):
         raise HTTPException(status_code=422, detail=f"Invalid funnel stage: {stage}")
     return normalized
+
+
+def _extract_lead_outcome_from_custom_fields(custom_fields: Optional[str]) -> Optional[str]:
+    if not custom_fields:
+        return None
+    try:
+        payload = json.loads(custom_fields)
+        outcome = payload.get("lead_outcome") or payload.get("call_outcome") or payload.get("outcome") or payload.get("callOutcome")
+        if isinstance(outcome, str):
+            normalized = outcome.strip()
+            return normalized or None
+    except Exception:
+        return None
+    return None
 
 
 @router.post("", response_model=LeadResponse)
@@ -75,8 +89,11 @@ async def create_lead(
         
         # Create lead dict and add org/user fields
         lead_data = lead.dict()
+        lead_data["lead_outcome"] = (
+            (lead_data.get("lead_outcome") or "").strip() or _extract_lead_outcome_from_custom_fields(lead_data.get("custom_fields"))
+        )
         lead_data["source"] = _normalize_source(lead_data.get("source"))
-        lead_data["funnel_stage"] = _normalize_funnel_stage(lead_data.get("funnel_stage"))
+        lead_data["funnel_stage"] = _validate_funnel_stage_for_org(db, org_id, lead_data.get("funnel_stage"))
         lead_data['organization_id'] = org_id
         lead_data['user_id'] = user_id
 
@@ -146,7 +163,8 @@ async def list_leads(
     if source:
         query = query.filter(Lead.source == _normalize_source(source))
     if funnel_stage:
-        query = query.filter(Lead.funnel_stage == _normalize_funnel_stage(funnel_stage))
+        normalized_stage = _validate_funnel_stage_for_org(db, current_user.organization_id, funnel_stage)
+        query = query.filter(Lead.funnel_stage == normalized_stage)
     leads = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
     return leads
 
@@ -167,7 +185,7 @@ async def update_funnel_stage(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    lead.funnel_stage = _normalize_funnel_stage(payload.funnel_stage)
+    lead.funnel_stage = _validate_funnel_stage_for_org(db, current_user.organization_id, payload.funnel_stage)
     db.commit()
     db.refresh(lead)
     return lead
@@ -197,6 +215,7 @@ async def export_leads(
                 "email": lead.email,
                 "phone": lead.phone,
                 "company": lead.company,
+                "lead_outcome": lead.lead_outcome,
                 "source": lead.source,
                 "funnel_stage": lead.funnel_stage,
                 "created_at": lead.created_at.isoformat() if lead.created_at else "",

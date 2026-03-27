@@ -6,6 +6,7 @@ from app.database import get_db
 from app.auth import require_admin
 from app.models import User, Conversation, Lead, WidgetConfig, KnowledgeSource
 from app.services.report_service import get_plan_usage_summary
+from app.services.funnel_category_service import get_funnel_categories
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,15 +26,6 @@ def _to_iso_string(dt_value):
 
 
 LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"]
-FUNNEL_STAGE_ORDER = [
-    "lead_qualification",
-    "initial_contact",
-    "needs_analysis",
-    "proposal_quote",
-    "negotiation",
-    "closed_won",
-    "closed_lost",
-]
 
 
 @router.get("/stats")
@@ -179,6 +171,7 @@ async def get_recent_leads(
                     "email": lead.email,
                     "phone": lead.phone,
                     "company": lead.company,
+                    "lead_outcome": lead.lead_outcome,
                     "source": lead.source,
                     "funnel_stage": lead.funnel_stage,
                     "session_id": lead.session_id,
@@ -309,6 +302,8 @@ async def get_leads_funnel(
     try:
         org_id = current_user.organization_id
 
+        categories = get_funnel_categories(db, org_id, include_inactive=True)
+
         rows = db.query(
             Lead.funnel_stage,
             func.count(Lead.id).label('count')
@@ -316,7 +311,7 @@ async def get_leads_funnel(
             Lead.organization_id == org_id
         ).group_by(Lead.funnel_stage).all()
 
-        counts = {stage: 0 for stage in FUNNEL_STAGE_ORDER}
+        counts = {category.key: 0 for category in categories}
         unassigned = 0
 
         for stage, count in rows:
@@ -326,9 +321,31 @@ async def get_leads_funnel(
             else:
                 unassigned += int(count)
 
-        data = [{"stage": stage, "count": counts[stage]} for stage in FUNNEL_STAGE_ORDER]
+        top_count = counts[categories[0].key] if categories else 0
+        data = []
+        for category in categories:
+            category_count = counts.get(category.key, 0)
+            conversion_rate = 0.0
+            if top_count > 0:
+                conversion_rate = round((category_count / top_count) * 100, 1)
+            data.append({
+                "stage_key": category.key,
+                "stage_name": category.name,
+                "color": category.color,
+                "position": category.position,
+                "count": category_count,
+                "conversion_rate": conversion_rate,
+            })
+
         if unassigned:
-            data.append({"stage": "unassigned", "count": unassigned})
+            data.append({
+                "stage_key": "unassigned",
+                "stage_name": "Unassigned",
+                "color": "#9aa8bb",
+                "position": 999,
+                "count": unassigned,
+                "conversion_rate": 0.0 if top_count <= 0 else round((unassigned / top_count) * 100, 1),
+            })
 
         return {"data": data}
     except Exception as e:

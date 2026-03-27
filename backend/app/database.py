@@ -144,9 +144,22 @@ def init_db():
                     conn.execute(text("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'chat'"))
                 if "funnel_stage" not in col_names:
                     conn.execute(text("ALTER TABLE leads ADD COLUMN funnel_stage TEXT"))
+                if "lead_outcome" not in col_names:
+                    conn.execute(text("ALTER TABLE leads ADD COLUMN lead_outcome TEXT"))
                 if "product_id" not in col_names:
                     conn.execute(text("ALTER TABLE leads ADD COLUMN product_id INTEGER"))
                 conn.execute(text("UPDATE leads SET source = 'chat' WHERE source IS NULL OR TRIM(source) = ''"))
+                conn.execute(text("""
+                    UPDATE leads
+                    SET lead_outcome = COALESCE(
+                        NULLIF(json_extract(custom_fields, '$.lead_outcome'), ''),
+                        NULLIF(json_extract(custom_fields, '$.call_outcome'), ''),
+                        NULLIF(json_extract(custom_fields, '$.outcome'), ''),
+                        NULLIF(json_extract(custom_fields, '$.callOutcome'), '')
+                    )
+                    WHERE (lead_outcome IS NULL OR TRIM(lead_outcome) = '')
+                      AND custom_fields IS NOT NULL
+                """))
             except Exception:
                 pass
 

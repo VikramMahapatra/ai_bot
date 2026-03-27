@@ -19,6 +19,7 @@ from app.api import (
     call_log_router,
     twilio_sms_router,
     calls_router,
+    funnel_categories_router,
     product_router
 )
 from app.api.feedback import router as feedback_router
@@ -74,6 +75,7 @@ app.include_router(call_campaign_router)
 app.include_router(call_log_router)
 app.include_router(twilio_sms_router)
 app.include_router(calls_router)
+app.include_router(funnel_categories_router)
 app.include_router(product_router)
 
 # Handle OPTIONS requests for CORS preflight
