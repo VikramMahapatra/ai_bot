@@ -17,63 +17,27 @@ import { Send, CalendarToday } from "@mui/icons-material";
 import moment from "moment-timezone";
 
 interface ScheduleProps {
-    mode: "create" | "edit";
     form: any;
     setForm: any;
-    prevStep: () => void;
-    saveCampaign: () => void;
-    loading: boolean;
+    sendOption: "now" | "schedule";
+    setSendOption: (value: "now" | "schedule") => void;
+    errors: any;
 }
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: ScheduleProps) => {
-    const [errors, setErrors] = useState<any>({});
-    const [sendOption, setSendOption] = useState<"now" | "schedule">(form.start_datetime ? "schedule" : "now");
-
-    useEffect(() => {
-        setSendOption(form.start_datetime ? "schedule" : "now");
-    }, [form.start_datetime]);
+const Schedule = ({
+    form,
+    setForm,
+    sendOption,
+    setSendOption,
+    errors
+}: ScheduleProps) => {
 
     const timezones = moment.tz.names().map((tz) => ({
         value: tz,
         label: `(GMT${moment.tz(tz).format("Z")}) ${tz}`
     }));
-
-    const handleSave = () => {
-        const newErrors: any = {};
-
-        if (sendOption === "schedule" && !form.start_datetime) {
-            newErrors.start_datetime = "Start date & time is required";
-        }
-
-        if (sendOption === "schedule" && !form.timezone) {
-            newErrors.timezone = "Timezone is required";
-        }
-
-        if (
-            sendOption === "schedule" &&
-            form.call_start_time &&
-            form.call_end_time &&
-            form.call_start_time >= form.call_end_time
-        ) {
-            newErrors.call_end_time = "End time must be after start time";
-        }
-
-        if (sendOption === "now") {
-            const now = moment(); // current time
-            const currentHour = now.hour(); // 0–23
-
-            if (currentHour < 9 || currentHour >= 21) {
-                newErrors.send_now = "Calls can only be sent between 9:00 AM and 9:00 PM";
-            }
-        }
-
-        setErrors(newErrors);
-        if (Object.keys(newErrors).length > 0) return;
-
-        saveCampaign();
-    };
 
     return (
         <Grid container spacing={3}>
@@ -91,8 +55,8 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
                         sx={{ display: "flex", gap: 2 }}
                     >
                         {[
-                            { value: "now", label: "Send Now", icon: <Send fontSize="small" />, sub: "Start immediately" },
-                            { value: "schedule", label: "Schedule", icon: <CalendarToday fontSize="small" />, sub: "Pick date & time" }
+                            { value: "schedule", label: "Schedule", icon: <CalendarToday fontSize="small" />, sub: "Pick date & time" },
+                            { value: "now", label: "Send Now", icon: <Send fontSize="small" />, sub: "Start immediately" }
                         ].map((item) => (
                             <ToggleButton
                                 key={item.value}
@@ -155,8 +119,8 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
                                 <Grid item xs={4}>
                                     <TextField
                                         required
-                                        label="Start Date & Time"
-                                        type="datetime-local"
+                                        label="Start Date"
+                                        type="date"
                                         fullWidth
                                         InputLabelProps={{ shrink: true }}
                                         name="start_datetime"
@@ -169,11 +133,12 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
                                     />
                                 </Grid>
 
-                                {/* End Date & Time (Optional) */}
+                                {/* End Date  */}
                                 <Grid item xs={4}>
                                     <TextField
-                                        label="End Date & Time (Optional)"
-                                        type="datetime-local"
+                                        required
+                                        label="End Date"
+                                        type="date"
                                         fullWidth
                                         InputLabelProps={{ shrink: true }}
                                         name="end_datetime"
@@ -342,7 +307,7 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
             )}
 
             {/* RETRY SETTINGS */}
-            <Grid item xs={12}>
+            {/* <Grid item xs={12}>
                 <Paper sx={{ p: 3 }}>
 
                     <Typography variant="h6" mb={2}>
@@ -369,7 +334,6 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
 
                     </Grid>
 
-                    {/* CHECKBOX OPTIONS */}
 
                     <Box mt={3}>
 
@@ -427,16 +391,16 @@ const Schedule = ({ mode, form, setForm, prevStep, saveCampaign, loading }: Sche
                     </Box>
 
                 </Paper>
-            </Grid>
+            </Grid> */}
             {/* ... */}
-            <Grid item xs={6}>
+            {/* <Grid item xs={6}>
                 <Button onClick={prevStep}>Back</Button>
             </Grid>
             <Grid item xs={6} textAlign="right">
                 <Button variant="contained" onClick={handleSave} disabled={loading}>
                     {mode === "edit" ? "Update Campaign" : "Save Campaign"}
                 </Button>
-            </Grid>
+            </Grid> */}
         </Grid>
     );
 };

@@ -363,7 +363,7 @@ export const CallingAgentTab: React.FC = () => {
                                         <TableCell>Type</TableCell>
                                         <TableCell>Name</TableCell>
                                         <TableCell>Status</TableCell>
-                                        <TableCell>Server</TableCell>
+                                        {/* <TableCell>Server</TableCell> */}
                                         <TableCell>Campaigns</TableCell>
                                         <TableCell>Created At</TableCell>
                                         <TableCell align="right">Actions</TableCell>
@@ -373,7 +373,7 @@ export const CallingAgentTab: React.FC = () => {
                                 <TableBody>
                                     {agents.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} align="center">
+                                            <TableCell colSpan={6} align="center">
                                                 <Box py={5}>
                                                     <Stack spacing={2} alignItems="center">
                                                         <GroupIcon sx={{ fontSize: 50, color: "text.secondary" }} />
@@ -461,7 +461,7 @@ export const CallingAgentTab: React.FC = () => {
                                                 </TableCell>
 
                                                 {/* Server */}
-                                                <TableCell>
+                                                {/* <TableCell>
                                                     {
                                                         agent.server_location?.toLowerCase() === "in"
                                                             ? "India"
@@ -469,7 +469,7 @@ export const CallingAgentTab: React.FC = () => {
                                                                 ? "United States"
                                                                 : agent.server_location
                                                     }
-                                                </TableCell>
+                                                </TableCell> */}
 
                                                 {/* Campaigns */}
                                                 <TableCell>

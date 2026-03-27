@@ -32,6 +32,7 @@ class CallLog(Base):
     extract_data = Column(JSON)
     lead_info = Column(JSON)
     success_evaluation = Column(Boolean, default=False)
+    is_lead_qualified = Column(Boolean, default=False)
     
     industry = Column(String)
     start_time = Column(DateTime)
@@ -39,6 +40,7 @@ class CallLog(Base):
     cost = Column(Numeric(10, 2), nullable=True)
     audio_url = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
 
     transcripts = relationship("CallTranscript", back_populates="call_log")
     

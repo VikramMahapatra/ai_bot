@@ -48,6 +48,7 @@ export type StatusType =
 
 export type SentimentType = "positive" | "negative" | "neutral";
 
+export type LeadQualityType = "high" | "medium" | "low" | "poor";
 
 export interface CallLogFilterState {
     search?: string;
@@ -80,6 +81,9 @@ export interface CallLogFilters {
     call_end_reason?: string;
     sentiment?: SentimentType;
     evaluation?: boolean;
+
+    lead_quality?: string;
+    is_lead_qualified?: boolean;
 }
 
 export interface CallLogListResponse {

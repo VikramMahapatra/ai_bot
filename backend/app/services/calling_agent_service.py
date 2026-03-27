@@ -292,7 +292,7 @@ def update_agent(
         "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
     }
     
-    print(echo_payload)
+    #print(echo_payload)
     # Call Echoleads update
     echo_failed = False
     if db_agent.external_agent_id:
@@ -300,7 +300,7 @@ def update_agent(
             echoleads.update_agent(db_agent.external_agent_id, echo_payload)
         except Exception as e:
             print(f"EchoLeads API failed: {str(e)}")
-            echo_failed = False
+            echo_failed = True
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 

@@ -21,6 +21,11 @@ import {
   Chip,
   IconButton,
   Tooltip,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -29,6 +34,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
 import { superadminService } from '../services/superadminService';
 import { OrganizationLimits, SuperAdminOrganization, Plan } from '../types';
+import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 const defaultLimits: OrganizationLimits = {
   monthly_conversation_limit: 1000,
@@ -67,6 +74,132 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [viewOpen, setViewOpen] = useState(false);
   const [viewOrg, setViewOrg] = useState<SuperAdminOrganization | null>(null);
   const [open, setOpen] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<any | null>(null)
+
+  const [openCallingNumberDialog, setOpenCallingNumberDialog] = useState(false)
+  const [openCallingNumberForm, setOpenCallingNumberForm] = useState(false)
+  const [numbers, setNumbers] = useState<any[]>([])
+  const [editing, setEditing] = useState(false)
+  const [selectedRow, setSelectedRow] = useState<any | null>(null)
+  const [callingform, setCallingForm] = useState({
+    calling_number: "",
+    is_default: false,
+    is_active: true
+  })
+
+  const [callingFormError, setCallingFormError] = useState({
+    calling_number: ""
+  })
+
+  useEffect(() => {
+    if (openCallingNumberDialog) {
+      fetchCallingNumbers()
+    }
+  }, [openCallingNumberDialog])
+
+  const handleOpenCallingNumberDialog = (org: any) => {
+    setSelectedOrg(org)
+    setOpenCallingNumberDialog(true)
+  }
+
+  const fetchCallingNumbers = async () => {
+    if (!selectedOrg) return
+
+    try {
+      const res = await superadminService.getCallingNumbers(selectedOrg.id)
+      setNumbers(res)
+    } catch (error) {
+      console.error("Failed to fetch calling numbers", error)
+    }
+  }
+
+  const validateCallingForm = () => {
+    let valid = true
+    let errors: any = {}
+
+    if (!callingform.calling_number?.trim()) {
+      errors.calling_number = "Calling number is required"
+      valid = false
+    }
+
+    setCallingFormError(errors)
+    return valid
+  }
+
+  const handleAddCallingNumber = () => {
+    setEditing(false)
+
+    setCallingForm({
+      calling_number: "",
+      is_default: false,
+      is_active: true
+    })
+
+    setOpenCallingNumberForm(true)
+  }
+
+  const handleCallingEdit = (row: any) => {
+    setEditing(true)
+    setSelectedRow(row)
+
+    setCallingForm({
+      calling_number: row.calling_number,
+      is_default: row.is_default,
+      is_active: row.is_active
+    })
+
+    setOpenCallingNumberForm(true)
+  }
+
+
+  const handleCloseCallingDialog = () => {
+    setOpenCallingNumberDialog(false)
+    setOpenCallingNumberForm(false)
+    setSelectedRow(null)
+  }
+
+  const handleCloseCallingForm = () => {
+    setOpenCallingNumberForm(false)
+    setSelectedRow(null)
+  }
+
+  const handleCallingSave = async () => {
+    if (!validateCallingForm()) return
+
+    try {
+
+      if (editing) {
+        // update api
+        await superadminService.updateCallingNumber(selectedRow.id, callingform)
+      } else {
+        // create api
+        await superadminService.createCallingNumber(selectedOrg.id, callingform)
+      }
+
+      fetchCallingNumbers()
+      handleCloseCallingForm()
+
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  const handleDefault = async (row: any) => {
+    await superadminService.setDefaultCallingNumber(row.id)
+    fetchCallingNumbers()
+  }
+
+  const handleActive = async (row: any) => {
+    await superadminService.toggleActiveCallingNumber(row.id)
+    fetchCallingNumbers()
+  }
+
+  const handleDelete = async (row: any) => {
+    if (!window.confirm("Delete this calling number?")) return
+
+    await superadminService.deleteCallingNumber(row.id)
+    fetchCallingNumbers()
+  }
 
   const loadOrganizations = async () => {
     const data = await superadminService.listOrganizations();
@@ -152,45 +285,45 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             0.84
           )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
           boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
+            pointerEvents: 'none',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: '-24%',
+            right: '-6%',
+            width: '42%',
+            height: '150%',
+            background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
+            pointerEvents: 'none',
+          },
+          '& > *': {
             position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              background:
-                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-              pointerEvents: 'none',
-            },
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              top: '-24%',
-              right: '-6%',
-              width: '42%',
-              height: '150%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-              pointerEvents: 'none',
-            },
-            '& > *': {
-              position: 'relative',
-              zIndex: 1,
-            },
+            zIndex: 1,
+          },
         }}
       >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            Organization Management
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Create organizations, assign plans, and override limits.
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+              Organization Management
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Create organizations, assign plans, and override limits.
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            New Organization
+          </Button>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          New Organization
-        </Button>
-      </Box>
       </Paper>
 
       <Grid container spacing={3}>
@@ -249,6 +382,21 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                       }}
                     >
                       <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Calling Numbers">
+                    <IconButton
+                      onClick={() => handleOpenCallingNumberDialog(org)}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                        color: 'secondary.main',
+                        '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                      }}
+                    >
+                      <SettingsPhoneIcon />
                     </IconButton>
                   </Tooltip>
                 </Box>
@@ -513,6 +661,134 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleEditSave}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+
+      <Dialog
+        open={openCallingNumberDialog}
+        onClose={handleCloseCallingDialog}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          Organization Calling Numbers
+        </DialogTitle>
+
+        <DialogContent>
+
+          <Box display="flex" justifyContent="flex-end" mb={2}>
+            <Button
+              startIcon={<AddIcon />}
+              variant="contained"
+              onClick={handleAddCallingNumber}
+            >
+              Add Calling Number
+            </Button>
+          </Box>
+
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Calling Number</TableCell>
+                <TableCell>Default</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {numbers.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    {row.calling_number}
+                  </TableCell>
+
+                  <TableCell>
+                    <Switch
+                      checked={row.is_default}
+                      onChange={() =>
+                        handleDefault(row)
+                      }
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Switch
+                      checked={row.is_active}
+                      onChange={() =>
+                        handleActive(row)
+                      }
+                    />
+                  </TableCell>
+
+                  <TableCell align="right">
+                    <IconButton
+                      onClick={() =>
+                        handleCallingEdit(row)
+                      }
+                    >
+                      <EditIcon />
+                    </IconButton>
+
+                    <IconButton
+                      color="error"
+                      onClick={() =>
+                        handleDelete(row)
+                      }
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseCallingDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openCallingNumberForm} onClose={(handleCloseCallingForm)}>
+        <DialogTitle>
+          {editing ? "Edit" : "Add"} Calling Number
+        </DialogTitle>
+
+        <DialogContent>
+
+          <TextField
+            required
+            fullWidth
+            label="Calling Number"
+            placeholder="+1234567890"
+            value={callingform.calling_number}
+            error={!!callingFormError.calling_number}
+            helperText={callingFormError.calling_number}
+            onChange={(e) =>
+              setCallingForm({
+                ...callingform,
+                calling_number: e.target.value
+              })
+            }
+            sx={{ mt: 1 }}
+          />
+
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseCallingForm}>
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={handleCallingSave}
+          >
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </SuperAdminLayout>

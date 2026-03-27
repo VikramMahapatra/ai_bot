@@ -46,6 +46,7 @@ import Menu from "@mui/material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
 import InsightsIcon from "@mui/icons-material/Insights";
 import EllipsisCell from '../EllipsisCell';
+import { ExportToExcel } from '../../utils/callLogExport';
 
 
 const getStatusColor = (status: string) => {
@@ -84,6 +85,8 @@ export const CallLogsTab = () => {
     const [sentiment, setSentiment] = useState<string>("All");
     const [callEndReason, setCallEndReason] = useState<string>("All");
     const [evaluation, setEvaluation] = useState<string>("All");
+    const [leadQuality, setLeadQuality] = useState<string>("All");
+    const [leadQualified, setLeadQualified] = useState<string>("All");
 
     const [actionAnchor, setActionAnchor] = useState(null);
     const [openInsights, setOpenInsights] = useState(false);
@@ -132,6 +135,7 @@ export const CallLogsTab = () => {
             call_end_reason: callEndReason !== "All" ? (callEndReason) : undefined,
             sentiment: sentiment !== "All" ? (sentiment as SentimentType) : undefined,
             evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
+            is_lead_qualified: leadQualified !== "All" ? leadQualified === "true" : undefined,
         });
         setCallLogs(data.items || []);
         setCallLogTotal(data.pagination?.total || 0);
@@ -175,40 +179,7 @@ export const CallLogsTab = () => {
                 sentiment: sentiment !== "All" ? (sentiment as SentimentType) : undefined,
                 evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
             });
-
-            const exportData = data.items.map((log) => ({
-                Phone: log.phone,
-                Contact: log.contact || "-",
-                Agent: log.agent || "-",
-                Campaign: log.campaign || "-",
-                "Start Time": formatDateTime(log.startTime),
-                "End Time": formatDateTime(log.endTime),
-                Type: log.type,
-                Status: log.status,
-                Duration: log.duration,
-                Cost: log.cost,
-                Sentiment: log.sentiment,
-                "End Reason": formatEndedReason(log.ended_reason),
-                "Test Call": log.testCall ? "Yes" : "No",
-                Date: formatDateTime(log.date),
-            }));
-
-            const worksheet = XLSX.utils.json_to_sheet(exportData);
-            const workbook = XLSX.utils.book_new();
-
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Call Logs");
-
-            const excelBuffer = XLSX.write(workbook, {
-                bookType: "xlsx",
-                type: "array"
-            });
-
-            const blob = new Blob([excelBuffer], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
-            });
-
-            saveAs(blob, `Campaign_Call_Logs_${Date.now()}.xlsx`);
-
+            ExportToExcel(data, "Call_Logs");
         } catch (error) {
             showError("Failed to export the logs.")
         }
@@ -385,23 +356,6 @@ export const CallLogsTab = () => {
                 {/* ADVANCED FILTERS */}
                 <Collapse in={showFilters}>
                     <Grid container spacing={2} mt={1}>
-                        {/* Status */}
-                        <Grid item xs={12} md={4}>
-                            <TextField
-                                select
-                                label="Status"
-                                size="small"
-                                fullWidth
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                            >
-                                <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="ended">Ended</MenuItem>
-                                <MenuItem value="queued">Queued</MenuItem>
-                                <MenuItem value="failed">Failed</MenuItem>
-                            </TextField>
-                        </Grid>
-
                         {/* Agent */}
                         <Grid item xs={12} md={4}>
                             <TextField
@@ -439,11 +393,27 @@ export const CallLogsTab = () => {
                                 }
                             </TextField>
                         </Grid>
+
+                        {/* Status */}
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                select
+                                label="Status"
+                                size="small"
+                                fullWidth
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="ended">Ended</MenuItem>
+                                <MenuItem value="queued">Queued</MenuItem>
+                                <MenuItem value="failed">Failed</MenuItem>
+                            </TextField>
+                        </Grid>
                     </Grid>
                     <Grid container spacing={2} mt={1}>
-
                         {/* Call End Reason */}
-                        <Grid item xs={12} sm={6} md={4}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <TextField
                                 select
                                 fullWidth
@@ -460,9 +430,8 @@ export const CallLogsTab = () => {
                                 <MenuItem value="assistant_end">Assistant Ended</MenuItem>
                             </TextField>
                         </Grid>
-
                         {/* Sentiment */}
-                        <Grid item xs={12} sm={6} md={4}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <TextField
                                 select
                                 fullWidth
@@ -478,8 +447,8 @@ export const CallLogsTab = () => {
                             </TextField>
                         </Grid>
 
-                        {/* Evaluation */}
-                        <Grid item xs={12} sm={6} md={4}>
+                        {/* Evaluation
+                        <Grid item xs={12} sm={6} md={3}>
                             <TextField
                                 select
                                 fullWidth
@@ -492,8 +461,39 @@ export const CallLogsTab = () => {
                                 <MenuItem value="true">True</MenuItem>
                                 <MenuItem value="false">False</MenuItem>
                             </TextField>
+                        </Grid> */}
+
+                        <Grid item xs={12} sm={6} md={3}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Lead Quality"
+                                value={leadQuality}
+                                onChange={(e) => setLeadQuality(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="High">Hot Lead (80 - 100)</MenuItem>
+                                <MenuItem value="Medium">Warm Lead (50 - 79)</MenuItem>
+                                <MenuItem value="Low">Cold Lead (20 - 49)</MenuItem>
+                                <MenuItem value="Poor">Disqualified (0 - 19)</MenuItem>
+                            </TextField>
                         </Grid>
 
+                        <Grid item xs={12} sm={6} md={3}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Lead Qualified"
+                                value={leadQualified}
+                                onChange={(e) => setLeadQualified(e.target.value)}
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="true">Yes</MenuItem>
+                                <MenuItem value="false">No</MenuItem>
+                            </TextField>
+                        </Grid>
                     </Grid>
                 </Collapse>
             </Paper>
@@ -611,13 +611,14 @@ export const CallLogsTab = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Phone</TableCell>
-                            <TableCell>Call Type</TableCell>
+                            <TableCell>Contact</TableCell>
                             <TableCell>Agent</TableCell>
                             <TableCell>Campaign</TableCell>
-                            <TableCell>Contact</TableCell>
+
                             {/* <TableCell>Test Call</TableCell> */}
                             <TableCell>Sentiment</TableCell>
                             <TableCell>Status</TableCell>
+                            <TableCell>Duration</TableCell>
                             {/* <TableCell>Cost</TableCell> */}
                             <TableCell>Date</TableCell>
                             <TableCell>View</TableCell>
@@ -653,27 +654,44 @@ export const CallLogsTab = () => {
                                 <TableRow key={log.id} hover>
                                     <TableCell>{log.phone}</TableCell>
                                     <TableCell>
-                                        <Box display="flex" alignItems="center" gap={0.5}>
-                                            {getTypeIcon(log.type)} <Typography variant="body2">{log.type}</Typography>
-                                        </Box>
+                                        <EllipsisCell value={log.contact} width={160} />
                                     </TableCell>
                                     <TableCell>
-                                        <EllipsisCell value={log.agent} />
+                                        <Box>
+                                            <EllipsisCell value={log.agent} />
+
+                                            <Box
+                                                display="flex"
+                                                alignItems="center"
+                                                gap={0.5}
+                                                mt={0.3}
+                                            >
+                                                {getTypeIcon(log.type)}
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    {log.type}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
                                     </TableCell>
 
                                     <TableCell>
                                         <EllipsisCell value={log.campaign} width={160} />
                                     </TableCell>
 
-                                    <TableCell>
-                                        <EllipsisCell value={log.contact} width={160} />
-                                    </TableCell>
                                     {/* <TableCell>
                                         {log.testCall ? "Yes" : "No"}
                                     </TableCell> */}
                                     <TableCell>{log.sentiment || "N/A"}</TableCell>
                                     <TableCell>
                                         <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
+                                    </TableCell>
+                                    <TableCell>
+                                        {log.duration
+                                            ? `${log.duration} sec`
+                                            : "N/A"}
                                     </TableCell>
                                     {/* <TableCell>{log.cost || "0.00"}</TableCell> */}
                                     <TableCell>

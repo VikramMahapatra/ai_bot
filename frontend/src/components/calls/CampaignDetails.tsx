@@ -39,6 +39,7 @@ import InsightsIcon from "@mui/icons-material/Insights";
 import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
+import { ExportToExcel } from "../../utils/callLogExport";
 interface Props {
     campaignId: number;
     onBack: () => void;
@@ -176,36 +177,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         : undefined,
             });
 
-            const exportData = data.items.map((log) => ({
-                Phone: log.phone,
-                Contact: log.contact || "-",
-                Agent: log.agent || "-",
-                Campaign: log.campaign || "-",
-                Type: log.type,
-                Status: log.status,
-                Duration: log.duration,
-                Cost: log.cost,
-                Sentiment: log.sentiment,
-                "End Reason": log.ended_reason,
-                "Test Call": log.testCall ? "Yes" : "No",
-                Date: log.date,
-            }));
-
-            const worksheet = XLSX.utils.json_to_sheet(exportData);
-            const workbook = XLSX.utils.book_new();
-
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Call Logs");
-
-            const excelBuffer = XLSX.write(workbook, {
-                bookType: "xlsx",
-                type: "array"
-            });
-
-            const blob = new Blob([excelBuffer], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
-            });
-
-            saveAs(blob, `Campaign_Call_Logs_${Date.now()}.xlsx`);
+            ExportToExcel(data, "Campaign_Call_Logs");
 
         } catch (error) {
             console.error("Export failed", error);
@@ -319,65 +291,221 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                     <LinearProgress variant="determinate" value={progress} />
                 </CardContent>
             </Card>
+            <Card sx={{ mb: 3 }}>
+                <CardContent>
+
+                    <Typography variant="h6" fontWeight={600} mb={2}>
+                        Campaign Information
+                    </Typography>
+
+                    {/* GENERAL INFO */}
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: "grey.50",
+                            mb: 2
+                        }}
+                    >
+                        <Typography
+                            variant="subtitle2"
+                            color="text.secondary"
+                            mb={1.5}
+                        >
+                            General
+                        </Typography>
+
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={3}>
+                                <Typography variant="caption" color="text.secondary">
+                                    Agent
+                                </Typography>
+                                <Typography fontWeight={600}>
+                                    {campaign?.agent_name || "-"}
+                                </Typography>
+                            </Grid>
+
+                            <Grid item xs={12} md={3}>
+                                <Typography variant="caption" color="text.secondary">
+                                    Category
+                                </Typography>
+                                <Typography fontWeight={600}>
+                                    {campaign?.category || "-"}
+                                </Typography>
+                            </Grid>
+
+                            <Grid item xs={12} md={3}>
+                                <Typography variant="caption" color="text.secondary">
+                                    Product
+                                </Typography>
+                                <Typography fontWeight={600}>
+                                    {campaign?.product_name || "-"}
+                                </Typography>
+                            </Grid>
+
+                            <Grid item xs={12} md={3}>
+                                <Typography variant="caption" color="text.secondary">
+                                    Send Option
+                                </Typography>
+                                <Typography
+                                    fontWeight={600}
+                                    color={
+                                        campaign?.send_option === "scheduled"
+                                            ? "warning.main"
+                                            : "success.main"
+                                    }
+                                >
+                                    {campaign?.send_option || "instant"}
+                                </Typography>
+                            </Grid>
+                        </Grid>
+                    </Box>
+
+                    {/* SCHEDULE INFO */}
+                    {campaign?.send_option === "scheduled" && (
+                        <Box
+                            sx={{
+                                p: 2,
+                                borderRadius: 2,
+                                bgcolor: "grey.50"
+                            }}
+                        >
+                            <Typography
+                                variant="subtitle2"
+                                color="text.secondary"
+                                mb={1.5}
+                            >
+                                Schedule
+                            </Typography>
+
+                            <Grid container spacing={2}>
+                                <Grid item xs={12} md={3}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Start Date
+                                    </Typography>
+                                    <Typography fontWeight={600}>
+                                        {campaign?.scheduled_at
+                                            ? formatDateTime(campaign?.scheduled_at)
+                                            : "-"}
+                                    </Typography>
+                                </Grid>
+
+                                <Grid item xs={12} md={3}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Timezone
+                                    </Typography>
+                                    <Typography fontWeight={600}>
+                                        {campaign?.timezone || "-"}
+                                    </Typography>
+                                </Grid>
+
+                                <Grid item xs={12} md={3}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Call Window
+                                    </Typography>
+                                    <Typography fontWeight={600}>
+                                        {campaign?.call_start_time || "-"} — {campaign?.call_end_time || "-"}
+                                    </Typography>
+                                </Grid>
+
+                                <Grid item xs={12} md={3}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Interval
+                                    </Typography>
+                                    <Typography fontWeight={600}>
+                                        {campaign?.call_interval
+                                            ? `${campaign.call_interval} mins`
+                                            : "-"}
+                                    </Typography>
+                                </Grid>
+
+                                <Grid item xs={12} md={3}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Active Days
+                                    </Typography>
+                                    <Typography fontWeight={600}>
+                                        {campaign?.active_days || "-"}
+                                    </Typography>
+                                </Grid>
+                            </Grid>
+                        </Box>
+                    )}
+
+                </CardContent>
+            </Card>
 
             {/* ACTIONS */}
             <Card sx={{ mb: 3 }}>
                 <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+
+                    {/* HEADER */}
+                    <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="flex-start"
+                        mb={2}
+                    >
 
                         {/* LEFT */}
-                        <Box display="flex" flexDirection="column">
-                            <Typography variant="h6" fontWeight="bold">
+                        <Box>
+                            <Typography variant="h6" fontWeight={600}>
                                 Call List
                             </Typography>
 
-                            <Typography variant="body2" color="text.secondary" mt={0.5}>
-                                Agent:{" "}
-                                <Box
-                                    component="span"
-                                    sx={{
-                                        color: "primary.main",
-                                        cursor: "pointer",
-                                        "&:hover": { textDecoration: "underline" }
-                                    }}
-                                //onClick={() => onEdit(campaign?.agent_id)}
-                                >
-                                    {campaign?.agent_name || "N/A"}
-                                </Box>
-                            </Typography>
+                            <Box
+                                display="flex"
+                                gap={3}
+                                mt={0.5}
+                                flexWrap="wrap"
+                                color="text.secondary"
+                            >
 
-                            <Typography variant="body2" color="text.secondary" mt={0.5}>
-                                From number: {campaign?.calling_no || "-"}
-                            </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    From number:{" "}
+                                    <Box
+                                        component="span"
+                                        sx={{
+                                            color: "primary.main",
+                                            fontWeight: 500
+                                        }}
+                                    //onClick={() => onEdit(campaign?.agent_id)}
+                                    >
+                                        {campaign?.calling_no || "-"}
+                                    </Box>
+                                </Typography>
+
+                            </Box>
                         </Box>
 
                         {/* RIGHT */}
-                        <Box
-                            display="flex"
-                            gap={2}
-                            alignItems="center"
-                            mt={3}   // 👈 tweak this value
-                        >
-                            <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
+                        <Box display="flex" gap={1}>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<DownloadIcon />}
+                                onClick={handleExport}
+                            >
                                 Export
                             </Button>
 
                             <Button
                                 variant="outlined"
+                                size="small"
                                 startIcon={<RefreshIcon />}
                                 onClick={() => loadCallLogs(filters)}
                             >
                                 Refresh
                             </Button>
                         </Box>
+
                     </Box>
 
-                    {/* SEARCH */}
-
+                    {/* FILTER */}
                     <CallLogFilterSection
                         filters={filters}
                         onFilterChange={handleFilterChange}
                     />
+
 
                     {/* TABLE */}
 
@@ -429,9 +557,22 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                                                 <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
                                             </TableCell>
                                             <TableCell>
-                                                {formatEndedReason(log.ended_reason)}
+                                                <Box
+                                                    component="span"
+                                                    sx={{
+                                                        color: "error.main",
+                                                        fontWeight: 500
+                                                    }}
+                                                //onClick={() => onEdit(campaign?.agent_id)}
+                                                >
+                                                    {formatEndedReason(log.ended_reason)}
+                                                </Box>
                                             </TableCell>
-                                            <TableCell>{log.duration || "N/A"}</TableCell>
+                                            <TableCell>
+                                                {log.duration
+                                                    ? `${log.duration} sec`
+                                                    : "N/A"}
+                                            </TableCell>
                                             <TableCell>{log.sentiment || "-"}</TableCell>
 
                                             <TableCell>

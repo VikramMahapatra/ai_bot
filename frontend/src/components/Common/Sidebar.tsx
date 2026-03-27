@@ -32,6 +32,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import CallIcon from '@mui/icons-material/Call';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 
 const drawerWidth = 280;
 
@@ -60,6 +61,7 @@ const allMenuItems: MenuItem[] = [
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN' },
   { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF' },
+  { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN' },
   { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN' },
 ];
 

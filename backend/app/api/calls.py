@@ -16,6 +16,7 @@ from dateutil import parser
 
 from app.models.calling_agents import CallingAgent
 from app.models.widget_config import WidgetConfig
+from app.models.organization_calling_numbers import OrganizationCallingNumber
 
 logger = logging.getLogger(__name__)
 
@@ -277,3 +278,14 @@ def get_bookings(
     db.commit()
 
     return inserted_records
+
+
+@router.get("/org/calling-numbers")
+def get_calling_numbers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(OrganizationCallingNumber).filter(
+        OrganizationCallingNumber.organization_id == current_user.organization_id,
+        OrganizationCallingNumber.is_active == True
+    ).all()

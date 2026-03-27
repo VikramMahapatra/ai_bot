@@ -15,6 +15,7 @@ from app.api.handoff import router as handoff_router
 from app.api.calls import router as calls_router
 
 from app.api.twilio_sms import router as twilio_sms_router
+from app.api.products import router as product_router
 
 __all__ = [
     "admin_router",
@@ -32,4 +33,5 @@ __all__ = [
     "campaigns_router",
     "handoff_router",
     "twilio_sms_router",
+    "product_router"
 ]

@@ -495,7 +495,7 @@ async def upload_contacts_csv(
 
                 added_contacts.append({
                     "id": new_contact.id,
-                    "label": f"{existing.name} ({existing.phone})",
+                    "label": f"{new_contact.name} ({new_contact.phone})",
                     "name": new_contact.name,
                     "email": new_contact.email,
                     "phone": new_contact.phone

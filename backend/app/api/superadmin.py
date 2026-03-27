@@ -13,6 +13,8 @@ from app.models import (
     Plan,
 )
 from app.schemas.superadmin import (
+    CallingNumberCreate,
+    CallingNumberUpdate,
     SuperAdminLoginRequest,
     SuperAdminLoginResponse,
     SuperAdminBootstrapRequest,
@@ -40,6 +42,7 @@ from app.services.conversation_outcome_service import run_outcome_processing_bat
 import logging
 
 from app.models.organization_subscription import OrganizationSubscription
+from app.models.organization_calling_numbers import OrganizationCallingNumber
 
 logger = logging.getLogger(__name__)
 
@@ -459,3 +462,100 @@ async def superadmin_analytics_by_org(
         })
 
     return data
+
+
+### Organization Calling No
+@router.get("/org/{org_id}/calling-numbers")
+def get_calling_numbers(
+    org_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+    return db.query(OrganizationCallingNumber).filter(
+        OrganizationCallingNumber.organization_id == org_id
+    ).all()
+    
+    
+@router.post("/org/{org_id}/calling-number")
+def create_calling_number(
+    org_id: int,
+    payload: CallingNumberCreate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+    obj = OrganizationCallingNumber(
+        organization_id=org_id,
+        calling_number=payload.calling_number
+    )
+
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+
+    return obj
+
+@router.put("/org/calling-number/{id}")
+def update_calling_number(
+    id: int,
+    payload: CallingNumberUpdate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+    obj = db.query(
+        OrganizationCallingNumber
+    ).get(id)
+
+    obj.calling_number = payload.calling_number
+
+    db.commit()
+    return obj
+
+@router.patch("/org/calling-number/{id}/active")
+def toggle_active(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    obj = db.query(
+        OrganizationCallingNumber
+    ).get(id)
+
+    obj.is_active = not obj.is_active
+
+    db.commit()
+
+    return obj
+
+@router.patch("/org/calling-number/{id}/default")
+def set_default(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    obj = db.query(
+        OrganizationCallingNumber
+    ).get(id)
+
+    # remove old default
+    db.query(OrganizationCallingNumber).filter(
+        OrganizationCallingNumber.organization_id ==
+        obj.organization_id
+    ).update({"is_default": False})
+
+    obj.is_default = True
+
+    db.commit()
+
+    return obj
+
+@router.delete("/org/calling-number/{id}")
+def delete_calling_number(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    obj = db.query(
+        OrganizationCallingNumber
+    ).get(id)
+
+    db.delete(obj)
+    db.commit()
+
+    return {"success": True}

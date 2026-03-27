@@ -202,6 +202,7 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                             </TextField>
                         </Grid>
 
+
                     </Grid>
                 </Box>
             </Collapse>

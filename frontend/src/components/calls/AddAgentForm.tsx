@@ -335,9 +335,9 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         // if (formData.destination.length === 0) {
         //     newErrors.destination = "Select at least one destination country";
         // }
-        if (!formData.server_location) {
-            newErrors.server_location = "Server location is required";
-        }
+        // if (!formData.server_location) {
+        //     newErrors.server_location = "Server location is required";
+        // }
 
         if (formData.enable_call_summary && !formData.summary_prompt.trim()) {
             newErrors.summary_prompt = "Summary prompt is required";
@@ -710,7 +710,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 </Typography>
                             )}
                         </FormControl> */}
-                        <FormControl fullWidth error={!!errors.server_location}>
+                        {/* <FormControl fullWidth error={!!errors.server_location}>
                             <InputLabel>Server Location</InputLabel>
 
                             <Select
@@ -734,7 +734,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                     {errors.server_location}
                                 </Typography>
                             )}
-                        </FormControl>
+                        </FormControl> */}
                     </Stack>
                 </Card >
 

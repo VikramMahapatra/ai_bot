@@ -12,6 +12,7 @@ class CampaignSchedule(Base):
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
     start_datetime = Column(DateTime)
+    end_datetime = Column(DateTime)
     timezone = Column(String)
 
     call_start_time = Column(String)
