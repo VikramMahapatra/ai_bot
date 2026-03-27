@@ -56,3 +56,6 @@ class CallLogRequest(BaseModel):
     
     lead_quality: Optional[str] = None
     is_lead_qualified: Optional[bool] = None
+    
+class MoveToFunnelRequest(BaseModel):
+    stage: str

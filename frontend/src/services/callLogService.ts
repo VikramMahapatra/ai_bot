@@ -36,6 +36,7 @@ export interface CallLog {
     audioUrl?: string;
     duration?: string;
     cost?: string;
+    lead_qualified_status?: string;
     transcript: CallTranscript[];
 }
 
@@ -108,6 +109,11 @@ export interface FilterLookupResponse {
     name: string;
 }
 
+export interface CallLogResponse {
+    message: string;
+    success: boolean;
+}
+
 
 export const callLogService = {
 
@@ -128,6 +134,11 @@ export const callLogService = {
 
     async campaignLookup(): Promise<FilterLookupResponse[]> {
         const response = await api.get<FilterLookupResponse[]>('/api/call-campaigns/lookup');
+        return response.data;
+    },
+
+    async moveToSalesFunnel(call_log_id: number, stage: string): Promise<CallLogResponse> {
+        const response = await api.post<CallLogResponse>(`/api/call-log/${call_log_id}/move-to-sales-funnel`, { stage });
         return response.data;
     },
 

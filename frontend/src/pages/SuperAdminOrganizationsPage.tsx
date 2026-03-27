@@ -698,50 +698,58 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             </TableHead>
 
             <TableBody>
-              {numbers.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    {row.calling_number}
-                  </TableCell>
-
-                  <TableCell>
-                    <Switch
-                      checked={row.is_default}
-                      onChange={() =>
-                        handleDefault(row)
-                      }
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    <Switch
-                      checked={row.is_active}
-                      onChange={() =>
-                        handleActive(row)
-                      }
-                    />
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <IconButton
-                      onClick={() =>
-                        handleCallingEdit(row)
-                      }
-                    >
-                      <EditIcon />
-                    </IconButton>
-
-                    <IconButton
-                      color="error"
-                      onClick={() =>
-                        handleDelete(row)
-                      }
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+              {numbers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    No contacts added
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                numbers.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      {row.calling_number}
+                    </TableCell>
+
+                    <TableCell>
+                      <Switch
+                        checked={row.is_default}
+                        onChange={() =>
+                          handleDefault(row)
+                        }
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Switch
+                        checked={row.is_active}
+                        onChange={() =>
+                          handleActive(row)
+                        }
+                      />
+                    </TableCell>
+
+                    <TableCell align="right">
+                      <IconButton
+                        onClick={() =>
+                          handleCallingEdit(row)
+                        }
+                      >
+                        <EditIcon />
+                      </IconButton>
+
+                      <IconButton
+                        color="error"
+                        onClick={() =>
+                          handleDelete(row)
+                        }
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
 

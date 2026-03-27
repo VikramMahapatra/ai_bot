@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     ECHOL_API_BASE_URL: str
     ECHOL_API_KEY: str
     
+    CAN_AUTO_SYNC_CAMPAIGN_LEAD: bool = False
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]

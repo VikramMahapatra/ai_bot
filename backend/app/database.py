@@ -144,6 +144,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'chat'"))
                 if "funnel_stage" not in col_names:
                     conn.execute(text("ALTER TABLE leads ADD COLUMN funnel_stage TEXT"))
+                if "product_id" not in col_names:
+                    conn.execute(text("ALTER TABLE leads ADD COLUMN product_id INTEGER"))
                 conn.execute(text("UPDATE leads SET source = 'chat' WHERE source IS NULL OR TRIM(source) = ''"))
             except Exception:
                 pass
@@ -215,5 +217,9 @@ def init_db():
                         conn.execute(
                             text(f"ALTER TABLE call_campaigns ADD COLUMN {col} {col_type}")
                         )
+                if "calling_no" not in col_names:
+                    conn.execute(
+                        text("UPDATE call_campaigns SET calling_no = '+918046733457' WHERE calling_no IS NULL")
+                    )
             except Exception as e:
                 print(str(e))

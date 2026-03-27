@@ -15,7 +15,7 @@ class CallLog(Base):
     external_call_id = Column(Integer, unique=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
 
-    contact_id = Column(Integer, ForeignKey("leads.id"))
+    contact_id = Column(Integer, ForeignKey("contacts.id"))
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 

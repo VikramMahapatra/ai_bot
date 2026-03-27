@@ -45,8 +45,12 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Menu from "@mui/material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
 import InsightsIcon from "@mui/icons-material/Insights";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import LayersIcon from '@mui/icons-material/Layers';
 import EllipsisCell from '../EllipsisCell';
 import { ExportToExcel } from '../../utils/callLogExport';
+import { MoveLeadDialog } from './LeadMoveDialog';
+
 
 
 const getStatusColor = (status: string) => {
@@ -117,6 +121,35 @@ export const CallLogsTab = () => {
     const { start, end } = getDefaultDates();
     const [fromDate, setFromDate] = useState<string>(start);
     const [endDate, setEndDate] = useState<string>(end);
+    const [moveLeadOpen, setMoveLeadOpen] = useState(false);
+    const [selectedLeadRow, setSelectedLeadRow] = useState<any>(null);
+
+
+    const openMoveLeadDialog = (row: any) => {
+        setSelectedLeadRow(row);
+        setMoveLeadOpen(true);
+    };
+
+    const handleLeadAction = async (stage: string) => {
+        setLoading(true);
+        try {
+            const response = await callLogService.moveToSalesFunnel(selectedLeadRow.id, stage)
+            setMoveLeadOpen(false);
+            if (!response.success) {
+                showError(response.message)
+            }
+            else {
+                loadCallLogs();
+            }
+        }
+        catch {
+            showError("Failed to move the lead to sales funnel")
+        }
+        finally {
+            setLoading(false);
+        }
+
+    };
 
     const showError = (message: string) => {
         setError(message);
@@ -706,6 +739,17 @@ export const CallLogsTab = () => {
                                                 whiteSpace: "nowrap"
                                             }}
                                         >
+                                            {log.lead_qualified_status === "Pending" && (
+                                                <Tooltip title="Move to Sales Funnel">
+                                                    <IconButton
+                                                        size="small"
+                                                        color="secondary"
+                                                        onClick={() => openMoveLeadDialog(log)}
+                                                    >
+                                                        <LayersIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
                                             <Tooltip title="View Insights">
                                                 <IconButton
                                                     size="small"
@@ -757,6 +801,12 @@ export const CallLogsTab = () => {
                 open={openInsights}
                 onClose={() => setOpenInsights(false)}
                 data={selectedCall}
+            />
+            <MoveLeadDialog
+                open={moveLeadOpen}
+                onClose={() => setMoveLeadOpen(false)}
+                leadRow={selectedLeadRow}
+                onActionSelected={handleLeadAction}
             />
         </Box>
     );
