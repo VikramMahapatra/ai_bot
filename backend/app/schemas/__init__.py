@@ -47,6 +47,11 @@ from app.schemas.superadmin import (
     SubscriptionCreate,
     SubscriptionResponse,
 )
+from app.schemas.funnel_category import (
+    FunnelCategoryCreate,
+    FunnelCategoryUpdate,
+    FunnelCategoryResponse,
+)
 
 __all__ = [
     "KnowledgeSourceCreate",
@@ -88,4 +93,7 @@ __all__ = [
     "PlanResponse",
     "SubscriptionCreate",
     "SubscriptionResponse",
+    "FunnelCategoryCreate",
+    "FunnelCategoryUpdate",
+    "FunnelCategoryResponse",
 ]

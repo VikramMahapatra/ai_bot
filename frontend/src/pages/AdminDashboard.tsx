@@ -9,6 +9,7 @@ import {
   Grid,
   LinearProgress,
   Paper,
+  Stack,
   Tab,
   Table,
   TableBody,
@@ -93,8 +94,12 @@ interface LeadSourcePoint {
 }
 
 interface FunnelStagePoint {
-  stage: string;
+  stage_key: string;
+  stage_name: string;
+  color: string;
+  position: number;
   count: number;
+  conversion_rate: number;
 }
 
 interface LeadItem {
@@ -169,14 +174,6 @@ const formatDateTime = (value?: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString();
-};
-
-const formatFunnelStage = (value?: string): string => {
-  if (!value) return 'Unassigned';
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 };
 
 const percent = (used: number, limit: number | null): number => {
@@ -286,8 +283,12 @@ const AdminDashboard: React.FC = () => {
         const data = Array.isArray((funnelRes.value as any)?.data) ? (funnelRes.value as any).data : [];
         setLeadsFunnel(
           data.map((row: any) => ({
-            stage: String(row?.stage || 'unassigned'),
+            stage_key: String(row?.stage_key || 'unassigned'),
+            stage_name: String(row?.stage_name || 'Unassigned'),
+            color: String(row?.color || '#9aa8bb'),
+            position: numberOrZero(row?.position),
             count: numberOrZero(row?.count),
+            conversion_rate: numberOrZero(row?.conversion_rate),
           }))
         );
       }
@@ -419,6 +420,18 @@ const AdminDashboard: React.FC = () => {
         },
       ]
     : [];
+
+  const funnelData = useMemo(
+    () =>
+      leadsFunnel
+        .sort((a, b) => a.position - b.position)
+        .map((item, index) => ({
+          ...item,
+          // Keep all funnel bars in distinct shades of blue.
+          fill: ['#1f4f86', '#2968a3', '#347fbf', '#4194d1', '#58a7dd', '#74b9e7', '#94caef', '#b4dcf6'][index % 8],
+        })),
+    [leadsFunnel]
+  );
 
   return (
     <AdminLayout>
@@ -677,26 +690,29 @@ const AdminDashboard: React.FC = () => {
 
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Funnel Dashboard</Typography>
-              {leadsFunnel.length > 0 ? (
+              {funnelData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={290}>
-                  <BarChart data={leadsFunnel} layout="vertical">
+                  <BarChart data={funnelData} layout="vertical" margin={{ top: 6, right: 18, left: 8, bottom: 6 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
                     <XAxis type="number" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
                     <YAxis
                       type="category"
-                      dataKey="stage"
+                      dataKey="stage_name"
                       stroke={theme.palette.text.secondary}
-                      width={136}
-                      tickFormatter={(value: string) => shortText(formatFunnelStage(value), 16)}
+                      width={128}
                       tick={{ fontSize: 11 }}
                     />
                     <ChartTooltip
                       formatter={(value: number | string | undefined, _name, item) => [
                         `${numberOrZero(value)} leads`,
-                        formatFunnelStage((item?.payload as FunnelStagePoint)?.stage),
+                        String((item?.payload as any)?.stage_name || 'Stage'),
                       ]}
                     />
-                    <Bar dataKey="count" fill="#4e89d5" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+                      {funnelData.map((entry, idx) => (
+                        <Cell key={`funnel-stage-bar-${entry.stage_key}-${idx}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               ) : (

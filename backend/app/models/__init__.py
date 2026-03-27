@@ -19,6 +19,7 @@ from app.models.appointment_intake import AppointmentIntake
 from app.models.campaign import Campaign, ContactList, Contact, CampaignLog
 from app.models.handoff import HandoffSession, HandoffMessage
 from app.models.handoff_agent_assignment import HandoffAgentAssignment
+from app.models.funnel_category import FunnelCategory
 
 __all__ = [
     "User",
@@ -49,4 +50,5 @@ __all__ = [
     "HandoffSession",
     "HandoffMessage",
     "HandoffAgentAssignment",
+    "FunnelCategory",
 ]

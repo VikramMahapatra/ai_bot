@@ -7,23 +7,29 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
+  IconButton,
   LinearProgress,
   MenuItem,
   Paper,
   Select,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
@@ -31,6 +37,9 @@ import { alpha, useTheme } from '@mui/material/styles';
 import DownloadIcon from '@mui/icons-material/Download';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import MoveDownIcon from '@mui/icons-material/MoveDown';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -40,18 +49,10 @@ import GroupIcon from '@mui/icons-material/Group';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { leadService } from '../../services/leadService';
 import { dashboardService } from '../../services/dashboardService';
-import { Lead } from '../../types';
+import { funnelCategoryService } from '../../services/funnelCategoryService';
+import { FunnelCategory, FunnelCategoryPayload, Lead } from '../../types';
 
 const LEAD_SOURCES = ['chat', 'voice', 'email', 'sms', 'whatsapp'] as const;
-const FUNNEL_STAGE_OPTIONS = [
-  'lead_qualification',
-  'initial_contact',
-  'needs_analysis',
-  'proposal_quote',
-  'negotiation',
-  'closed_won',
-  'closed_lost',
-] as const;
 
 const titleCase = (value: string) =>
   value
@@ -66,21 +67,13 @@ const stageLabel = (stage?: string | null) => {
   return titleCase(stage.toLowerCase());
 };
 
-const readCallOutcome = (lead: Lead): string | null => {
-  if (!lead.custom_fields) return null;
-  try {
-    const parsed = JSON.parse(lead.custom_fields);
-    const candidate = parsed?.call_outcome || parsed?.outcome || parsed?.callOutcome;
-    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
-  } catch {
-    return null;
-  }
-};
+const toStageKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '_');
 
 const LeadManager: React.FC = () => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
+  const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>([]);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>('all');
   const [selectedSource, setSelectedSource] = useState<string>('all');
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string>('all');
@@ -88,9 +81,20 @@ const LeadManager: React.FC = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveStage, setMoveStage] = useState<string>('');
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<FunnelCategory | null>(null);
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryForm, setCategoryForm] = useState<FunnelCategoryPayload>({
+    name: '',
+    key: '',
+    color: '#4e89d5',
+    position: 0,
+    is_active: true,
+  });
   const [loading, setLoading] = useState(false);
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const panelSx = {
     borderRadius: '18px',
@@ -125,6 +129,22 @@ const LeadManager: React.FC = () => {
     return leads.filter((lead) => new Date(lead.created_at).getTime() >= weekAgo).length;
   }, [leads]);
   const conversionRate = totalLeads ? Math.round((contactableLeads / totalLeads) * 100) : 0;
+
+  const activeFunnelCategories = useMemo(
+    () => funnelCategories.filter((item) => item.is_active).sort((a, b) => a.position - b.position),
+    [funnelCategories]
+  );
+
+  const stageNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    funnelCategories.forEach((item) => map.set(item.key, item.name));
+    return map;
+  }, [funnelCategories]);
+
+  const displayStageLabel = (stage?: string | null) => {
+    if (!stage || !stage.trim()) return 'Unassigned';
+    return stageNameByKey.get(stage) || stageLabel(stage);
+  };
 
   const kpis = useMemo(
     () => [
@@ -183,6 +203,15 @@ const LeadManager: React.FC = () => {
     }
   };
 
+  const loadFunnelCategories = async () => {
+    try {
+      const data = await funnelCategoryService.list(true);
+      setFunnelCategories(data);
+    } catch {
+      setError('Failed to load funnel categories');
+    }
+  };
+
   const loadLeads = async (widgetId?: string, source?: string, funnelStage?: string) => {
     try {
       setLoading(true);
@@ -198,6 +227,7 @@ const LeadManager: React.FC = () => {
 
   useEffect(() => {
     loadWidgets();
+    loadFunnelCategories();
   }, []);
 
   useEffect(() => {
@@ -233,6 +263,72 @@ const LeadManager: React.FC = () => {
     setMoveOpen(true);
   };
 
+  const openCreateCategoryDialog = () => {
+    setEditingCategory(null);
+    setCategoryForm({ name: '', key: '', color: '#4e89d5', position: funnelCategories.length + 1, is_active: true });
+    setCategoryDialogOpen(true);
+  };
+
+  const openEditCategoryDialog = (category: FunnelCategory) => {
+    setEditingCategory(category);
+    setCategoryForm({
+      name: category.name,
+      key: category.key,
+      color: category.color,
+      position: category.position,
+      is_active: category.is_active,
+    });
+    setCategoryDialogOpen(true);
+  };
+
+  const handleSaveCategory = async () => {
+    if (!categoryForm.name.trim()) {
+      setError('Category name is required.');
+      return;
+    }
+
+    const payload: FunnelCategoryPayload = {
+      ...categoryForm,
+      name: categoryForm.name.trim(),
+      key: toStageKey(categoryForm.key || categoryForm.name),
+      color: categoryForm.color.trim() || '#4e89d5',
+      position: Number(categoryForm.position) || 0,
+    };
+
+    try {
+      setCategorySaving(true);
+      setError('');
+      setSuccess('');
+      if (editingCategory) {
+        await funnelCategoryService.update(editingCategory.id, payload);
+        setSuccess('Funnel category updated.');
+      } else {
+        await funnelCategoryService.create(payload);
+        setSuccess('Funnel category created.');
+      }
+      setCategoryDialogOpen(false);
+      await loadFunnelCategories();
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Failed to save funnel category');
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  const handleDeleteCategory = async (category: FunnelCategory) => {
+    try {
+      setError('');
+      setSuccess('');
+      await funnelCategoryService.remove(category.id);
+      setSuccess('Funnel category deleted.');
+      await loadFunnelCategories();
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Failed to delete funnel category');
+    }
+  };
+
   const handleMoveLead = async () => {
     if (!selectedLead) return;
     if (!moveStage) {
@@ -243,11 +339,13 @@ const LeadManager: React.FC = () => {
     try {
       setMoving(true);
       setError('');
+      setSuccess('');
       const updated = await leadService.moveLeadToFunnel(selectedLead.id, moveStage);
       setLeads((prev) => prev.map((lead) => (lead.id === updated.id ? updated : lead)));
       setSelectedLead(updated);
       setMoveOpen(false);
       setDetailsOpen(true);
+      setSuccess(`Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`);
     } catch {
       setError('Failed to move lead to funnel stage');
     } finally {
@@ -310,15 +408,15 @@ const LeadManager: React.FC = () => {
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: 180 }}>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
               <Select
                 value={selectedFunnelStage}
                 onChange={(event: SelectChangeEvent<string>) => setSelectedFunnelStage(event.target.value)}
               >
                 <MenuItem value="all">All Funnel Stages</MenuItem>
-                {FUNNEL_STAGE_OPTIONS.map((stage) => (
-                  <MenuItem key={stage} value={stage}>
-                    {stageLabel(stage)}
+                {activeFunnelCategories.map((stage) => (
+                  <MenuItem key={stage.key} value={stage.key}>
+                    {stage.name}
                   </MenuItem>
                 ))}
               </Select>
@@ -351,90 +449,6 @@ const LeadManager: React.FC = () => {
 
       {loading && <LinearProgress sx={{ mb: 2.5, borderRadius: 1.2 }} />}
 
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        {kpis.map((kpi) => (
-          <Grid item xs={12} sm={6} lg={3} key={kpi.label}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 2,
-                borderRadius: '18px',
-                background: kpi.gradient,
-                minHeight: 142,
-                border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
-                boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                position: 'relative',
-                overflow: 'hidden',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  inset: 0,
-                  pointerEvents: 'none',
-                  background:
-                    'linear-gradient(140deg, rgba(255,255,255,0.18) 6%, transparent 22%), linear-gradient(28deg, transparent 58%, rgba(74,137,213,0.14) 59%, transparent 82%)',
-                },
-              }}
-            >
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  position: 'relative',
-                  zIndex: 1,
-                }}
-              >
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                    {kpi.label}
-                  </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.35, color: 'text.primary' }}>
-                    {kpi.value}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.2 }}>
-                    {kpi.hint}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: alpha(theme.palette.primary.main, 0.14),
-                    border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
-                  }}
-                >
-                  {kpi.icon}
-                </Box>
-              </Box>
-              <Box
-                sx={{
-                  position: 'absolute',
-                  left: 14,
-                  right: 14,
-                  bottom: 12,
-                  height: 30,
-                  opacity: 0.95,
-                }}
-              >
-                <svg width="100%" height="100%" viewBox="0 0 220 30" preserveAspectRatio="none" aria-hidden="true">
-                  <path
-                    d="M0,22 C18,8 34,28 52,18 C70,8 86,28 104,16 C124,4 142,28 160,14 C178,3 196,20 220,10"
-                    fill="none"
-                    stroke={alpha(kpi.wave, 0.9)}
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-
       {error && (
         <Alert
           severity="error"
@@ -448,6 +462,78 @@ const LeadManager: React.FC = () => {
           {error}
         </Alert>
       )}
+
+      {success && (
+        <Alert
+          severity="success"
+          sx={{
+            mb: 2.2,
+            borderRadius: '14px',
+            border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
+            boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}`,
+          }}
+        >
+          {success}
+        </Alert>
+      )}
+
+      <Paper sx={{ ...panelSx, p: 2.4, mb: 2.6 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Funnel Category Master
+          </Typography>
+          <Button startIcon={<AddIcon />} variant="outlined" onClick={openCreateCategoryDialog}>
+            Add Category
+          </Button>
+        </Box>
+
+        <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Key</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Position</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Color</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {funnelCategories.map((category) => (
+                <TableRow key={category.id} hover>
+                  <TableCell>{category.name}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>{category.key}</TableCell>
+                  <TableCell>{category.position}</TableCell>
+                  <TableCell>
+                    <Chip label={category.color} size="small" sx={{ bgcolor: alpha(category.color, 0.15), color: category.color }} />
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={category.is_active ? 'Active' : 'Inactive'} size="small" color={category.is_active ? 'success' : 'default'} />
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => openEditCategoryDialog(category)}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" color="error" onClick={() => handleDeleteCategory(category)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {funnelCategories.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">No funnel categories found.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       {leads.length > 0 && (
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
@@ -493,7 +579,7 @@ const LeadManager: React.FC = () => {
 
                   <Stack direction="row" spacing={1} sx={{ mb: 1.2, flexWrap: 'wrap' }}>
                     <Chip size="small" label={sourceLabel(lead.source)} variant="outlined" />
-                    <Chip size="small" label={stageLabel(lead.funnel_stage)} color="primary" variant="outlined" />
+                    <Chip size="small" label={displayStageLabel(lead.funnel_stage)} color="primary" variant="outlined" />
                   </Stack>
 
                   <Stack spacing={1}>
@@ -532,6 +618,62 @@ const LeadManager: React.FC = () => {
           ))}
         </Grid>
       )}
+
+      <Grid container spacing={2.5} sx={{ mb: 3 }}>
+        {kpis.map((kpi) => (
+          <Grid item xs={12} sm={6} lg={3} key={kpi.label}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                borderRadius: '18px',
+                background: kpi.gradient,
+                minHeight: 142,
+                border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
+                boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  zIndex: 1,
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                    {kpi.label}
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.35, color: 'text.primary' }}>
+                    {kpi.value}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.2 }}>
+                    {kpi.hint}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: alpha(theme.palette.primary.main, 0.14),
+                    border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
+                  }}
+                >
+                  {kpi.icon}
+                </Box>
+              </Box>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
 
       <Paper sx={{ ...panelSx, p: 2.4 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.3 }}>
@@ -583,7 +725,7 @@ const LeadManager: React.FC = () => {
                     <Chip label={sourceLabel(lead.source)} size="small" variant="outlined" />
                   </TableCell>
                   <TableCell>
-                    <Chip label={stageLabel(lead.funnel_stage)} size="small" color="primary" variant="outlined" />
+                    <Chip label={displayStageLabel(lead.funnel_stage)} size="small" color="primary" variant="outlined" />
                   </TableCell>
                   <TableCell>{new Date(lead.created_at).toLocaleString()}</TableCell>
                   <TableCell>
@@ -633,10 +775,10 @@ const LeadManager: React.FC = () => {
               <Typography variant="body2"><strong>Phone:</strong> {selectedLead.phone || '-'}</Typography>
               <Typography variant="body2"><strong>Company:</strong> {selectedLead.company || '-'}</Typography>
               <Typography variant="body2"><strong>Source:</strong> {sourceLabel(selectedLead.source)}</Typography>
-              <Typography variant="body2"><strong>Funnel Stage:</strong> {stageLabel(selectedLead.funnel_stage)}</Typography>
+              <Typography variant="body2"><strong>Funnel Stage:</strong> {displayStageLabel(selectedLead.funnel_stage)}</Typography>
               <Typography variant="body2"><strong>Session ID:</strong> {selectedLead.session_id || '-'}</Typography>
               <Typography variant="body2"><strong>Widget ID:</strong> {selectedLead.widget_id || '-'}</Typography>
-              <Typography variant="body2"><strong>Call Outcome:</strong> {readCallOutcome(selectedLead) || '-'}</Typography>
+              <Typography variant="body2"><strong>Lead outcome:</strong> {selectedLead.lead_outcome || '-'}</Typography>
             </Stack>
           )}
         </DialogContent>
@@ -669,7 +811,7 @@ const LeadManager: React.FC = () => {
                   {selectedLead.phone || selectedLead.email || '-'}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 1 }}>
-                  Call Outcome: {readCallOutcome(selectedLead) || '-'}
+                  Lead outcome: {selectedLead.lead_outcome || '-'}
                 </Typography>
               </Paper>
 
@@ -681,9 +823,9 @@ const LeadManager: React.FC = () => {
                   <MenuItem value="">
                     <em>Select a stage...</em>
                   </MenuItem>
-                  {FUNNEL_STAGE_OPTIONS.map((stage) => (
-                    <MenuItem key={stage} value={stage}>
-                      {stageLabel(stage)}
+                  {activeFunnelCategories.map((stage) => (
+                    <MenuItem key={stage.key} value={stage.key}>
+                      {stage.name}
                     </MenuItem>
                   ))}
                 </Select>
@@ -693,8 +835,73 @@ const LeadManager: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMoveOpen(false)}>Back</Button>
-          <Button variant="contained" onClick={handleMoveLead} disabled={moving || !moveStage}>
-            {moving ? 'Moving...' : 'Confirm & Move'}
+          <Button
+            variant="contained"
+            onClick={handleMoveLead}
+            disabled={moving || !moveStage}
+            startIcon={moving ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {moving ? 'Saving...' : 'Confirm & Move'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingCategory ? 'Update Funnel Category' : 'Add Funnel Category'}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ pt: 0.5 }}>
+            <TextField
+              label="Category Name"
+              value={categoryForm.name}
+              onChange={(event) => setCategoryForm((prev) => ({ ...prev, name: event.target.value }))}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Stage Key"
+              helperText="Used internally, lowercase with underscores"
+              value={categoryForm.key}
+              onChange={(event) => setCategoryForm((prev) => ({ ...prev, key: toStageKey(event.target.value) }))}
+              fullWidth
+              size="small"
+            />
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Color"
+                value={categoryForm.color}
+                onChange={(event) => setCategoryForm((prev) => ({ ...prev, color: event.target.value }))}
+                size="small"
+                fullWidth
+              />
+              <TextField
+                label="Position"
+                type="number"
+                value={categoryForm.position}
+                onChange={(event) => setCategoryForm((prev) => ({ ...prev, position: Number(event.target.value || 0) }))}
+                size="small"
+                sx={{ width: 140 }}
+              />
+            </Stack>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={categoryForm.is_active}
+                  onChange={(event) => setCategoryForm((prev) => ({ ...prev, is_active: event.target.checked }))}
+                />
+              }
+              label="Active"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCategoryDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveCategory}
+            disabled={categorySaving}
+            startIcon={categorySaving ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {categorySaving ? 'Saving...' : editingCategory ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
