@@ -148,6 +148,11 @@ export interface Lead {
   email?: string;
   phone?: string;
   company?: string;
+  source: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
+  funnel_stage?: string;
+  custom_fields?: string;
+  organization_id?: number;
+  user_id?: number;
   created_at: string;
 }
 
@@ -164,6 +169,8 @@ export interface LeadCreate {
   email?: string;
   phone?: string;
   company?: string;
+  source?: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
+  funnel_stage?: string;
 }
 
 export interface WidgetConfig {

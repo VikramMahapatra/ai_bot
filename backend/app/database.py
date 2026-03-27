@@ -138,6 +138,17 @@ def init_db():
                 pass
 
             try:
+                cols = conn.execute(text("PRAGMA table_info('leads')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "source" not in col_names:
+                    conn.execute(text("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'chat'"))
+                if "funnel_stage" not in col_names:
+                    conn.execute(text("ALTER TABLE leads ADD COLUMN funnel_stage TEXT"))
+                conn.execute(text("UPDATE leads SET source = 'chat' WHERE source IS NULL OR TRIM(source) = ''"))
+            except Exception:
+                pass
+
+            try:
                 conn.commit()
             except Exception:
                 pass
