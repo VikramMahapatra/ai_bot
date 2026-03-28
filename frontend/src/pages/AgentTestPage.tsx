@@ -39,6 +39,13 @@ interface HandoffSessionResponse {
   active: boolean;
   chat_id?: string | null;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -48,6 +55,13 @@ interface HandoffSessionResponse {
 interface HandoffMessageResponse {
   chat_id: string;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -307,6 +321,11 @@ const AgentTestPage: React.FC = () => {
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffPollError, setHandoffPollError] = useState('');
   const [handoffAfterId, setHandoffAfterId] = useState(0);
+  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
+  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [callRoomId, setCallRoomId] = useState<string | null>(null);
+  const [callBusy, setCallBusy] = useState(false);
+  const [callError, setCallError] = useState('');
   const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
   const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
   const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
@@ -377,6 +396,12 @@ const AgentTestPage: React.FC = () => {
     const ratio = handoffRemainingSeconds / handoffWaitTimeoutSeconds;
     return Math.max(0, Math.min(100, Math.round(ratio * 100)));
   }, [handoffStatus, handoffRemainingSeconds, handoffWaitTimeoutSeconds]);
+
+  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+    const safeRoom = encodeURIComponent(roomId);
+    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
+  };
 
   const sessionStorageKey = useMemo(() => `public_agent_session_${widgetId || 'unknown'}`, [widgetId]);
 
@@ -493,6 +518,11 @@ const AgentTestPage: React.FC = () => {
     setHandoffStatus(null);
     setHandoffPollError('');
     setHandoffAfterId(0);
+    setCallStatus('none');
+    setCallMode('video');
+    setCallRoomId(null);
+    setCallBusy(false);
+    setCallError('');
     handoffSeenMessageIdsRef.current.clear();
     handoffPromptedChatIdRef.current = null;
     lastHandoffStatusRef.current = null;
@@ -522,6 +552,11 @@ const AgentTestPage: React.FC = () => {
       setHandoffStatus(null);
       setHandoffPollError('');
       setHandoffAfterId(0);
+      setCallStatus('none');
+      setCallMode('video');
+      setCallRoomId(null);
+      setCallBusy(false);
+      setCallError('');
       handoffSeenMessageIdsRef.current.clear();
       handoffPromptedChatIdRef.current = null;
       lastHandoffStatusRef.current = null;
@@ -584,6 +619,9 @@ const AgentTestPage: React.FC = () => {
       setHandoffChatId(data.chat_id);
       setHandoffStatus(nextStatus);
       setHandoffOpen(isActive);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
@@ -628,6 +666,9 @@ const AgentTestPage: React.FC = () => {
 
       setHandoffStatus(nextStatus);
       setHandoffOpen(isActive);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
@@ -701,6 +742,30 @@ const AgentTestPage: React.FC = () => {
     if (position === 'top-left') return { left: 16, top: 16 };
     return { right: 16, bottom: 16 };
   }, [position]);
+
+  const getHeaderIconButtonSx = (highlight = false) => ({
+    color: chatHeaderFontColor,
+    minWidth: 30,
+    width: 30,
+    height: 30,
+    borderRadius: '10px',
+    border: highlight ? '1px solid rgba(255,255,255,0.95)' : '1px solid rgba(255,255,255,0.35)',
+    bgcolor: highlight ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.2)',
+    fontSize: '1.05rem',
+    fontWeight: 700,
+    boxShadow: highlight ? '0 0 0 2px rgba(255,255,255,0.22), 0 0 14px rgba(16,185,129,0.55)' : 'none',
+    transition: 'all 180ms ease',
+    '&:hover': {
+      bgcolor: highlight ? 'rgba(16,185,129,0.42)' : 'rgba(255,255,255,0.3)',
+      transform: 'translateY(-1px)',
+    },
+    '&.Mui-disabled': {
+      color: 'rgba(255,255,255,0.72)',
+      opacity: 0.62,
+      borderColor: 'rgba(255,255,255,0.28)',
+      bgcolor: 'rgba(255,255,255,0.12)',
+    },
+  });
 
   const sendMessage = async (
     overrideText?: string,
@@ -959,6 +1024,81 @@ const AgentTestPage: React.FC = () => {
     } finally {
       setSending(false);
     }
+  };
+
+  const requestVideoCall = async () => {
+    if (!canUseChat || !widgetId || !sessionId || callBusy) return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/request-video-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          widget_id: widgetId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.detail || 'Failed to request video call');
+      }
+
+      const data = (await response.json()) as HandoffSessionResponse;
+      setHandoffChatId(data.chat_id || null);
+      setHandoffStatus(data.status || null);
+      setHandoffOpen(data.status === 'waiting_for_agent' || data.status === 'assigned');
+      setCallStatus(data.call_status || 'requested');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Video call request sent. A handoff user will join shortly.' },
+      ]);
+      if (data.chat_id) {
+        await loadHandoffMessages(data.chat_id, true);
+      }
+    } catch (err: any) {
+      setCallError(err?.message || 'Failed to request video call');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const endLiveCall = async () => {
+    if (!canUseChat || !widgetId || !sessionId || callBusy || callStatus === 'none') return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/end-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          widget_id: widgetId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.detail || 'Failed to end call');
+      }
+
+      const data = (await response.json()) as HandoffSessionResponse;
+      setCallStatus(data.call_status || 'ended');
+      setCallMode((data.call_mode as 'video' | 'audio') || callMode);
+      setCallRoomId(data.call_room_id || callRoomId);
+    } catch (err: any) {
+      setCallError(err?.message || 'Failed to end call');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const joinLiveCall = () => {
+    if (!callRoomId) return;
+    window.open(getMeetingUrl(callRoomId, callMode), '_blank', 'noopener,noreferrer');
   };
 
   const handleLeadSubmit = async () => {
@@ -1423,6 +1563,33 @@ const AgentTestPage: React.FC = () => {
             <Stack direction="row" spacing={0.85}>
               <Button
                 size="small"
+                onClick={requestVideoCall}
+                sx={getHeaderIconButtonSx(false)}
+                disabled={callBusy || sending || callStatus === 'requested' || callStatus === 'active'}
+                title="Request video call"
+              >
+                📹
+              </Button>
+              <Button
+                size="small"
+                onClick={joinLiveCall}
+                sx={getHeaderIconButtonSx(Boolean(callRoomId && callStatus === 'active'))}
+                disabled={!callRoomId || callStatus !== 'active'}
+                title="Join live call"
+              >
+                🔗
+              </Button>
+              <Button
+                size="small"
+                onClick={endLiveCall}
+                sx={getHeaderIconButtonSx(false)}
+                disabled={callBusy || callStatus !== 'active'}
+                title="End live call"
+              >
+                📵
+              </Button>
+              <Button
+                size="small"
                 onClick={startFreshSession}
                 sx={{
                   color: chatHeaderFontColor,
@@ -1541,6 +1708,12 @@ const AgentTestPage: React.FC = () => {
                   </Stack>
                 ) : null}
                 <Stack direction="row" spacing={0.8}>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Call: ${callStatus}${callStatus === 'active' ? ` (${callMode})` : ''}`}
+                    sx={{ fontWeight: 600 }}
+                  />
                   <Button
                     size="small"
                     variant="outlined"
@@ -1556,6 +1729,11 @@ const AgentTestPage: React.FC = () => {
                   {handoffPollError ? (
                     <Typography sx={{ fontSize: '0.72rem', color: '#dc2626', alignSelf: 'center' }}>
                       {handoffPollError}
+                    </Typography>
+                  ) : null}
+                  {callError ? (
+                    <Typography sx={{ fontSize: '0.72rem', color: '#dc2626', alignSelf: 'center' }}>
+                      {callError}
                     </Typography>
                   ) : null}
                 </Stack>

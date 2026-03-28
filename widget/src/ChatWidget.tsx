@@ -161,6 +161,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffAfterId, setHandoffAfterId] = useState(0);
   const [handoffError, setHandoffError] = useState('');
+  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
+  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [callRoomId, setCallRoomId] = useState<string | null>(null);
+  const [callBusy, setCallBusy] = useState(false);
+  const [callError, setCallError] = useState('');
   const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
   const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
   const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
@@ -192,6 +197,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS['bot-robot'];
   const userIconGlyph = USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS['user-person'];
   const headerTextColor = (chatHeaderFontColor || '').trim() || '#ffffff';
+
+  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+    const safeRoom = encodeURIComponent(roomId);
+    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
+  };
 
   const shopDomain = useMemo(() => shop?.domain || shop?.shop_domain || undefined, [shop]);
   const customerId = useMemo(() => user?.id || user?.customer_id || undefined, [user]);
@@ -303,6 +314,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setHandoffStatus(null);
     setHandoffAfterId(0);
     setHandoffError('');
+    setCallStatus('none');
+    setCallMode('video');
+    setCallRoomId(null);
+    setCallBusy(false);
+    setCallError('');
     setHandoffWaitCycle(1);
     setHandoffWaitingExpiresAt(null);
     setHandoffWaitTimeoutSeconds(120);
@@ -338,6 +354,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setHandoffActive(isActive);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
         setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
       }
@@ -375,6 +394,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setHandoffActive(isActive);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
         setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
       }
@@ -876,6 +898,62 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     }
   };
 
+  const handleRequestVideoCall = async () => {
+    if (!widgetId || callBusy || loading) return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const data = await chatAPI.current.requestVideoCall(sessionId, widgetId);
+      if (!data) {
+        setCallError('Could not request video call right now.');
+        return;
+      }
+
+      setHandoffChatId(data.chat_id || null);
+      setHandoffStatus(data.status || null);
+      setHandoffActive(data.status === 'waiting_for_agent' || data.status === 'assigned');
+      setCallStatus(data.call_status || 'requested');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Video call request sent. A live user will join shortly.' },
+      ]);
+      if (data.chat_id) {
+        await loadHandoffMessages(data.chat_id, true);
+      }
+    } catch {
+      setCallError('Could not request video call right now.');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const handleEndCall = async () => {
+    if (!widgetId || callBusy || callStatus === 'none') return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const data = await chatAPI.current.endHandoffCall(sessionId, widgetId);
+      if (!data) {
+        setCallError('Could not end call right now.');
+        return;
+      }
+      setCallStatus(data.call_status || 'ended');
+      setCallMode((data.call_mode as 'video' | 'audio') || callMode);
+      setCallRoomId(data.call_room_id || callRoomId);
+    } catch {
+      setCallError('Could not end call right now.');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const handleJoinCall = () => {
+    if (!callRoomId) return;
+    window.open(getMeetingUrl(callRoomId, callMode), '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div
       className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
@@ -902,6 +980,30 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           >
             <h3>{name}</h3>
             <div className="chatbot-widget-header-actions">
+              <button
+                className="chatbot-widget-header-btn chatbot-widget-call-btn"
+                onClick={handleRequestVideoCall}
+                title="Request video call"
+                disabled={callBusy || loading || callStatus === 'requested' || callStatus === 'active'}
+              >
+                <span className="chatbot-header-emoji" aria-hidden="true">📹</span>
+              </button>
+              <button
+                className={`chatbot-widget-header-btn chatbot-widget-call-btn ${callRoomId && callStatus === 'active' ? 'is-join-ready' : ''}`}
+                onClick={handleJoinCall}
+                title="Join live call"
+                disabled={!callRoomId || callStatus !== 'active'}
+              >
+                <span className="chatbot-header-emoji" aria-hidden="true">🔗</span>
+              </button>
+              <button
+                className="chatbot-widget-header-btn chatbot-widget-call-btn"
+                onClick={handleEndCall}
+                title="End live call"
+                disabled={callBusy || callStatus !== 'active'}
+              >
+                <span className="chatbot-header-emoji" aria-hidden="true">📵</span>
+              </button>
               <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>
               <button className="chatbot-widget-header-btn" onClick={() => setShowEmailForm((v) => !v)} title="Email this conversation">✉</button>
               <button className="chatbot-widget-header-btn" onClick={openAppointmentForm} title="Book appointment">📅</button>
@@ -944,6 +1046,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   </div>
                 ) : null}
                 <div className="chatbot-handoff-actions">
+                  <span className="chatbot-handoff-call-chip">
+                    Call: {callStatus}{callStatus === 'active' ? ` (${callMode})` : ''}
+                  </span>
                   <button
                     className="chatbot-inline-button secondary"
                     onClick={() => {
@@ -956,6 +1061,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     Refresh status
                   </button>
                   {handoffError ? <span className="chatbot-handoff-error">{handoffError}</span> : null}
+                  {callError ? <span className="chatbot-handoff-error">{callError}</span> : null}
                 </div>
               </div>
             )}

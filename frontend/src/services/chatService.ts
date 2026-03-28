@@ -1,6 +1,20 @@
 import api from './api';
 import { ChatMessage, ChatResponse, ConversationHistoryItem, TranslateRequest, TranslateResponse, AppointmentBookingRequest, AppointmentBookingResponse } from '../types';
 
+export interface ChatHandoffStatus {
+  active: boolean;
+  chat_id: string | null;
+  status: string | null;
+  assigned_agent_id: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
+  updated_at?: string | null;
+}
+
 export const chatService = {
   async sendMessage(message: ChatMessage): Promise<ChatResponse> {
     const response = await api.post<ChatResponse>('/api/chat', message);
@@ -85,6 +99,42 @@ export const chatService = {
 
   async getFeatureFlags(): Promise<{ subscription_active: boolean; days_left: number; voice_chat_enabled: boolean; multilingual_text_enabled: boolean; human_handoff_enabled?: boolean }> {
     const response = await api.get('/api/admin/features');
+    return response.data;
+  },
+
+  async getHandoffSessionStatus(sessionId: string, widgetId: string, chatId?: string): Promise<ChatHandoffStatus> {
+    const response = await api.get<ChatHandoffStatus>('/api/chat/handoff/session', {
+      params: {
+        session_id: sessionId,
+        widget_id: widgetId,
+        ...(chatId ? { chat_id: chatId } : {}),
+      },
+    });
+    return response.data;
+  },
+
+  async requestVideoCall(sessionId: string, widgetId: string): Promise<ChatHandoffStatus> {
+    const response = await api.post<ChatHandoffStatus>('/api/chat/handoff/request-video-call', {
+      session_id: sessionId,
+      widget_id: widgetId,
+    });
+    return response.data;
+  },
+
+  async setHandoffCallMode(sessionId: string, widgetId: string, mode: 'video' | 'audio'): Promise<ChatHandoffStatus> {
+    const response = await api.post<ChatHandoffStatus>('/api/chat/handoff/call-mode', {
+      session_id: sessionId,
+      widget_id: widgetId,
+      mode,
+    });
+    return response.data;
+  },
+
+  async endHandoffCall(sessionId: string, widgetId: string): Promise<ChatHandoffStatus> {
+    const response = await api.post<ChatHandoffStatus>('/api/chat/handoff/end-call', {
+      session_id: sessionId,
+      widget_id: widgetId,
+    });
     return response.data;
   },
 };

@@ -1236,6 +1236,17 @@ class AppointmentBookingResponse(BaseModel):
     message: str
 
 
+class HandoffVideoCallRequest(BaseModel):
+    session_id: str
+    widget_id: str
+
+
+class HandoffCallModeRequest(BaseModel):
+    session_id: str
+    widget_id: str
+    mode: str
+
+
 @router.get("/suggested-questions", response_model=SuggestedQuestionsResponse)
 async def suggested_questions(
     widget_id: str,
@@ -2203,6 +2214,12 @@ async def get_handoff_session_status(
             "chat_id": None,
             "status": None,
             "assigned_agent_id": None,
+            "call_room_id": None,
+            "call_status": "none",
+            "call_mode": "video",
+            "call_requested_at": None,
+            "call_started_at": None,
+            "call_ended_at": None,
             "updated_at": None,
             "wait_cycle": None,
             "waiting_expires_at": None,
@@ -2218,6 +2235,12 @@ async def get_handoff_session_status(
         "chat_id": session.chat_id,
         "status": session.status,
         "assigned_agent_id": session.assigned_agent_id,
+        "call_room_id": session.call_room_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_requested_at": session.call_requested_at,
+        "call_started_at": session.call_started_at,
+        "call_ended_at": session.call_ended_at,
         "updated_at": session.updated_at,
         "wait_cycle": session.wait_cycle,
         "waiting_expires_at": session.waiting_expires_at,
@@ -2256,6 +2279,12 @@ async def get_handoff_messages(
             "chat_id": chat_id,
             "status": None,
             "assigned_agent_id": None,
+            "call_room_id": None,
+            "call_status": "none",
+            "call_mode": "video",
+            "call_requested_at": None,
+            "call_started_at": None,
+            "call_ended_at": None,
             "wait_cycle": None,
             "waiting_expires_at": None,
             "waiting_timeout_notified": None,
@@ -2275,6 +2304,12 @@ async def get_handoff_messages(
         "chat_id": handoff_session.chat_id,
         "status": handoff_session.status,
         "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
         "wait_cycle": handoff_session.wait_cycle,
         "waiting_expires_at": handoff_session.waiting_expires_at,
         "waiting_timeout_notified": handoff_session.waiting_timeout_notified,
@@ -2290,6 +2325,194 @@ async def get_handoff_messages(
             for row in rows
             if row.sender_type != "system"
         ],
+    }
+
+
+@router.post("/handoff/request-video-call")
+async def request_handoff_video_call(
+    payload: HandoffVideoCallRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    limits = get_effective_limits(db, widget_config.organization_id)
+    if not bool(limits.get("human_handoff_enabled")):
+        raise HTTPException(status_code=403, detail="Human handoff is disabled for this organization")
+
+    handoff_session = _create_or_get_handoff_session(
+        db,
+        widget_config.organization_id,
+        payload.session_id,
+        payload.widget_id,
+        "User requested video call",
+        "User requested a live video call.",
+        "video_call_request",
+    )
+
+    now = datetime.utcnow()
+    if not (handoff_session.call_room_id or "").strip():
+        handoff_session.call_room_id = f"ai-bot-{widget_config.organization_id}-{handoff_session.id}-{int(now.timestamp())}"
+    handoff_session.call_mode = "video"
+    handoff_session.call_status = "requested"
+    handoff_session.call_requested_at = now
+    handoff_session.call_started_at = None
+    handoff_session.call_ended_at = None
+    handoff_session.updated_at = now
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=None,
+        message="Video call requested by user.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_video_call_requested",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
+    }
+
+
+@router.post("/handoff/call-mode")
+async def set_handoff_call_mode(
+    payload: HandoffCallModeRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    handoff_session = _get_open_handoff_session(
+        db,
+        payload.session_id,
+        payload.widget_id,
+        widget_config.organization_id,
+    )
+    if not handoff_session:
+        raise HTTPException(status_code=404, detail="No active handoff session found")
+
+    requested_mode = (payload.mode or "").strip().lower()
+    if requested_mode not in {"video", "audio"}:
+        raise HTTPException(status_code=400, detail="mode must be video or audio")
+
+    if handoff_session.call_status not in {"requested", "active"}:
+        raise HTTPException(status_code=409, detail="No requested/active call found")
+
+    handoff_session.call_mode = requested_mode
+    handoff_session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=(current_user.id if current_user else None),
+        message=f"Call switched to {requested_mode} mode.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_call_mode_changed",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
+    }
+
+
+@router.post("/handoff/end-call")
+async def end_handoff_call_from_chat(
+    payload: HandoffVideoCallRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    handoff_session = _get_open_handoff_session(
+        db,
+        payload.session_id,
+        payload.widget_id,
+        widget_config.organization_id,
+    )
+    if not handoff_session:
+        raise HTTPException(status_code=404, detail="No active handoff session found")
+
+    handoff_session.call_status = "ended"
+    handoff_session.call_ended_at = datetime.utcnow()
+    handoff_session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=(current_user.id if current_user else None),
+        message="Live call ended.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_call_ended",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
     }
 
 

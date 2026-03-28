@@ -1756,7 +1756,12 @@ const CampaignManagementPage: React.FC = () => {
                 {(createCampaignType !== 'email' || emailContentMode === 'manual') && (
                   <TextField
                     size="small"
-                    sx={compactInputSx}
+                    sx={{
+                      ...compactInputSx,
+                      ...(emailEditorMode === 'html'
+                        ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } }
+                        : {}),
+                    }}
                     fullWidth
                     multiline
                     minRows={emailEditorMode === 'html' ? 9 : 6}
@@ -1775,7 +1780,6 @@ const CampaignManagementPage: React.FC = () => {
                         ? '<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>'
                         : 'Write your campaign message here...'
                     }
-                    sx={emailEditorMode === 'html' ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } } : undefined}
                   />
                 )}
 

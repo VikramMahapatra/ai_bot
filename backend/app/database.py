@@ -174,6 +174,26 @@ def init_db():
                 pass
 
             try:
+                cols = conn.execute(text("PRAGMA table_info('handoff_sessions')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "call_room_id" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_room_id TEXT"))
+                if "call_status" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_status TEXT DEFAULT 'none'"))
+                if "call_mode" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_mode TEXT DEFAULT 'video'"))
+                if "call_requested_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_requested_at DATETIME"))
+                if "call_started_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_started_at DATETIME"))
+                if "call_ended_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_ended_at DATETIME"))
+                conn.execute(text("UPDATE handoff_sessions SET call_status = 'none' WHERE call_status IS NULL OR TRIM(call_status) = ''"))
+                conn.execute(text("UPDATE handoff_sessions SET call_mode = 'video' WHERE call_mode IS NULL OR TRIM(call_mode) = ''"))
+            except Exception:
+                pass
+
+            try:
                 conn.commit()
             except Exception:
                 pass
