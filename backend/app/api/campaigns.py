@@ -16,7 +16,7 @@ from app.database import get_db
 from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
 from app.models.products import Product
 from app.services.email_service import send_campaign_email
-from app.services.campaign_email_ai_service import generate_email_variants_from_prompt
+from app.services.campaign_email_ai_service import generate_email_variants_from_prompt, evaluate_email_spam_score
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 
 
@@ -62,6 +62,13 @@ class CampaignCreateRequest(BaseModel):
 class EmailVariantGenerateRequest(BaseModel):
     campaign_name: Optional[str] = None
     prompt_context: str
+
+
+class EmailSpamScoreRequest(BaseModel):
+    campaign_name: Optional[str] = None
+    prompt_context: str
+    subjects: List[str]
+    bodies: List[str]
 
 
 class CampaignStatusRequest(BaseModel):
@@ -338,6 +345,26 @@ async def generate_email_variants(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to generate email variants: {str(exc)}")
+
+
+@router.post("/email/spam-score")
+async def score_email_variants_for_spam(
+    payload: EmailSpamScoreRequest,
+    current_user: User = Depends(require_admin),
+):
+    del current_user
+    try:
+        data = evaluate_email_spam_score(
+            campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
+            prompt_context=payload.prompt_context,
+            subjects=payload.subjects,
+            bodies=payload.bodies,
+        )
+        return data
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to score spam risk: {str(exc)}")
 
 
 @router.get("/dashboard/stats")
@@ -747,6 +774,12 @@ async def create_campaign(
     ).first()
     if not contact_list:
         raise HTTPException(status_code=404, detail="contact_list_id not found")
+
+    if not payload.product_id:
+        raise HTTPException(status_code=400, detail="product_id is required")
+
+    if campaign_type == "email" and not (payload.email_subject or "").strip():
+        raise HTTPException(status_code=400, detail="email_subject is required for email campaigns")
 
     if payload.scheduled_time:
         compare_now = datetime.utcnow()

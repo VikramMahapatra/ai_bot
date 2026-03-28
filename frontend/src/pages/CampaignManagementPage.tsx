@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -47,6 +47,10 @@ import TextFieldsIcon from '@mui/icons-material/TextFields';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import KeyboardDoubleArrowUpIcon from '@mui/icons-material/KeyboardDoubleArrowUp';
+import KeyboardDoubleArrowDownIcon from '@mui/icons-material/KeyboardDoubleArrowDown';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
@@ -120,6 +124,24 @@ const getContactListDescription = (list: ContactListItem) => {
   return '-';
 };
 
+type CreateCampaignFieldErrors = {
+  campaignName: boolean;
+  emailSubject: boolean;
+  emailBody: boolean;
+  promptContext: boolean;
+  contactList: boolean;
+  product: boolean;
+};
+
+const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
+  campaignName: false,
+  emailSubject: false,
+  emailBody: false,
+  promptContext: false,
+  contactList: false,
+  product: false,
+};
+
 const CampaignManagementPage: React.FC = () => {
   const theme = useTheme();
   const [tab, setTab] = useState(0);
@@ -183,11 +205,33 @@ const CampaignManagementPage: React.FC = () => {
   const [generatedSubjects, setGeneratedSubjects] = useState<string[]>([]);
   const [generatedBodies, setGeneratedBodies] = useState<string[]>([]);
   const [generatingEmailVariants, setGeneratingEmailVariants] = useState(false);
+  const [spamScoreLoading, setSpamScoreLoading] = useState(false);
+  const [spamScoreResult, setSpamScoreResult] = useState<{
+    overall: {
+      average_spam_score: number;
+      highest_spam_score: number;
+      high_risk_count: number;
+    };
+    combinations: Array<{
+      combo_index: number;
+      subject_index: number;
+      body_index: number;
+      spam_score: number;
+      risk_level: 'low' | 'medium' | 'high';
+      reasons: string[];
+      suggestions: string[];
+    }>;
+    fallback_used?: boolean;
+  } | null>(null);
   const [createMessageTemplate, setCreateMessageTemplate] = useState('');
   const [emailEditorMode, setEmailEditorMode] = useState<'plain' | 'html'>('plain');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [createScheduledTime, setCreateScheduledTime] = useState('');
   const [createContactListId, setCreateContactListId] = useState<number | ''>('');
+  const [createCampaignErrors, setCreateCampaignErrors] = useState<CreateCampaignFieldErrors>(EMPTY_CREATE_CAMPAIGN_ERRORS);
+  const spamTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [spamVisibleStart, setSpamVisibleStart] = useState(0);
+  const spamRowsPerView = 7;
 
   const [previewContacts, setPreviewContacts] = useState<ContactItem[]>([]);
   const [previewSearch, setPreviewSearch] = useState('');
@@ -692,6 +736,13 @@ const CampaignManagementPage: React.FC = () => {
 
       setGeneratedSubjects(result.subjects || []);
       setGeneratedBodies(result.bodies || []);
+      setSpamScoreResult(null);
+      setSpamVisibleStart(0);
+      setCreateCampaignErrors((prev) => ({
+        ...prev,
+        promptContext: false,
+        emailSubject: false,
+      }));
 
       if ((result.bodies || []).length > 0) {
         setCreateMessageTemplate(result.bodies[0]);
@@ -707,6 +758,61 @@ const CampaignManagementPage: React.FC = () => {
     } finally {
       setGeneratingEmailVariants(false);
     }
+  };
+
+  const handleScorePromptEmailSpam = async () => {
+    if (!emailPromptContext.trim()) {
+      setCreateCampaignErrors((prev) => ({ ...prev, promptContext: true }));
+      showError('Prompt context is required before spam scoring');
+      return;
+    }
+
+    const subjects = ensureFive(generatedSubjects).map((item) => item.trim()).filter(Boolean);
+    const bodies = ensureFive(generatedBodies).map((item) => item.trim()).filter(Boolean);
+
+    if (subjects.length < 5 || bodies.length < 5) {
+      showError('Generate 5x5 variants first, then run spam score');
+      return;
+    }
+
+    setSpamScoreLoading(true);
+    setError('');
+    try {
+      const result = await campaignService.scoreEmailSpamRisk({
+        campaign_name: createCampaignName || 'Campaign',
+        prompt_context: emailPromptContext,
+        subjects: ensureFive(generatedSubjects),
+        bodies: ensureFive(generatedBodies),
+      });
+      setSpamScoreResult(result);
+      setSpamVisibleStart(0);
+      showSuccess(
+        `Spam score complete. Avg: ${result.overall.average_spam_score}, Highest: ${result.overall.highest_spam_score}, High risk combos: ${result.overall.high_risk_count}.`
+      );
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'Failed to evaluate spam score');
+    } finally {
+      setSpamScoreLoading(false);
+    }
+  };
+
+  const handleScrollSpamTable = (direction: 'up' | 'down' | 'top' | 'bottom') => {
+    const total = spamScoreResult?.combinations?.length || 0;
+    const maxStart = Math.max(0, total - spamRowsPerView);
+
+    if (direction === 'top') {
+      setSpamVisibleStart(0);
+      return;
+    }
+    if (direction === 'bottom') {
+      setSpamVisibleStart(maxStart);
+      return;
+    }
+    if (direction === 'up') {
+      setSpamVisibleStart((prev) => Math.max(0, prev - spamRowsPerView));
+      return;
+    }
+    setSpamVisibleStart((prev) => Math.min(maxStart, prev + spamRowsPerView));
   };
 
   const handleEditGeneratedSubject = (index: number, value: string) => {
@@ -732,25 +838,42 @@ const CampaignManagementPage: React.FC = () => {
   };
 
   const handleCreateCampaign = async () => {
-    if (!createCampaignName.trim()) {
-      showError('Campaign name is required');
+    const nextErrors: CreateCampaignFieldErrors = {
+      campaignName: !createCampaignName.trim(),
+      emailSubject: createCampaignType === 'email' ? !emailSubject.trim() : false,
+      emailBody:
+        createCampaignType === 'email' && emailContentMode === 'manual'
+          ? !createMessageTemplate.trim()
+          : createCampaignType !== 'email'
+            ? !createMessageTemplate.trim()
+            : false,
+      promptContext: createCampaignType === 'email' && emailContentMode === 'prompt' ? !emailPromptContext.trim() : false,
+      contactList: !createContactListId,
+      product: !createProductId,
+    };
+
+    setCreateCampaignErrors(nextErrors);
+
+    const missing: string[] = [];
+    if (nextErrors.campaignName) missing.push('Campaign Name');
+    if (nextErrors.emailSubject) missing.push('Email Subject');
+    if (nextErrors.contactList) missing.push('Contact List');
+    if (nextErrors.product) missing.push('Product');
+    if (nextErrors.emailBody) missing.push(createCampaignType === 'email' ? 'Email Body' : 'Message Template');
+    if (nextErrors.promptContext) missing.push('Prompt Context');
+
+    if (missing.length > 0) {
+      showError(`Please fill required fields: ${missing.join(', ')}`);
       return;
     }
-    if (createCampaignType !== 'email' && !createMessageTemplate.trim()) {
-      showError('Message template is required');
-      return;
-    }
-    if (createCampaignType === 'email' && emailContentMode === 'manual' && !createMessageTemplate.trim()) {
-      showError('Email body is required in manual mode');
-      return;
-    }
-    if (createCampaignType === 'email' && emailContentMode === 'prompt' && !emailPromptContext.trim()) {
-      showError('Prompt context is required in prompt mode');
-      return;
-    }
-    if (!createContactListId) {
-      showError('Select a contact list to target recipients');
-      return;
+
+    if (createCampaignType === 'email' && emailContentMode === 'prompt') {
+      const subjects = ensureFive(generatedSubjects).map((item) => item.trim()).filter(Boolean);
+      const bodies = ensureFive(generatedBodies).map((item) => item.trim()).filter(Boolean);
+      if (subjects.length < 5 || bodies.length < 5) {
+        showError('Generate all 5 subjects and 5 bodies in prompt mode before creating campaign');
+        return;
+      }
     }
 
     setLoading(true);
@@ -780,6 +903,8 @@ const CampaignManagementPage: React.FC = () => {
       setEmailContentMode('manual');
       setCreateScheduledTime('');
       setCreateProductId('');
+      setSpamScoreResult(null);
+      setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
       showSuccess('Campaign created');
       await Promise.all([loadCampaigns(), loadDashboard()]);
       setTab(0);
@@ -876,6 +1001,8 @@ const CampaignManagementPage: React.FC = () => {
       setEmailPromptContext('');
       setGeneratedSubjects([]);
       setGeneratedBodies([]);
+      setSpamScoreResult(null);
+      setSpamVisibleStart(0);
     }
   }, [createCampaignType]);
 
@@ -1251,7 +1378,14 @@ const CampaignManagementPage: React.FC = () => {
                   fullWidth
                   label="Campaign Name"
                   value={createCampaignName}
-                  onChange={(e) => setCreateCampaignName(e.target.value)}
+                  onChange={(e) => {
+                    setCreateCampaignName(e.target.value);
+                    if (createCampaignErrors.campaignName) {
+                      setCreateCampaignErrors((prev) => ({ ...prev, campaignName: false }));
+                    }
+                  }}
+                  error={createCampaignErrors.campaignName}
+                  helperText={createCampaignErrors.campaignName ? 'Campaign name is required' : ' '}
                 />
               </Grid>
               <Grid item xs={12} md={2}>
@@ -1269,13 +1403,22 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
-                <FormControl fullWidth size="small" sx={compactInputSx}>
+                <FormControl fullWidth size="small" sx={compactInputSx} error={createCampaignErrors.contactList}>
                   <InputLabel>Contact List</InputLabel>
                   <Select
                     value={createContactListId}
                     label="Contact List"
-                    onChange={(e) => setCreateContactListId(Number(e.target.value))}
+                    onChange={(e) => {
+                      setCreateContactListId(e.target.value === '' ? '' : Number(e.target.value));
+                      if (createCampaignErrors.contactList) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, contactList: false }));
+                      }
+                    }}
+                    error={createCampaignErrors.contactList}
                   >
+                    <MenuItem value="">
+                      <em>Select Contact List</em>
+                    </MenuItem>
                     {contactLists.map((list) => (
                       <MenuItem key={list.id} value={list.id}>
                         {getContactListLabel(list)}
@@ -1285,15 +1428,20 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={2}>
-                <FormControl fullWidth size="small" sx={compactInputSx}>
+                <FormControl fullWidth size="small" sx={compactInputSx} error={createCampaignErrors.product}>
                   <InputLabel>Product</InputLabel>
                   <Select
                     value={createProductId}
                     label="Product"
-                    onChange={(e) => setCreateProductId(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) => {
+                      setCreateProductId(e.target.value === '' ? '' : Number(e.target.value));
+                      if (createCampaignErrors.product) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, product: false }));
+                      }
+                    }}
                   >
                     <MenuItem value="">
-                      <em>No Product</em>
+                      <em>Select Product</em>
                     </MenuItem>
                     {products.map((item) => (
                       <MenuItem key={item.id} value={item.id}>
@@ -1364,7 +1512,14 @@ const CampaignManagementPage: React.FC = () => {
                         fullWidth
                         label="Email Subject"
                         value={emailSubject}
-                        onChange={(e) => setEmailSubject(e.target.value)}
+                        onChange={(e) => {
+                          setEmailSubject(e.target.value);
+                          if (createCampaignErrors.emailSubject) {
+                            setCreateCampaignErrors((prev) => ({ ...prev, emailSubject: false }));
+                          }
+                        }}
+                        error={createCampaignErrors.emailSubject}
+                        helperText={createCampaignErrors.emailSubject ? 'Email subject is required' : ' '}
                         placeholder="Leave blank to use campaign name"
                       />
 
@@ -1405,7 +1560,14 @@ const CampaignManagementPage: React.FC = () => {
                             minRows={4}
                             label="Prompt Context"
                             value={emailPromptContext}
-                            onChange={(e) => setEmailPromptContext(e.target.value)}
+                            onChange={(e) => {
+                              setEmailPromptContext(e.target.value);
+                              if (createCampaignErrors.promptContext) {
+                                setCreateCampaignErrors((prev) => ({ ...prev, promptContext: false }));
+                              }
+                            }}
+                            error={createCampaignErrors.promptContext}
+                            helperText={createCampaignErrors.promptContext ? 'Prompt context is required for prompt mode' : ' '}
                             placeholder="Describe campaign intent, audience, offer, tone, CTA, and constraints..."
                           />
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
@@ -1424,7 +1586,109 @@ const CampaignManagementPage: React.FC = () => {
                             <Button size="small" variant="outlined" onClick={() => setShowEmailPreview((prev) => !prev)}>
                               {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
                             </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              startIcon={<ErrorOutlineIcon />}
+                              onClick={handleScorePromptEmailSpam}
+                              disabled={spamScoreLoading || generatedSubjects.length < 5 || generatedBodies.length < 5}
+                            >
+                              {spamScoreLoading ? 'Scoring...' : 'Spam Score (5x5)'}
+                            </Button>
                           </Stack>
+
+                          {(generatingEmailVariants || spamScoreLoading) && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>
+                                {generatingEmailVariants
+                                  ? 'Generating 5x5 variants. Please wait...'
+                                  : 'Running spam score across 25 combinations. Please wait...'}
+                              </Typography>
+                              <LinearProgress sx={{ borderRadius: 999 }} />
+                            </Box>
+                          )}
+
+                          {spamScoreResult && (
+                            <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.warning.main, 0.36) }}>
+                              {(() => {
+                                const total = spamScoreResult.combinations.length;
+                                const fromRow = total > 0 ? spamVisibleStart + 1 : 0;
+                                const toRow = Math.min(total, spamVisibleStart + spamRowsPerView);
+                                const maxStart = Math.max(0, total - spamRowsPerView);
+                                const canUp = spamVisibleStart > 0;
+                                const canDown = spamVisibleStart < maxStart;
+                                return (
+                                  <>
+                              {spamScoreResult.fallback_used && (
+                                <Alert severity="info" sx={{ mb: 1 }}>
+                                  Spam score used fallback heuristic due to model timeout/availability. You can retry for model-based scoring.
+                                </Alert>
+                              )}
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1 }}>
+                                <Chip color="warning" variant="outlined" label={`Avg Spam Score: ${spamScoreResult.overall.average_spam_score}`} />
+                                <Chip color="warning" variant="outlined" label={`Highest: ${spamScoreResult.overall.highest_spam_score}`} />
+                                <Chip color={spamScoreResult.overall.high_risk_count > 0 ? 'error' : 'success'} variant="outlined" label={`High Risk Combos: ${spamScoreResult.overall.high_risk_count}`} />
+                              </Stack>
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1 }}>
+                                <Button size="small" variant="outlined" startIcon={<KeyboardDoubleArrowUpIcon />} onClick={() => handleScrollSpamTable('top')} disabled={!canUp}>
+                                  Top
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<ArrowUpwardIcon />} onClick={() => handleScrollSpamTable('up')} disabled={!canUp}>
+                                  Up
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<ArrowDownwardIcon />} onClick={() => handleScrollSpamTable('down')} disabled={!canDown}>
+                                  Down
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<KeyboardDoubleArrowDownIcon />} onClick={() => handleScrollSpamTable('bottom')} disabled={!canDown}>
+                                  Bottom
+                                </Button>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                  Showing {fromRow}-{toRow} of {total} combinations
+                                </Typography>
+                              </Stack>
+                              <TableContainer
+                                id="spam-score-table-scroll"
+                                ref={spamTableContainerRef}
+                                sx={{ maxHeight: 280, overflowY: 'auto', overflowX: 'auto' }}
+                              >
+                                <Table size="small" stickyHeader>
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell>Combo</TableCell>
+                                      <TableCell>Subject</TableCell>
+                                      <TableCell>Body</TableCell>
+                                      <TableCell>Score</TableCell>
+                                      <TableCell>Risk</TableCell>
+                                      <TableCell>Notes</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {spamScoreResult.combinations.slice(spamVisibleStart, spamVisibleStart + spamRowsPerView).map((row) => (
+                                      <TableRow key={`spam-score-${row.combo_index}`}>
+                                        <TableCell>{row.combo_index}</TableCell>
+                                        <TableCell>{row.subject_index}</TableCell>
+                                        <TableCell>{row.body_index}</TableCell>
+                                        <TableCell>{row.spam_score}</TableCell>
+                                        <TableCell>
+                                          <Chip
+                                            size="small"
+                                            label={row.risk_level}
+                                            color={row.risk_level === 'high' ? 'error' : row.risk_level === 'medium' ? 'warning' : 'success'}
+                                            variant="outlined"
+                                          />
+                                        </TableCell>
+                                        <TableCell>{(row.reasons || []).slice(0, 1).join('; ') || '-'}</TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+                                  </>
+                                );
+                              })()}
+                            </Paper>
+                          )}
 
                           {(generatedSubjects.length > 0 || generatedBodies.length > 0) && (
                             <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.primary.main, 0.2) }}>
@@ -1498,7 +1762,14 @@ const CampaignManagementPage: React.FC = () => {
                     minRows={emailEditorMode === 'html' ? 9 : 6}
                     label={createCampaignType === 'email' ? `Email Template (${emailEditorMode.toUpperCase()})` : 'Message Template'}
                     value={createMessageTemplate}
-                    onChange={(e) => setCreateMessageTemplate(e.target.value)}
+                    onChange={(e) => {
+                      setCreateMessageTemplate(e.target.value);
+                      if (createCampaignErrors.emailBody) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, emailBody: false }));
+                      }
+                    }}
+                    error={createCampaignErrors.emailBody}
+                    helperText={createCampaignErrors.emailBody ? (createCampaignType === 'email' ? 'Email body is required' : 'Message template is required') : ' '}
                     placeholder={
                       createCampaignType === 'email' && emailEditorMode === 'html'
                         ? '<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>'
@@ -1506,6 +1777,16 @@ const CampaignManagementPage: React.FC = () => {
                     }
                     sx={emailEditorMode === 'html' ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } } : undefined}
                   />
+                )}
+
+                {(createCampaignErrors.contactList || createCampaignErrors.product) && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {createCampaignErrors.contactList && createCampaignErrors.product
+                      ? 'Contact List and Product are required.'
+                      : createCampaignErrors.contactList
+                        ? 'Contact List is required.'
+                        : 'Product is required.'}
+                  </Alert>
                 )}
 
                 {createCampaignType === 'email' && emailContentMode === 'prompt' && (

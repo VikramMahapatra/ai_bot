@@ -864,7 +864,7 @@ const ReportsPage: React.FC = () => {
                   <TableCell align="right">Messages</TableCell>
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">Response Time</TableCell>
-                  <TableCell align="right">Satisfaction</TableCell>
+                  <TableCell>AI Funnel</TableCell>
                   <TableCell>Outcome</TableCell>
                   <TableCell>Lead</TableCell>
                   <TableCell>Date</TableCell>
@@ -884,10 +884,12 @@ const ReportsPage: React.FC = () => {
                     <TableCell align="right">
                       {conv.average_response_time?.toFixed(2)}s
                     </TableCell>
-                    <TableCell align="right">
-                      {conv.user_satisfaction
-                        ? `${conv.user_satisfaction.toFixed(1)}/5`
-                        : 'N/A'}
+                    <TableCell>
+                      {conv.ai_funnel ? (
+                        <Chip label={conv.ai_funnel} size="small" color="secondary" variant="outlined" />
+                      ) : (
+                        <Chip label="Unassigned" variant="outlined" size="small" />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Chip

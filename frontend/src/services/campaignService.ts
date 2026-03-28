@@ -122,6 +122,26 @@ export interface GenerateEmailVariantsResponse {
   combinations: number;
 }
 
+export interface SpamScoreCombination {
+  combo_index: number;
+  subject_index: number;
+  body_index: number;
+  spam_score: number;
+  risk_level: 'low' | 'medium' | 'high';
+  reasons: string[];
+  suggestions: string[];
+}
+
+export interface SpamScoreResponse {
+  overall: {
+    average_spam_score: number;
+    highest_spam_score: number;
+    high_risk_count: number;
+  };
+  combinations: SpamScoreCombination[];
+  fallback_used?: boolean;
+}
+
 export interface CampaignFilters {
   search?: string;
   campaign_type?: CampaignType;
@@ -169,6 +189,16 @@ export const campaignService = {
 
   async generateEmailVariants(payload: GenerateEmailVariantsPayload): Promise<GenerateEmailVariantsResponse> {
     const response = await api.post('/api/admin/campaigns/email/generate-variants', payload);
+    return response.data;
+  },
+
+  async scoreEmailSpamRisk(payload: {
+    campaign_name?: string;
+    prompt_context: string;
+    subjects: string[];
+    bodies: string[];
+  }): Promise<SpamScoreResponse> {
+    const response = await api.post('/api/admin/campaigns/email/spam-score', payload);
     return response.data;
   },
 

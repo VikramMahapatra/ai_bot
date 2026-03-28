@@ -3,11 +3,12 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from openai import OpenAI
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import Conversation
+from app.models import Conversation, Lead, FunnelCategory
 
 import logging
 
@@ -82,6 +83,48 @@ def _classify_outcome_with_llm(transcript: str) -> str:
     return _normalize_outcome(content)
 
 
+def _classify_funnel_stage_with_llm(transcript: str, categories: List[FunnelCategory]) -> Optional[str]:
+    if not transcript.strip() or not categories:
+        return None
+
+    valid_keys = {str(item.key).strip().lower() for item in categories if (item.key or '').strip()}
+    if not valid_keys:
+        return None
+
+    category_lines = [f"- {item.key}: {item.name}" for item in categories if (item.key or '').strip()]
+
+    response = client.chat.completions.create(
+        model=settings.OUTCOME_CLASSIFICATION_MODEL,
+        temperature=0,
+        max_tokens=24,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a sales funnel classifier. "
+                    "Classify the full session into exactly one funnel category key from the provided list. "
+                    "Return only the key, nothing else."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Available funnel category keys:\n"
+                    + "\n".join(category_lines)
+                    + "\n\nSession transcript:\n"
+                    + transcript
+                ),
+            },
+        ],
+    )
+
+    content = (response.choices[0].message.content if response.choices else "") or ""
+    normalized = content.strip().lower().replace(' ', '_')
+    if normalized in valid_keys:
+        return normalized
+    return None
+
+
 def process_pending_session_outcomes(db: Session, batch_size: int = 100, organization_id: Optional[int] = None) -> Tuple[int, int]:
     """Process pending session outcomes where conversation.outcome is NULL.
 
@@ -105,6 +148,7 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
 
     processed = 0
     failed = 0
+    funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
 
     for org_id, session_id in pending_sessions:
         try:
@@ -119,6 +163,16 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
             transcript = _build_transcript(rows)
             outcome = _classify_outcome_with_llm(transcript)
 
+            if org_id not in funnel_categories_by_org:
+                funnel_categories_by_org[org_id] = db.query(FunnelCategory).filter(
+                    FunnelCategory.organization_id == org_id,
+                    FunnelCategory.is_active == True,
+                ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
+            inferred_funnel_stage = _classify_funnel_stage_with_llm(
+                transcript,
+                funnel_categories_by_org.get(org_id, []),
+            )
+
             db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
@@ -127,6 +181,17 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                 {Conversation.outcome: outcome},
                 synchronize_session=False,
             )
+
+            # Keep leads in sync with the resolved conversation outcome.
+            lead_rows = db.query(Lead).filter(
+                Lead.organization_id == org_id,
+                Lead.session_id == session_id,
+            ).all()
+            for lead in lead_rows:
+                if (lead.lead_outcome or "").strip().lower() != outcome:
+                    lead.lead_outcome = outcome
+                if inferred_funnel_stage and not (lead.funnel_stage or '').strip():
+                    lead.funnel_stage = inferred_funnel_stage
 
             db.commit()
             processed += 1
@@ -144,6 +209,143 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
     return processed, failed
 
 
+def process_pending_lead_outcomes(
+    db: Session,
+    batch_size: int = 100,
+    organization_id: Optional[int] = None,
+) -> Tuple[int, int]:
+    """Backfill lead_outcome from existing conversation outcomes for matching sessions."""
+    lead_query = db.query(
+        Lead.organization_id,
+        Lead.session_id,
+    ).filter(
+        Lead.session_id.isnot(None),
+        Lead.lead_outcome.is_(None),
+    )
+
+    if organization_id is not None:
+        lead_query = lead_query.filter(Lead.organization_id == organization_id)
+
+    pending_lead_sessions = lead_query.group_by(
+        Lead.organization_id,
+        Lead.session_id,
+    ).limit(batch_size).all()
+
+    synced = 0
+    failed = 0
+
+    for org_id, session_id in pending_lead_sessions:
+        try:
+            latest_with_outcome = db.query(Conversation).filter(
+                Conversation.organization_id == org_id,
+                Conversation.session_id == session_id,
+                Conversation.outcome.isnot(None),
+            ).order_by(Conversation.created_at.desc()).first()
+
+            if not latest_with_outcome or not (latest_with_outcome.outcome or "").strip():
+                continue
+
+            normalized_outcome = _normalize_outcome(latest_with_outcome.outcome)
+            updated_rows = db.query(Lead).filter(
+                Lead.organization_id == org_id,
+                Lead.session_id == session_id,
+                Lead.lead_outcome.is_(None),
+            ).update(
+                {Lead.lead_outcome: normalized_outcome},
+                synchronize_session=False,
+            )
+
+            db.commit()
+            if updated_rows:
+                synced += 1
+        except Exception as exc:
+            db.rollback()
+            failed += 1
+            logger.error(
+                "Failed to backfill lead outcome for org=%s session=%s: %s",
+                org_id,
+                session_id,
+                str(exc),
+                exc_info=True,
+            )
+
+    return synced, failed
+
+
+def process_pending_lead_funnel_tags(
+    db: Session,
+    batch_size: int = 100,
+    organization_id: Optional[int] = None,
+) -> Tuple[int, int]:
+    """Backfill lead.funnel_stage from AI classification for sessions with missing funnel tags."""
+    lead_query = db.query(
+        Lead.organization_id,
+        Lead.session_id,
+    ).filter(
+        Lead.session_id.isnot(None),
+        or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
+    )
+
+    if organization_id is not None:
+        lead_query = lead_query.filter(Lead.organization_id == organization_id)
+
+    pending_sessions = lead_query.group_by(
+        Lead.organization_id,
+        Lead.session_id,
+    ).limit(batch_size).all()
+
+    tagged = 0
+    failed = 0
+    funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
+
+    for org_id, session_id in pending_sessions:
+        try:
+            rows = db.query(Conversation).filter(
+                Conversation.organization_id == org_id,
+                Conversation.session_id == session_id,
+            ).order_by(Conversation.created_at.asc()).all()
+            if not rows:
+                continue
+
+            if org_id not in funnel_categories_by_org:
+                funnel_categories_by_org[org_id] = db.query(FunnelCategory).filter(
+                    FunnelCategory.organization_id == org_id,
+                    FunnelCategory.is_active == True,
+                ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
+
+            inferred_funnel_stage = _classify_funnel_stage_with_llm(
+                _build_transcript(rows),
+                funnel_categories_by_org.get(org_id, []),
+            )
+            if not inferred_funnel_stage:
+                continue
+
+            updated_rows = db.query(Lead).filter(
+                Lead.organization_id == org_id,
+                Lead.session_id == session_id,
+                or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
+            ).update(
+                {Lead.funnel_stage: inferred_funnel_stage},
+                synchronize_session=False,
+            )
+
+            db.commit()
+            if updated_rows:
+                tagged += 1
+        except Exception as exc:
+            db.rollback()
+            failed += 1
+            logger.error(
+                "Failed to backfill funnel stage for org=%s session=%s: %s",
+                org_id,
+                session_id,
+                str(exc),
+                exc_info=True,
+            )
+
+    return tagged, failed
+
+
 def run_outcome_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
     total_processed = 0
     total_failed = 0
@@ -156,9 +358,19 @@ def run_outcome_processing_batches(batch_size: int, max_batches: int, organizati
                 batch_size=batch_size,
                 organization_id=organization_id,
             )
+            synced, sync_failed = process_pending_lead_outcomes(
+                db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+            )
+            tagged, tag_failed = process_pending_lead_funnel_tags(
+                db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+            )
             total_processed += processed
-            total_failed += failed
-            if processed == 0:
+            total_failed += failed + sync_failed + tag_failed
+            if processed == 0 and synced == 0 and tagged == 0:
                 break
     finally:
         db.close()

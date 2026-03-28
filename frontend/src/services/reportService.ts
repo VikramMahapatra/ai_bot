@@ -65,6 +65,7 @@ export interface ConversationMetric {
   lead_name: string | null;
   lead_email: string | null;
   outcome: string | null;
+  ai_funnel?: string | null;
   conversation_start: string;
   conversation_end: string | null;
   created_at: string;
