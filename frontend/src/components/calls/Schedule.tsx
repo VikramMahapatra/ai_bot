@@ -119,8 +119,8 @@ const Schedule = ({
                                 <Grid item xs={4}>
                                     <TextField
                                         required
-                                        label="Start Date"
-                                        type="date"
+                                        label="Start Date & Time"
+                                        type="datetime-local"
                                         fullWidth
                                         InputLabelProps={{ shrink: true }}
                                         name="start_datetime"
@@ -137,8 +137,8 @@ const Schedule = ({
                                 <Grid item xs={4}>
                                     <TextField
                                         required
-                                        label="End Date"
-                                        type="date"
+                                        label="End Date & Time"
+                                        type="datetime-local"
                                         fullWidth
                                         InputLabelProps={{ shrink: true }}
                                         name="end_datetime"
