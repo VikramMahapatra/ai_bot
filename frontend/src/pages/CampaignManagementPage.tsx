@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
   Chip,
+  Divider,
   FormControl,
   Grid,
   InputLabel,
@@ -36,6 +40,8 @@ import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CodeIcon from '@mui/icons-material/Code';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
@@ -87,6 +93,12 @@ const buildEmailStarterTemplate = (campaignName?: string) => `
 `.trim();
 
 const CAMPAIGN_EMAIL_MERGE_TAG_HELP = 'Merge tags: {{name}}, {{first_name}}, {{campaign_name}}';
+
+const ensureFive = (items: string[]) => {
+  const next = [...items];
+  while (next.length < 5) next.push('');
+  return next.slice(0, 5);
+};
 
 const getContactListLabel = (list: ContactListItem) => {
   const autoTag = list.is_agent_auto_list ? ' • Auto' : '';
@@ -150,6 +162,12 @@ const CampaignManagementPage: React.FC = () => {
 
   const [createCampaignName, setCreateCampaignName] = useState('');
   const [createCampaignType, setCreateCampaignType] = useState<'email' | 'whatsapp' | 'sms'>('email');
+  const [emailContentMode, setEmailContentMode] = useState<'manual' | 'prompt'>('manual');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailPromptContext, setEmailPromptContext] = useState('');
+  const [generatedSubjects, setGeneratedSubjects] = useState<string[]>([]);
+  const [generatedBodies, setGeneratedBodies] = useState<string[]>([]);
+  const [generatingEmailVariants, setGeneratingEmailVariants] = useState(false);
   const [createMessageTemplate, setCreateMessageTemplate] = useState('');
   const [emailEditorMode, setEmailEditorMode] = useState<'plain' | 'html'>('plain');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
@@ -569,13 +587,76 @@ const CampaignManagementPage: React.FC = () => {
     setSuccess('HTML starter template loaded');
   };
 
+  const handleGeneratePromptEmailVariants = async () => {
+    if (!emailPromptContext.trim()) {
+      showError('Prompt context is required to generate email variants');
+      return;
+    }
+
+    setGeneratingEmailVariants(true);
+    setError('');
+    try {
+      const result = await campaignService.generateEmailVariants({
+        campaign_name: createCampaignName || 'Campaign',
+        prompt_context: emailPromptContext,
+      });
+
+      setGeneratedSubjects(result.subjects || []);
+      setGeneratedBodies(result.bodies || []);
+
+      if ((result.bodies || []).length > 0) {
+        setCreateMessageTemplate(result.bodies[0]);
+      }
+      if ((result.subjects || []).length > 0) {
+        setEmailSubject(result.subjects[0]);
+      }
+
+      setShowEmailPreview(true);
+      showSuccess(`Generated ${result.subjects?.length || 0} subjects and ${result.bodies?.length || 0} bodies.`);
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'Failed to generate prompt-based email content');
+    } finally {
+      setGeneratingEmailVariants(false);
+    }
+  };
+
+  const handleEditGeneratedSubject = (index: number, value: string) => {
+    setGeneratedSubjects((prev) => {
+      const next = ensureFive(prev);
+      next[index] = value;
+      if (index === 0) {
+        setEmailSubject(value);
+      }
+      return next;
+    });
+  };
+
+  const handleEditGeneratedBody = (index: number, value: string) => {
+    setGeneratedBodies((prev) => {
+      const next = ensureFive(prev);
+      next[index] = value;
+      if (index === 0) {
+        setCreateMessageTemplate(value);
+      }
+      return next;
+    });
+  };
+
   const handleCreateCampaign = async () => {
     if (!createCampaignName.trim()) {
       showError('Campaign name is required');
       return;
     }
-    if (!createMessageTemplate.trim()) {
+    if (createCampaignType !== 'email' && !createMessageTemplate.trim()) {
       showError('Message template is required');
+      return;
+    }
+    if (createCampaignType === 'email' && emailContentMode === 'manual' && !createMessageTemplate.trim()) {
+      showError('Email body is required in manual mode');
+      return;
+    }
+    if (createCampaignType === 'email' && emailContentMode === 'prompt' && !emailPromptContext.trim()) {
+      showError('Prompt context is required in prompt mode');
       return;
     }
     if (!createContactListId) {
@@ -588,13 +669,25 @@ const CampaignManagementPage: React.FC = () => {
       await campaignService.createCampaign({
         campaign_name: createCampaignName,
         campaign_type: createCampaignType,
-        message_template: createMessageTemplate,
+        message_template: createCampaignType === 'email'
+          ? (emailContentMode === 'prompt' ? (generatedBodies[0] || createMessageTemplate || 'Generated campaign body') : createMessageTemplate)
+          : createMessageTemplate,
         scheduled_time: createScheduledTime || undefined,
         contact_list_id: Number(createContactListId),
         status: createScheduledTime ? 'scheduled' : 'draft',
+        email_content_mode: createCampaignType === 'email' ? emailContentMode : undefined,
+        email_subject: createCampaignType === 'email' ? (emailSubject || createCampaignName) : undefined,
+        email_prompt_context: createCampaignType === 'email' && emailContentMode === 'prompt' ? emailPromptContext : undefined,
+        email_subject_variants: createCampaignType === 'email' && emailContentMode === 'prompt' ? generatedSubjects : undefined,
+        email_body_variants: createCampaignType === 'email' && emailContentMode === 'prompt' ? generatedBodies : undefined,
       });
       setCreateCampaignName('');
       setCreateMessageTemplate('');
+      setEmailSubject('');
+      setEmailPromptContext('');
+      setGeneratedSubjects([]);
+      setGeneratedBodies([]);
+      setEmailContentMode('manual');
       setCreateScheduledTime('');
       showSuccess('Campaign created');
       await Promise.all([loadCampaigns(), loadDashboard()]);
@@ -687,6 +780,11 @@ const CampaignManagementPage: React.FC = () => {
     if (createCampaignType !== 'email') {
       setEmailEditorMode('plain');
       setShowEmailPreview(false);
+      setEmailContentMode('manual');
+      setEmailSubject('');
+      setEmailPromptContext('');
+      setGeneratedSubjects([]);
+      setGeneratedBodies([]);
     }
   }, [createCampaignType]);
 
@@ -1080,72 +1178,192 @@ const CampaignManagementPage: React.FC = () => {
                   <Paper
                     variant="outlined"
                     sx={{
-                      p: 1.4,
+                      p: 1.8,
                       mb: 1.2,
                       borderRadius: '12px',
                       borderColor: alpha(theme.palette.primary.main, 0.2),
                       background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.72)} 0%, ${alpha('#deebfb', 0.6)} 100%)`,
                     }}
                   >
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-                      <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                          Email Content Mode
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {CAMPAIGN_EMAIL_MERGE_TAG_HELP}
-                        </Typography>
-                      </Box>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button
-                          size="small"
-                          startIcon={<TextFieldsIcon />}
-                          variant={emailEditorMode === 'plain' ? 'contained' : 'outlined'}
-                          onClick={() => setEmailEditorMode('plain')}
-                        >
-                          Plain Text
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<CodeIcon />}
-                          variant={emailEditorMode === 'html' ? 'contained' : 'outlined'}
-                          onClick={() => setEmailEditorMode('html')}
-                        >
-                          HTML
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={handleLoadHtmlStarter}
-                        >
-                          Load HTML Starter
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => setShowEmailPreview((prev) => !prev)}
-                        >
-                          {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
-                        </Button>
+                    <Stack spacing={1.5}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                            Email Content Setup
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {CAMPAIGN_EMAIL_MERGE_TAG_HELP}
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" spacing={1}>
+                          <Button
+                            size="small"
+                            startIcon={<TextFieldsIcon />}
+                            variant={emailContentMode === 'manual' ? 'contained' : 'outlined'}
+                            onClick={() => setEmailContentMode('manual')}
+                          >
+                            Manual
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<AutoAwesomeIcon />}
+                            variant={emailContentMode === 'prompt' ? 'contained' : 'outlined'}
+                            onClick={() => setEmailContentMode('prompt')}
+                          >
+                            Prompt + AI Variants
+                          </Button>
+                        </Stack>
                       </Stack>
+
+                      <TextField
+                        fullWidth
+                        label="Email Subject"
+                        value={emailSubject}
+                        onChange={(e) => setEmailSubject(e.target.value)}
+                        placeholder="Leave blank to use campaign name"
+                      />
+
+                      {emailContentMode === 'manual' ? (
+                        <>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <Button
+                              size="small"
+                              startIcon={<TextFieldsIcon />}
+                              variant={emailEditorMode === 'plain' ? 'contained' : 'outlined'}
+                              onClick={() => setEmailEditorMode('plain')}
+                            >
+                              Plain Text
+                            </Button>
+                            <Button
+                              size="small"
+                              startIcon={<CodeIcon />}
+                              variant={emailEditorMode === 'html' ? 'contained' : 'outlined'}
+                              onClick={() => setEmailEditorMode('html')}
+                            >
+                              HTML
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={handleLoadHtmlStarter}>
+                              Load HTML Starter
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => setShowEmailPreview((prev) => !prev)}>
+                              {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
+                            </Button>
+                          </Stack>
+                        </>
+                      ) : (
+                        <>
+                          <TextField
+                            fullWidth
+                            multiline
+                            minRows={4}
+                            label="Prompt Context"
+                            value={emailPromptContext}
+                            onChange={(e) => setEmailPromptContext(e.target.value)}
+                            placeholder="Describe campaign intent, audience, offer, tone, CTA, and constraints..."
+                          />
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                            <Button
+                              variant="contained"
+                              startIcon={<AutoAwesomeIcon />}
+                              onClick={handleGeneratePromptEmailVariants}
+                              disabled={generatingEmailVariants}
+                            >
+                              {generatingEmailVariants ? 'Generating...' : 'Generate 5x5 Variants'}
+                            </Button>
+                            <Chip
+                              variant="outlined"
+                              label={`Subjects: ${generatedSubjects.length} | Bodies: ${generatedBodies.length} | Combos: ${generatedSubjects.length * generatedBodies.length}`}
+                            />
+                            <Button size="small" variant="outlined" onClick={() => setShowEmailPreview((prev) => !prev)}>
+                              {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
+                            </Button>
+                          </Stack>
+
+                          {(generatedSubjects.length > 0 || generatedBodies.length > 0) && (
+                            <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.primary.main, 0.2) }}>
+                              <Grid container spacing={1.5}>
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="caption" color="text.secondary">Generated Subjects (Editable)</Typography>
+                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
+                                    {ensureFive(generatedSubjects).map((subject, idx) => (
+                                      <TextField
+                                        key={`subject-edit-${idx}`}
+                                        size="small"
+                                        label={`Subject ${idx + 1}`}
+                                        value={subject}
+                                        onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
+                                      />
+                                    ))}
+                                  </Stack>
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="caption" color="text.secondary">Generated Bodies (Editable)</Typography>
+                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
+                                    {ensureFive(generatedBodies).map((body, idx) => (
+                                      <Accordion
+                                        key={`body-edit-${idx}`}
+                                        disableGutters
+                                        defaultExpanded={idx === 0}
+                                        sx={{
+                                          borderRadius: '8px',
+                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                          boxShadow: 'none',
+                                          '&:before': { display: 'none' },
+                                        }}
+                                      >
+                                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                            {`Body ${idx + 1}`}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                            {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
+                                          </Typography>
+                                        </AccordionSummary>
+                                        <AccordionDetails sx={{ pt: 0.5 }}>
+                                          <TextField
+                                            fullWidth
+                                            size="small"
+                                            multiline
+                                            minRows={4}
+                                            value={body}
+                                            onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
+                                          />
+                                        </AccordionDetails>
+                                      </Accordion>
+                                    ))}
+                                  </Stack>
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          )}
+                        </>
+                      )}
                     </Stack>
                   </Paper>
                 )}
 
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={emailEditorMode === 'html' ? 9 : 6}
-                  label={createCampaignType === 'email' ? `Email Template (${emailEditorMode.toUpperCase()})` : 'Message Template'}
-                  value={createMessageTemplate}
-                  onChange={(e) => setCreateMessageTemplate(e.target.value)}
-                  placeholder={
-                    createCampaignType === 'email' && emailEditorMode === 'html'
-                      ? '<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>'
-                      : 'Write your campaign message here...'
-                  }
-                  sx={emailEditorMode === 'html' ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } } : undefined}
-                />
+                {(createCampaignType !== 'email' || emailContentMode === 'manual') && (
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={emailEditorMode === 'html' ? 9 : 6}
+                    label={createCampaignType === 'email' ? `Email Template (${emailEditorMode.toUpperCase()})` : 'Message Template'}
+                    value={createMessageTemplate}
+                    onChange={(e) => setCreateMessageTemplate(e.target.value)}
+                    placeholder={
+                      createCampaignType === 'email' && emailEditorMode === 'html'
+                        ? '<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>'
+                        : 'Write your campaign message here...'
+                    }
+                    sx={emailEditorMode === 'html' ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } } : undefined}
+                  />
+                )}
+
+                {createCampaignType === 'email' && emailContentMode === 'prompt' && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Prompt mode sends using permutation and combination of generated variants across recipients (5 subjects x 5 bodies = 25 combinations).
+                  </Alert>
+                )}
               </Grid>
 
               {createCampaignType === 'email' && showEmailPreview && (
@@ -1161,6 +1379,10 @@ const CampaignManagementPage: React.FC = () => {
                     <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
                       Email Body Preview
                     </Typography>
+                    <Typography variant="body2" sx={{ mb: 1.2, color: 'text.secondary' }}>
+                      <strong>Subject:</strong> {emailSubject || createCampaignName || 'Campaign Update'}
+                    </Typography>
+                    <Divider sx={{ mb: 1.4 }} />
                     <Box
                       sx={{
                         borderRadius: '10px',
@@ -1173,12 +1395,14 @@ const CampaignManagementPage: React.FC = () => {
                         <Box
                           sx={{ '& h1, & h2, & h3': { mt: 0 } }}
                           dangerouslySetInnerHTML={{
-                            __html: createMessageTemplate || '<p style="color:#64748b;">No HTML content yet.</p>',
+                            __html:
+                              (emailContentMode === 'prompt' ? generatedBodies[0] : createMessageTemplate) ||
+                              '<p style="color:#64748b;">No HTML content yet.</p>',
                           }}
                         />
                       ) : (
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: 'text.primary' }}>
-                          {createMessageTemplate || 'No message content yet.'}
+                          {(emailContentMode === 'prompt' ? generatedBodies[0] : createMessageTemplate) || 'No message content yet.'}
                         </Typography>
                       )}
                     </Box>
