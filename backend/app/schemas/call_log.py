@@ -53,3 +53,9 @@ class CallLogRequest(BaseModel):
     call_end_reason: Optional[str] = None
     sentiment: Optional[str] = None
     evaluation: Optional[bool] = None
+    
+    lead_quality: Optional[str] = None
+    is_lead_qualified: Optional[bool] = None
+    
+class MoveToFunnelRequest(BaseModel):
+    stage: str

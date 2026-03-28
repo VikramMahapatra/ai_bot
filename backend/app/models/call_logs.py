@@ -15,7 +15,7 @@ class CallLog(Base):
     external_call_id = Column(Integer, unique=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
 
-    contact_id = Column(Integer, ForeignKey("leads.id"))
+    contact_id = Column(Integer, ForeignKey("contacts.id"))
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
@@ -32,6 +32,7 @@ class CallLog(Base):
     extract_data = Column(JSON)
     lead_info = Column(JSON)
     success_evaluation = Column(Boolean, default=False)
+    is_lead_qualified = Column(Boolean, default=False)
     
     industry = Column(String)
     start_time = Column(DateTime)
@@ -39,6 +40,7 @@ class CallLog(Base):
     cost = Column(Numeric(10, 2), nullable=True)
     audio_url = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
 
     transcripts = relationship("CallTranscript", back_populates="call_log")
     

@@ -178,6 +178,28 @@ class SubscriptionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+
+class CallingNumberBase(BaseModel):
+    calling_number: str
+    is_default: Optional[bool] = False
+    is_active: Optional[bool] = True
+    
+class CallingNumberCreate(CallingNumberBase):
+    pass
+
+class CallingNumberUpdate(CallingNumberBase):
+    pass
+
+class CallingNumberResponse(BaseModel):
+    id: int
+    organization_id: int
+    calling_number: str
+    is_default: bool
+    is_active: bool
+
+    class Config:
+        from_attributes = True
 
 
 SuperAdminOrganizationResponse.model_rebuild()

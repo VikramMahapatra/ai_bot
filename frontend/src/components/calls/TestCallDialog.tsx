@@ -16,15 +16,19 @@ import {
     CircularProgress,
     Grid,
     Alert,
-    IconButton
+    IconButton,
+    Paper,
+    FormControl
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import MicIcon from "@mui/icons-material/Mic";
 import PhoneIcon from "@mui/icons-material/Phone";
 import CallIcon from "@mui/icons-material/Call";
 import PublicIcon from "@mui/icons-material/Public";
+import PersonIcon from '@mui/icons-material/Person';
 import { CallingAgent, callingAgentService } from "../../services/callingAgentService";
 import { alpha, useTheme } from '@mui/material/styles';
+import { callService } from "../../services/callService";
 
 interface Props {
     open: boolean;
@@ -42,6 +46,8 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
     const [calling, setCalling] = useState(false);
     const [dynamicFields, setDynamicFields] = useState<string[]>([]);
     const [dynamicValues, setDynamicValues] = useState<Record<string, string>>({});
+    const [callingNumbers, setCallingNumbers] = useState<any[]>([])
+    const [selectedCallingNumber, setSelectedCallingNumber] = useState<string>("")
 
     useEffect(() => {
         setCallError('');
@@ -57,7 +63,24 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
             });
             setDynamicValues(initialValues);
         }
+        fetchCallingNumbers();
     }, [agent, open]);
+
+
+    const fetchCallingNumbers = async () => {
+        if (!agent?.organization_id) return;
+
+        const res = await callService.getCallingNumbers()
+        const activeNumbers = res.filter((n: any) => n.is_active)
+        setCallingNumbers(activeNumbers)
+
+        // Auto select default or first
+        const defaultNo =
+            activeNumbers.find((n: any) => n.is_default)?.calling_number ||
+            activeNumbers[0]?.calling_number ||
+            ""
+        setSelectedCallingNumber(defaultNo)
+    }
 
     const validatePhone = () => {
         if (!phoneNumber) {
@@ -194,87 +217,123 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                     }
 
                 </Box>
-
-                {/* Agent Info */}
                 <Grid container spacing={2} mb={3}>
-
-                    {/* Agent Info */}
-                    <Grid item xs={12} md={6}>
-                        <Box
+                    <Grid item xs={12}>
+                        <Paper
                             sx={{
                                 p: 2,
                                 borderRadius: 2,
-                                border: "1px solid #e0e0e0",
-                                background: "#fafafa",
-                                height: "100%"
+                                bgcolor: "#fafafa",
+                                border: "1px solid #e0e0e0"
                             }}
                         >
-                            <Stack direction="row" spacing={2} alignItems="center">
-                                <Avatar
-                                    sx={{
-                                        bgcolor: "primary.main",
-                                        color: "primary",
-                                        width: 40,
-                                        height: 40
-                                    }}
-                                >
-                                    {agent?.name?.charAt(0)}
-                                </Avatar>
+                            <Stack
+                                direction="row"
+                                spacing={3}
+                                alignItems="center"
+                                justifyContent="space-between"
+                                flexWrap="wrap"
+                            >
+                                {/* Agent */}
+                                <Stack direction="row" spacing={1.5} alignItems="center">
+                                    <Avatar
+                                        sx={{
+                                            width: 32,
+                                            height: 32,
+                                            bgcolor: "primary.main",
+                                            fontSize: 14
+                                        }}
+                                    >
+                                        {agent?.name?.charAt(0)}
+                                    </Avatar>
 
-                                <Box>
-                                    <Typography fontWeight={600}>
-                                        {agent?.name}
-                                    </Typography>
+                                    <Box>
+                                        <Typography fontWeight={600}>
+                                            {agent?.name}
+                                        </Typography>
+                                        {agent?.type && (
+                                            <Chip
+                                                size="small"
+                                                label={agent?.type}
+                                                variant="outlined"
+                                                sx={{
+                                                    mt: 0.5,
+                                                    height: 20,
+                                                    fontSize: 11
+                                                }}
+                                            />
+                                        )}
+                                    </Box>
+                                </Stack>
 
-                                    <Chip
-                                        size="small"
-                                        icon={<PublicIcon />}
-                                        label={
-                                            agent?.server_location === "IN"
-                                                ? "India Server"
-                                                : "US Server"
-                                        }
-                                        variant="outlined"
-                                        sx={{ mt: 0.5 }}
-                                    />
-                                </Box>
+                                {/* Call From */}
+                                <Stack direction="row" spacing={1.5} alignItems="center">
+                                    <PhoneIcon color="primary" fontSize="small" />
+
+                                    <Box>
+
+                                        {/* No Calling Numbers */}
+                                        {callingNumbers.length === 0 && (
+                                            <>
+                                                <Typography fontWeight={600}>
+                                                    Not Assigned
+                                                </Typography>
+
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Call From Number
+                                                </Typography>
+                                            </>
+                                        )}
+
+                                        {/* Single Calling Number */}
+                                        {callingNumbers.length === 1 && (
+                                            <>
+                                                <Typography fontWeight={600}>
+                                                    {callingNumbers[0].calling_number}
+                                                </Typography>
+
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Call From Number
+                                                </Typography>
+                                            </>
+                                        )}
+
+                                        {/* Multiple Calling Numbers */}
+                                        {callingNumbers.length > 1 && (
+                                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                                                <Select
+                                                    value={selectedCallingNumber}
+                                                    onChange={(e) =>
+                                                        setSelectedCallingNumber(e.target.value)
+                                                    }
+                                                >
+                                                    {callingNumbers.map((num) => (
+                                                        <MenuItem
+                                                            key={num.id}
+                                                            value={num.calling_number}
+                                                        >
+                                                            {num.calling_number}
+                                                            {num.is_default && " (Default)"}
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                    sx={{ mt: 0.5 }}
+                                                >
+                                                    Call From Number
+                                                </Typography>
+                                            </FormControl>
+                                        )}
+
+                                    </Box>
+                                </Stack>
+
                             </Stack>
-                        </Box>
+                        </Paper>
                     </Grid>
-
-                    {/* Call From */}
-                    <Grid item xs={12} md={6}>
-                        <Box
-                            sx={{
-                                p: 2,
-                                borderRadius: 2,
-                                border: "1px solid #e0e0e0",
-                                background: "#fafafa",
-                                height: "100%"
-                            }}
-                        >
-                            <Typography variant="caption" color="text.secondary">
-                                Call From Number
-                            </Typography>
-
-                            <Stack direction="row" spacing={2} alignItems="center" mt={1}>
-                                <Avatar sx={{ bgcolor: "#e3f2fd" }}>
-                                    <PhoneIcon color="primary" />
-                                </Avatar>
-
-                                <Box>
-                                    <Typography fontWeight={600}>
-                                        {agent?.calling_no || "Not Assigned"}
-                                    </Typography>
-
-                                    <Typography variant="caption" color="text.secondary">
-                                        Outgoing call number
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </Box>
-                    </Grid>
-
                 </Grid>
 
                 {/* Phone Input */}
@@ -365,7 +424,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                 <Button
                     variant="contained"
                     startIcon={<CallIcon />}
-                    disabled={!phoneNumber || calling}
+                    disabled={!phoneNumber || !selectedCallingNumber || calling}
                     onClick={handleStartCall}
                 >
                     {calling ? "Calling..." : "Start Test Call"}

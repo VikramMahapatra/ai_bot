@@ -1,3 +1,4 @@
+import { CallingNumber } from "../types";
 import api from "./api";
 
 export interface CallAnalyticsFilters {
@@ -55,6 +56,11 @@ export const callService = {
 
     async callAnalytics(params: CallAnalyticsFilters): Promise<CallAnalytics> {
         const response = await api.get('/api/calls/analytics', { params });
+        return response.data;
+    },
+
+    async getCallingNumbers(): Promise<CallingNumber[]> {
+        const response = await api.get<CallingNumber[]>(`/api/calls/org/calling-numbers`);
         return response.data;
     },
 

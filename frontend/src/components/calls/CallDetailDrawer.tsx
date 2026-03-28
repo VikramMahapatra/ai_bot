@@ -28,6 +28,7 @@ import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt
 import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import { formatDateTime } from '../../utils/dateUtils';
+import LeadIcon from "@mui/icons-material/HowToReg";
 
 interface CallDetailDrawerProps {
     open: boolean;
@@ -161,6 +162,27 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.contact || "N/A"}
                                 </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1} mb={2}>
+                                <LeadIcon fontSize="small" color="success" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Lead Status:
+                                </Typography>
+                                {selectedCall?.lead_qualified_status ? (
+                                    <Typography variant="body2" fontWeight={600} color={
+                                        selectedCall.lead_qualified_status === "Synced"
+                                            ? "success"
+                                            : selectedCall.lead_qualified_status === "Pending"
+                                                ? "warning"
+                                                : "default"
+                                    }>
+                                        {selectedCall.lead_qualified_status}
+                                    </Typography>
+                                ) : (
+                                    <Typography variant="body2" fontWeight={600}>
+                                        Not Qualified
+                                    </Typography>
+                                )}
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <BugReportIcon fontSize="small" color="warning" />

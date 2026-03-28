@@ -2,7 +2,7 @@ import api from './api';
 
 export interface CallingAgent {
     id?: number
-
+    organization_id?: number;
     // Basic Info
     type: 'outbound' | 'inbound'
     name: string

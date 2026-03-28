@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from app.database import get_db
 from sqlalchemy.orm import Session
-from app.schemas.call_log import CallLogCreate, CallLogRequest
+from app.schemas.call_log import CallLogCreate, CallLogRequest, MoveToFunnelRequest
 from app.services import call_log_service as service
 from app.auth import get_current_user
 from app.models.user import User
@@ -39,3 +39,13 @@ def sync_call_logs(
     current_user: User = Depends(get_current_user)
 ):
     return service.sync_call_logs(db, current_user.organization_id, params.campaign_id, params.from_date, params.end_date)
+
+
+@router.post("/{call_log_id}/move-to-sales-funnel")
+def move_to_funnel(
+    call_log_id: int,
+    payload: MoveToFunnelRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.create_manual_lead(db, current_user.organization_id, call_log_id, payload)

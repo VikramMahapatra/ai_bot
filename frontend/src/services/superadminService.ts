@@ -6,6 +6,7 @@ import {
   OrganizationLimits,
   Plan,
   Subscription,
+  CallingNumber,
 } from '../types';
 
 export const superadminService = {
@@ -78,4 +79,38 @@ export const superadminService = {
     const response = await api.get(`/api/superadmin/analytics/org/${orgId}`);
     return response.data;
   },
+
+  // Calling No
+  async getCallingNumbers(orgId: number): Promise<CallingNumber[]> {
+    const response = await api.get<CallingNumber[]>(`/api/superadmin/org/${orgId}/calling-numbers`);
+    return response.data;
+  },
+
+  async createCallingNumber(orgId: number, payload: Omit<CallingNumber, 'id'>) {
+    const response = await api.post<CallingNumber>(`/api/superadmin/org/${orgId}/calling-number`, payload);
+    return response.data;
+  },
+
+  async updateCallingNumber(callingNoId: number, payload: Partial<Plan>) {
+    const response = await api.put<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`, payload);
+    return response.data;
+  },
+
+  async setDefaultCallingNumber(callingNoId: number) {
+    const response = await api.patch<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}/default`);
+    return response.data;
+  },
+
+  async toggleActiveCallingNumber(callingNoId: number) {
+    const response = await api.patch<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}/active`);
+    return response.data;
+  },
+
+  async deleteCallingNumber(callingNoId: number) {
+    const response = await api.delete<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`);
+    return response.data;
+  },
+
+
+
 };

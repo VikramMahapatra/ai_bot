@@ -28,6 +28,7 @@ import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
+import ProductManagementPage from './pages/ProductManagementPage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -378,41 +379,41 @@ const ProtectedRoute: React.FC<{
   children: React.ReactNode;
   requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'HANDOFF_OPERATOR' | 'ALL';
 }> = ({
-  children, 
-  requiredRole = 'ALL' 
+  children,
+  requiredRole = 'ALL'
 }) => {
-  const { isAuthenticated, userRole, isAuthLoading } = useAuth();
+    const { isAuthenticated, userRole, isAuthLoading } = useAuth();
 
-  if (isAuthLoading) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!isAuthenticated) {
-    if (requiredRole === 'SUPERADMIN') {
-      return <Navigate to="/superadmin/login" replace />;
+    if (isAuthLoading) {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      );
     }
-    return <Navigate to="/login" replace />;
-  }
 
-  // If admin-only route, check role
-  if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
-    return <Navigate to={userRole === 'USER_HANDOFF' ? '/handoff' : '/chat'} replace />;
-  }
+    if (!isAuthenticated) {
+      if (requiredRole === 'SUPERADMIN') {
+        return <Navigate to="/superadmin/login" replace />;
+      }
+      return <Navigate to="/login" replace />;
+    }
 
-  if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
-    return <Navigate to="/login" replace />;
-  }
+    // If admin-only route, check role
+    if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
+      return <Navigate to={userRole === 'USER_HANDOFF' ? '/handoff' : '/chat'} replace />;
+    }
 
-  if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF' && userRole !== 'ADMIN') {
-    return <Navigate to="/chat" replace />;
-  }
-  
-  return <>{children}</>;
-};
+    if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
+      return <Navigate to="/login" replace />;
+    }
+
+    if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF' && userRole !== 'ADMIN') {
+      return <Navigate to="/chat" replace />;
+    }
+
+    return <>{children}</>;
+  };
 
 function AppRoutes() {
   return (
@@ -586,6 +587,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/products"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ProductManagementPage />
           </ProtectedRoute>
         }
       />

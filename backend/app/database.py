@@ -146,6 +146,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE leads ADD COLUMN funnel_stage TEXT"))
                 if "lead_outcome" not in col_names:
                     conn.execute(text("ALTER TABLE leads ADD COLUMN lead_outcome TEXT"))
+                if "product_id" not in col_names:
+                    conn.execute(text("ALTER TABLE leads ADD COLUMN product_id INTEGER"))
                 conn.execute(text("UPDATE leads SET source = 'chat' WHERE source IS NULL OR TRIM(source) = ''"))
                 conn.execute(text("""
                     UPDATE leads
@@ -174,11 +176,12 @@ def init_db():
             except Exception:
                 pass
             
+           
             try:
-                cols = conn.execute(text("PRAGMA table_info('call_campaigns')")).fetchall()
+                cols = conn.execute(text("PRAGMA table_info('campaign_schedules')")).fetchall()
                 col_names = {row[1] for row in cols}
-                if "external_agent_name" not in col_names:
-                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN external_campaign_name TEXT"))
+                if "end_datetime" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_schedules ADD COLUMN end_datetime DATETIME"))
             except Exception:
                 pass
             
@@ -191,7 +194,8 @@ def init_db():
                     "follow_up_recommended": "TEXT",
                     "extract_data": "TEXT",
                     "lead_info": "TEXT",
-                    "success_evaluation": "BOOLEAN DEFAULT 0"
+                    "success_evaluation": "BOOLEAN DEFAULT 0",
+                    "is_lead_qualified": "BOOLEAN DEFAULT 0"
                 }
 
                 cols = conn.execute(text("PRAGMA table_info('call_logs')")).fetchall()
@@ -210,12 +214,25 @@ def init_db():
                 pass
             
             try:
+                columns = {
+                    "external_campaign_name": "TEXT",
+                    "success_rate": "FLOAT DEFAULT 0.0",
+                    "response_rate": "FLOAT DEFAULT 0.0",
+                    "product_id": "INTEGER",
+                    "calling_no": "TEXT",
+                }
+
                 cols = conn.execute(text("PRAGMA table_info('call_campaigns')")).fetchall()
                 col_names = {row[1] for row in cols}
-                if "success_rate " not in col_names:
-                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN success_rate FLOAT DEFAULT 0.0"))
-                if "response_rate " not in col_names:
-                    conn.execute(text("ALTER TABLE call_campaigns ADD COLUMN response_rate FLOAT DEFAULT 0.0"))    
-                
-            except Exception:
-                pass
+
+                for col, col_type in columns.items():
+                    if col not in col_names:
+                        conn.execute(
+                            text(f"ALTER TABLE call_campaigns ADD COLUMN {col} {col_type}")
+                        )
+                if "calling_no" not in col_names:
+                    conn.execute(
+                        text("UPDATE call_campaigns SET calling_no = '+918046733457' WHERE calling_no IS NULL")
+                    )
+            except Exception as e:
+                print(str(e))

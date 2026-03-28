@@ -10,7 +10,8 @@ import {
     Stack,
     Alert,
     IconButton,
-    LinearProgress
+    LinearProgress,
+    Grid
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from '@mui/material/styles';
@@ -21,6 +22,8 @@ import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
 import CampaignDetails from "./CampaignDetails";
+import moment from "moment-timezone";
+
 
 const steps = [
     "Campaign Info",
@@ -36,9 +39,12 @@ const emptyCampaignForm: CallCampaign = {
     description: "",
     category: "",
     priority: "",
+    calling_no: "",
     agent_id: "",
+    product_id: "",
     contacts: [],
     start_datetime: "",
+    end_datetime: "",
     timezone: browserTimezone,
     call_start_time: "09:00",
     call_end_time: "21:00",
@@ -63,10 +69,21 @@ const CampaignBuilder = () => {
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
     const theme = useTheme();
-    const nextStep = () => setActiveStep((prev) => prev + 1);
-    const prevStep = () => setActiveStep((prev) => prev - 1);
-    const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
 
+
+    const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
+    const [errors, setErrors] = useState<any>({});
+    const [sendOption, setSendOption] = useState<"now" | "schedule">("schedule");
+
+    const nextStep = () => {
+        setActiveStep((prev) => prev + 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const prevStep = () => {
+        setActiveStep((prev) => prev - 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+    };
     const showError = (message: string) => {
         setSuccess('');
         setError(message);
@@ -87,6 +104,8 @@ const CampaignBuilder = () => {
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
         setActiveStep(0);
+        setSendOption("schedule");
+        setMode("create");
     };
 
     const handleEditCampaign = async (id?: number) => {
@@ -104,10 +123,12 @@ const CampaignBuilder = () => {
                 category: data.category,
                 priority: data.priority,
                 agent_id: data.agent_id,
-
+                product_id: data.product_id,
                 contacts: data.contacts || [],
+                calling_no: data.calling_no,
 
                 start_datetime: data.start_datetime,
+                end_datetime: data.end_datetime,
                 timezone: data.timezone,
 
                 call_start_time: data.call_start_time,
@@ -130,7 +151,7 @@ const CampaignBuilder = () => {
             } else {
                 setCampaignContacts([]);
             }
-
+            setSendOption(data.start_datetime ? "schedule" : "now")
             setCampaignId(id);
             setMode("edit");
             setView("form");
@@ -152,11 +173,16 @@ const CampaignBuilder = () => {
         setLoading(true);
         try {
 
+            const payload = {
+                ...campaignForm,
+                product_id: campaignForm.product_id || undefined
+            };
+
             if (mode == "edit" && campaignId) {
-                await callCampaignService.updateCampaign(campaignForm, campaignId);
+                await callCampaignService.updateCampaign(payload, campaignId);
             }
             else {
-                await callCampaignService.createCampaign(campaignForm);
+                await callCampaignService.createCampaign(payload);
             }
             showSuccess("Campaign saved successfully")
             setView("list");
@@ -203,6 +229,41 @@ const CampaignBuilder = () => {
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
+    const handleSave = () => {
+        const newErrors: any = {};
+
+        if (sendOption === "schedule" && !campaignForm.start_datetime) {
+            newErrors.start_datetime = "Start date & time is required";
+        }
+
+        if (sendOption === "schedule" && !campaignForm.timezone) {
+            newErrors.timezone = "Timezone is required";
+        }
+
+        if (
+            sendOption === "schedule" &&
+            campaignForm.call_start_time &&
+            campaignForm.call_end_time &&
+            campaignForm.call_start_time >= campaignForm.call_end_time
+        ) {
+            newErrors.call_end_time = "End time must be after start time";
+        }
+
+        if (sendOption === "now") {
+            const now = moment(); // current time
+            const currentHour = now.hour(); // 0–23
+
+            if (currentHour < 9 || currentHour >= 21) {
+                newErrors.send_now = "Calls can only be sent between 9:00 AM and 9:00 PM";
+            }
+        }
+
+        setErrors(newErrors);
+        if (Object.keys(newErrors).length > 0) return;
+
+        handleSaveCampaign();
+    };
+
     const renderStep = () => {
         switch (activeStep) {
             case 0:
@@ -229,12 +290,11 @@ const CampaignBuilder = () => {
             case 2:
                 return (
                     <Schedule
-                        mode={mode}
                         form={campaignForm}
                         setForm={setCampaignForm}
-                        prevStep={prevStep}
-                        saveCampaign={handleSaveCampaign}
-                        loading={loading}
+                        sendOption={sendOption}
+                        setSendOption={setSendOption}
+                        errors={errors}
                     />
                 );
             default:
@@ -265,6 +325,7 @@ const CampaignBuilder = () => {
             />
         );
     }
+
 
     return (
         <>
@@ -328,6 +389,13 @@ const CampaignBuilder = () => {
                         <Button variant="outlined" color="error" onClick={handleBackToList}>
                             Cancel
                         </Button>
+                        {activeStep == 2 &&
+                            <Grid item xs={6} textAlign="right">
+                                <Button variant="contained" onClick={handleSave} sx={{ ml: 1 }} disabled={loading}>
+                                    {mode === "edit" ? "Update" : "Add"}
+                                </Button>
+                            </Grid>
+                        }
                     </Box>
                 </Box>
 
@@ -343,6 +411,34 @@ const CampaignBuilder = () => {
                 <Box>
                     {renderStep()}
                 </Box>
+                {activeStep == 2 &&
+                    <Grid container alignItems="center" mt={2}>
+                        <Grid item xs={6}>
+                            <Button onClick={prevStep}>Back</Button>
+                        </Grid>
+
+                        <Grid item xs={6}>
+                            <Box display="flex" justifyContent="flex-end" gap={1}>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    onClick={handleBackToList}
+                                >
+                                    Cancel
+                                </Button>
+
+                                <Button
+                                    variant="contained"
+                                    onClick={handleSave}
+                                    disabled={loading}
+                                >
+                                    {mode === "edit" ? "Update" : "Add"}
+                                </Button>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                }
+
             </Paper>
         </>
     );

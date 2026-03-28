@@ -36,7 +36,8 @@ export interface Campaign {
     name: string;
     description: string;
     agent_name?: string;
-    from_number?: string;
+    product_name?: string;
+    calling_no?: string;
     category?: string;
     status: "draft" | "pending" | "running" | "paused" | "completed" | "scheduled";
     contacts?: number;
@@ -106,28 +107,23 @@ export interface CallCampaign {
     description: string;
     category: string;
     priority: string;
+    calling_no: string;
     agent_id: number | "";
-
+    product_id?: number | "";
     contacts: number[];
-
     start_datetime: string;
+    end_datetime: string;
     timezone: string;
-
     call_start_time: string;
     call_end_time: string;
     call_interval: number | "";
-
     active_days: string[];
-
     max_retry_attempts: number | "";
     retry_interval: number | "";
-
     retry_on_no_answer: boolean;
     retry_on_busy: boolean;
     retry_on_voicemail: boolean;
-
     call_logs?: [];
-
 }
 
 export interface CampaignResponse {

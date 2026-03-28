@@ -2,17 +2,25 @@ from datetime import date, datetime, time, timedelta, timezone
 import json
 from typing import Optional, Tuple, Union
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import Integer, case, cast, func, or_
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
 
 from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from app.models.lead import Lead
-from app.schemas.call_log import CallLogCreate, CallLogRequest
+from app.schemas.call_log import CallLogCreate, CallLogRequest, MoveToFunnelRequest
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Contact
+from app.config import settings
+
+LEAD_QUALITY_RANGES = {
+    "High": (80, 100),
+    "Medium": (50, 79),
+    "Low": (20, 49),
+    "Poor": (0, 19)
+}
 
 def get_call_logs(
     db: Session,
@@ -78,6 +86,23 @@ def get_call_logs(
     # EVALUATION (boolean)
     if params.evaluation is not None:
         query = query.filter(CallLog.success_evaluation == params.evaluation)
+        
+    if params.lead_quality:
+        lead_rate = cast(
+            CallLog.lead_info["lead_quality"]["rate"].astext,
+            Integer
+        )
+
+        min_val, max_val = LEAD_QUALITY_RANGES[params.lead_quality]
+
+        query = query.filter(
+            lead_rate.between(min_val, max_val)
+        )
+        
+    if params.is_lead_qualified is not None:
+        query = query.filter(
+            CallLog.is_lead_qualified == params.is_lead_qualified
+        )
 
     # TOTAL COUNT
     summary = query.with_entities(
@@ -126,6 +151,13 @@ def get_call_logs(
         if log.start_time and log.end_time:
             duration = int((log.end_time - log.start_time).total_seconds())
             
+        # Determine lead status for grid
+        lead_exists = db.query(Lead).filter(Lead.session_id == log.id).first()
+        if log.is_lead_qualified:
+            lead_qualified_status = "Synced" if lead_exists else "Pending"
+        else:
+            lead_qualified_status = "Not Qualified" if log.campaign_id else "N/A"
+            
         rows.append({
             "id": log.id,
             "contact": contact_name,
@@ -151,7 +183,7 @@ def get_call_logs(
             "follow_up_recommended": log.follow_up_recommended or [],
             "extract_data": log.extract_data or {},
             "lead_info": log.lead_info or {},
-
+            "lead_qualified_status": lead_qualified_status,
             "transcript": [
                 {
                     "speaker": t.speaker,
@@ -312,9 +344,11 @@ def process_call(db, call, agent):
     existing = db.query(CallLog).filter(
         CallLog.external_call_id == call["id"]
     ).first()
-
-    campaign_external_id = call["campaign_id"]
     
+    if existing and existing.status == "ended":
+        return
+    
+    campaign_external_id = call["campaign_id"]
     
     campaign = None
     if campaign_external_id:
@@ -344,6 +378,8 @@ def process_call(db, call, agent):
             extract_data = json.loads(extract_data)
         except:
             extract_data = None
+            
+    call_log_id = None
 
     if existing:
         existing.organization_id = agent.organization_id
@@ -370,8 +406,10 @@ def process_call(db, call, agent):
         existing.success_evaluation = success_eval_str.lower() == "true"
         
         db.flush()
+        
         save_transcripts(db, existing.id, call.get("transcript"))
 
+        call_log = existing
     else:
         call_log = CallLog(
             external_call_id=call["id"],
@@ -402,7 +440,31 @@ def process_call(db, call, agent):
 
         db.add(call_log)
         db.flush()
+        
         save_transcripts(db, call_log.id, call.get("transcript"))
+        
+        call_log_id = call_log.id
+        
+    # Create lead if eligible
+    
+    lead_quality_rate = lead_info.get("lead_quality", {}).get("rate")
+    lead_quality_label = get_lead_quality_label(lead_quality_rate) if lead_quality_rate is not None else None
+    
+
+    # Only create lead for High or Medium quality
+    if campaign and lead_quality_label in ["High", "Medium"]:
+        if settings.CAN_AUTO_SYNC_CAMPAIGN_LEAD:
+            lead = create_lead_from_call(db, call_log.id, call, agent, campaign, contact, lead_quality_label)
+
+            if lead:
+                # Mark call_log as lead qualified
+                call_log.is_lead_qualified = True
+                
+        else:
+            call_log.is_lead_qualified = True
+            
+        db.flush()
+
     
     test_call = db.query(CallingAgentTestCall).filter(
         CallingAgentTestCall.external_call_id ==call["id"]
@@ -443,6 +505,135 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
                 text=text
             )
         )
+        
+def create_lead_from_call(db, call_log_id, call, agent, campaign, contact, lead_quality_label):
+    # Skip test calls
+    if not campaign:
+        return None
+
+    # Prevent duplicate
+    product_id = None
+    query = db.query(Lead).filter(
+        Lead.phone == call.get("phone"),
+        Lead.organization_id == agent.organization_id
+    )
+    if product_id:
+        query = query.filter(Lead.product_id == product_id)
+
+    existing = query.first()
+    if existing:
+        return None
+
+    lead = Lead(
+        source="call",
+        session_id=call_log_id,
+        widget_id=str(agent.id),
+        organization_id=agent.organization_id,
+        product_id = product_id,
+        name=contact.name if contact else None,
+        email=contact.email if contact else None,
+        phone=call.get("phone"),
+        company=None,
+        custom_fields=json.dumps({
+            "lead_quality_label": lead_quality_label,
+            "lead_info": call.get("lead_info"),
+            "external_call_id": call.get("id")
+        }),
+        funnel_stage="lead_qualification"
+    )
+
+    db.add(lead)
+    db.flush()  # so we can get lead.id if needed
+    return lead
+
+def create_manual_lead(db : Session, organization_id :int, call_log_id : int, payload: MoveToFunnelRequest):
+    result = True
+    # Fetch call log (you may adjust based on your CallLog model)
+    call = db.query(CallLog).filter(CallLog.id == call_log_id).first()
+    if not call:
+        return {
+            "success" : False,
+            "message" : "Call not found"
+        } 
+    
+    agent = db.query(CallingAgent).filter(
+        CallingAgent.id == call.agent_id,
+        CallingAgent.organization_id == organization_id
+    ).first()
+    
+    campaign = None
+    if call.campaign_id:
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.id == call.campaign_id
+        ).first()
+        
+    if not campaign:
+        return {
+            "success" : False,
+            "message" : "Campaign not found"
+        } 
+    
+    contact = None
+    if call.contact_id:
+        contact = db.query(Contact).filter(
+            Contact.id == call.contact_id
+        ).first()
+        
+    if not contact:
+        return {
+            "success" : False,
+            "message" : "Contact not found"
+        } 
+
+    # Prevent duplicate by phone + organization + optional product
+    query = db.query(Lead).filter(
+        Lead.phone == call.phone,
+        Lead.organization_id == agent.organization_id
+    )
+    if campaign.product_id:
+        query = query.filter(Lead.product_id == campaign.product_id)
+
+    if query.first():
+        return {
+            "success" : False,
+            "message" : "Lead already synced"
+        } 
+
+    # Build custom fields
+    custom_fields = {
+        "lead_info": call.lead_info,
+        "external_call_id": call.id
+    }
+
+    lead = Lead(
+        source="manual",
+        session_id=call_log_id,
+        widget_id=str(agent.id),
+        organization_id=agent.organization_id,
+        product_id=campaign.product_id,
+        name=contact.name if contact else None,
+        email=contact.email if contact else None,
+        phone=call.phone,
+        company=None,
+        custom_fields=json.dumps(custom_fields),
+        funnel_stage=payload.stage
+    )
+
+    db.add(lead)
+    call.is_lead_qualified = True
+    
+    db.flush()
+    db.commit()
+    return {
+            "success" : True,
+            "message" : "Lead synced successfully"
+        } 
+    
+def get_lead_quality_label(rate: int):
+    for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():
+        if min_val <= rate <= max_val:
+            return label
+    return None
 
 def parse_datetime(dt):
     if not dt:

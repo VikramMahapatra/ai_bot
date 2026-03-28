@@ -9,6 +9,7 @@ class Lead(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=True)
+    product_id = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String, nullable=True)

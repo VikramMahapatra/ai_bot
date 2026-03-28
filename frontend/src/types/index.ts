@@ -308,3 +308,11 @@ export interface SuperAdminOrganization {
   plan?: Plan;
   subscription?: Subscription;
 }
+
+
+export interface CallingNumber {
+  id: number;
+  calling_number: string;
+  is_default?: boolean;
+  is_active?: boolean;
+}
