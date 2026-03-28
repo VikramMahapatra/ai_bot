@@ -236,6 +236,18 @@ const CampaignManagementPage: React.FC = () => {
     },
   } as const;
 
+  const compactInputSx = {
+    '& .MuiInputBase-root': {
+      minHeight: 40,
+    },
+  } as const;
+
+  const compactButtonSx = {
+    minHeight: 40,
+    px: 1.8,
+    whiteSpace: 'nowrap',
+  } as const;
+
   const campaignKpis = [
     {
       label: 'Total Campaigns',
@@ -934,10 +946,10 @@ const CampaignManagementPage: React.FC = () => {
         </Box>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          <Button variant="outlined" onClick={() => setTab(3)} startIcon={<UploadFileIcon />}>
+          <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => setTab(3)} startIcon={<UploadFileIcon />}>
             Upload Contacts
           </Button>
-          <Button variant="contained" onClick={() => setTab(1)} startIcon={<AddIcon />}>
+          <Button size="small" sx={compactButtonSx} variant="contained" onClick={() => setTab(1)} startIcon={<AddIcon />}>
             New Campaign
           </Button>
         </Stack>
@@ -1078,7 +1090,7 @@ const CampaignManagementPage: React.FC = () => {
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Campaign List</Typography>
                   <Typography variant="body2" color="text.secondary">Filter, run, pause, and inspect campaign executions.</Typography>
                 </Box>
-                <Button variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
+                <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
                   Run Due Scheduled
                 </Button>
               </Stack>
@@ -1145,7 +1157,7 @@ const CampaignManagementPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={2}>
                   <Stack direction="row" spacing={1}>
-                    <Button fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
+                    <Button size="small" sx={compactButtonSx} fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
                   </Stack>
                 </Grid>
               </Grid>
@@ -1156,6 +1168,7 @@ const CampaignManagementPage: React.FC = () => {
                     <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
                       <TableCell>Campaign Name</TableCell>
                       <TableCell>Type</TableCell>
+                      <TableCell>Product</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Created</TableCell>
                       <TableCell>Actions</TableCell>
@@ -1170,13 +1183,9 @@ const CampaignManagementPage: React.FC = () => {
                             <Typography variant="caption" color="text.secondary">
                               List: {item.contact_list_name || item.contact_list_id}
                             </Typography>
-                            {item.product_name && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                Product: {item.product_name}
-                              </Typography>
-                            )}
                           </TableCell>
                           <TableCell>{item.campaign_type}</TableCell>
+                          <TableCell>{item.product_name || '-'}</TableCell>
                           <TableCell>
                             <Chip size="small" label={item.status} color={statusColor(item.status) as any} variant="outlined" />
                           </TableCell>
@@ -1204,7 +1213,7 @@ const CampaignManagementPage: React.FC = () => {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} align="center">No campaigns found.</TableCell>
+                        <TableCell colSpan={6} align="center">No campaigns found.</TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -1237,6 +1246,8 @@ const CampaignManagementPage: React.FC = () => {
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField
+                  size="small"
+                  sx={compactInputSx}
                   fullWidth
                   label="Campaign Name"
                   value={createCampaignName}
@@ -1244,7 +1255,7 @@ const CampaignManagementPage: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small" sx={compactInputSx}>
                   <InputLabel>Campaign Type</InputLabel>
                   <Select
                     value={createCampaignType}
@@ -1258,7 +1269,7 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small" sx={compactInputSx}>
                   <InputLabel>Contact List</InputLabel>
                   <Select
                     value={createContactListId}
@@ -1274,7 +1285,7 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small" sx={compactInputSx}>
                   <InputLabel>Product</InputLabel>
                   <Select
                     value={createProductId}
@@ -1294,11 +1305,12 @@ const CampaignManagementPage: React.FC = () => {
               </Grid>
               <Grid item xs={12} md={1}>
                 <Button
+                  size="small"
                   fullWidth
                   variant="outlined"
                   startIcon={<AddIcon />}
                   onClick={() => setProductDialogOpen(true)}
-                  sx={{ height: '56px' }}
+                  sx={compactButtonSx}
                 >
                   Add
                 </Button>
@@ -1347,6 +1359,8 @@ const CampaignManagementPage: React.FC = () => {
                       </Stack>
 
                       <TextField
+                        size="small"
+                        sx={compactInputSx}
                         fullWidth
                         label="Email Subject"
                         value={emailSubject}
@@ -1384,6 +1398,8 @@ const CampaignManagementPage: React.FC = () => {
                       ) : (
                         <>
                           <TextField
+                            size="small"
+                            sx={compactInputSx}
                             fullWidth
                             multiline
                             minRows={4}
@@ -1475,6 +1491,8 @@ const CampaignManagementPage: React.FC = () => {
 
                 {(createCampaignType !== 'email' || emailContentMode === 'manual') && (
                   <TextField
+                    size="small"
+                    sx={compactInputSx}
                     fullWidth
                     multiline
                     minRows={emailEditorMode === 'html' ? 9 : 6}
@@ -1543,6 +1561,8 @@ const CampaignManagementPage: React.FC = () => {
 
               <Grid item xs={12} md={4}>
                 <TextField
+                  size="small"
+                  sx={compactInputSx}
                   fullWidth
                   type="datetime-local"
                   label="Schedule Time (optional)"
@@ -1554,7 +1574,7 @@ const CampaignManagementPage: React.FC = () => {
 
               <Grid item xs={12} md={8}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                  <Button size="small" sx={compactButtonSx} variant="outlined" component="label" startIcon={<UploadFileIcon />}>
                     Upload Template File
                     <input
                       hidden
@@ -1563,7 +1583,7 @@ const CampaignManagementPage: React.FC = () => {
                       onChange={(e) => handleTemplateFileUpload(e.target.files?.[0] || null)}
                     />
                   </Button>
-                  <Button variant="contained" onClick={handleCreateCampaign} startIcon={<AddIcon />}>
+                  <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleCreateCampaign} startIcon={<AddIcon />}>
                     Create Campaign
                   </Button>
                 </Stack>
@@ -1577,11 +1597,14 @@ const CampaignManagementPage: React.FC = () => {
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
                     <TextField
                       size="small"
+                      sx={compactInputSx}
                       label="Filter Contacts"
                       value={previewSearch}
                       onChange={(e) => setPreviewSearch(e.target.value)}
                     />
                     <Button
+                      size="small"
+                      sx={compactButtonSx}
                       variant="outlined"
                       onClick={() => createContactListId && loadPreviewContacts(Number(createContactListId))}
                     >
@@ -1612,6 +1635,8 @@ const CampaignManagementPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
                   <TextField
+                    size="small"
+                    sx={compactInputSx}
                     fullWidth
                     label="List Name"
                     value={newListName}
@@ -1620,6 +1645,8 @@ const CampaignManagementPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
+                    size="small"
+                    sx={compactInputSx}
                     fullWidth
                     label="Description"
                     value={newListDescription}
@@ -1627,7 +1654,7 @@ const CampaignManagementPage: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={2}>
-                  <Button fullWidth variant="contained" onClick={handleCreateList}>Create</Button>
+                  <Button size="small" sx={compactButtonSx} fullWidth variant="contained" onClick={handleCreateList}>Create</Button>
                 </Grid>
               </Grid>
             </Paper>
@@ -1637,11 +1664,12 @@ const CampaignManagementPage: React.FC = () => {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
                 <TextField
                   size="small"
+                  sx={compactInputSx}
                   label="Filter Lists"
                   value={contactListSearch}
                   onChange={(e) => setContactListSearch(e.target.value)}
                 />
-                <Button variant="outlined" onClick={() => { setContactListPage(0); loadContactLists(); }}>
+                <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => { setContactListPage(0); loadContactLists(); }}>
                   Apply
                 </Button>
               </Stack>
@@ -1715,11 +1743,12 @@ const CampaignManagementPage: React.FC = () => {
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
                   <TextField
                     size="small"
+                    sx={compactInputSx}
                     label="Filter Contacts"
                     value={contactSearch}
                     onChange={(e) => setContactSearch(e.target.value)}
                   />
-                  <Button variant="outlined" onClick={handleFilterContacts}>Apply</Button>
+                  <Button size="small" sx={compactButtonSx} variant="outlined" onClick={handleFilterContacts}>Apply</Button>
                 </Stack>
                 <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
                   <Table>
@@ -1780,7 +1809,7 @@ const CampaignManagementPage: React.FC = () => {
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Upload Contacts</Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small" sx={compactInputSx}>
                     <InputLabel>Target Contact List</InputLabel>
                     <Select
                       value={uploadListId}
@@ -1801,26 +1830,42 @@ const CampaignManagementPage: React.FC = () => {
 
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Manual Entry (Optional)</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Name" value={manualName} onChange={(e) => setManualName(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Phone" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <TextField fullWidth label="Company" value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  <Stack direction="row" spacing={1}>
-                    <Button fullWidth variant="outlined" onClick={handleAddManualContact}>Add</Button>
-                    <Button fullWidth variant="contained" onClick={handleManualUpload}>Upload</Button>
-                  </Stack>
-                </Grid>
-              </Grid>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 160, flex: '1 1 180px' }}
+                  label="Name"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 200, flex: '1 1 220px' }}
+                  label="Email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 170, flex: '1 1 200px' }}
+                  label="Phone"
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 170, flex: '1 1 200px' }}
+                  label="Company"
+                  value={manualCompany}
+                  onChange={(e) => setManualCompany(e.target.value)}
+                />
+                <Button size="small" sx={{ ...compactButtonSx, minWidth: 90 }} variant="outlined" onClick={handleAddManualContact}>
+                  Add
+                </Button>
+                <Button size="small" sx={{ ...compactButtonSx, minWidth: 95 }} variant="contained" onClick={handleManualUpload}>
+                  Upload
+                </Button>
+              </Stack>
 
               {manualContacts.length > 0 && (
                 <TableContainer sx={{ mt: 2 }}>
@@ -1851,10 +1896,10 @@ const CampaignManagementPage: React.FC = () => {
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>CSV Upload</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleDownloadCsvTemplate}>
+                <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleDownloadCsvTemplate}>
                   Download CSV Template
                 </Button>
-                <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+                <Button size="small" sx={compactButtonSx} component="label" variant="outlined" startIcon={<UploadFileIcon />}>
                   Choose CSV/Excel
                   <input
                     hidden
@@ -1866,7 +1911,7 @@ const CampaignManagementPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                   {csvFile ? csvFile.name : 'No file selected'}
                 </Typography>
-                <Button variant="contained" onClick={handleCsvUpload}>Upload File</Button>
+                <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleCsvUpload}>Upload File</Button>
               </Stack>
             </Paper>
           </Stack>

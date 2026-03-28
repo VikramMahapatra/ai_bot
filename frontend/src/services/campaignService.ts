@@ -127,6 +127,11 @@ export interface CampaignFilters {
   campaign_type?: CampaignType;
   status?: CampaignStatus;
   product_id?: number;
+  contact_list_id?: number;
+  created_from?: string;
+  created_to?: string;
+  scheduled_from?: string;
+  scheduled_to?: string;
   skip?: number;
   limit?: number;
 }

@@ -805,6 +805,11 @@ async def list_campaigns(
     campaign_type: Optional[str] = None,
     status: Optional[str] = None,
     product_id: Optional[int] = None,
+    contact_list_id: Optional[int] = None,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    scheduled_from: Optional[str] = None,
+    scheduled_to: Optional[str] = None,
     skip: int = 0,
     limit: int = 25,
     db: Session = Depends(get_db),
@@ -833,6 +838,34 @@ async def list_campaigns(
         if product_id <= 0:
             raise HTTPException(status_code=400, detail="Invalid product_id filter")
         query = query.filter(Campaign.product_id == product_id)
+
+    if contact_list_id is not None:
+        if contact_list_id <= 0:
+            raise HTTPException(status_code=400, detail="Invalid contact_list_id filter")
+        query = query.filter(Campaign.contact_list_id == contact_list_id)
+
+    def _parse_iso_datetime(value: Optional[str], field_name: str) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid {field_name}; expected ISO datetime")
+
+    created_from_dt = _parse_iso_datetime(created_from, "created_from")
+    created_to_dt = _parse_iso_datetime(created_to, "created_to")
+    scheduled_from_dt = _parse_iso_datetime(scheduled_from, "scheduled_from")
+    scheduled_to_dt = _parse_iso_datetime(scheduled_to, "scheduled_to")
+
+    if created_from_dt:
+        query = query.filter(Campaign.created_at >= created_from_dt)
+    if created_to_dt:
+        query = query.filter(Campaign.created_at <= created_to_dt)
+
+    if scheduled_from_dt:
+        query = query.filter(Campaign.scheduled_time.isnot(None), Campaign.scheduled_time >= scheduled_from_dt)
+    if scheduled_to_dt:
+        query = query.filter(Campaign.scheduled_time.isnot(None), Campaign.scheduled_time <= scheduled_to_dt)
 
     total = query.count()
     rows = query.order_by(Campaign.created_at.desc()).offset(skip).limit(limit).all()
