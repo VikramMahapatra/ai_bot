@@ -8,6 +8,10 @@ import {
   Button,
   Chip,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   Grid,
   InputLabel,
@@ -42,6 +46,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
@@ -50,6 +55,7 @@ import {
   ContactListItem,
   DashboardStats,
 } from '../services/campaignService';
+import { Product, productService } from '../services/productService';
 
 const formatDate = (value?: string) => {
   if (!value) return '-';
@@ -136,6 +142,7 @@ const CampaignManagementPage: React.FC = () => {
   const [campaignSearch, setCampaignSearch] = useState('');
   const [campaignTypeFilter, setCampaignTypeFilter] = useState('');
   const [campaignStatusFilter, setCampaignStatusFilter] = useState('');
+  const [campaignProductFilter, setCampaignProductFilter] = useState<number | ''>('');
 
   const [contactLists, setContactLists] = useState<ContactListItem[]>([]);
   const [contactListSearch, setContactListSearch] = useState('');
@@ -157,11 +164,19 @@ const CampaignManagementPage: React.FC = () => {
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualContacts, setManualContacts] = useState<Array<{ name?: string; email?: string; phone?: string }>>([]);
+  const [manualCompany, setManualCompany] = useState('');
+  const [manualContacts, setManualContacts] = useState<Array<{ name?: string; email?: string; phone?: string; company?: string }>>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
   const [createCampaignName, setCreateCampaignName] = useState('');
   const [createCampaignType, setCreateCampaignType] = useState<'email' | 'whatsapp' | 'sms'>('email');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [createProductId, setCreateProductId] = useState<number | ''>('');
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductCode, setNewProductCode] = useState('');
+  const [newProductDescription, setNewProductDescription] = useState('');
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const [emailContentMode, setEmailContentMode] = useState<'manual' | 'prompt'>('manual');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailPromptContext, setEmailPromptContext] = useState('');
@@ -268,6 +283,7 @@ const CampaignManagementPage: React.FC = () => {
       search: campaignSearch || undefined,
       campaign_type: (campaignTypeFilter || undefined) as any,
       status: (campaignStatusFilter || undefined) as any,
+      product_id: campaignProductFilter ? Number(campaignProductFilter) : undefined,
       skip: campaignPage * campaignRowsPerPage,
       limit: campaignRowsPerPage,
     });
@@ -283,6 +299,11 @@ const CampaignManagementPage: React.FC = () => {
     });
     setContactLists(data.items || []);
     setContactListTotal(data.pagination?.total || 0);
+  };
+
+  const loadProducts = async () => {
+    const data = await productService.productLookup();
+    setProducts(data || []);
   };
 
   const loadContacts = async (contactListId: number) => {
@@ -318,7 +339,7 @@ const CampaignManagementPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadDashboard(), loadCampaigns(), loadContactLists()]);
+      await Promise.all([loadDashboard(), loadCampaigns(), loadContactLists(), loadProducts()]);
     } catch (err: any) {
       showError(err?.response?.data?.detail || 'Failed to load campaign module data');
     } finally {
@@ -506,12 +527,68 @@ const CampaignManagementPage: React.FC = () => {
         name: manualName.trim() || undefined,
         email: manualEmail.trim() || undefined,
         phone: manualPhone.trim() || undefined,
+        company: manualCompany.trim() || undefined,
       },
     ]);
     setManualName('');
     setManualEmail('');
     setManualPhone('');
+    setManualCompany('');
     setError('');
+  };
+
+  const handleDownloadCsvTemplate = () => {
+    const template = 'name,email,phone,company\nJohn Doe,john@example.com,+15551234567,Acme Corp\n';
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'contacts_template.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCreateProductFromCampaign = async () => {
+    if (!newProductName.trim()) {
+      showError('Product name is required');
+      return;
+    }
+    if (!newProductCode.trim()) {
+      showError('Product code is required');
+      return;
+    }
+
+    setCreatingProduct(true);
+    try {
+      const response = await productService.createProduct({
+        name: newProductName.trim(),
+        code: newProductCode.trim(),
+        description: newProductDescription.trim(),
+      });
+
+      if (!response.success) {
+        showError(response.message || 'Failed to create product');
+        return;
+      }
+
+      const refreshed = await productService.productLookup();
+      setProducts(refreshed || []);
+
+      const selected = (refreshed || []).find((item) => item.code.toLowerCase() === newProductCode.trim().toLowerCase());
+      if (selected?.id) {
+        setCreateProductId(selected.id);
+      }
+
+      setNewProductName('');
+      setNewProductCode('');
+      setNewProductDescription('');
+      setProductDialogOpen(false);
+      showSuccess('Product added successfully');
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'Failed to create product');
+    } finally {
+      setCreatingProduct(false);
+    }
   };
 
   const handleManualUpload = async () => {
@@ -674,6 +751,7 @@ const CampaignManagementPage: React.FC = () => {
           : createMessageTemplate,
         scheduled_time: createScheduledTime || undefined,
         contact_list_id: Number(createContactListId),
+        product_id: createProductId ? Number(createProductId) : undefined,
         status: createScheduledTime ? 'scheduled' : 'draft',
         email_content_mode: createCampaignType === 'email' ? emailContentMode : undefined,
         email_subject: createCampaignType === 'email' ? (emailSubject || createCampaignName) : undefined,
@@ -689,6 +767,7 @@ const CampaignManagementPage: React.FC = () => {
       setGeneratedBodies([]);
       setEmailContentMode('manual');
       setCreateScheduledTime('');
+      setCreateProductId('');
       showSuccess('Campaign created');
       await Promise.all([loadCampaigns(), loadDashboard()]);
       setTab(0);
@@ -1005,7 +1084,7 @@ const CampaignManagementPage: React.FC = () => {
               </Stack>
 
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <TextField
                     size="small"
                     fullWidth
@@ -1014,7 +1093,7 @@ const CampaignManagementPage: React.FC = () => {
                     onChange={(e) => setCampaignSearch(e.target.value)}
                   />
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -1029,7 +1108,7 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
                     <Select
@@ -1044,6 +1123,23 @@ const CampaignManagementPage: React.FC = () => {
                       <MenuItem value="completed">Completed</MenuItem>
                       <MenuItem value="failed">Failed</MenuItem>
                       <MenuItem value="paused">Paused</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Product</InputLabel>
+                    <Select
+                      value={campaignProductFilter}
+                      label="Product"
+                      onChange={(e) => setCampaignProductFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                    >
+                      <MenuItem value="">All</MenuItem>
+                      {products.map((item) => (
+                        <MenuItem key={item.id} value={item.id}>
+                          {item.name} ({item.code})
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Grid>
@@ -1074,6 +1170,11 @@ const CampaignManagementPage: React.FC = () => {
                             <Typography variant="caption" color="text.secondary">
                               List: {item.contact_list_name || item.contact_list_id}
                             </Typography>
+                            {item.product_name && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                Product: {item.product_name}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell>{item.campaign_type}</TableCell>
                           <TableCell>
@@ -1134,7 +1235,7 @@ const CampaignManagementPage: React.FC = () => {
               <Chip size="small" label="4. Launch or Schedule" variant="outlined" />
             </Stack>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <TextField
                   fullWidth
                   label="Campaign Name"
@@ -1142,7 +1243,7 @@ const CampaignManagementPage: React.FC = () => {
                   onChange={(e) => setCreateCampaignName(e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} md={2}>
                 <FormControl fullWidth>
                   <InputLabel>Campaign Type</InputLabel>
                   <Select
@@ -1171,6 +1272,36 @@ const CampaignManagementPage: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <FormControl fullWidth>
+                  <InputLabel>Product</InputLabel>
+                  <Select
+                    value={createProductId}
+                    label="Product"
+                    onChange={(e) => setCreateProductId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <MenuItem value="">
+                      <em>No Product</em>
+                    </MenuItem>
+                    {products.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={1}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => setProductDialogOpen(true)}
+                  sx={{ height: '56px' }}
+                >
+                  Add
+                </Button>
               </Grid>
 
               <Grid item xs={12}>
@@ -1461,7 +1592,7 @@ const CampaignManagementPage: React.FC = () => {
                     <Stack spacing={0.75}>
                       {previewContacts.map((contact) => (
                         <Typography key={contact.id} variant="body2">
-                          {(contact.name || 'Unnamed')} - {contact.email || '-'} {contact.phone ? `| ${contact.phone}` : ''}
+                          {(contact.name || 'Unnamed')} - {contact.email || '-'} {contact.phone ? `| ${contact.phone}` : ''} {contact.company ? `| ${contact.company}` : ''}
                         </Typography>
                       ))}
                     </Stack>
@@ -1597,6 +1728,7 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>Name</TableCell>
                         <TableCell>Email</TableCell>
                         <TableCell>Phone</TableCell>
+                        <TableCell>Company</TableCell>
                         <TableCell>Created</TableCell>
                         <TableCell>Actions</TableCell>
                       </TableRow>
@@ -1608,6 +1740,7 @@ const CampaignManagementPage: React.FC = () => {
                             <TableCell>{contact.name || '-'}</TableCell>
                             <TableCell>{contact.email || '-'}</TableCell>
                             <TableCell>{contact.phone || '-'}</TableCell>
+                            <TableCell>{contact.company || '-'}</TableCell>
                             <TableCell>{formatDate(contact.created_at)}</TableCell>
                             <TableCell>
                               <Button size="small" color="error" onClick={() => handleDeleteContact(contact.id)}>
@@ -1618,7 +1751,7 @@ const CampaignManagementPage: React.FC = () => {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={5} align="center">No contacts found.</TableCell>
+                          <TableCell colSpan={6} align="center">No contacts found.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -1661,7 +1794,7 @@ const CampaignManagementPage: React.FC = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Alert severity="info">CSV format: name,email,phone</Alert>
+                  <Alert severity="info">CSV/Excel format: name,email,phone,company</Alert>
                 </Grid>
               </Grid>
             </Paper>
@@ -1678,7 +1811,10 @@ const CampaignManagementPage: React.FC = () => {
                 <Grid item xs={12} md={3}>
                   <TextField fullWidth label="Phone" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} />
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2}>
+                  <TextField fullWidth label="Company" value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} />
+                </Grid>
+                <Grid item xs={12} md={1}>
                   <Stack direction="row" spacing={1}>
                     <Button fullWidth variant="outlined" onClick={handleAddManualContact}>Add</Button>
                     <Button fullWidth variant="contained" onClick={handleManualUpload}>Upload</Button>
@@ -1694,6 +1830,7 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>Name</TableCell>
                         <TableCell>Email</TableCell>
                         <TableCell>Phone</TableCell>
+                        <TableCell>Company</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1702,6 +1839,7 @@ const CampaignManagementPage: React.FC = () => {
                           <TableCell>{item.name || '-'}</TableCell>
                           <TableCell>{item.email || '-'}</TableCell>
                           <TableCell>{item.phone || '-'}</TableCell>
+                          <TableCell>{item.company || '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1713,19 +1851,22 @@ const CampaignManagementPage: React.FC = () => {
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>CSV Upload</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleDownloadCsvTemplate}>
+                  Download CSV Template
+                </Button>
                 <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
-                  Choose CSV
+                  Choose CSV/Excel
                   <input
                     hidden
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.xlsx,.xls"
                     onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
                   />
                 </Button>
                 <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                   {csvFile ? csvFile.name : 'No file selected'}
                 </Typography>
-                <Button variant="contained" onClick={handleCsvUpload}>Upload CSV</Button>
+                <Button variant="contained" onClick={handleCsvUpload}>Upload File</Button>
               </Stack>
             </Paper>
           </Stack>
@@ -1819,6 +1960,40 @@ const CampaignManagementPage: React.FC = () => {
             />
           </Paper>
         )}
+
+        <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Add Product</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              <TextField
+                fullWidth
+                label="Product Name"
+                value={newProductName}
+                onChange={(e) => setNewProductName(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Product Code"
+                value={newProductCode}
+                onChange={(e) => setNewProductCode(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                minRows={3}
+                value={newProductDescription}
+                onChange={(e) => setNewProductDescription(e.target.value)}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setProductDialogOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleCreateProductFromCampaign} disabled={creatingProduct}>
+              {creatingProduct ? 'Saving...' : 'Save Product'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
       </Box>
     </AdminLayout>

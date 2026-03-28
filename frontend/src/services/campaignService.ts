@@ -10,6 +10,8 @@ export interface CampaignItem {
   message_template: string;
   contact_list_id: number;
   contact_list_name?: string;
+  product_id?: number | null;
+  product_name?: string | null;
   scheduled_time?: string;
   status: CampaignStatus;
   number_sent: number;
@@ -72,6 +74,7 @@ export interface ContactItem {
   name?: string;
   email?: string;
   phone?: string;
+  company?: string;
   contact_list_id: number;
   created_at: string;
 }
@@ -99,6 +102,7 @@ export interface CreateCampaignPayload {
   message_template: string;
   scheduled_time?: string;
   contact_list_id: number;
+  product_id?: number;
   status?: 'draft' | 'scheduled';
   email_content_mode?: 'manual' | 'prompt';
   email_subject?: string;
@@ -122,6 +126,7 @@ export interface CampaignFilters {
   search?: string;
   campaign_type?: CampaignType;
   status?: CampaignStatus;
+  product_id?: number;
   skip?: number;
   limit?: number;
 }
@@ -137,6 +142,7 @@ export interface UploadManualContactsPayload {
     name?: string;
     email?: string;
     phone?: string;
+    company?: string;
   }>;
 }
 

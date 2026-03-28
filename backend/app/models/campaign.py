@@ -22,6 +22,7 @@ class Contact(Base):
     name = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True, index=True)
+    company = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True) 
 
@@ -35,6 +36,7 @@ class Campaign(Base):
     campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
     message_template = Column(Text, nullable=False)
     contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
     status = Column(String, nullable=False, default="draft", index=True)
     number_sent = Column(Integer, nullable=False, default=0)

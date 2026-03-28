@@ -2,16 +2,19 @@ from datetime import datetime
 from io import StringIO
 import csv
 import json
+from io import BytesIO
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+import pandas as pd
 
 from app.auth import require_admin
 from app.database import get_db
 from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
+from app.models.products import Product
 from app.services.email_service import send_campaign_email
 from app.services.campaign_email_ai_service import generate_email_variants_from_prompt
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
@@ -34,6 +37,7 @@ class ContactManualEntry(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    company: Optional[str] = None
 
 
 class ContactManualUploadRequest(BaseModel):
@@ -45,6 +49,7 @@ class CampaignCreateRequest(BaseModel):
     campaign_type: str
     message_template: str
     contact_list_id: int
+    product_id: Optional[int] = None
     scheduled_time: Optional[datetime] = None
     status: Optional[str] = "draft"
     email_content_mode: Optional[str] = "manual"
@@ -63,15 +68,21 @@ class CampaignStatusRequest(BaseModel):
     status: str
 
 
-def _validate_contact_payload(name: Optional[str], email: Optional[str], phone: Optional[str]) -> tuple[str, str, str]:
+def _validate_contact_payload(
+    name: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+    company: Optional[str] = None,
+) -> tuple[str, str, str, str]:
     cleaned_name = (name or "").strip()
     cleaned_email = (email or "").strip().lower()
     cleaned_phone = (phone or "").strip()
+    cleaned_company = (company or "").strip()
 
     if not cleaned_email and not cleaned_phone:
         raise ValueError("Either email or phone is required")
 
-    return cleaned_name, cleaned_email, cleaned_phone
+    return cleaned_name, cleaned_email, cleaned_phone, cleaned_company
 
 
 def _parse_auto_agent_marker(description: Optional[str]) -> tuple[bool, Optional[str]]:
@@ -83,7 +94,11 @@ def _parse_auto_agent_marker(description: Optional[str]) -> tuple[bool, Optional
     return True, widget_id
 
 
-def _serialize_campaign(campaign: Campaign, contact_list_name: Optional[str] = None) -> dict:
+def _serialize_campaign(
+    campaign: Campaign,
+    contact_list_name: Optional[str] = None,
+    product_name: Optional[str] = None,
+) -> dict:
     return {
         "id": campaign.id,
         "campaign_name": campaign.campaign_name,
@@ -91,6 +106,8 @@ def _serialize_campaign(campaign: Campaign, contact_list_name: Optional[str] = N
         "message_template": campaign.message_template,
         "contact_list_id": campaign.contact_list_id,
         "contact_list_name": contact_list_name,
+        "product_id": campaign.product_id,
+        "product_name": product_name,
         "scheduled_time": campaign.scheduled_time,
         "status": campaign.status,
         "number_sent": campaign.number_sent,
@@ -480,7 +497,8 @@ async def list_contacts(
         query = query.filter(
             Contact.name.ilike(search_term) |
             Contact.email.ilike(search_term) |
-            Contact.phone.ilike(search_term)
+            Contact.phone.ilike(search_term) |
+            Contact.company.ilike(search_term)
         )
 
     total = query.count()
@@ -493,6 +511,7 @@ async def list_contacts(
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
+                "company": row.company,
                 "contact_list_id": row.contact_list_id,
                 "created_at": row.created_at,
             }
@@ -529,12 +548,13 @@ async def upload_contacts_manual(
 
     for index, item in enumerate(payload.contacts):
         try:
-            name, email, phone = _validate_contact_payload(item.name, item.email, item.phone)
+            name, email, phone, company = _validate_contact_payload(item.name, item.email, item.phone, item.company)
             contact = Contact(
                 contact_list_id=contact_list.id,
                 name=name or None,
                 email=email or None,
                 phone=phone or None,
+                company=company or None,
             )
             db.add(contact)
             created += 1
@@ -568,30 +588,50 @@ async def upload_contacts_csv(
     if not raw:
         raise HTTPException(status_code=400, detail="CSV file is empty")
 
-    try:
-        content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded")
+    filename = (file.filename or "").lower()
+    rows_iter = []
+    normalized_headers = set()
 
-    reader = csv.DictReader(StringIO(content))
-    if not reader.fieldnames:
-        raise HTTPException(status_code=400, detail="CSV headers are missing")
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
+        try:
+            dataframe = pd.read_excel(BytesIO(raw))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Excel file is invalid or unsupported")
 
-    normalized_headers = {header.strip().lower() for header in reader.fieldnames if header}
+        dataframe.columns = [str(col).strip().lower() for col in dataframe.columns]
+        normalized_headers = set(dataframe.columns)
+        rows_iter = dataframe.fillna("").to_dict(orient="records")
+    else:
+        try:
+            content = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded")
+
+        reader = csv.DictReader(StringIO(content))
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="CSV headers are missing")
+
+        normalized_headers = {header.strip().lower() for header in reader.fieldnames if header}
+        rows_iter = [
+            {str(key or "").strip().lower(): value for key, value in row.items()}
+            for row in reader
+        ]
+
     required_headers = {"name", "email", "phone"}
     if not (required_headers & normalized_headers):
-        raise HTTPException(status_code=400, detail="CSV must include at least one of: name, email, phone")
+        raise HTTPException(status_code=400, detail="File must include at least one of: name, email, phone")
 
     created = 0
     errors = []
     added_contacts = []
 
-    for index, row in enumerate(reader, start=2):
+    for index, row in enumerate(rows_iter, start=2):
         try:
-            name, email, phone = _validate_contact_payload(
+            name, email, phone, company = _validate_contact_payload(
                 row.get("name"),
                 row.get("email"),
                 row.get("phone"),
+                row.get("company"),
             )
 
             # 🔍 Check existing contact
@@ -614,13 +654,15 @@ async def upload_contacts_csv(
                 existing.name = name or existing.name
                 existing.email = email or existing.email
                 existing.phone = phone or existing.phone
+                existing.company = company or existing.company
 
                 added_contacts.append({
                     "id": existing.id,
                     "label": f"{existing.name} ({existing.phone})",
                     "name": existing.name,
                     "email": existing.email,
-                    "phone": existing.phone
+                    "phone": existing.phone,
+                    "company": existing.company,
                 })
 
             else:
@@ -630,6 +672,7 @@ async def upload_contacts_csv(
                     name=name or None,
                     email=email or None,
                     phone=phone or None,
+                    company=company or None,
                 )
                 db.add(new_contact)
                 db.flush()  # get ID without commit
@@ -639,7 +682,8 @@ async def upload_contacts_csv(
                     "label": f"{new_contact.name} ({new_contact.phone})",
                     "name": new_contact.name,
                     "email": new_contact.email,
-                    "phone": new_contact.phone
+                    "phone": new_contact.phone,
+                    "company": new_contact.company,
                 })
 
         except ValueError as exc:
@@ -714,6 +758,17 @@ async def create_campaign(
     if payload.scheduled_time and compare_now and payload.scheduled_time > compare_now and status_value == "draft":
         status_value = "scheduled"
 
+    product_name = None
+    if payload.product_id:
+        product = db.query(Product).filter(
+            Product.id == payload.product_id,
+            Product.organization_id == current_user.organization_id,
+            Product.is_deleted == False,
+        ).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="product_id not found")
+        product_name = product.name
+
     if campaign_type == "email":
         message_template = _build_email_template_payload(
             campaign_name=campaign_name,
@@ -727,6 +782,7 @@ async def create_campaign(
         campaign_type=campaign_type,
         message_template=message_template,
         contact_list_id=payload.contact_list_id,
+        product_id=payload.product_id,
         scheduled_time=payload.scheduled_time,
         status=status_value,
         number_sent=0,
@@ -736,7 +792,11 @@ async def create_campaign(
     db.commit()
     db.refresh(campaign)
 
-    return _serialize_campaign(campaign, contact_list_name=contact_list.list_name)
+    return _serialize_campaign(
+        campaign,
+        contact_list_name=contact_list.list_name,
+        product_name=product_name,
+    )
 
 
 @router.get("")
@@ -744,6 +804,7 @@ async def list_campaigns(
     search: Optional[str] = None,
     campaign_type: Optional[str] = None,
     status: Optional[str] = None,
+    product_id: Optional[int] = None,
     skip: int = 0,
     limit: int = 25,
     db: Session = Depends(get_db),
@@ -768,17 +829,34 @@ async def list_campaigns(
             raise HTTPException(status_code=400, detail="Invalid status filter")
         query = query.filter(Campaign.status == status_value)
 
+    if product_id is not None:
+        if product_id <= 0:
+            raise HTTPException(status_code=400, detail="Invalid product_id filter")
+        query = query.filter(Campaign.product_id == product_id)
+
     total = query.count()
     rows = query.order_by(Campaign.created_at.desc()).offset(skip).limit(limit).all()
 
     contact_list_ids = [row.contact_list_id for row in rows]
+    product_ids = [row.product_id for row in rows if row.product_id]
     contact_list_map = {}
+    product_map = {}
     if contact_list_ids:
         contact_lists = db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
         contact_list_map = {item.id: item.list_name for item in contact_lists}
+    if product_ids:
+        products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+        product_map = {item.id: item.name for item in products}
 
     return {
-        "items": [_serialize_campaign(row, contact_list_map.get(row.contact_list_id)) for row in rows],
+        "items": [
+            _serialize_campaign(
+                row,
+                contact_list_map.get(row.contact_list_id),
+                product_map.get(row.product_id),
+            )
+            for row in rows
+        ],
         "pagination": {
             "total": total,
             "skip": skip,
@@ -801,8 +879,16 @@ async def get_campaign(
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     contact_list = db.query(ContactList).filter(ContactList.id == row.contact_list_id).first()
+    product_name = None
+    if row.product_id:
+        product = db.query(Product).filter(Product.id == row.product_id).first()
+        product_name = product.name if product else None
 
-    return _serialize_campaign(row, contact_list_name=contact_list.list_name if contact_list else None)
+    return _serialize_campaign(
+        row,
+        contact_list_name=contact_list.list_name if contact_list else None,
+        product_name=product_name,
+    )
 
 
 @router.post("/{campaign_id}/status")
