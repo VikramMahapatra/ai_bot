@@ -2,16 +2,20 @@ from datetime import datetime
 from io import StringIO
 import csv
 import json
+import uuid
 from io import BytesIO
-from typing import List, Optional
+from typing import Any, List, Optional
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Query, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 import pandas as pd
 
 from app.auth import require_admin
+from app.config import settings
 from app.database import get_db
 from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
 from app.models.products import Product
@@ -24,8 +28,56 @@ router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
 ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp", "sms"}
 ALLOWED_CAMPAIGN_STATUSES = {"draft", "scheduled", "running", "completed", "paused", "failed"}
-ALLOWED_LOG_STATUSES = {"sent", "failed", "pending"}
+ALLOWED_LOG_STATUSES = {
+    "pending",
+    "sent",
+    "delivered",
+    "opened",
+    "read",
+    "clicked",
+    "bounced",
+    "complained",
+    "unsubscribed",
+    "failed",
+}
 AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX = "AUTO_AGENT_APPOINTMENT_LIST::"
+
+TRACKING_PIXEL_GIF = bytes.fromhex(
+    "47494638396101000100800000ffffff00000021f90401000000002c00000000010001000002024401003b"
+)
+
+TRACKING_STATUS_RANK = {
+    "pending": 0,
+    "sent": 1,
+    "delivered": 2,
+    "opened": 3,
+    "read": 4,
+    "clicked": 5,
+    "failed": 90,
+    "bounced": 91,
+    "complained": 92,
+    "unsubscribed": 93,
+}
+
+TERMINAL_TRACKING_STATUSES = {"failed", "bounced", "complained", "unsubscribed"}
+
+TRACKING_EVENT_TO_STATUS = {
+    "pending": "pending",
+    "sent": "sent",
+    "delivered": "delivered",
+    "open": "opened",
+    "opened": "opened",
+    "read": "read",
+    "click": "clicked",
+    "clicked": "clicked",
+    "bounce": "bounced",
+    "bounced": "bounced",
+    "complaint": "complained",
+    "complained": "complained",
+    "unsubscribe": "unsubscribed",
+    "unsubscribed": "unsubscribed",
+    "failed": "failed",
+}
 
 
 class ContactListCreateRequest(BaseModel):
@@ -73,6 +125,14 @@ class EmailSpamScoreRequest(BaseModel):
 
 class CampaignStatusRequest(BaseModel):
     status: str
+
+
+class CampaignEmailTrackingWebhookRequest(BaseModel):
+    event: str
+    tracking_token: Optional[str] = None
+    provider_message_id: Optional[str] = None
+    event_at: Optional[datetime] = None
+    details: Optional[dict[str, Any]] = None
 
 
 def _validate_contact_payload(
@@ -224,12 +284,125 @@ def _get_active_twilio_sms_config(db: Session, organization_id: int) -> Optional
     ).first()
 
 
+def _get_tracking_base_url() -> str:
+    return (settings.CAMPAIGN_EMAIL_TRACKING_BASE_URL or "http://localhost:8000").strip().rstrip("/")
+
+
+def _is_safe_redirect_url(value: str) -> bool:
+    parsed = urlparse((value or "").strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _normalize_tracking_status(value: Optional[str]) -> str:
+    key = (value or "").strip().lower()
+    return TRACKING_EVENT_TO_STATUS.get(key, key)
+
+
+def _set_campaign_log_status(log: CampaignLog, next_status: str) -> None:
+    next_key = _normalize_tracking_status(next_status)
+    if next_key not in TRACKING_STATUS_RANK:
+        return
+    current_key = (log.status or "pending").strip().lower() or "pending"
+    current_rank = TRACKING_STATUS_RANK.get(current_key, 0)
+    next_rank = TRACKING_STATUS_RANK.get(next_key, 0)
+
+    if current_key in TERMINAL_TRACKING_STATUSES and next_key not in TERMINAL_TRACKING_STATUSES:
+        return
+    if next_rank >= current_rank:
+        log.status = next_key
+
+
+def _apply_tracking_event(
+    log: CampaignLog,
+    event: str,
+    event_at: Optional[datetime] = None,
+    payload: Optional[dict[str, Any]] = None,
+) -> None:
+    at = event_at or datetime.utcnow()
+    event_key = _normalize_tracking_status(event)
+
+    if event_key in {"sent", "delivered"}:
+        if not log.sent_at:
+            log.sent_at = at
+        if not log.delivered_at:
+            log.delivered_at = at
+    elif event_key == "opened":
+        log.open_count = int(log.open_count or 0) + 1
+        if not log.opened_at:
+            log.opened_at = at
+        if not log.read_at:
+            # Heuristic fallback: first open approximates read when provider read signal is unavailable.
+            log.read_at = at
+    elif event_key == "read":
+        if not log.opened_at:
+            log.opened_at = at
+        if not log.read_at:
+            log.read_at = at
+    elif event_key == "clicked":
+        log.click_count = int(log.click_count or 0) + 1
+        if not log.opened_at:
+            log.opened_at = at
+        if not log.read_at:
+            log.read_at = at
+        if not log.clicked_at:
+            log.clicked_at = at
+    elif event_key == "bounced":
+        if not log.bounced_at:
+            log.bounced_at = at
+    elif event_key == "complained":
+        if not log.complained_at:
+            log.complained_at = at
+    elif event_key == "unsubscribed":
+        if not log.unsubscribed_at:
+            log.unsubscribed_at = at
+    elif event_key == "failed":
+        if not log.error_message:
+            log.error_message = "Delivery failed"
+
+    _set_campaign_log_status(log, event_key)
+    log.last_event_type = event_key
+    log.last_event_at = at
+    if payload:
+        try:
+            log.event_payload = json.dumps(payload, ensure_ascii=True)
+        except Exception:
+            pass
+
+
+def _serialize_campaign_log(row: CampaignLog, contact: Optional[Contact]) -> dict:
+    return {
+        "id": row.id,
+        "campaign_id": row.campaign_id,
+        "contact_id": row.contact_id,
+        "contact_name": contact.name if contact else None,
+        "email": contact.email if contact else None,
+        "phone": contact.phone if contact else None,
+        "status": row.status,
+        "sent_at": row.sent_at,
+        "delivered_at": row.delivered_at,
+        "opened_at": row.opened_at,
+        "read_at": row.read_at,
+        "clicked_at": row.clicked_at,
+        "bounced_at": row.bounced_at,
+        "complained_at": row.complained_at,
+        "unsubscribed_at": row.unsubscribed_at,
+        "open_count": int(row.open_count or 0),
+        "click_count": int(row.click_count or 0),
+        "provider_message_id": row.provider_message_id,
+        "last_event_type": row.last_event_type,
+        "last_event_at": row.last_event_at,
+        "error_message": row.error_message,
+        "created_at": row.created_at,
+    }
+
+
 def _send_campaign_message(
     campaign: Campaign,
     contact: Contact,
     contact_index: int,
+    tracking_token: Optional[str] = None,
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, Optional[str], Optional[str]]:
     """Send campaign message for the selected channel.
 
     Email sends via SMTP, WhatsApp remains placeholder, SMS sends via Twilio.
@@ -246,31 +419,34 @@ def _send_campaign_message(
             campaign_name=campaign.campaign_name,
             message_template=body,
             subject=subject,
+            tracking_token=tracking_token,
+            tracking_base_url=_get_tracking_base_url(),
         )
 
     if campaign.campaign_type == "whatsapp":
         digits = "".join(ch for ch in (contact.phone or "") if ch.isdigit())
         if len(digits) < 8:
-            return False, "Missing or invalid phone"
+            return False, "Missing or invalid phone", None
         # Placeholder for real WhatsApp API integration.
-        return True, None
+        return True, None, None
 
     if campaign.campaign_type == "sms":
         if not twilio_sms_config:
-            return False, "Twilio SMS is not configured or inactive"
+            return False, "Twilio SMS is not configured or inactive", None
 
         rendered_message = render_sms_template(
             template=campaign.message_template,
             recipient_name=contact.name or "",
             campaign_name=campaign.campaign_name,
         )
-        return send_twilio_sms(
+        is_sent, error_message = send_twilio_sms(
             config=twilio_sms_config,
             to_number=contact.phone or "",
             message_text=rendered_message,
         )
+        return is_sent, error_message, None
 
-    return False, "Unsupported campaign type"
+    return False, "Unsupported campaign type", None
 
 
 def _execute_campaign_now(
@@ -289,21 +465,34 @@ def _execute_campaign_now(
 
     for contact in contacts:
         for_index = sent_count + failed_count
-        is_sent, error_message = _send_campaign_message(
-            campaign,
-            contact,
-            contact_index=for_index,
-            twilio_sms_config=twilio_sms_config,
-        )
+        tracking_token = uuid.uuid4().hex if campaign.campaign_type == "email" else None
 
         log = CampaignLog(
             campaign_id=campaign.id,
             contact_id=contact.id,
-            status="sent" if is_sent else "failed",
-            sent_at=datetime.utcnow() if is_sent else None,
-            error_message=error_message,
+            status="pending",
+            tracking_token=tracking_token,
+            open_count=0,
+            click_count=0,
         )
         db.add(log)
+        db.flush()
+
+        is_sent, error_message, provider_message_id = _send_campaign_message(
+            campaign,
+            contact,
+            contact_index=for_index,
+            tracking_token=tracking_token,
+            twilio_sms_config=twilio_sms_config,
+        )
+
+        log.provider_message_id = provider_message_id
+        if is_sent:
+            _apply_tracking_event(log, "delivered")
+            log.error_message = None
+        else:
+            _apply_tracking_event(log, "failed")
+            log.error_message = error_message
 
         if is_sent:
             sent_count += 1
@@ -323,6 +512,71 @@ def _execute_campaign_now(
         "number_failed": failed_count,
         "total_contacts": len(contacts),
     }
+
+
+@router.get("/public/email-track/open/{tracking_token}.gif")
+async def campaign_email_open_pixel(
+    tracking_token: str,
+    db: Session = Depends(get_db),
+):
+    log = db.query(CampaignLog).filter(CampaignLog.tracking_token == tracking_token).first()
+    if log:
+        _apply_tracking_event(log, "opened")
+        db.commit()
+    return Response(content=TRACKING_PIXEL_GIF, media_type="image/gif", headers={"Cache-Control": "no-cache, no-store"})
+
+
+@router.get("/public/email-track/click/{tracking_token}")
+async def campaign_email_click_redirect(
+    tracking_token: str,
+    url: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    destination = (url or "").strip()
+    if not _is_safe_redirect_url(destination):
+        raise HTTPException(status_code=400, detail="Invalid redirect URL")
+
+    log = db.query(CampaignLog).filter(CampaignLog.tracking_token == tracking_token).first()
+    if log:
+        _apply_tracking_event(log, "clicked", payload={"redirect_url": destination})
+        db.commit()
+
+    return RedirectResponse(url=destination, status_code=307)
+
+
+@router.post("/public/email-track/webhook")
+async def campaign_email_tracking_webhook(
+    payload: CampaignEmailTrackingWebhookRequest,
+    db: Session = Depends(get_db),
+    x_campaign_webhook_secret: Optional[str] = Header(default=None),
+):
+    configured_secret = (settings.CAMPAIGN_EMAIL_WEBHOOK_SECRET or "").strip()
+    if configured_secret and (x_campaign_webhook_secret or "").strip() != configured_secret:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    event = _normalize_tracking_status(payload.event)
+    if event not in ALLOWED_LOG_STATUSES:
+        raise HTTPException(status_code=400, detail="Unsupported event")
+
+    log = None
+    if payload.tracking_token:
+        log = db.query(CampaignLog).filter(CampaignLog.tracking_token == payload.tracking_token.strip()).first()
+    if not log and payload.provider_message_id:
+        log = db.query(CampaignLog).filter(CampaignLog.provider_message_id == payload.provider_message_id.strip()).first()
+
+    if not log:
+        raise HTTPException(status_code=404, detail="Campaign log not found")
+
+    _apply_tracking_event(
+        log,
+        event,
+        event_at=payload.event_at,
+        payload=payload.details,
+    )
+    db.commit()
+    db.refresh(log)
+
+    return {"ok": True, "log_id": log.id, "status": log.status}
 
 
 @router.post("/email/generate-variants")
@@ -1125,18 +1379,7 @@ async def get_campaign_logs(
 
     return {
         "items": [
-            {
-                "id": row.id,
-                "campaign_id": row.campaign_id,
-                "contact_id": row.contact_id,
-                "contact_name": contact_map.get(row.contact_id).name if contact_map.get(row.contact_id) else None,
-                "email": contact_map.get(row.contact_id).email if contact_map.get(row.contact_id) else None,
-                "phone": contact_map.get(row.contact_id).phone if contact_map.get(row.contact_id) else None,
-                "status": row.status,
-                "sent_at": row.sent_at,
-                "error_message": row.error_message,
-                "created_at": row.created_at,
-            }
+            _serialize_campaign_log(row, contact_map.get(row.contact_id))
             for row in rows
         ],
         "pagination": {

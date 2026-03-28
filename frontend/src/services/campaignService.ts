@@ -35,8 +35,30 @@ export interface CampaignLogItem {
   contact_name?: string;
   email?: string;
   phone?: string;
-  status: 'sent' | 'failed' | 'pending';
+  status:
+    | 'pending'
+    | 'sent'
+    | 'delivered'
+    | 'opened'
+    | 'read'
+    | 'clicked'
+    | 'bounced'
+    | 'complained'
+    | 'unsubscribed'
+    | 'failed';
   sent_at?: string;
+  delivered_at?: string;
+  opened_at?: string;
+  read_at?: string;
+  clicked_at?: string;
+  bounced_at?: string;
+  complained_at?: string;
+  unsubscribed_at?: string;
+  open_count?: number;
+  click_count?: number;
+  provider_message_id?: string;
+  last_event_type?: string;
+  last_event_at?: string;
   error_message?: string;
   created_at: string;
 }

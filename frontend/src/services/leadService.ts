@@ -12,7 +12,8 @@ export const leadService = {
     limit: number = 100,
     widgetId?: string,
     source?: string,
-    funnelStage?: string
+    funnelStage?: string,
+    productId?: string
   ): Promise<Lead[]> {
     const params = new URLSearchParams({
       skip: String(skip),
@@ -21,6 +22,7 @@ export const leadService = {
     if (widgetId) params.append('widget_id', widgetId);
     if (source) params.append('source', source);
     if (funnelStage) params.append('funnel_stage', funnelStage);
+    if (productId) params.append('product_id', productId);
     const response = await api.get<Lead[]>(`/api/admin/leads?${params.toString()}`);
     return response.data;
   },
@@ -32,9 +34,12 @@ export const leadService = {
     return response.data;
   },
 
-  async exportLeads(widgetId?: string): Promise<Blob> {
+  async exportLeads(widgetId?: string, productId?: string): Promise<Blob> {
     const response = await api.get('/api/admin/leads/export', {
-      params: widgetId ? { widget_id: widgetId } : undefined,
+      params: {
+        ...(widgetId ? { widget_id: widgetId } : {}),
+        ...(productId ? { product_id: productId } : {}),
+      },
       responseType: 'blob',
     });
     return response.data;

@@ -61,11 +61,59 @@ import {
 } from '../services/campaignService';
 import { Product, productService } from '../services/productService';
 
+const IST_TIME_ZONE = 'Asia/Kolkata';
+
+const parseApiDate = (value?: string): Date | null => {
+  if (!value) return null;
+
+  const raw = value.trim();
+  if (!raw) return null;
+
+  let normalized = raw.replace(' ', 'T');
+  const hasExplicitTimezone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(normalized);
+  if (!hasExplicitTimezone) {
+    normalized = `${normalized}Z`;
+  }
+
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
 const formatDate = (value?: string) => {
   if (!value) return '-';
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString();
+  const dt = parseApiDate(value);
+  if (!dt) return value;
+
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIME_ZONE,
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(dt) + ' IST';
+};
+
+const convertIstLocalInputToUtcIso = (value?: string): string | undefined => {
+  if (!value) return undefined;
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  // datetime-local has no timezone; we interpret it as IST and convert to UTC.
+  const utcMillis = Date.UTC(year, month - 1, day, hour - 5, minute - 30, 0, 0);
+  return new Date(utcMillis).toISOString();
 };
 
 const statusColor = (status: string) => {
@@ -74,6 +122,14 @@ const statusColor = (status: string) => {
   if (status === 'scheduled') return 'warning';
   if (status === 'failed') return 'error';
   if (status === 'paused') return 'default';
+  return 'default';
+};
+
+const logStatusColor = (status: string): 'default' | 'success' | 'error' | 'warning' | 'info' => {
+  if (status === 'failed' || status === 'bounced' || status === 'complained') return 'error';
+  if (status === 'unsubscribed') return 'warning';
+  if (status === 'opened' || status === 'read' || status === 'clicked') return 'info';
+  if (status === 'sent' || status === 'delivered') return 'success';
   return 'default';
 };
 
@@ -884,7 +940,7 @@ const CampaignManagementPage: React.FC = () => {
         message_template: createCampaignType === 'email'
           ? (emailContentMode === 'prompt' ? (generatedBodies[0] || createMessageTemplate || 'Generated campaign body') : createMessageTemplate)
           : createMessageTemplate,
-        scheduled_time: createScheduledTime || undefined,
+        scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
         contact_list_id: Number(createContactListId),
         product_id: createProductId ? Number(createProductId) : undefined,
         status: createScheduledTime ? 'scheduled' : 'draft',
@@ -1694,55 +1750,86 @@ const CampaignManagementPage: React.FC = () => {
                             <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.primary.main, 0.2) }}>
                               <Grid container spacing={1.5}>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Subjects (Editable)</Typography>
-                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
-                                    {ensureFive(generatedSubjects).map((subject, idx) => (
-                                      <TextField
-                                        key={`subject-edit-${idx}`}
-                                        size="small"
-                                        label={`Subject ${idx + 1}`}
-                                        value={subject}
-                                        onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
-                                      />
-                                    ))}
-                                  </Stack>
+                                  <Accordion
+                                    disableGutters
+                                    sx={{
+                                      borderRadius: '8px',
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                      boxShadow: 'none',
+                                      '&:before': { display: 'none' },
+                                    }}
+                                  >
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        Generated Subjects (Editable)
+                                      </Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{ pt: 0.4 }}>
+                                      <Stack spacing={0.9}>
+                                        {ensureFive(generatedSubjects).map((subject, idx) => (
+                                          <TextField
+                                            key={`subject-edit-${idx}`}
+                                            size="small"
+                                            label={`Subject ${idx + 1}`}
+                                            value={subject}
+                                            onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
+                                          />
+                                        ))}
+                                      </Stack>
+                                    </AccordionDetails>
+                                  </Accordion>
                                 </Grid>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Bodies (Editable)</Typography>
-                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
-                                    {ensureFive(generatedBodies).map((body, idx) => (
-                                      <Accordion
-                                        key={`body-edit-${idx}`}
-                                        disableGutters
-                                        defaultExpanded={idx === 0}
-                                        sx={{
-                                          borderRadius: '8px',
-                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                          boxShadow: 'none',
-                                          '&:before': { display: 'none' },
-                                        }}
-                                      >
-                                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                            {`Body ${idx + 1}`}
-                                          </Typography>
-                                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                                            {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
-                                          </Typography>
-                                        </AccordionSummary>
-                                        <AccordionDetails sx={{ pt: 0.5 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            multiline
-                                            minRows={4}
-                                            value={body}
-                                            onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
-                                          />
-                                        </AccordionDetails>
-                                      </Accordion>
-                                    ))}
-                                  </Stack>
+                                  <Accordion
+                                    disableGutters
+                                    sx={{
+                                      borderRadius: '8px',
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                      boxShadow: 'none',
+                                      '&:before': { display: 'none' },
+                                    }}
+                                  >
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        Generated Bodies (Editable)
+                                      </Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{ pt: 0.4 }}>
+                                      <Stack spacing={0.9}>
+                                        {ensureFive(generatedBodies).map((body, idx) => (
+                                          <Accordion
+                                            key={`body-edit-${idx}`}
+                                            disableGutters
+                                            sx={{
+                                              borderRadius: '8px',
+                                              border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                              boxShadow: 'none',
+                                              '&:before': { display: 'none' },
+                                            }}
+                                          >
+                                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                {`Body ${idx + 1}`}
+                                              </Typography>
+                                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                                {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
+                                              </Typography>
+                                            </AccordionSummary>
+                                            <AccordionDetails sx={{ pt: 0.5 }}>
+                                              <TextField
+                                                fullWidth
+                                                size="small"
+                                                multiline
+                                                minRows={4}
+                                                value={body}
+                                                onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
+                                              />
+                                            </AccordionDetails>
+                                          </Accordion>
+                                        ))}
+                                      </Stack>
+                                    </AccordionDetails>
+                                  </Accordion>
                                 </Grid>
                               </Grid>
                             </Paper>
@@ -1850,10 +1937,11 @@ const CampaignManagementPage: React.FC = () => {
                   sx={compactInputSx}
                   fullWidth
                   type="datetime-local"
-                  label="Schedule Time (optional)"
+                  label="Schedule Time (IST, optional)"
                   value={createScheduledTime}
                   onChange={(e) => setCreateScheduledTime(e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  helperText="All campaign times are shown and interpreted in IST."
                 />
               </Grid>
 
@@ -2226,6 +2314,13 @@ const CampaignManagementPage: React.FC = () => {
                   <InputLabel>Status</InputLabel>
                   <Select value={logStatusFilter} label="Status" onChange={(e) => setLogStatusFilter(e.target.value)}>
                     <MenuItem value="">All</MenuItem>
+                    <MenuItem value="delivered">Delivered</MenuItem>
+                    <MenuItem value="opened">Opened</MenuItem>
+                    <MenuItem value="read">Read</MenuItem>
+                    <MenuItem value="clicked">Clicked</MenuItem>
+                    <MenuItem value="bounced">Bounced</MenuItem>
+                    <MenuItem value="complained">Complained</MenuItem>
+                    <MenuItem value="unsubscribed">Unsubscribed</MenuItem>
                     <MenuItem value="sent">Sent</MenuItem>
                     <MenuItem value="failed">Failed</MenuItem>
                     <MenuItem value="pending">Pending</MenuItem>
@@ -2250,7 +2345,10 @@ const CampaignManagementPage: React.FC = () => {
                     <TableCell>Email</TableCell>
                     <TableCell>Phone</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Sent At</TableCell>
+                    <TableCell>Delivered</TableCell>
+                    <TableCell>Opened / Read</TableCell>
+                    <TableCell>Clicks</TableCell>
+                    <TableCell>Last Event</TableCell>
                     <TableCell>Error</TableCell>
                   </TableRow>
                 </TableHead>
@@ -2262,15 +2360,39 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>{item.email || '-'}</TableCell>
                         <TableCell>{item.phone || '-'}</TableCell>
                         <TableCell>
-                          <Chip size="small" label={item.status} color={item.status === 'sent' ? 'success' : item.status === 'failed' ? 'error' : 'default'} variant="outlined" />
+                          <Chip size="small" label={item.status} color={logStatusColor(item.status)} variant="outlined" />
                         </TableCell>
-                        <TableCell>{formatDate(item.sent_at || item.created_at)}</TableCell>
+                        <TableCell>{formatDate(item.delivered_at || item.sent_at || item.created_at)}</TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Open: {formatDate(item.opened_at)}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Read: {formatDate(item.read_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Count: {item.click_count || 0}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Last: {formatDate(item.clicked_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {item.last_event_type || '-'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {formatDate(item.last_event_at)}
+                          </Typography>
+                        </TableCell>
                         <TableCell>{item.error_message || '-'}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} align="center">No logs found.</TableCell>
+                      <TableCell colSpan={9} align="center">No logs found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

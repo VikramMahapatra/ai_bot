@@ -144,6 +144,8 @@ export interface Lead {
   id: number;
   session_id: string;
   widget_id?: string;
+  product_id?: string;
+  product_name?: string;
   name?: string;
   email?: string;
   phone?: string;
@@ -166,6 +168,7 @@ export interface Organization {
 export interface LeadCreate {
   session_id: string;
   widget_id?: string;
+  product_id?: string;
   name?: string;
   email?: string;
   phone?: string;

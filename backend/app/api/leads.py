@@ -5,6 +5,7 @@ import json
 from app.database import get_db
 from app.auth import require_admin, get_current_user_optional
 from app.models import User, Lead, WidgetConfig
+from app.models.products import Product
 from app.schemas import LeadCreate, LeadResponse, LeadFunnelStageUpdate
 from app.utils import export_leads_to_csv
 from app.services.email_service import send_new_lead_notification
@@ -153,6 +154,7 @@ async def list_leads(
     widget_id: Optional[str] = None,
     source: Optional[str] = None,
     funnel_stage: Optional[str] = None,
+    product_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -165,7 +167,31 @@ async def list_leads(
     if funnel_stage:
         normalized_stage = _validate_funnel_stage_for_org(db, current_user.organization_id, funnel_stage)
         query = query.filter(Lead.funnel_stage == normalized_stage)
+    if product_id:
+        query = query.filter(Lead.product_id == product_id)
     leads = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
+
+    product_ids = []
+    for lead in leads:
+        if not lead.product_id:
+            continue
+        try:
+            product_ids.append(int(lead.product_id))
+        except (TypeError, ValueError):
+            continue
+    product_ids = list(set(product_ids))
+    product_name_map = {}
+    if product_ids:
+        products = db.query(Product).filter(
+            Product.organization_id == current_user.organization_id,
+            Product.id.in_(product_ids),
+            Product.is_deleted == False,
+        ).all()
+        product_name_map = {str(product.id): product.name for product in products}
+
+    for lead in leads:
+        setattr(lead, "product_name", product_name_map.get(lead.product_id))
+
     return leads
 
 
@@ -196,12 +222,15 @@ async def export_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
     widget_id: Optional[str] = None,
+    product_id: Optional[str] = None,
 ):
     """Export leads to CSV"""
     try:
         query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
         if widget_id:
             query = query.filter(Lead.widget_id == widget_id)
+        if product_id:
+            query = query.filter(Lead.product_id == product_id)
         leads = query.all()
         
         # Convert to dict

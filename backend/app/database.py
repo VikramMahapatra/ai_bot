@@ -148,6 +148,42 @@ def init_db():
                 pass
 
             try:
+                cols = conn.execute(text("PRAGMA table_info('campaign_logs')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "delivered_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN delivered_at DATETIME"))
+                if "opened_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN opened_at DATETIME"))
+                if "read_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN read_at DATETIME"))
+                if "clicked_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN clicked_at DATETIME"))
+                if "bounced_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN bounced_at DATETIME"))
+                if "complained_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN complained_at DATETIME"))
+                if "unsubscribed_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN unsubscribed_at DATETIME"))
+                if "provider_message_id" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN provider_message_id TEXT"))
+                if "tracking_token" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN tracking_token TEXT"))
+                if "open_count" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN open_count INTEGER DEFAULT 0"))
+                if "click_count" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN click_count INTEGER DEFAULT 0"))
+                if "last_event_type" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN last_event_type TEXT"))
+                if "last_event_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN last_event_at DATETIME"))
+                if "event_payload" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN event_payload TEXT"))
+                conn.execute(text("UPDATE campaign_logs SET open_count = 0 WHERE open_count IS NULL"))
+                conn.execute(text("UPDATE campaign_logs SET click_count = 0 WHERE click_count IS NULL"))
+            except Exception:
+                pass
+
+            try:
                 cols = conn.execute(text("PRAGMA table_info('leads')")).fetchall()
                 col_names = {row[1] for row in cols}
                 if "source" not in col_names:
