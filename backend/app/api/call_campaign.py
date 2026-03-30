@@ -81,8 +81,8 @@ def contacts_lookup(db: Session = Depends(get_db), current_user: User = Depends(
     return service.get_contacts_lookup(db, current_user.organization_id)
 
 @router.get("/contact-lists")
-def get_contact_lists(db: Session = Depends(get_db)):
-    return service.get_contact_lists(db)
+def get_contact_lists(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return service.get_contact_lists(db, current_user.organization_id)
 
 @router.post("/contacts/create")
 def create_contact(data: ContactCreate, db: Session = Depends(get_db)):

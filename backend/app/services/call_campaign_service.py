@@ -852,8 +852,8 @@ def get_contacts_lookup(db: Session, organization_id: int):
     ]
 
 
-def get_contact_lists(db: Session):
-    return db.query(ContactList).all()
+def get_contact_lists(db: Session, organization_id: int):
+    return db.query(ContactList).filter(ContactList.organization_id == organization_id).all()
 
 
 def create_contact(db: Session, data: ContactCreate):
