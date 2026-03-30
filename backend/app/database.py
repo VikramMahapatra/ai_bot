@@ -61,6 +61,28 @@ def init_db():
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"))
                 if "human_handoff_enabled" not in col_names:
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN human_handoff_enabled BOOLEAN"))
+                if "email_campaign_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN email_campaign_enabled BOOLEAN"))
+                if "sms_campaign_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN sms_campaign_enabled BOOLEAN"))
+                if "module_knowledge_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_knowledge_enabled BOOLEAN"))
+                if "module_leads_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_leads_enabled BOOLEAN"))
+                if "module_analytics_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_analytics_enabled BOOLEAN"))
+                if "module_advanced_analytics_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_advanced_analytics_enabled BOOLEAN"))
+                if "module_reports_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_reports_enabled BOOLEAN"))
+                if "module_campaigns_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_campaigns_enabled BOOLEAN"))
+                if "module_appointments_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_appointments_enabled BOOLEAN"))
+                if "module_products_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_products_enabled BOOLEAN"))
+                if "module_users_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_limits ADD COLUMN module_users_enabled BOOLEAN"))
                 if "max_agents" not in col_names:
                     conn.execute(text("ALTER TABLE organization_limits ADD COLUMN max_agents INTEGER"))
                 if "max_campaigns" not in col_names:
@@ -82,7 +104,58 @@ def init_db():
                     conn.execute(text("ALTER TABLE plans ADD COLUMN whatsapp_enabled BOOLEAN DEFAULT 0"))
                 if "human_handoff_enabled" not in col_names:
                     conn.execute(text("ALTER TABLE plans ADD COLUMN human_handoff_enabled BOOLEAN DEFAULT 0"))
+                if "email_campaign_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN email_campaign_enabled BOOLEAN DEFAULT 1"))
+                if "sms_campaign_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN sms_campaign_enabled BOOLEAN DEFAULT 1"))
+                if "module_knowledge_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_knowledge_enabled BOOLEAN DEFAULT 1"))
+                if "module_leads_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_leads_enabled BOOLEAN DEFAULT 1"))
+                if "module_analytics_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_analytics_enabled BOOLEAN DEFAULT 1"))
+                if "module_advanced_analytics_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_advanced_analytics_enabled BOOLEAN DEFAULT 1"))
+                if "module_reports_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_reports_enabled BOOLEAN DEFAULT 1"))
+                if "module_campaigns_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_campaigns_enabled BOOLEAN DEFAULT 1"))
+                if "module_appointments_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_appointments_enabled BOOLEAN DEFAULT 1"))
+                if "module_products_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_products_enabled BOOLEAN DEFAULT 1"))
+                if "module_users_enabled" not in col_names:
+                    conn.execute(text("ALTER TABLE plans ADD COLUMN module_users_enabled BOOLEAN DEFAULT 1"))
             except Exception:
+                pass
+
+            # Normalize user uniqueness constraints to organization scope.
+            # Old databases may have global-unique indexes on username/email.
+            try:
+                cols = conn.execute(text("PRAGMA table_info('users')")).fetchall()
+                if cols:
+                    index_rows = conn.execute(text("PRAGMA index_list('users')")).fetchall()
+                    index_map = {row[1]: row for row in index_rows}
+
+                    username_idx = index_map.get("ix_users_username")
+                    if username_idx and int(username_idx[2]) == 1:
+                        conn.execute(text("DROP INDEX IF EXISTS ix_users_username"))
+
+                    email_idx = index_map.get("ix_users_email")
+                    if email_idx and int(email_idx[2]) == 1:
+                        conn.execute(text("DROP INDEX IF EXISTS ix_users_email"))
+
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)"))
+
+                    conn.execute(
+                        text("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_username ON users(organization_id, username)")
+                    )
+                    conn.execute(
+                        text("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_email ON users(organization_id, email)")
+                    )
+            except Exception:
+                # Keep startup resilient on older/partial schemas.
                 pass
 
             try:
@@ -150,6 +223,10 @@ def init_db():
             try:
                 cols = conn.execute(text("PRAGMA table_info('campaign_logs')")).fetchall()
                 col_names = {row[1] for row in cols}
+                if "run_sequence" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN run_sequence INTEGER DEFAULT 1"))
+                if "run_started_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN run_started_at DATETIME"))
                 if "delivered_at" not in col_names:
                     conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN delivered_at DATETIME"))
                 if "opened_at" not in col_names:
@@ -178,6 +255,9 @@ def init_db():
                     conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN last_event_at DATETIME"))
                 if "event_payload" not in col_names:
                     conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN event_payload TEXT"))
+                if "converted_lead_id" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN converted_lead_id INTEGER"))
+                conn.execute(text("UPDATE campaign_logs SET run_sequence = 1 WHERE run_sequence IS NULL"))
                 conn.execute(text("UPDATE campaign_logs SET open_count = 0 WHERE open_count IS NULL"))
                 conn.execute(text("UPDATE campaign_logs SET click_count = 0 WHERE click_count IS NULL"))
             except Exception:

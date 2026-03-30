@@ -17,11 +17,27 @@ import pandas as pd
 from app.auth import require_admin
 from app.config import settings
 from app.database import get_db
-from app.models import User, Campaign, ContactList, Contact, CampaignLog, TwilioSmsChannel
+from app.models import (
+    User,
+    Campaign,
+    ContactList,
+    Contact,
+    CampaignLog,
+    CampaignLeadRule,
+    CampaignLeadConversion,
+    TwilioSmsChannel,
+)
 from app.models.products import Product
 from app.services.email_service import send_campaign_email
 from app.services.campaign_email_ai_service import generate_email_variants_from_prompt, evaluate_email_spam_score
+from app.services.campaign_to_lead_rule_engine import (
+    get_or_create_active_rule,
+    run_rule_engine,
+    serialize_rule,
+    update_rule,
+)
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
+from app.services.limits_service import get_effective_limits
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -80,6 +96,22 @@ TRACKING_EVENT_TO_STATUS = {
 }
 
 
+def _ensure_campaign_access(db: Session, organization_id: int, campaign_type: Optional[str] = None) -> None:
+    limits = get_effective_limits(db, organization_id)
+    if not limits.get("subscription_active"):
+        raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+    if not limits.get("module_campaigns_enabled", False):
+        raise HTTPException(status_code=403, detail="Campaigns module is disabled for this organization")
+
+    channel = (campaign_type or "").strip().lower()
+    if channel == "email" and not limits.get("email_campaign_enabled", False):
+        raise HTTPException(status_code=403, detail="Email campaigns are disabled for this organization")
+    if channel == "sms" and not limits.get("sms_campaign_enabled", False):
+        raise HTTPException(status_code=403, detail="SMS campaigns are disabled for this organization")
+    if channel == "whatsapp" and not limits.get("whatsapp_enabled", False):
+        raise HTTPException(status_code=403, detail="WhatsApp campaigns are disabled for this organization")
+
+
 class ContactListCreateRequest(BaseModel):
     list_name: str
     description: Optional[str] = None
@@ -133,6 +165,24 @@ class CampaignEmailTrackingWebhookRequest(BaseModel):
     provider_message_id: Optional[str] = None
     event_at: Optional[datetime] = None
     details: Optional[dict[str, Any]] = None
+
+
+class CampaignToLeadRuleUpdateRequest(BaseModel):
+    rule_name: Optional[str] = None
+    auto_convert_enabled: Optional[bool] = None
+    min_score_threshold: Optional[int] = None
+    dedupe_window_days: Optional[int] = None
+    target_funnel_stage: Optional[str] = None
+    include_statuses: Optional[List[str]] = None
+    exclude_statuses: Optional[List[str]] = None
+    score_config: Optional[dict[str, int]] = None
+    source_multipliers: Optional[dict[str, float]] = None
+
+
+class CampaignToLeadRunRequest(BaseModel):
+    campaign_id: Optional[int] = None
+    dry_run: Optional[bool] = True
+    limit: Optional[int] = 500
 
 
 def _validate_contact_payload(
@@ -370,10 +420,15 @@ def _apply_tracking_event(
 
 
 def _serialize_campaign_log(row: CampaignLog, contact: Optional[Contact]) -> dict:
+    is_converted = bool(row.converted_lead_id)
     return {
         "id": row.id,
         "campaign_id": row.campaign_id,
         "contact_id": row.contact_id,
+        "run_sequence": int(row.run_sequence or 1),
+        "run_started_at": row.run_started_at,
+        "converted_lead_id": row.converted_lead_id,
+        "is_converted_to_lead": is_converted,
         "contact_name": contact.name if contact else None,
         "email": contact.email if contact else None,
         "phone": contact.phone if contact else None,
@@ -455,6 +510,12 @@ def _execute_campaign_now(
     contacts: List[Contact],
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> dict:
+    run_sequence = int(
+        db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0)).filter(CampaignLog.campaign_id == campaign.id).scalar()
+        or 0
+    ) + 1
+    run_started_at = datetime.utcnow()
+
     campaign.status = "running"
     campaign.number_sent = 0
     campaign.number_failed = 0
@@ -470,6 +531,8 @@ def _execute_campaign_now(
         log = CampaignLog(
             campaign_id=campaign.id,
             contact_id=contact.id,
+            run_sequence=run_sequence,
+            run_started_at=run_started_at,
             status="pending",
             tracking_token=tracking_token,
             open_count=0,
@@ -505,12 +568,401 @@ def _execute_campaign_now(
     db.commit()
     db.refresh(campaign)
 
+    # Optional post-send automation: convert qualified campaign contacts to leads.
+    try:
+        active_rule = get_or_create_active_rule(db, campaign.organization_id)
+        if bool(active_rule.auto_convert_enabled):
+            run_rule_engine(
+                db=db,
+                organization_id=campaign.organization_id,
+                rule=active_rule,
+                campaign_id=campaign.id,
+                dry_run=False,
+                limit=max(100, len(contacts) * 2),
+            )
+    except Exception:
+        # Never fail campaign execution because of rule-engine post-processing.
+        pass
+
     return {
         "campaign_id": campaign.id,
+        "run_sequence": run_sequence,
+        "run_started_at": run_started_at,
         "status": campaign.status,
         "number_sent": sent_count,
         "number_failed": failed_count,
         "total_contacts": len(contacts),
+    }
+
+
+@router.get("/c2l/rules/current")
+async def get_campaign_to_lead_rule(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    rule = get_or_create_active_rule(db, current_user.organization_id)
+    return serialize_rule(rule)
+
+
+@router.put("/c2l/rules/current")
+async def update_campaign_to_lead_rule(
+    payload: CampaignToLeadRuleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    rule = get_or_create_active_rule(db, current_user.organization_id)
+    updated = update_rule(db, rule, payload.dict(exclude_unset=True))
+    return serialize_rule(updated)
+
+
+@router.post("/c2l/run")
+async def run_campaign_to_lead_rule_engine(
+    payload: CampaignToLeadRunRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if payload.campaign_id:
+        exists = db.query(Campaign.id).filter(
+            Campaign.id == payload.campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        ).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+    rule = get_or_create_active_rule(db, current_user.organization_id)
+    result = run_rule_engine(
+        db=db,
+        organization_id=current_user.organization_id,
+        rule=rule,
+        campaign_id=payload.campaign_id,
+        dry_run=bool(payload.dry_run),
+        limit=max(1, min(int(payload.limit or 500), 5000)),
+    )
+    return result
+
+
+@router.get("/c2l/conversions")
+async def list_campaign_to_lead_conversions(
+    campaign_id: Optional[int] = None,
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    limit = max(1, min(limit, 500))
+
+    campaign_ids_query = db.query(Campaign.id).filter(Campaign.organization_id == current_user.organization_id)
+    if campaign_id:
+        campaign_ids_query = campaign_ids_query.filter(Campaign.id == campaign_id)
+    org_campaign_ids = [row.id for row in campaign_ids_query.all()]
+
+    if not org_campaign_ids:
+        return {"items": [], "pagination": {"total": 0, "skip": skip, "limit": limit}}
+
+    query = db.query(CampaignLeadConversion).filter(CampaignLeadConversion.campaign_id.in_(org_campaign_ids))
+    if status:
+        query = query.filter(CampaignLeadConversion.status == status.strip().lower())
+
+    total = query.count()
+    rows = query.order_by(CampaignLeadConversion.created_at.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "campaign_id": row.campaign_id,
+                "campaign_log_id": row.campaign_log_id,
+                "contact_id": row.contact_id,
+                "lead_id": row.lead_id,
+                "rule_id": row.rule_id,
+                "score": row.score,
+                "status": row.status,
+                "reason": row.reason,
+                "details": row.details,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+        "pagination": {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        },
+    }
+
+
+@router.get("/reports/summary")
+async def get_campaign_reports_summary(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    window_days = max(1, min(days, 365))
+    window_start = datetime.utcnow() - pd.Timedelta(days=window_days)
+
+    campaign_rows = db.query(Campaign.id, Campaign.campaign_name, Campaign.campaign_type).filter(
+        Campaign.organization_id == current_user.organization_id
+    ).all()
+    campaign_meta = {
+        row.id: {
+            "campaign_name": row.campaign_name,
+            "campaign_type": (row.campaign_type or "").lower(),
+        }
+        for row in campaign_rows
+    }
+    campaign_ids = list(campaign_meta.keys())
+
+    if not campaign_ids:
+        return {
+            "generated_at": datetime.utcnow(),
+            "window_days": window_days,
+            "overview": {
+                "campaign_count": 0,
+                "run_count": 0,
+                "message_count": 0,
+                "sent_count": 0,
+                "failed_count": 0,
+                "success_rate": 0.0,
+            },
+            "channel_breakdown": {
+                "email": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
+                "sms": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
+                "whatsapp": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
+            },
+            "email_analytics": {
+                "delivered": 0,
+                "opened": 0,
+                "read": 0,
+                "clicked": 0,
+                "bounced": 0,
+                "complained": 0,
+                "unsubscribed": 0,
+                "total_open_events": 0,
+                "total_click_events": 0,
+                "delivery_rate": 0.0,
+                "open_rate": 0.0,
+                "read_rate": 0.0,
+                "click_rate": 0.0,
+                "click_to_open_rate": 0.0,
+                "bounce_rate": 0.0,
+                "complaint_rate": 0.0,
+                "unsubscribe_rate": 0.0,
+            },
+            "top_campaigns": [],
+            "daily_trend": [],
+        }
+
+    logs = db.query(CampaignLog).filter(
+        CampaignLog.campaign_id.in_(campaign_ids),
+        CampaignLog.created_at >= window_start,
+    ).all()
+
+    def _pct(numerator: int, denominator: int) -> float:
+        if denominator <= 0:
+            return 0.0
+        return round((numerator * 100.0) / denominator, 2)
+
+    channel_stats = {
+        "email": {"runs": set(), "messages": 0, "sent": 0, "failed": 0},
+        "sms": {"runs": set(), "messages": 0, "sent": 0, "failed": 0},
+        "whatsapp": {"runs": set(), "messages": 0, "sent": 0, "failed": 0},
+    }
+
+    top_campaigns: dict[int, dict[str, Any]] = {}
+    run_set: set[tuple[int, int]] = set()
+    sent_count = 0
+    failed_count = 0
+
+    email_delivered = 0
+    email_opened = 0
+    email_read = 0
+    email_clicked = 0
+    email_bounced = 0
+    email_complained = 0
+    email_unsubscribed = 0
+    total_open_events = 0
+    total_click_events = 0
+
+    daily_rollup: dict[str, dict[str, int]] = {}
+
+    for log in logs:
+        meta = campaign_meta.get(log.campaign_id)
+        if not meta:
+            continue
+
+        channel = meta.get("campaign_type") or ""
+        if channel not in channel_stats:
+            continue
+
+        status_key = (log.status or "").lower()
+        run_key = (log.campaign_id, int(log.run_sequence or 1))
+        run_set.add(run_key)
+
+        channel_stats[channel]["messages"] += 1
+        channel_stats[channel]["runs"].add(run_key)
+
+        is_failed = status_key in {"failed", "bounced", "complained", "unsubscribed"}
+        if is_failed:
+            channel_stats[channel]["failed"] += 1
+            failed_count += 1
+        else:
+            channel_stats[channel]["sent"] += 1
+            sent_count += 1
+
+        campaign_entry = top_campaigns.setdefault(
+            log.campaign_id,
+            {
+                "campaign_id": log.campaign_id,
+                "campaign_name": meta.get("campaign_name") or f"Campaign #{log.campaign_id}",
+                "campaign_type": channel,
+                "messages": 0,
+                "sent": 0,
+                "failed": 0,
+                "opened": 0,
+                "clicked": 0,
+                "runs": set(),
+                "last_event_at": None,
+            },
+        )
+        campaign_entry["messages"] += 1
+        campaign_entry["runs"].add(run_key)
+        if is_failed:
+            campaign_entry["failed"] += 1
+        else:
+            campaign_entry["sent"] += 1
+
+        if channel == "email":
+            if log.delivered_at:
+                email_delivered += 1
+            if log.opened_at:
+                email_opened += 1
+                campaign_entry["opened"] += 1
+            if log.read_at:
+                email_read += 1
+            if log.clicked_at:
+                email_clicked += 1
+                campaign_entry["clicked"] += 1
+            if log.bounced_at:
+                email_bounced += 1
+            if log.complained_at:
+                email_complained += 1
+            if log.unsubscribed_at:
+                email_unsubscribed += 1
+            total_open_events += int(log.open_count or 0)
+            total_click_events += int(log.click_count or 0)
+
+        event_time = log.last_event_at or log.created_at
+        if event_time:
+            if not campaign_entry["last_event_at"] or event_time > campaign_entry["last_event_at"]:
+                campaign_entry["last_event_at"] = event_time
+
+            day_key = event_time.date().isoformat()
+            day_bucket = daily_rollup.setdefault(
+                day_key,
+                {
+                    "email_sent": 0,
+                    "email_opened": 0,
+                    "email_clicked": 0,
+                    "sms_sent": 0,
+                    "whatsapp_sent": 0,
+                    "failed": 0,
+                },
+            )
+            if is_failed:
+                day_bucket["failed"] += 1
+            else:
+                if channel == "email":
+                    day_bucket["email_sent"] += 1
+                elif channel == "sms":
+                    day_bucket["sms_sent"] += 1
+                elif channel == "whatsapp":
+                    day_bucket["whatsapp_sent"] += 1
+
+                if channel == "email" and log.opened_at:
+                    day_bucket["email_opened"] += 1
+                if channel == "email" and log.clicked_at:
+                    day_bucket["email_clicked"] += 1
+
+    channel_breakdown = {}
+    for channel_name, stats in channel_stats.items():
+        messages = int(stats["messages"])
+        sent = int(stats["sent"])
+        failed = int(stats["failed"])
+        channel_breakdown[channel_name] = {
+            "runs": len(stats["runs"]),
+            "messages": messages,
+            "sent": sent,
+            "failed": failed,
+            "success_rate": _pct(sent, messages),
+        }
+
+    top_campaign_rows = []
+    for entry in top_campaigns.values():
+        messages = int(entry["messages"])
+        sent = int(entry["sent"])
+        opened = int(entry["opened"])
+        clicked = int(entry["clicked"])
+        top_campaign_rows.append(
+            {
+                "campaign_id": entry["campaign_id"],
+                "campaign_name": entry["campaign_name"],
+                "campaign_type": entry["campaign_type"],
+                "runs": len(entry["runs"]),
+                "messages": messages,
+                "sent": sent,
+                "failed": int(entry["failed"]),
+                "open_rate": _pct(opened, sent),
+                "click_rate": _pct(clicked, sent),
+                "last_event_at": entry["last_event_at"],
+            }
+        )
+
+    top_campaign_rows.sort(key=lambda item: item.get("messages", 0), reverse=True)
+
+    daily_trend = [
+        {
+            "date": date_key,
+            **bucket,
+        }
+        for date_key, bucket in sorted(daily_rollup.items())
+    ]
+
+    email_sent = int(channel_stats["email"]["sent"])
+
+    return {
+        "generated_at": datetime.utcnow(),
+        "window_days": window_days,
+        "overview": {
+            "campaign_count": len(campaign_ids),
+            "run_count": len(run_set),
+            "message_count": len(logs),
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "success_rate": _pct(sent_count, len(logs)),
+        },
+        "channel_breakdown": channel_breakdown,
+        "email_analytics": {
+            "delivered": email_delivered,
+            "opened": email_opened,
+            "read": email_read,
+            "clicked": email_clicked,
+            "bounced": email_bounced,
+            "complained": email_complained,
+            "unsubscribed": email_unsubscribed,
+            "total_open_events": total_open_events,
+            "total_click_events": total_click_events,
+            "delivery_rate": _pct(email_delivered, email_sent),
+            "open_rate": _pct(email_opened, email_sent),
+            "read_rate": _pct(email_read, email_sent),
+            "click_rate": _pct(email_clicked, email_sent),
+            "click_to_open_rate": _pct(email_clicked, email_opened),
+            "bounce_rate": _pct(email_bounced, email_sent),
+            "complaint_rate": _pct(email_complained, email_sent),
+            "unsubscribe_rate": _pct(email_unsubscribed, email_sent),
+        },
+        "top_campaigns": top_campaign_rows[:10],
+        "daily_trend": daily_trend,
     }
 
 
@@ -1014,6 +1466,8 @@ async def create_campaign(
     if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
         raise HTTPException(status_code=400, detail="campaign_type must be email, whatsapp, or sms")
 
+    _ensure_campaign_access(db, current_user.organization_id, campaign_type)
+
     message_template = payload.message_template.strip()
     if not message_template and campaign_type != "email":
         raise HTTPException(status_code=400, detail="message_template is required")
@@ -1264,6 +1718,8 @@ async def run_due_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    _ensure_campaign_access(db, current_user.organization_id)
+
     now = datetime.utcnow()
     due_campaigns = db.query(Campaign).filter(
         Campaign.organization_id == current_user.organization_id,
@@ -1297,6 +1753,12 @@ async def run_due_campaigns(
                 skipped.append({"campaign_id": campaign.id, "reason": "Twilio SMS is not configured or inactive"})
                 continue
 
+        try:
+            _ensure_campaign_access(db, current_user.organization_id, campaign.campaign_type)
+        except HTTPException as exc:
+            skipped.append({"campaign_id": campaign.id, "reason": str(exc.detail)})
+            continue
+
         result = _execute_campaign_now(db, campaign, contacts, twilio_sms_config=twilio_sms_config)
         executed.append(result)
 
@@ -1322,6 +1784,8 @@ async def run_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
+    _ensure_campaign_access(db, current_user.organization_id, campaign.campaign_type)
+
     contact_list = db.query(ContactList).filter(
         ContactList.id == campaign.contact_list_id,
         ContactList.organization_id == current_user.organization_id,
@@ -1346,6 +1810,7 @@ async def run_campaign(
 async def get_campaign_logs(
     campaign_id: int,
     status: Optional[str] = None,
+    run_sequence: Optional[int] = None,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
@@ -1367,6 +1832,11 @@ async def get_campaign_logs(
         if status_value not in ALLOWED_LOG_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid log status filter")
         query = query.filter(CampaignLog.status == status_value)
+
+    if run_sequence is not None:
+        if run_sequence <= 0:
+            raise HTTPException(status_code=400, detail="run_sequence must be greater than 0")
+        query = query.filter(CampaignLog.run_sequence == run_sequence)
 
     total = query.count()
     rows = query.order_by(CampaignLog.created_at.desc()).offset(skip).limit(limit).all()

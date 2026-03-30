@@ -6,6 +6,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
   Dialog,
@@ -13,11 +14,14 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
+  FormGroup,
   Grid,
   InputLabel,
   MenuItem,
   Paper,
   Select,
+  Switch,
   Stack,
   Tab,
   Tabs,
@@ -55,8 +59,11 @@ import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
   CampaignItem,
+  CampaignToLeadRule,
+  CampaignToLeadRunResult,
   ContactItem,
   ContactListItem,
+  CampaignReportsSummary,
   DashboardStats,
 } from '../services/campaignService';
 import { Product, productService } from '../services/productService';
@@ -294,15 +301,50 @@ const CampaignManagementPage: React.FC = () => {
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | ''>('');
   const [logStatusFilter, setLogStatusFilter] = useState('');
+  const [logRunSequence, setLogRunSequence] = useState<number | ''>('');
   const [logs, setLogs] = useState<any[]>([]);
   const [logTotal, setLogTotal] = useState(0);
   const [logPage, setLogPage] = useState(0);
   const [logRowsPerPage, setLogRowsPerPage] = useState(10);
 
+  const [reportDays, setReportDays] = useState(30);
+  const [reportData, setReportData] = useState<CampaignReportsSummary | null>(null);
+
+  const [c2lTab, setC2lTab] = useState(0);
+  const [c2lRule, setC2lRule] = useState<CampaignToLeadRule | null>(null);
+  const [c2lSaving, setC2lSaving] = useState(false);
+  const [c2lDryRun, setC2lDryRun] = useState(true);
+  const [c2lRunCampaignId, setC2lRunCampaignId] = useState<number | ''>('');
+  const [c2lRunLimit, setC2lRunLimit] = useState(500);
+  const [c2lRunResult, setC2lRunResult] = useState<CampaignToLeadRunResult | null>(null);
+  const [c2lConversions, setC2lConversions] = useState<any[]>([]);
+
   const statusSummary = useMemo(() => {
     const ordered = ['draft', 'scheduled', 'running', 'completed', 'failed', 'paused'];
     return ordered.map((key) => ({ key, value: dashboard.status_counts?.[key] || 0 }));
   }, [dashboard.status_counts]);
+
+  const totalStatusCount = useMemo(
+    () => statusSummary.reduce((acc, item) => acc + Number(item.value || 0), 0),
+    [statusSummary]
+  );
+
+  const dashboardHealth = useMemo(() => {
+    const sent = Number(dashboard.total_sent || 0);
+    const failed = Number(dashboard.total_failed || 0);
+    const attempts = sent + failed;
+
+    const completed = Number(dashboard.status_counts?.completed || 0);
+    const running = Number(dashboard.status_counts?.running || 0);
+    const scheduled = Number(dashboard.status_counts?.scheduled || 0);
+
+    return {
+      deliveryRate: attempts > 0 ? (sent * 100) / attempts : 0,
+      failureRate: attempts > 0 ? (failed * 100) / attempts : 0,
+      completionShare: totalStatusCount > 0 ? (completed * 100) / totalStatusCount : 0,
+      pipelineLoad: totalStatusCount > 0 ? ((running + scheduled) * 100) / totalStatusCount : 0,
+    };
+  }, [dashboard.total_sent, dashboard.total_failed, dashboard.status_counts, totalStatusCount]);
 
   const pageContainerSx = {
     maxWidth: 1380,
@@ -440,11 +482,31 @@ const CampaignManagementPage: React.FC = () => {
   const loadLogs = async (campaignId: number) => {
     const data = await campaignService.listCampaignLogs(campaignId, {
       status: logStatusFilter || undefined,
+      run_sequence: logRunSequence === '' ? undefined : Number(logRunSequence),
       skip: logPage * logRowsPerPage,
       limit: logRowsPerPage,
     });
     setLogs(data.items || []);
     setLogTotal(data.pagination?.total || 0);
+  };
+
+  const loadReports = async () => {
+    const data = await campaignService.getCampaignReportsSummary({ days: reportDays });
+    setReportData(data);
+  };
+
+  const loadC2LRule = async () => {
+    const data = await campaignService.getCampaignToLeadRule();
+    setC2lRule(data);
+  };
+
+  const loadC2LConversions = async () => {
+    const data = await campaignService.listCampaignToLeadConversions({
+      campaign_id: c2lRunCampaignId === '' ? undefined : Number(c2lRunCampaignId),
+      skip: 0,
+      limit: 50,
+    });
+    setC2lConversions(data.items || []);
   };
 
   const refreshAll = async () => {
@@ -508,6 +570,30 @@ const CampaignManagementPage: React.FC = () => {
     };
     run();
   }, [selectedCampaignId, logPage, logRowsPerPage]);
+
+  useEffect(() => {
+    if (tab !== 6) return;
+    const run = async () => {
+      try {
+        await loadReports();
+      } catch (err: any) {
+        showError(err?.response?.data?.detail || 'Failed to load campaign reports');
+      }
+    };
+    run();
+  }, [tab, reportDays]);
+
+  useEffect(() => {
+    if (tab !== 7) return;
+    const run = async () => {
+      try {
+        await Promise.all([loadC2LRule(), loadC2LConversions()]);
+      } catch (err: any) {
+        showError(err?.response?.data?.detail || 'Failed to load Campaign to Lead module');
+      }
+    };
+    run();
+  }, [tab]);
 
   useEffect(() => {
     if (!createContactListId) {
@@ -658,6 +744,33 @@ const CampaignManagementPage: React.FC = () => {
     anchor.download = 'contacts_template.csv';
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const escapeCsvValue = (value: unknown) => {
+    const text = value === null || value === undefined ? '' : String(value);
+    if (/[",\n]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const exportRowsToCsv = (filename: string, headers: string[], rows: unknown[][]) => {
+    const csv = [
+      headers.map(escapeCsvValue).join(','),
+      ...rows.map((row) => row.map(escapeCsvValue).join(',')),
+    ].join('\n');
+
+    downloadTextFile(filename, csv, 'text/csv');
   };
 
   const handleCreateProductFromCampaign = async () => {
@@ -1015,7 +1128,7 @@ const CampaignManagementPage: React.FC = () => {
   const handleViewLogs = async (campaignId: number) => {
     setSelectedCampaignId(campaignId);
     setLogPage(0);
-    setTab(4);
+    setTab(5);
     setLoading(true);
     try {
       await loadLogs(campaignId);
@@ -1129,7 +1242,7 @@ const CampaignManagementPage: React.FC = () => {
         </Box>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => setTab(3)} startIcon={<UploadFileIcon />}>
+          <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => setTab(4)} startIcon={<UploadFileIcon />}>
             Upload Contacts
           </Button>
           <Button size="small" sx={compactButtonSx} variant="contained" onClick={() => setTab(1)} startIcon={<AddIcon />}>
@@ -1158,11 +1271,14 @@ const CampaignManagementPage: React.FC = () => {
             scrollButtons="auto"
             sx={{ borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}
           >
-            <Tab label="Campaign Dashboard" icon={<ListAltIcon />} iconPosition="start" />
+            <Tab label="Dashboard" icon={<ListAltIcon />} iconPosition="start" />
             <Tab label="Create Campaign" icon={<AddIcon />} iconPosition="start" />
+            <Tab label="Run Campaign" icon={<PlayArrowIcon />} iconPosition="start" />
             <Tab label="Contact Lists" icon={<ListAltIcon />} iconPosition="start" />
             <Tab label="Upload Contacts" icon={<UploadFileIcon />} iconPosition="start" />
             <Tab label="Campaign Logs" icon={<VisibilityIcon />} iconPosition="start" />
+            <Tab label="Reports" icon={<ListAltIcon />} iconPosition="start" />
+            <Tab label="C2L" icon={<AutoAwesomeIcon />} iconPosition="start" />
           </Tabs>
         </Paper>
 
@@ -1265,156 +1381,121 @@ const CampaignManagementPage: React.FC = () => {
                   <Chip key={item.key} label={`${item.key}: ${item.value}`} color={statusColor(item.key) as any} variant="outlined" />
                 ))}
               </Stack>
+              <Stack spacing={1.1} sx={{ mt: 2 }}>
+                {statusSummary.map((item) => {
+                  const percent = totalStatusCount > 0 ? (Number(item.value || 0) * 100) / totalStatusCount : 0;
+                  return (
+                    <Box key={`status-progress-${item.key}`}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.45 }}>
+                        <Typography variant="caption" sx={{ textTransform: 'capitalize', fontWeight: 600 }}>
+                          {item.key}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {Number(item.value || 0)} ({percent.toFixed(1)}%)
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(100, Math.max(0, percent))}
+                        sx={{ height: 8, borderRadius: 999 }}
+                      />
+                    </Box>
+                  );
+                })}
+              </Stack>
             </Paper>
 
-            <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2 }}>
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Campaign List</Typography>
-                  <Typography variant="body2" color="text.secondary">Filter, run, pause, and inspect campaign executions.</Typography>
-                </Box>
-                <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
-                  Run Due Scheduled
-                </Button>
-              </Stack>
+            <Grid container spacing={2}>
+              <Grid item xs={12} lg={5}>
+                <Paper sx={{ ...sectionPanelSx, p: 2.5, height: '100%' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.6 }}>
+                    Campaign Health Snapshot
+                  </Typography>
+                  <Stack spacing={1.6}>
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>Delivery Efficiency</Typography>
+                        <Typography variant="body2" color="text.secondary">{dashboardHealth.deliveryRate.toFixed(1)}%</Typography>
+                      </Stack>
+                      <LinearProgress variant="determinate" value={Math.min(100, dashboardHealth.deliveryRate)} sx={{ height: 9, borderRadius: 999 }} />
+                    </Box>
 
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={3}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    label="Search Campaign"
-                    value={campaignSearch}
-                    onChange={(e) => setCampaignSearch(e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                      value={campaignTypeFilter}
-                      label="Type"
-                      onChange={(e) => setCampaignTypeFilter(e.target.value)}
-                    >
-                      <MenuItem value="">All</MenuItem>
-                      <MenuItem value="email">Email</MenuItem>
-                      <MenuItem value="whatsapp">WhatsApp</MenuItem>
-                      <MenuItem value="sms">SMS</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      value={campaignStatusFilter}
-                      label="Status"
-                      onChange={(e) => setCampaignStatusFilter(e.target.value)}
-                    >
-                      <MenuItem value="">All</MenuItem>
-                      <MenuItem value="draft">Draft</MenuItem>
-                      <MenuItem value="scheduled">Scheduled</MenuItem>
-                      <MenuItem value="running">Running</MenuItem>
-                      <MenuItem value="completed">Completed</MenuItem>
-                      <MenuItem value="failed">Failed</MenuItem>
-                      <MenuItem value="paused">Paused</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Product</InputLabel>
-                    <Select
-                      value={campaignProductFilter}
-                      label="Product"
-                      onChange={(e) => setCampaignProductFilter(e.target.value === '' ? '' : Number(e.target.value))}
-                    >
-                      <MenuItem value="">All</MenuItem>
-                      {products.map((item) => (
-                        <MenuItem key={item.id} value={item.id}>
-                          {item.name} ({item.code})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <Stack direction="row" spacing={1}>
-                    <Button size="small" sx={compactButtonSx} fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>Failure Exposure</Typography>
+                        <Typography variant="body2" color="text.secondary">{dashboardHealth.failureRate.toFixed(1)}%</Typography>
+                      </Stack>
+                      <LinearProgress variant="determinate" value={Math.min(100, dashboardHealth.failureRate)} color="error" sx={{ height: 9, borderRadius: 999 }} />
+                    </Box>
+
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>Completed Campaign Share</Typography>
+                        <Typography variant="body2" color="text.secondary">{dashboardHealth.completionShare.toFixed(1)}%</Typography>
+                      </Stack>
+                      <LinearProgress variant="determinate" value={Math.min(100, dashboardHealth.completionShare)} color="success" sx={{ height: 9, borderRadius: 999 }} />
+                    </Box>
+
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>Active Pipeline (Running + Scheduled)</Typography>
+                        <Typography variant="body2" color="text.secondary">{dashboardHealth.pipelineLoad.toFixed(1)}%</Typography>
+                      </Stack>
+                      <LinearProgress variant="determinate" value={Math.min(100, dashboardHealth.pipelineLoad)} color="warning" sx={{ height: 9, borderRadius: 999 }} />
+                    </Box>
                   </Stack>
-                </Grid>
+                </Paper>
               </Grid>
 
-              <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
-                <Table>
-                  <TableHead>
-                    <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
-                      <TableCell>Campaign Name</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Product</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Created</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {campaigns.length > 0 ? (
-                      campaigns.map((item) => (
-                        <TableRow key={item.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
-                          <TableCell>
-                            <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              List: {item.contact_list_name || item.contact_list_id}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>{item.campaign_type}</TableCell>
-                          <TableCell>{item.product_name || '-'}</TableCell>
-                          <TableCell>
-                            <Chip size="small" label={item.status} color={statusColor(item.status) as any} variant="outlined" />
-                          </TableCell>
-                          <TableCell>{formatDate(item.created_at)}</TableCell>
-                          <TableCell>
-                            <Stack direction="row" spacing={1}>
-                              <Button size="small" startIcon={<PlayArrowIcon />} onClick={() => handleRunCampaign(item.id)}>
-                                Run
-                              </Button>
-                              <Button
-                                size="small"
-                                color="inherit"
-                                startIcon={<PauseIcon />}
-                                onClick={() => handlePauseCampaign(item.id)}
-                                disabled={item.status === 'completed'}
-                              >
-                                Pause
-                              </Button>
-                              <Button size="small" startIcon={<VisibilityIcon />} onClick={() => handleViewLogs(item.id)}>
-                                View
-                              </Button>
-                            </Stack>
-                          </TableCell>
+              <Grid item xs={12} lg={7}>
+                <Paper sx={{ ...sectionPanelSx, p: 2.5, height: '100%' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.6 }}>
+                    Recent Campaign Performance
+                  </Typography>
+                  <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Campaign</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Sent</TableCell>
+                          <TableCell>Failed</TableCell>
+                          <TableCell>Success %</TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={6} align="center">No campaigns found.</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                component="div"
-                count={campaignTotal}
-                page={campaignPage}
-                onPageChange={(_, pageValue) => setCampaignPage(pageValue)}
-                rowsPerPage={campaignRowsPerPage}
-                onRowsPerPageChange={(event) => {
-                  setCampaignRowsPerPage(parseInt(event.target.value, 10));
-                  setCampaignPage(0);
-                }}
-                rowsPerPageOptions={[10, 25, 50]}
-              />
-            </Paper>
+                      </TableHead>
+                      <TableBody>
+                        {(dashboard.recent_campaigns || []).length > 0 ? (
+                          (dashboard.recent_campaigns || []).map((item) => {
+                            const sent = Number(item.number_sent || 0);
+                            const failed = Number(item.number_failed || 0);
+                            const total = sent + failed;
+                            const successPct = total > 0 ? (sent * 100) / total : 0;
+
+                            return (
+                              <TableRow key={`recent-campaign-${item.id}`}>
+                                <TableCell>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{formatDate(item.created_at)}</Typography>
+                                </TableCell>
+                                <TableCell sx={{ textTransform: 'uppercase' }}>{item.campaign_type}</TableCell>
+                                <TableCell>{sent}</TableCell>
+                                <TableCell>{failed}</TableCell>
+                                <TableCell>{successPct.toFixed(1)}%</TableCell>
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} align="center">No recent campaign performance data yet.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+
           </Stack>
         )}
 
@@ -2002,6 +2083,157 @@ const CampaignManagementPage: React.FC = () => {
         )}
 
         {tab === 2 && (
+          <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Run Campaign</Typography>
+                <Typography variant="body2" color="text.secondary">Filter, run, pause, and inspect campaign executions.</Typography>
+              </Box>
+              <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
+                Run Due Scheduled
+              </Button>
+            </Stack>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Search Campaign"
+                  value={campaignSearch}
+                  onChange={(e) => setCampaignSearch(e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={campaignTypeFilter}
+                    label="Type"
+                    onChange={(e) => setCampaignTypeFilter(e.target.value)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="email">Email</MenuItem>
+                    <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                    <MenuItem value="sms">SMS</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={campaignStatusFilter}
+                    label="Status"
+                    onChange={(e) => setCampaignStatusFilter(e.target.value)}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="draft">Draft</MenuItem>
+                    <MenuItem value="scheduled">Scheduled</MenuItem>
+                    <MenuItem value="running">Running</MenuItem>
+                    <MenuItem value="completed">Completed</MenuItem>
+                    <MenuItem value="failed">Failed</MenuItem>
+                    <MenuItem value="paused">Paused</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Product</InputLabel>
+                  <Select
+                    value={campaignProductFilter}
+                    label="Product"
+                    onChange={(e) => setCampaignProductFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {products.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" sx={compactButtonSx} fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
+                </Stack>
+              </Grid>
+            </Grid>
+
+            <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
+                    <TableCell>Campaign Name</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Product</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Created</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {campaigns.length > 0 ? (
+                    campaigns.map((item) => (
+                      <TableRow key={item.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
+                        <TableCell>
+                          <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            List: {item.contact_list_name || item.contact_list_id}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{item.campaign_type}</TableCell>
+                        <TableCell>{item.product_name || '-'}</TableCell>
+                        <TableCell>
+                          <Chip size="small" label={item.status} color={statusColor(item.status) as any} variant="outlined" />
+                        </TableCell>
+                        <TableCell>{formatDate(item.created_at)}</TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" startIcon={<PlayArrowIcon />} onClick={() => handleRunCampaign(item.id)}>
+                              Run
+                            </Button>
+                            <Button
+                              size="small"
+                              color="inherit"
+                              startIcon={<PauseIcon />}
+                              onClick={() => handlePauseCampaign(item.id)}
+                              disabled={item.status === 'completed'}
+                            >
+                              Pause
+                            </Button>
+                            <Button size="small" startIcon={<VisibilityIcon />} onClick={() => handleViewLogs(item.id)}>
+                              View
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">No campaigns found.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              component="div"
+              count={campaignTotal}
+              page={campaignPage}
+              onPageChange={(_, pageValue) => setCampaignPage(pageValue)}
+              rowsPerPage={campaignRowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setCampaignRowsPerPage(parseInt(event.target.value, 10));
+                setCampaignPage(0);
+              }}
+              rowsPerPageOptions={[10, 25, 50]}
+            />
+          </Paper>
+        )}
+
+        {tab === 3 && (
           <Stack spacing={2.5}>
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Create Contact List</Typography>
@@ -2176,7 +2408,7 @@ const CampaignManagementPage: React.FC = () => {
           </Stack>
         )}
 
-        {tab === 3 && (
+        {tab === 4 && (
           <Stack spacing={2.5}>
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Upload Contacts</Typography>
@@ -2290,12 +2522,12 @@ const CampaignManagementPage: React.FC = () => {
           </Stack>
         )}
 
-        {tab === 4 && (
+        {tab === 5 && (
           <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Campaign Logs</Typography>
 
             <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} md={5}>
+              <Grid item xs={12} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Campaign</InputLabel>
                   <Select
@@ -2328,6 +2560,20 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={2}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  type="number"
+                  label="Run #"
+                  value={logRunSequence}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setLogRunSequence(value === '' ? '' : Math.max(1, Number(value)));
+                  }}
+                  inputProps={{ min: 1 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={1}>
                 <Button variant="outlined" fullWidth onClick={handleApplyLogsFilter}>Apply</Button>
               </Grid>
               <Grid item xs={12} md={2}>
@@ -2341,6 +2587,7 @@ const CampaignManagementPage: React.FC = () => {
               <Table>
                 <TableHead>
                   <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
+                    <TableCell>Run</TableCell>
                     <TableCell>Contact</TableCell>
                     <TableCell>Email</TableCell>
                     <TableCell>Phone</TableCell>
@@ -2356,6 +2603,10 @@ const CampaignManagementPage: React.FC = () => {
                   {logs.length ? (
                     logs.map((item) => (
                       <TableRow key={item.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>#{item.run_sequence || 1}</Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>{formatDate(item.run_started_at)}</Typography>
+                        </TableCell>
                         <TableCell>{item.contact_name || '-'}</TableCell>
                         <TableCell>{item.email || '-'}</TableCell>
                         <TableCell>{item.phone || '-'}</TableCell>
@@ -2392,7 +2643,7 @@ const CampaignManagementPage: React.FC = () => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} align="center">No logs found.</TableCell>
+                      <TableCell colSpan={10} align="center">No logs found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -2411,6 +2662,695 @@ const CampaignManagementPage: React.FC = () => {
               rowsPerPageOptions={[10, 25, 50]}
             />
           </Paper>
+        )}
+
+        {tab === 6 && (
+          <Stack spacing={2.5}>
+            <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between">
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Campaign Reports</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FileDownloadIcon />}
+                    disabled={!reportData}
+                    onClick={() => {
+                      if (!reportData) return;
+                      downloadTextFile(
+                        `campaign_reports_${reportData.window_days}d.json`,
+                        JSON.stringify(reportData, null, 2),
+                        'application/json'
+                      );
+                    }}
+                  >
+                    Export Full JSON
+                  </Button>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Window</InputLabel>
+                    <Select
+                      value={reportDays}
+                      label="Window"
+                      onChange={(e) => setReportDays(Number(e.target.value))}
+                    >
+                      <MenuItem value={7}>Last 7 days</MenuItem>
+                      <MenuItem value={30}>Last 30 days</MenuItem>
+                      <MenuItem value={90}>Last 90 days</MenuItem>
+                      <MenuItem value={180}>Last 180 days</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button
+                    variant="contained"
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        await loadReports();
+                      } catch (err: any) {
+                        showError(err?.response?.data?.detail || 'Failed to refresh reports');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                </Stack>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                Aggregated metrics focused on Email, SMS, and WhatsApp campaign outcomes.
+              </Typography>
+            </Paper>
+
+            {reportData ? (
+              <>
+                <Paper sx={{ ...sectionPanelSx, p: 2 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between">
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Overview KPIs</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        exportRowsToCsv(
+                          `campaign_overview_kpis_${reportData.window_days}d.csv`,
+                          ['Metric', 'Value'],
+                          [
+                            ['Campaigns', reportData.overview.campaign_count],
+                            ['Runs', reportData.overview.run_count],
+                            ['Messages', reportData.overview.message_count],
+                            ['Sent', reportData.overview.sent_count],
+                            ['Failed', reportData.overview.failed_count],
+                            ['Success Rate %', reportData.overview.success_rate],
+                          ]
+                        );
+                      }}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                </Paper>
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      sm: 'repeat(2, minmax(0, 1fr))',
+                      lg: 'repeat(4, minmax(0, 1fr))',
+                    },
+                    gap: 2,
+                  }}
+                >
+                  {[
+                    { label: 'Campaigns', value: reportData.overview.campaign_count },
+                    { label: 'Runs', value: reportData.overview.run_count },
+                    { label: 'Messages', value: reportData.overview.message_count },
+                    { label: 'Success Rate', value: `${reportData.overview.success_rate}%` },
+                  ].map((metric) => (
+                    <Paper key={metric.label} sx={{ ...sectionPanelSx, p: 2 }}>
+                      <Typography variant="caption" color="text.secondary">{metric.label}</Typography>
+                      <Typography variant="h5" sx={{ fontWeight: 800 }}>{metric.value}</Typography>
+                    </Paper>
+                  ))}
+                </Box>
+
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" sx={{ mb: 1.2 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Channel Breakdown</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        exportRowsToCsv(
+                          `campaign_channel_breakdown_${reportData.window_days}d.csv`,
+                          ['Channel', 'Runs', 'Messages', 'Sent', 'Failed', 'Success Rate %'],
+                          (['email', 'sms', 'whatsapp'] as const).map((channel) => {
+                            const row = reportData.channel_breakdown[channel];
+                            return [channel, row.runs, row.messages, row.sent, row.failed, row.success_rate];
+                          })
+                        );
+                      }}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                  <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Channel</TableCell>
+                          <TableCell>Runs</TableCell>
+                          <TableCell>Messages</TableCell>
+                          <TableCell>Sent</TableCell>
+                          <TableCell>Failed</TableCell>
+                          <TableCell>Success Rate</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(['email', 'sms', 'whatsapp'] as const).map((channel) => {
+                          const row = reportData.channel_breakdown[channel];
+                          return (
+                            <TableRow key={`channel-${channel}`}>
+                              <TableCell sx={{ textTransform: 'uppercase', fontWeight: 600 }}>{channel}</TableCell>
+                              <TableCell>{row.runs}</TableCell>
+                              <TableCell>{row.messages}</TableCell>
+                              <TableCell>{row.sent}</TableCell>
+                              <TableCell>{row.failed}</TableCell>
+                              <TableCell>{row.success_rate}%</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" sx={{ mb: 1.2 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Email Analytics (Primary)</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        exportRowsToCsv(
+                          `campaign_email_analytics_${reportData.window_days}d.csv`,
+                          ['Metric', 'Value'],
+                          [
+                            ['Delivered', reportData.email_analytics.delivered],
+                            ['Opened', reportData.email_analytics.opened],
+                            ['Read', reportData.email_analytics.read],
+                            ['Clicked', reportData.email_analytics.clicked],
+                            ['Bounced', reportData.email_analytics.bounced],
+                            ['Complained', reportData.email_analytics.complained],
+                            ['Unsubscribed', reportData.email_analytics.unsubscribed],
+                            ['Total Open Events', reportData.email_analytics.total_open_events],
+                            ['Total Click Events', reportData.email_analytics.total_click_events],
+                            ['Delivery Rate %', reportData.email_analytics.delivery_rate],
+                            ['Open Rate %', reportData.email_analytics.open_rate],
+                            ['Read Rate %', reportData.email_analytics.read_rate],
+                            ['Click Rate %', reportData.email_analytics.click_rate],
+                            ['Click to Open Rate %', reportData.email_analytics.click_to_open_rate],
+                            ['Bounce Rate %', reportData.email_analytics.bounce_rate],
+                            ['Complaint Rate %', reportData.email_analytics.complaint_rate],
+                            ['Unsubscribe Rate %', reportData.email_analytics.unsubscribe_rate],
+                          ]
+                        );
+                      }}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                  <Grid container spacing={1.2}>
+                    {[
+                      { label: 'Delivery Rate', value: `${reportData.email_analytics.delivery_rate}%` },
+                      { label: 'Open Rate', value: `${reportData.email_analytics.open_rate}%` },
+                      { label: 'Read Rate', value: `${reportData.email_analytics.read_rate}%` },
+                      { label: 'Click Rate', value: `${reportData.email_analytics.click_rate}%` },
+                      { label: 'Click to Open', value: `${reportData.email_analytics.click_to_open_rate}%` },
+                      { label: 'Bounce Rate', value: `${reportData.email_analytics.bounce_rate}%` },
+                      { label: 'Complaint Rate', value: `${reportData.email_analytics.complaint_rate}%` },
+                      { label: 'Unsubscribe Rate', value: `${reportData.email_analytics.unsubscribe_rate}%` },
+                    ].map((metric) => (
+                      <Grid item xs={12} sm={6} md={3} key={metric.label}>
+                        <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px' }}>
+                          <Typography variant="caption" color="text.secondary">{metric.label}</Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 700 }}>{metric.value}</Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1.5 }}>
+                    <Chip label={`Open Events: ${reportData.email_analytics.total_open_events}`} variant="outlined" />
+                    <Chip label={`Click Events: ${reportData.email_analytics.total_click_events}`} variant="outlined" />
+                    <Chip label={`Unique Opened: ${reportData.email_analytics.opened}`} variant="outlined" />
+                    <Chip label={`Unique Clicked: ${reportData.email_analytics.clicked}`} variant="outlined" />
+                  </Stack>
+                </Paper>
+
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" sx={{ mb: 1.2 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Top Campaigns</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        exportRowsToCsv(
+                          `campaign_top_campaigns_${reportData.window_days}d.csv`,
+                          ['Campaign ID', 'Campaign Name', 'Type', 'Runs', 'Messages', 'Sent', 'Failed', 'Open Rate %', 'Click Rate %', 'Last Event'],
+                          reportData.top_campaigns.map((row) => [
+                            row.campaign_id,
+                            row.campaign_name,
+                            row.campaign_type,
+                            row.runs,
+                            row.messages,
+                            row.sent,
+                            row.failed,
+                            row.open_rate,
+                            row.click_rate,
+                            row.last_event_at || '',
+                          ])
+                        );
+                      }}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                  <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Campaign</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Runs</TableCell>
+                          <TableCell>Messages</TableCell>
+                          <TableCell>Sent</TableCell>
+                          <TableCell>Failed</TableCell>
+                          <TableCell>Open Rate</TableCell>
+                          <TableCell>Click Rate</TableCell>
+                          <TableCell>Last Event</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {reportData.top_campaigns.length > 0 ? (
+                          reportData.top_campaigns.map((row) => (
+                            <TableRow key={`report-campaign-${row.campaign_id}`}>
+                              <TableCell>{row.campaign_name}</TableCell>
+                              <TableCell>{row.campaign_type}</TableCell>
+                              <TableCell>{row.runs}</TableCell>
+                              <TableCell>{row.messages}</TableCell>
+                              <TableCell>{row.sent}</TableCell>
+                              <TableCell>{row.failed}</TableCell>
+                              <TableCell>{row.open_rate}%</TableCell>
+                              <TableCell>{row.click_rate}%</TableCell>
+                              <TableCell>{formatDate(row.last_event_at)}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={9} align="center">No report data found for selected window.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" sx={{ mb: 1.2 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Daily Trend</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        exportRowsToCsv(
+                          `campaign_daily_trend_${reportData.window_days}d.csv`,
+                          ['Date', 'Email Sent', 'Email Opened', 'Email Clicked', 'SMS Sent', 'WhatsApp Sent', 'Failed'],
+                          reportData.daily_trend.map((row) => [
+                            row.date,
+                            row.email_sent,
+                            row.email_opened,
+                            row.email_clicked,
+                            row.sms_sent,
+                            row.whatsapp_sent,
+                            row.failed,
+                          ])
+                        );
+                      }}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                  <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Date</TableCell>
+                          <TableCell>Email Sent</TableCell>
+                          <TableCell>Email Opened</TableCell>
+                          <TableCell>Email Clicked</TableCell>
+                          <TableCell>SMS Sent</TableCell>
+                          <TableCell>WhatsApp Sent</TableCell>
+                          <TableCell>Failed</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {reportData.daily_trend.length > 0 ? (
+                          reportData.daily_trend.map((row) => (
+                            <TableRow key={`daily-${row.date}`}>
+                              <TableCell>{row.date}</TableCell>
+                              <TableCell>{row.email_sent}</TableCell>
+                              <TableCell>{row.email_opened}</TableCell>
+                              <TableCell>{row.email_clicked}</TableCell>
+                              <TableCell>{row.sms_sent}</TableCell>
+                              <TableCell>{row.whatsapp_sent}</TableCell>
+                              <TableCell>{row.failed}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={7} align="center">No daily activity yet.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </>
+            ) : (
+              <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                <Typography variant="body2" color="text.secondary">Loading report data...</Typography>
+              </Paper>
+            )}
+          </Stack>
+        )}
+
+        {tab === 7 && (
+          <Stack spacing={2.5}>
+            <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Campaign to Lead (C2L)</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Configure conversion rules and run the rule engine to convert engaged campaign contacts into leads.
+              </Typography>
+              <Tabs
+                value={c2lTab}
+                onChange={(_, value) => setC2lTab(value)}
+                sx={{ mt: 2, borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}
+              >
+                <Tab label="Rule Setup" />
+                <Tab label="Run Engine" />
+              </Tabs>
+            </Paper>
+
+            {c2lTab === 0 && c2lRule && (
+              <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Rule Name"
+                      value={c2lRule.rule_name}
+                      onChange={(e) => setC2lRule((prev) => (prev ? { ...prev, rule_name: e.target.value } : prev))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      type="number"
+                      label="Min Score"
+                      value={c2lRule.min_score_threshold}
+                      onChange={(e) => setC2lRule((prev) => (prev ? { ...prev, min_score_threshold: Math.max(1, Number(e.target.value) || 1) } : prev))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      type="number"
+                      label="Dedupe Window (days)"
+                      value={c2lRule.dedupe_window_days}
+                      onChange={(e) => setC2lRule((prev) => (prev ? { ...prev, dedupe_window_days: Math.max(1, Number(e.target.value) || 1) } : prev))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Target Funnel Stage"
+                      value={c2lRule.target_funnel_stage || ''}
+                      onChange={(e) => setC2lRule((prev) => (prev ? { ...prev, target_funnel_stage: e.target.value } : prev))}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 1.4, borderRadius: '10px' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Include Statuses</Typography>
+                      <FormGroup row>
+                        {['delivered', 'opened', 'read', 'clicked'].map((status) => (
+                          <FormControlLabel
+                            key={`include-${status}`}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={(c2lRule.include_statuses || []).includes(status)}
+                                onChange={(e) => {
+                                  setC2lRule((prev) => {
+                                    if (!prev) return prev;
+                                    const next = new Set(prev.include_statuses || []);
+                                    if (e.target.checked) next.add(status);
+                                    else next.delete(status);
+                                    return { ...prev, include_statuses: Array.from(next) };
+                                  });
+                                }}
+                              />
+                            }
+                            label={status}
+                          />
+                        ))}
+                      </FormGroup>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 1.4, borderRadius: '10px' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Exclude Statuses</Typography>
+                      <FormGroup row>
+                        {['failed', 'bounced', 'complained', 'unsubscribed'].map((status) => (
+                          <FormControlLabel
+                            key={`exclude-${status}`}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={(c2lRule.exclude_statuses || []).includes(status)}
+                                onChange={(e) => {
+                                  setC2lRule((prev) => {
+                                    if (!prev) return prev;
+                                    const next = new Set(prev.exclude_statuses || []);
+                                    if (e.target.checked) next.add(status);
+                                    else next.delete(status);
+                                    return { ...prev, exclude_statuses: Array.from(next) };
+                                  });
+                                }}
+                              />
+                            }
+                            label={status}
+                          />
+                        ))}
+                      </FormGroup>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={Boolean(c2lRule.auto_convert_enabled)}
+                            onChange={(e) => setC2lRule((prev) => (prev ? { ...prev, auto_convert_enabled: e.target.checked } : prev))}
+                          />
+                        }
+                        label="Auto-convert after campaign run"
+                      />
+                      <Button
+                        variant="contained"
+                        disabled={c2lSaving}
+                        onClick={async () => {
+                          if (!c2lRule) return;
+                          setC2lSaving(true);
+                          try {
+                            const updated = await campaignService.updateCampaignToLeadRule({
+                              rule_name: c2lRule.rule_name,
+                              auto_convert_enabled: c2lRule.auto_convert_enabled,
+                              min_score_threshold: c2lRule.min_score_threshold,
+                              dedupe_window_days: c2lRule.dedupe_window_days,
+                              target_funnel_stage: c2lRule.target_funnel_stage || undefined,
+                              include_statuses: c2lRule.include_statuses,
+                              exclude_statuses: c2lRule.exclude_statuses,
+                            });
+                            setC2lRule(updated);
+                            showSuccess('C2L rule updated successfully');
+                          } catch (err: any) {
+                            showError(err?.response?.data?.detail || 'Failed to update C2L rule');
+                          } finally {
+                            setC2lSaving(false);
+                          }
+                        }}
+                      >
+                        {c2lSaving ? 'Saving...' : 'Save Rule'}
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+              </Paper>
+            )}
+
+            {c2lTab === 1 && (
+              <>
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} md={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Campaign (optional)</InputLabel>
+                        <Select
+                          value={c2lRunCampaignId}
+                          label="Campaign (optional)"
+                          onChange={(e) => setC2lRunCampaignId(e.target.value === '' ? '' : Number(e.target.value))}
+                        >
+                          <MenuItem value="">All Campaigns</MenuItem>
+                          {campaignOptions.map((campaign) => (
+                            <MenuItem key={`c2l-campaign-${campaign.id}`} value={campaign.id}>{campaign.label}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={2}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        type="number"
+                        label="Limit"
+                        value={c2lRunLimit}
+                        onChange={(e) => setC2lRunLimit(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <FormControlLabel
+                        control={<Switch checked={c2lDryRun} onChange={(e) => setC2lDryRun(e.target.checked)} />}
+                        label="Dry Run"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        onClick={async () => {
+                          setLoading(true);
+                          try {
+                            const result = await campaignService.runCampaignToLeadRuleEngine({
+                              campaign_id: c2lRunCampaignId === '' ? undefined : Number(c2lRunCampaignId),
+                              dry_run: c2lDryRun,
+                              limit: c2lRunLimit,
+                            });
+                            setC2lRunResult(result);
+                            await loadC2LConversions();
+                            showSuccess(`C2L engine completed: evaluated ${result.evaluated}, converted ${result.converted}`);
+                          } catch (err: any) {
+                            showError(err?.response?.data?.detail || 'Failed to run C2L engine');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                      >
+                        Run Engine
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </Paper>
+
+                {c2lRunResult && (
+                  <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip label={`Evaluated: ${c2lRunResult.evaluated}`} variant="outlined" />
+                      <Chip label={`Converted: ${c2lRunResult.converted}`} color="success" variant="outlined" />
+                      <Chip label={`Duplicates: ${c2lRunResult.skipped_duplicates}`} color="warning" variant="outlined" />
+                      <Chip label={`Skipped: ${c2lRunResult.skipped}`} variant="outlined" />
+                      <Chip label={c2lRunResult.dry_run ? 'Dry Run' : 'Applied'} color={c2lRunResult.dry_run ? 'info' : 'primary'} variant="outlined" />
+                    </Stack>
+                  </Paper>
+                )}
+
+                {c2lRunResult && (
+                  <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.2 }}>
+                      {c2lRunResult.dry_run ? 'Dry Run Preview' : 'Latest Run Details'}
+                    </Typography>
+                    <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Campaign</TableCell>
+                            <TableCell>Contact</TableCell>
+                            <TableCell>Email / Phone</TableCell>
+                            <TableCell>Score</TableCell>
+                            <TableCell>Threshold</TableCell>
+                            <TableCell>Status</TableCell>
+                            <TableCell>Lead ID</TableCell>
+                            <TableCell>Reasons</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(c2lRunResult.details || []).length ? (
+                            c2lRunResult.details.map((row) => (
+                              <TableRow key={`c2l-run-detail-${row.campaign_log_id}`}>
+                                <TableCell>{row.campaign_name || row.campaign_id}</TableCell>
+                                <TableCell>{row.contact_name || row.contact_id}</TableCell>
+                                <TableCell>{row.email || row.phone || '-'}</TableCell>
+                                <TableCell>{row.score}</TableCell>
+                                <TableCell>{row.threshold}</TableCell>
+                                <TableCell>
+                                  <Chip size="small" label={row.status} variant="outlined" />
+                                </TableCell>
+                                <TableCell>{row.lead_id || '-'}</TableCell>
+                                <TableCell>{(row.reasons || []).join(', ') || '-'}</TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={8} align="center">No rows evaluated for this run.</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+                )}
+
+                <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.2 }}>Recent C2L Decisions</Typography>
+                  <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Time</TableCell>
+                          <TableCell>Campaign</TableCell>
+                          <TableCell>Log ID</TableCell>
+                          <TableCell>Lead ID</TableCell>
+                          <TableCell>Score</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Reason</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {c2lConversions.length ? (
+                          c2lConversions.map((item) => (
+                            <TableRow key={`c2l-conv-${item.id}`}>
+                              <TableCell>{formatDate(item.created_at)}</TableCell>
+                              <TableCell>{item.campaign_id}</TableCell>
+                              <TableCell>{item.campaign_log_id}</TableCell>
+                              <TableCell>{item.lead_id || '-'}</TableCell>
+                              <TableCell>{item.score}</TableCell>
+                              <TableCell>
+                                <Chip size="small" label={item.status} variant="outlined" />
+                              </TableCell>
+                              <TableCell>{item.reason || '-'}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={7} align="center">No C2L decisions yet.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </>
+            )}
+          </Stack>
         )}
 
         <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} maxWidth="sm" fullWidth>

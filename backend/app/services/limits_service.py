@@ -23,6 +23,17 @@ DEFAULT_LIMITS = {
     "multilingual_text_enabled": None,
     "whatsapp_enabled": None,
     "human_handoff_enabled": None,
+    "email_campaign_enabled": None,
+    "sms_campaign_enabled": None,
+    "module_knowledge_enabled": None,
+    "module_leads_enabled": None,
+    "module_analytics_enabled": None,
+    "module_advanced_analytics_enabled": None,
+    "module_reports_enabled": None,
+    "module_campaigns_enabled": None,
+    "module_appointments_enabled": None,
+    "module_products_enabled": None,
+    "module_users_enabled": None,
 }
 
 
@@ -72,6 +83,17 @@ def _build_effective_limits(plan: Plan, limits: OrganizationLimits) -> dict:
         "multilingual_text_enabled": limits.multilingual_text_enabled if limits.multilingual_text_enabled is not None else plan.multilingual_text_enabled,
         "whatsapp_enabled": limits.whatsapp_enabled if limits.whatsapp_enabled is not None else plan.whatsapp_enabled,
         "human_handoff_enabled": limits.human_handoff_enabled if limits.human_handoff_enabled is not None else plan.human_handoff_enabled,
+        "email_campaign_enabled": limits.email_campaign_enabled if limits.email_campaign_enabled is not None else plan.email_campaign_enabled,
+        "sms_campaign_enabled": limits.sms_campaign_enabled if limits.sms_campaign_enabled is not None else plan.sms_campaign_enabled,
+        "module_knowledge_enabled": limits.module_knowledge_enabled if limits.module_knowledge_enabled is not None else plan.module_knowledge_enabled,
+        "module_leads_enabled": limits.module_leads_enabled if limits.module_leads_enabled is not None else plan.module_leads_enabled,
+        "module_analytics_enabled": limits.module_analytics_enabled if limits.module_analytics_enabled is not None else plan.module_analytics_enabled,
+        "module_advanced_analytics_enabled": limits.module_advanced_analytics_enabled if limits.module_advanced_analytics_enabled is not None else plan.module_advanced_analytics_enabled,
+        "module_reports_enabled": limits.module_reports_enabled if limits.module_reports_enabled is not None else plan.module_reports_enabled,
+        "module_campaigns_enabled": limits.module_campaigns_enabled if limits.module_campaigns_enabled is not None else plan.module_campaigns_enabled,
+        "module_appointments_enabled": limits.module_appointments_enabled if limits.module_appointments_enabled is not None else plan.module_appointments_enabled,
+        "module_products_enabled": limits.module_products_enabled if limits.module_products_enabled is not None else plan.module_products_enabled,
+        "module_users_enabled": limits.module_users_enabled if limits.module_users_enabled is not None else plan.module_users_enabled,
     }
 
 

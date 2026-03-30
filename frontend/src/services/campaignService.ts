@@ -32,6 +32,8 @@ export interface CampaignLogItem {
   id: number;
   campaign_id: number;
   contact_id: number;
+  run_sequence?: number;
+  run_started_at?: string;
   contact_name?: string;
   email?: string;
   phone?: string;
@@ -65,6 +67,128 @@ export interface CampaignLogItem {
 
 export interface CampaignLogResponse {
   items: CampaignLogItem[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
+}
+
+export interface CampaignReportsSummary {
+  generated_at: string;
+  window_days: number;
+  overview: {
+    campaign_count: number;
+    run_count: number;
+    message_count: number;
+    sent_count: number;
+    failed_count: number;
+    success_rate: number;
+  };
+  channel_breakdown: {
+    email: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
+    sms: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
+    whatsapp: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
+  };
+  email_analytics: {
+    delivered: number;
+    opened: number;
+    read: number;
+    clicked: number;
+    bounced: number;
+    complained: number;
+    unsubscribed: number;
+    total_open_events: number;
+    total_click_events: number;
+    delivery_rate: number;
+    open_rate: number;
+    read_rate: number;
+    click_rate: number;
+    click_to_open_rate: number;
+    bounce_rate: number;
+    complaint_rate: number;
+    unsubscribe_rate: number;
+  };
+  top_campaigns: Array<{
+    campaign_id: number;
+    campaign_name: string;
+    campaign_type: CampaignType;
+    runs: number;
+    messages: number;
+    sent: number;
+    failed: number;
+    open_rate: number;
+    click_rate: number;
+    last_event_at?: string;
+  }>;
+  daily_trend: Array<{
+    date: string;
+    email_sent: number;
+    email_opened: number;
+    email_clicked: number;
+    sms_sent: number;
+    whatsapp_sent: number;
+    failed: number;
+  }>;
+}
+
+export interface CampaignToLeadRule {
+  id: number;
+  organization_id: number;
+  rule_name: string;
+  is_active: boolean;
+  auto_convert_enabled: boolean;
+  min_score_threshold: number;
+  dedupe_window_days: number;
+  target_funnel_stage?: string | null;
+  include_statuses: string[];
+  exclude_statuses: string[];
+  score_config: Record<string, number>;
+  source_multipliers: Record<string, number>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CampaignToLeadRunResult {
+  rule_id: number;
+  rule_name: string;
+  dry_run: boolean;
+  evaluated: number;
+  converted: number;
+  skipped_duplicates: number;
+  skipped: number;
+  details: Array<{
+    campaign_log_id: number;
+    campaign_id: number;
+    campaign_name: string;
+    contact_id: number;
+    contact_name?: string;
+    email?: string;
+    phone?: string;
+    score: number;
+    threshold: number;
+    reasons: string[];
+    status: string;
+    lead_id?: number;
+  }>;
+}
+
+export interface CampaignToLeadConversionItem {
+  id: number;
+  campaign_id: number;
+  campaign_log_id: number;
+  contact_id: number;
+  lead_id?: number | null;
+  rule_id: number;
+  score: number;
+  status: string;
+  reason?: string;
+  details?: string;
+  created_at: string;
+}
+
+export interface CampaignToLeadConversionResponse {
+  items: CampaignToLeadConversionItem[];
   pagination: {
     total: number;
     skip: number;
@@ -239,8 +363,33 @@ export const campaignService = {
     return response.data;
   },
 
-  async listCampaignLogs(campaignId: number, params: { status?: string; skip?: number; limit?: number } = {}): Promise<CampaignLogResponse> {
+  async listCampaignLogs(campaignId: number, params: { status?: string; run_sequence?: number; skip?: number; limit?: number } = {}): Promise<CampaignLogResponse> {
     const response = await api.get(`/api/admin/campaigns/${campaignId}/logs`, { params });
+    return response.data;
+  },
+
+  async getCampaignReportsSummary(params: { days?: number } = {}): Promise<CampaignReportsSummary> {
+    const response = await api.get('/api/admin/campaigns/reports/summary', { params });
+    return response.data;
+  },
+
+  async getCampaignToLeadRule(): Promise<CampaignToLeadRule> {
+    const response = await api.get('/api/admin/campaigns/c2l/rules/current');
+    return response.data;
+  },
+
+  async updateCampaignToLeadRule(payload: Partial<CampaignToLeadRule>): Promise<CampaignToLeadRule> {
+    const response = await api.put('/api/admin/campaigns/c2l/rules/current', payload);
+    return response.data;
+  },
+
+  async runCampaignToLeadRuleEngine(payload: { campaign_id?: number; dry_run?: boolean; limit?: number }): Promise<CampaignToLeadRunResult> {
+    const response = await api.post('/api/admin/campaigns/c2l/run', payload);
+    return response.data;
+  },
+
+  async listCampaignToLeadConversions(params: { campaign_id?: number; status?: string; skip?: number; limit?: number } = {}): Promise<CampaignToLeadConversionResponse> {
+    const response = await api.get('/api/admin/campaigns/c2l/conversions', { params });
     return response.data;
   },
 

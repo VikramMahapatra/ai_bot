@@ -97,7 +97,25 @@ export const chatService = {
     return response.data;
   },
 
-  async getFeatureFlags(): Promise<{ subscription_active: boolean; days_left: number; voice_chat_enabled: boolean; multilingual_text_enabled: boolean; human_handoff_enabled?: boolean }> {
+  async getFeatureFlags(): Promise<{
+    subscription_active: boolean;
+    days_left: number;
+    voice_chat_enabled: boolean;
+    multilingual_text_enabled: boolean;
+    human_handoff_enabled?: boolean;
+    whatsapp_enabled?: boolean;
+    email_campaign_enabled?: boolean;
+    sms_campaign_enabled?: boolean;
+    module_knowledge_enabled?: boolean;
+    module_leads_enabled?: boolean;
+    module_analytics_enabled?: boolean;
+    module_advanced_analytics_enabled?: boolean;
+    module_reports_enabled?: boolean;
+    module_campaigns_enabled?: boolean;
+    module_appointments_enabled?: boolean;
+    module_products_enabled?: boolean;
+    module_users_enabled?: boolean;
+  }> {
     const response = await api.get('/api/admin/features');
     return response.data;
   },

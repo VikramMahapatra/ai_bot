@@ -898,10 +898,17 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>
+                  <Tooltip title="Actions">
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <VisibilityIcon fontSize="small" />
+                    </Box>
+                  </Tooltip>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -918,6 +925,7 @@ const LeadManager: React.FC = () => {
                   <TableCell>{lead.email || '-'}</TableCell>
                   <TableCell>{lead.phone || '-'}</TableCell>
                   <TableCell>{lead.company || '-'}</TableCell>
+                  <TableCell>{lead.product_name || '-'}</TableCell>
                   <TableCell>
                     <Chip label={sourceLabel(lead.source)} size="small" variant="outlined" />
                   </TableCell>
@@ -926,20 +934,22 @@ const LeadManager: React.FC = () => {
                   </TableCell>
                   <TableCell>{new Date(lead.created_at).toLocaleString()}</TableCell>
                   <TableCell>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<VisibilityIcon />}
-                      onClick={() => openDetails(lead)}
-                    >
-                      Actions
-                    </Button>
+                    <Tooltip title="View lead actions">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => openDetails(lead)}
+                        sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}` }}
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
               {leads.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">No leads found for the selected filters.</Typography>
                   </TableCell>
                 </TableRow>

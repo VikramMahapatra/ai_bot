@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { alpha } from '@mui/material/styles';
 import {
   Drawer,
@@ -33,6 +33,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import CallIcon from '@mui/icons-material/Call';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import { chatService } from '../../services/chatService';
 
 const drawerWidth = 280;
 
@@ -46,6 +47,17 @@ interface MenuItem {
   icon: React.ReactNode;
   path: string;
   requiredRole?: 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'ADMIN_OR_HANDOFF' | 'ALL';
+  featureKey?:
+    | 'module_knowledge_enabled'
+    | 'module_leads_enabled'
+    | 'module_analytics_enabled'
+    | 'module_advanced_analytics_enabled'
+    | 'module_reports_enabled'
+    | 'module_campaigns_enabled'
+    | 'module_appointments_enabled'
+    | 'module_products_enabled'
+    | 'module_users_enabled'
+    | 'human_handoff_enabled';
 }
 
 const allMenuItems: MenuItem[] = [
@@ -53,22 +65,47 @@ const allMenuItems: MenuItem[] = [
   { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
   { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
   { text: 'Calls', icon: <CallIcon />, path: '/calls', requiredRole: 'ALL' },
-  { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN' },
-  { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN' },
-  { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN' },
-  { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN' },
-  { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN' },
-  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN' },
-  { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN' },
-  { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF' },
-  { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN' },
-  { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN' },
+  { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN', featureKey: 'module_knowledge_enabled' },
+  { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN', featureKey: 'module_leads_enabled' },
+  { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN', featureKey: 'module_analytics_enabled' },
+  { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
+  { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN', featureKey: 'module_campaigns_enabled' },
+  { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },
+  { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF', featureKey: 'human_handoff_enabled' },
+  { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN', featureKey: 'module_products_enabled' },
+  { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN', featureKey: 'module_users_enabled' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole, user } = useAuth();
+  const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFeatures = async () => {
+      try {
+        const data = await chatService.getFeatureFlags();
+        if (!isMounted) return;
+        setFeatureFlags(
+          Object.entries(data || {}).reduce<Record<string, boolean>>((acc, [key, value]) => {
+            acc[key] = Boolean(value);
+            return acc;
+          }, {})
+        );
+      } catch {
+        if (!isMounted) return;
+        setFeatureFlags({});
+      }
+    };
+
+    loadFeatures();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const resetScrollPosition = () => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -91,6 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
 
   // Filter menu items based on user role
   const visibleMenuItems = allMenuItems.filter((item) => {
+    if (item.featureKey && featureFlags[item.featureKey] === false) return false;
     if (item.requiredRole === 'ALL') return true;
     if (item.requiredRole === 'ADMIN_OR_HANDOFF') return userRole === 'ADMIN' || userRole === 'USER_HANDOFF';
     return item.requiredRole === userRole;
