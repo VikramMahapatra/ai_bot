@@ -236,6 +236,10 @@ const CampaignBuilder = () => {
             newErrors.start_datetime = "Start date & time is required";
         }
 
+        if (sendOption === "schedule" && !campaignForm.end_datetime) {
+            newErrors.end_datetime = "End date & time is required";
+        }
+
         if (sendOption === "schedule" && !campaignForm.timezone) {
             newErrors.timezone = "Timezone is required";
         }
