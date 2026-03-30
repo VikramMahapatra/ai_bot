@@ -72,7 +72,6 @@ def create_agent(
 
     db_agent = CallingAgent(
         organization_id=organization_id,
-        calling_no = "+918046733457", ##### HARDCODED TO BE CHANGE ####
         name=agent.name,
         type=agent.type.lower(),
         greeting=agent.greeting,

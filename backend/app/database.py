@@ -341,7 +341,8 @@ def init_db():
                     "extract_data": "TEXT",
                     "lead_info": "TEXT",
                     "success_evaluation": "BOOLEAN DEFAULT 0",
-                    "is_lead_qualified": "BOOLEAN DEFAULT 0"
+                    "is_lead_qualified": "BOOLEAN DEFAULT 0",
+                    "external_call_a_id": "TEXT"
                 }
 
                 cols = conn.execute(text("PRAGMA table_info('call_logs')")).fetchall()

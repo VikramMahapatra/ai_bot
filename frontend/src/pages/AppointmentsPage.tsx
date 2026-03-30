@@ -47,6 +47,7 @@ import AdminLayout from '../components/Layout/AdminLayout';
 import { dashboardService } from '../services/dashboardService';
 import { appointmentService, AppointmentItem } from '../services/appointmentService';
 import { organizationService } from '../services/organizationService';
+import SyncIcon from '@mui/icons-material/Sync';
 
 const DEFAULT_MEET_LINK = 'https://meet.google.com/new';
 
@@ -135,6 +136,7 @@ const statusLegend: Array<{ value: AppointmentItem['status']; label: string }> =
 const AppointmentsPage: React.FC = () => {
   const theme = useTheme();
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [tab, setTab] = useState(0);
@@ -289,12 +291,12 @@ const AppointmentsPage: React.FC = () => {
         prev.map((item) =>
           item.id === rescheduleTarget.id
             ? {
-                ...item,
-                appointment_at: response.appointment_at,
-                timezone: response.timezone || item.timezone,
-                status: response.status,
-                notes: rescheduleNotes || item.notes,
-              }
+              ...item,
+              appointment_at: response.appointment_at,
+              timezone: response.timezone || item.timezone,
+              status: response.status,
+              notes: rescheduleNotes || item.notes,
+            }
             : item
         )
       );
@@ -302,12 +304,12 @@ const AppointmentsPage: React.FC = () => {
       setSelectedAppointment((prev) =>
         prev && prev.id === rescheduleTarget.id
           ? {
-              ...prev,
-              appointment_at: response.appointment_at,
-              timezone: response.timezone || prev.timezone,
-              status: response.status,
-              notes: rescheduleNotes || prev.notes,
-            }
+            ...prev,
+            appointment_at: response.appointment_at,
+            timezone: response.timezone || prev.timezone,
+            status: response.status,
+            notes: rescheduleNotes || prev.notes,
+          }
           : prev
       );
 
@@ -403,6 +405,21 @@ const AppointmentsPage: React.FC = () => {
     });
   };
 
+  const syncAppointmentsFromCalls = async () => {
+    try {
+      setSyncing(true);
+      setError('');
+      setSuccess('');
+      await appointmentService.syncFromCalls();
+      setSuccess('Appointments synced from calls successfully.');
+      loadAppointments();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to sync appointments from calls');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <Stack spacing={3}>
@@ -442,14 +459,14 @@ const AppointmentsPage: React.FC = () => {
             },
           }}
         >
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
-            Appointments
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Track all booked appointments and manage their status.
-          </Typography>
-        </Box>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
+              Appointments
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Track all booked appointments and manage their status.
+            </Typography>
+          </Box>
         </Paper>
 
         {error && <Alert severity="error">{error}</Alert>}
@@ -536,6 +553,18 @@ const AppointmentsPage: React.FC = () => {
               sx={{ whiteSpace: 'nowrap' }}
             >
               {savingDefaultMeetLink ? 'Saving...' : 'Save Default URL'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={syncAppointmentsFromCalls}
+              disabled={syncing}
+              sx={{
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              {syncing ? 'Syncing...' : 'Sync From Calls'}
             </Button>
           </Stack>
         </Paper>

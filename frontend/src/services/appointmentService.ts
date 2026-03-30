@@ -61,4 +61,8 @@ export const appointmentService = {
     const response = await api.put(`/api/admin/appointments/${appointmentId}/reschedule`, payload);
     return response.data;
   },
+
+  async syncFromCalls(): Promise<void> {
+    await api.post('/api/calls/sync-bookings');
+  }
 };

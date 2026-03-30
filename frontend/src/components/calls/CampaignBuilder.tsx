@@ -33,6 +33,19 @@ const steps = [
 
 const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+const timezoneAliasMap: any = {
+    "Asia/Calcutta": "Asia/Kolkata",
+    "US/Eastern": "America/New_York",
+    "US/Central": "America/Chicago",
+    "US/Mountain": "America/Denver",
+    "US/Pacific": "America/Los_Angeles"
+};
+
+const normalizedTimezone =
+    timezoneAliasMap[browserTimezone] || browserTimezone;
+
+const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 const emptyCampaignForm: CallCampaign = {
     // CAMPAIGN INFO
     name: "",
@@ -45,11 +58,11 @@ const emptyCampaignForm: CallCampaign = {
     contacts: [],
     start_datetime: "",
     end_datetime: "",
-    timezone: browserTimezone,
+    timezone: normalizedTimezone,
     call_start_time: "09:00",
     call_end_time: "21:00",
     call_interval: 5,
-    active_days: [],
+    active_days: days,
 
     max_retry_attempts: "",
     retry_interval: "",
@@ -103,6 +116,7 @@ const CampaignBuilder = () => {
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
+        setErrors({});
         setActiveStep(0);
         setSendOption("schedule");
         setMode("create");
@@ -112,6 +126,7 @@ const CampaignBuilder = () => {
         if (id === undefined) return;
         setError('');
         setSuccess('');
+        setErrors({});
         setActiveStep(0);
         window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -127,8 +142,8 @@ const CampaignBuilder = () => {
                 contacts: data.contacts || [],
                 calling_no: data.calling_no,
 
-                start_datetime: data.start_datetime,
-                end_datetime: data.end_datetime,
+                start_datetime: moment(data.start_datetime).format("YYYY-MM-DD"),
+                end_datetime: moment(data.end_datetime).format("YYYY-MM-DD"),
                 timezone: data.timezone,
 
                 call_start_time: data.call_start_time,
@@ -151,7 +166,7 @@ const CampaignBuilder = () => {
             } else {
                 setCampaignContacts([]);
             }
-            setSendOption(data.start_datetime ? "schedule" : "now")
+            setSendOption(data.start_datetime || data.active_days ? "schedule" : "now")
             setCampaignId(id);
             setMode("edit");
             setView("form");
@@ -177,14 +192,21 @@ const CampaignBuilder = () => {
                 ...campaignForm,
                 product_id: campaignForm.product_id || undefined
             };
+            let response;
 
             if (mode == "edit" && campaignId) {
-                await callCampaignService.updateCampaign(payload, campaignId);
+                response = await callCampaignService.updateCampaign(payload, campaignId);
             }
             else {
-                await callCampaignService.createCampaign(payload);
+                response = await callCampaignService.createCampaign(payload);
             }
-            showSuccess("Campaign saved successfully")
+
+            if (response.success) {
+                showSuccess(response.message || "Campaign saved successfully")
+            }
+            else {
+                showError(response.message || "Failed to save the campaign data")
+            }
             setView("list");
         }
         catch (err: any) {
@@ -232,29 +254,66 @@ const CampaignBuilder = () => {
     const handleSave = () => {
         const newErrors: any = {};
 
-        if (sendOption === "schedule" && !campaignForm.start_datetime) {
-            newErrors.start_datetime = "Start date & time is required";
+        if (sendOption === "schedule") {
+
+            // Active Days Required
+            if (!campaignForm.active_days || campaignForm.active_days.length === 0) {
+                newErrors.active_days = "Please select at least one active day";
+            }
+
+            const hasStart = !!campaignForm.start_datetime;
+            const hasEnd = !!campaignForm.end_datetime;
+
+            console.log("hasStart", hasStart, "hasEnd", hasEnd)
+
+            // If only start selected
+            if (hasStart && !hasEnd) {
+                newErrors.end_datetime = "End date is required";
+            }
+
+            // If only end selected
+            if (!hasStart && hasEnd) {
+                newErrors.start_datetime = "Start date is required";
+            }
+
+            // If both selected validate range
+            if (hasStart && hasEnd && campaignForm.start_datetime > campaignForm.end_datetime) {
+                newErrors.end_datetime = "End date must be after start date";
+            }
+
+            // Timezone required
+            if (!campaignForm.timezone) {
+                newErrors.timezone = "Timezone is required";
+            }
+
+            // Call time validation
+            if (
+                campaignForm.call_start_time &&
+                campaignForm.call_end_time &&
+                campaignForm.call_start_time >= campaignForm.call_end_time
+            ) {
+                newErrors.call_end_time =
+                    "End time must be after start time";
+            }
+
+            // Call window required
+            if (!campaignForm.call_start_time) {
+                newErrors.call_start_time = "Start time required";
+            }
+
+            if (!campaignForm.call_end_time) {
+                newErrors.call_end_time = "End time required";
+            }
         }
 
-        if (sendOption === "schedule" && !campaignForm.timezone) {
-            newErrors.timezone = "Timezone is required";
-        }
-
-        if (
-            sendOption === "schedule" &&
-            campaignForm.call_start_time &&
-            campaignForm.call_end_time &&
-            campaignForm.call_start_time >= campaignForm.call_end_time
-        ) {
-            newErrors.call_end_time = "End time must be after start time";
-        }
-
+        // Send Now Validation
         if (sendOption === "now") {
-            const now = moment(); // current time
-            const currentHour = now.hour(); // 0–23
+            const now = moment().tz(campaignForm.timezone || moment.tz.guess());
+            const currentHour = now.hour();
 
             if (currentHour < 9 || currentHour >= 21) {
-                newErrors.send_now = "Calls can only be sent between 9:00 AM and 9:00 PM";
+                newErrors.send_now =
+                    "Calls allowed between 9:00 AM and 9:00 PM only";
             }
         }
 

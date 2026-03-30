@@ -23,6 +23,7 @@ from app.models.products import Product
 STALE_MINUTES = 1
 SYNC_STATUSES = ["active", "running", "pending", "scheduled"] 
 
+
 def should_sync(campaign):
     if campaign.status not in SYNC_STATUSES:
         return False
@@ -191,6 +192,7 @@ def get_campaign(db: Session, campaign_id: int):
 
         # Schedule
         "start_datetime": schedule.start_datetime if schedule else None,
+        "end_datetime": schedule.end_datetime if schedule else None,
         "timezone": schedule.timezone if schedule else None,
         "call_start_time": schedule.call_start_time if schedule else None,
         "call_end_time": schedule.call_end_time if schedule else None,
@@ -228,7 +230,7 @@ def get_campaign_detail(db: Session, campaign_id: int):
 
     campaign_obj, product_name, schedule = campaign
     
-    send_option = "scheduled" if schedule and schedule.start_datetime else "instant"
+    send_option = "scheduled" if schedule and (schedule.start_datetime or schedule.active_days) else "instant"
 
         # Total contacts
     total_contacts = db.query(CampaignContact).filter(
@@ -309,7 +311,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
                 detail=f"Call limit exceeded. Allowed: {limits.max_calls}, Used: {total_calls_used}, Required: {calls_needed}"
             )
             
-    if data.start_datetime:
+    if data.start_datetime or data.active_days:
         status = "scheduled"
         send_option = "schedule"
     else:
@@ -354,7 +356,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         call_start_time=data.call_start_time,
         call_end_time=data.call_end_time,
         call_interval=data.call_interval,
-        active_days=",".join(data.active_days),
+        active_days=",".join(data.active_days) if data.active_days else None,
         max_retry_attempts=data.max_retry_attempts,
         retry_interval=data.retry_interval,
         retry_no_answer=data.retry_on_no_answer,
@@ -383,15 +385,39 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         for contact in contacts
     ]
     
+    dialer_start_date = None
+    dialer_end_date = None
+    schedule_date = None
+    schedule_time = None
+
+    if data.start_datetime:
+        schedule_date = data.start_datetime.split("T")[0]
+        schedule_time = data.call_start_time
+        dialer_start_date = schedule_date
+
+    if data.end_datetime:
+        dialer_end_date = data.end_datetime.split("T")[0]
+        
+    # Active Days Selected
+    if data.active_days and not data.start_datetime:
+        today = datetime.utcnow().date()
+        ten_years_later = today.replace(year=today.year + 10)
+
+        dialer_start_date = today.isoformat()
+        dialer_end_date = ten_years_later.isoformat()
+        
+        schedule_date = dialer_start_date
+        schedule_time = data.call_start_time
+    
     payload = {
         "campaign_name": f"{org.name}-{data.name}",
         "agent_id": agent.external_agent_id,
         "from_number": agent.calling_no,
         "send_option": send_option,
-        "schedule_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
-        "schedule_time": data.start_datetime.split("T")[1][:5] if data.start_datetime else None,
-        "dialer_schedule_start_date": data.start_datetime.split("T")[0] if data.start_datetime else None,
-        "dialer_schedule_end_date": data.end_datetime.split("T")[0] if data.end_datetime else None,
+        "schedule_date": schedule_date,
+        "schedule_time": schedule_time,
+        "dialer_schedule_start_date": dialer_start_date,
+        "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
         "concurrency_reserved": 2,
         "concurrency_allocated": 5,
@@ -456,7 +482,7 @@ def update_campaign(
     update_data = data.dict(exclude_unset=True)
 
     # Determine campaign status
-    if data.start_datetime:
+    if data.start_datetime or data.active_days:
         campaign.status = "scheduled"
         send_option = "schedule"
     else:
@@ -494,8 +520,7 @@ def update_campaign(
         external_contact_ids = get_external_contact_ids(db, data.contacts)
         
     contacts = db.query(Contact).filter(
-        Contact.id.in_(data.contacts),
-        Contact.is_deleted == False
+        Contact.id.in_(data.contacts)
     ).all()
     
     contacts_payload = [
@@ -511,21 +536,39 @@ def update_campaign(
         }
         for contact in contacts
     ]
+    
+    dialer_start_date = None
+    dialer_end_date = None
+    schedule_date = None
+    schedule_time = None
+
+    if data.start_datetime:
+        schedule_date = data.start_datetime.split("T")[0]
+        schedule_time = data.call_start_time
+        dialer_start_date = schedule_date
+
+    if data.end_datetime:
+        dialer_end_date = data.end_datetime.split("T")[0]
+        
+    # Active Days Selected
+    if data.active_days and not data.start_datetime:
+        today = datetime.utcnow().date()
+        ten_years_later = today.replace(year=today.year + 10)
+
+        dialer_start_date = today.isoformat()
+        dialer_end_date = ten_years_later.isoformat()
+        
+        schedule_date = dialer_start_date
+        schedule_time = data.call_start_time
         
     payload = {
         "campaign_name": f"{org.name}-{campaign.name}",
         "agent_id": agent.external_agent_id if agent else None,
         "send_option": send_option,
-        "schedule_date": (
-            data.start_datetime.split("T")[0]
-            if data.start_datetime else None
-        ),
-        "schedule_time": (
-            data.start_datetime.split("T")[1][:5]
-            if data.start_datetime else None
-        ),
-        "dialer_schedule_start_date": data.end_datetime.split("T")[0] if data.start_datetime else None,
-        "dialer_schedule_end_date": data.end_datetime.split("T")[0] if data.end_datetime else None,
+        "schedule_date": schedule_date,
+        "schedule_time": schedule_time,
+        "dialer_schedule_start_date": dialer_start_date,
+        "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
         "concurrency_reserved": 2,
         "concurrency_allocated": 5,
@@ -538,6 +581,8 @@ def update_campaign(
     if external_contact_ids is not None:
         payload["contact_ids"] = external_contact_ids
         payload["contacts"] = contacts_payload
+        
+    print(payload)
 
     client = EcholeadsClient()
     echo_failed = False
@@ -611,38 +656,55 @@ def update_campaign(
     db.commit()
 
     return {
-        "message": "Campaign updated",
+        "success": echo_failed == False,
+        "message": message,
         "campaign_id": campaign.id
     }
 
 def build_schedule_days(data):
     schedule_days = {}
 
-    # Case 1: Active days selected (Monday, Tuesday etc.)
-    if data.active_days:
-        for day in data.active_days:
-            schedule_days[day] = {
-                "startTime": data.call_start_time,
-                "endTime": data.call_end_time
+    DAY_MAP = {
+        "mon": "mon", "monday": "mon",
+        "tue": "tue", "tuesday": "tue",
+        "wed": "wed", "wednesday": "wed",
+        "thu": "thu", "thursday": "thu",
+        "fri": "fri", "friday": "fri",
+        "sat": "sat", "saturday": "sat",
+        "sun": "sun", "sunday": "sun",
+    }
+
+    active_days = [
+        DAY_MAP.get(day.lower())
+        for day in (data.active_days or [])
+    ]
+
+    if data.start_datetime and data.end_datetime:
+        start = datetime.fromisoformat(data.start_datetime)
+        end = datetime.fromisoformat(data.end_datetime)
+
+        current = start
+
+        while current <= end:
+            date_key = current.strftime("%Y-%m-%d")
+            weekday = current.strftime("%a").lower()
+
+            is_active = weekday in active_days
+
+            schedule_days[date_key] = {
+                "startTime": data.call_start_time if is_active else None,
+                "endTime": data.call_end_time if is_active else None
             }
 
-    # Case 2: No active days → generate from start_date → end_date
+            current += timedelta(days=1)
+
     else:
-        if data.start_date and data.end_date:
-            start = datetime.fromisoformat(data.start_date)
-            end = datetime.fromisoformat(data.end_date)
-
-            current = start
-
-            while current <= end:
-                date_key = current.strftime("%Y-%m-%d")
-
-                schedule_days[date_key] = {
+        if data.active_days:
+            for day in active_days:
+                schedule_days[day] = {
                     "startTime": data.call_start_time,
                     "endTime": data.call_end_time
                 }
-
-                current += timedelta(days=1)
 
     return schedule_days
 
@@ -1124,7 +1186,6 @@ def sync_campaign_from_echoleads(
                 )
             campaign_data = response.get("campaign") if response else None
             
-        print("Campaign Response :", campaign_data)
 
         if not campaign_data:
             return
