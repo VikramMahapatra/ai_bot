@@ -50,6 +50,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         name: "",
         email: "",
         phone: "",
+        company: "",
         contact_list_id: ""
     });
     const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -152,6 +153,8 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
             newErrors.email = "Invalid email";
         }
 
+
+
         setErrors(newErrors);
 
         return Object.keys(newErrors).length === 0;
@@ -199,7 +202,8 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
             name: "",
             email: "",
             phone: "",
-            contact_list_id: ""
+            contact_list_id: "",
+            company: ""
         });
 
         setErrors({});
@@ -306,6 +310,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                             <TableCell>Name</TableCell>
                             <TableCell>Phone</TableCell>
                             <TableCell>Email</TableCell>
+                            <TableCell>Company</TableCell>
                             <TableCell align="center">Action</TableCell>
                         </TableRow>
                     </TableHead>
@@ -323,6 +328,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                                     <TableCell>{contact.name}</TableCell>
                                     <TableCell>{contact.phone}</TableCell>
                                     <TableCell>{contact.email}</TableCell>
+                                    <TableCell>{contact.company}</TableCell>
                                     <TableCell align="center">
                                         <IconButton
                                             color="error"
@@ -554,6 +560,7 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
 
                         <Grid item xs={12}>
                             <TextField
+                                required
                                 fullWidth
                                 label="Phone"
                                 name="phone"
@@ -564,7 +571,17 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                             />
                         </Grid>
 
-
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Company"
+                                name="company"
+                                value={contactForm.company}
+                                onChange={handleInputChange}
+                                error={!!errors.company}
+                                helperText={errors.company}
+                            />
+                        </Grid>
 
                     </Grid>
 

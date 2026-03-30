@@ -50,6 +50,7 @@ const CampaignContacts = () => {
         name: "",
         email: "",
         phone: "",
+        company: "",
         contact_list_id: ""
     });
 
@@ -145,6 +146,7 @@ const CampaignContacts = () => {
             name: "",
             email: "",
             phone: "",
+            company: "",
             contact_list_id: ""
         });
         setErrors({});
@@ -163,6 +165,7 @@ const CampaignContacts = () => {
             name: contact.name,
             email: contact.email,
             phone: contact.phone,
+            company: contact.company || "",
             contact_list_id: contact.contact_list_id.toString()
         });
 
@@ -253,6 +256,7 @@ const CampaignContacts = () => {
                             <TableCell>Name</TableCell>
                             <TableCell>Email</TableCell>
                             <TableCell>Phone</TableCell>
+                            <TableCell>Company</TableCell>
                             <TableCell width={120}>Actions</TableCell>
                         </TableRow>
 
@@ -291,6 +295,7 @@ const CampaignContacts = () => {
                                     <TableCell>{contact.name}</TableCell>
                                     <TableCell>{contact.email}</TableCell>
                                     <TableCell>{contact.phone}</TableCell>
+                                    <TableCell>{contact.company}</TableCell>
 
                                     <TableCell>
 
@@ -385,6 +390,7 @@ const CampaignContacts = () => {
                         />
 
                         <TextField
+                            required
                             label="Phone"
                             value={form.phone}
                             onChange={(e) =>
@@ -392,6 +398,16 @@ const CampaignContacts = () => {
                             }
                             error={!!errors.phone}
                             helperText={errors.phone}
+                        />
+
+                        <TextField
+                            label="Company"
+                            value={form.company}
+                            onChange={(e) =>
+                                setForm({ ...form, company: e.target.value })
+                            }
+                            error={!!errors.company}
+                            helperText={errors.company}
                         />
 
                     </Box>

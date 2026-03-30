@@ -757,6 +757,7 @@ def get_contacts_by_ids(db: Session, ids: list[int]):
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
+                "company": row.company,
                 "contact_list_id": row.contact_list_id,
                 "created_at": row.created_at,
             }
@@ -818,6 +819,7 @@ def get_contacts(
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
+                "company": row.company,
                 "contact_list_id": row.contact_list_id,
                 "created_at": row.created_at,
             }
@@ -847,6 +849,7 @@ def get_contacts_lookup(db: Session, organization_id: int):
             "name": row.name,
             "email": row.email,
             "phone": row.phone,
+            "company": row.company,
         }
         for row in rows
     ]
