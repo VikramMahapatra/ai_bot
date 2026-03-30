@@ -253,7 +253,9 @@ export const CallLogsTab = () => {
         campaign,
         callEndReason,
         sentiment,
-        evaluation
+        evaluation,
+        leadQuality,
+        leadQualified,
     ]);
 
     useEffect(() => {
