@@ -564,7 +564,7 @@ def test_call(
     payload = {
         "a_id": agent.external_agent_a_id,
         "phone": data.phone_no,
-        "from_number": agent.calling_no,
+        "from_number": data.calling_no,
         "firstMessage": agent.greeting,
         "dynamicFieldValues": dynamic_values
     }

@@ -122,6 +122,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
         try {
             const payload = {
                 phone_no: fullNumber,
+                calling_no: selectedCallingNumber,
                 variables: dynamicValues
             };
             const response = await callingAgentService.testCall(agent.id, payload)
