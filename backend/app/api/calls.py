@@ -17,6 +17,7 @@ from dateutil import parser
 from app.models.calling_agents import CallingAgent
 from app.models.widget_config import WidgetConfig
 from app.models.organization_calling_numbers import OrganizationCallingNumber
+from app.models.campaign import Contact
 
 logger = logging.getLogger(__name__)
 
@@ -223,8 +224,8 @@ def call_analytics(
         }
     }
     
-@router.get("/sync-bookings")
-def get_bookings( 
+@router.post("/sync-bookings")
+def sync_bookings( 
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -248,28 +249,38 @@ def get_bookings(
 
         if existing:
             continue
+       
+        call_id = booking.get("call_id")
         
-        config = db.query(WidgetConfig).filter(
-            WidgetConfig.organization_id == current_user.organization_id
+        call_log = db.query(CallLog).filter(
+            CallLog.external_call_a_id == call_id
         ).first()
+        
+        contact = db.query(Contact).filter(
+            Contact.id == call_log.contact_id   
+        ).first() if call_log and call_log.contact_id else None
+        
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.id == call_log.campaign_id   
+        ).first() if call_log and call_log.campaign_id else None
+        
+        phone = booking.get("customer_number")
+        phone = phone if phone.startswith("+") else f"+{phone}"
         
 
         appointment = Appointment(
-            session_id=str(booking.get("id")),
-            widget_id = config.widget_id,
-            name=booking.get("title"),
-            phone=booking.get("customer_number"),
+            organization_id=call_log.organization_id,
+            session_id=call_id,
+            widget_id = call_log.agent_id,
+            name=contact.name if contact else "Unknown",
+            phone=phone,
             appointment_at=parser.parse(booking.get("start_date")),
             status="booked",
 
             # Optional fields
             email=None,
             notes=None,
-            timezone="UTC",
-
-            # If you have org/user mapping
-            organization_id= current_user.organization_id,
-            user_id=current_user.id
+            timezone= campaign.schedule.timezone if campaign else "UTC",
         )
 
         db.add(appointment)

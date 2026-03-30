@@ -345,8 +345,8 @@ def process_call(db, call, agent):
         CallLog.external_call_id == call["id"]
     ).first()
     
-    if existing and existing.status == "ended":
-        return
+    # if existing and existing.status == "ended":
+    #     return
     
     campaign_external_id = call["campaign_id"]
     
@@ -383,6 +383,7 @@ def process_call(db, call, agent):
 
     if existing:
         existing.organization_id = agent.organization_id
+        existing.external_call_a_id = call.get("call_id")
         existing.agent_id = agent.id
         existing.campaign_id = campaign.id if campaign else None
         existing.contact_id = contact.id if contact else None
@@ -413,6 +414,7 @@ def process_call(db, call, agent):
     else:
         call_log = CallLog(
             external_call_id=call["id"],
+            external_call_a_id=call["call_id"],
             organization_id=agent.organization_id,
             agent_id=agent.id,
             campaign_id=campaign.id if campaign else None,
@@ -525,7 +527,7 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact, lead_
         return None
 
     lead = Lead(
-        source="call",
+        source="voice",
         session_id=call_log_id,
         widget_id=str(agent.id),
         organization_id=agent.organization_id,
@@ -533,7 +535,7 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact, lead_
         name=contact.name if contact else None,
         email=contact.email if contact else None,
         phone=call.get("phone"),
-        company=None,
+        company=contact.company if contact else None,
         custom_fields=json.dumps({
             "lead_quality_label": lead_quality_label,
             "lead_info": call.get("lead_info"),
@@ -606,7 +608,7 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
     }
 
     lead = Lead(
-        source="manual",
+        source="voice",
         session_id=call_log_id,
         widget_id=str(agent.id),
         organization_id=agent.organization_id,
@@ -614,7 +616,7 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
         name=contact.name if contact else None,
         email=contact.email if contact else None,
         phone=call.phone,
-        company=None,
+        company=contact.company if contact else None,
         custom_fields=json.dumps(custom_fields),
         funnel_stage=payload.stage
     )

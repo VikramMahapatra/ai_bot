@@ -13,6 +13,7 @@ class CallLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     external_call_id = Column(Integer, unique=True, index=True)
+    external_call_a_id = Column(String, unique=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
 
     contact_id = Column(Integer, ForeignKey("contacts.id"))

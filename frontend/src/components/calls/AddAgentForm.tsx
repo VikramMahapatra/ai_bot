@@ -141,7 +141,7 @@ const emptyFormData = {
 
     enable_prompt_timezone: false,
     prompt_timezone: "",
-
+    inbound_phone: "",
     enable_call_forwarding: false,
     call_forwarding_number: "",
     call_forwarding_role: "",
@@ -198,6 +198,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
             enable_prompt_timezone: agent?.enable_prompt_timezone || false,
             prompt_timezone: agent?.prompt_timezone || "",
+
+            inbound_phone: agent?.inbound_phone || "",
 
             enable_call_forwarding: agent?.enable_call_forwarding || false,
             call_forwarding_number: agent?.call_forwarding_number || "",
@@ -352,8 +354,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         }
 
         if (agentType == "inbound") {
-            if (!formData.call_forwarding_number) {
-                newErrors.call_forwarding_number = "Phone number is required";
+            if (!formData.inbound_phone) {
+                newErrors.inbound_phone = "Inbound phone number is required";
             }
         }
         else {
@@ -893,6 +895,30 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                     </Stack>
                 </Card>
+                {agentType === "inbound" &&
+                    <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                        <Typography variant="subtitle1" mb={2}>
+                            Inbound Phone Number
+                        </Typography>
+
+                        <FormControl
+                            fullWidth
+                            required
+                            error={!!errors.inbound_phone}
+                        >
+                            <Select
+                                value={formData.inbound_phone}
+                                onChange={(e) =>
+                                    handleSelectChange("inbound_phone", e.target.value)
+                                }
+                                displayEmpty
+                            >
+
+                            </Select>
+                        </FormControl>
+                        <FormHelperText>{errors.inbound_phone}</FormHelperText>
+                    </Card>
+                }
 
                 {/* Call Forwarding */}
                 <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -901,85 +927,63 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                     </Typography>
 
                     <Stack spacing={2}>
-
-                        {agentType === "inbound" ? (
-                            // ✅ Only phone field for inbound
-                            <TextField
-                                label="Forwarding Phone Number"
-                                name="call_forwarding_number"
-                                placeholder="+1234567890"
-                                value={formData.call_forwarding_number}
-                                onChange={handleInputChange}
-                                type="tel"
-                                required
-                                error={!!errors.call_forwarding_number}
-                                helperText={
-                                    errors.call_forwarding_number || "Phone number to forward calls to"
-                                }
-                                fullWidth
-                            />
-                        ) : (
-                            // ✅ Full UI for other types
-                            <>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={formData.enable_call_forwarding}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    enable_call_forwarding: e.target.checked
-                                                })
-                                            }
-                                        />
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={formData.enable_call_forwarding}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            enable_call_forwarding: e.target.checked
+                                        })
                                     }
-                                    label="Enable Call Forwarding"
+                                />
+                            }
+                            label="Enable Call Forwarding"
+                        />
+
+                        {formData.enable_call_forwarding && (
+                            <Stack spacing={2}>
+
+                                <TextField
+                                    label="Forwarding Phone Number"
+                                    name="call_forwarding_number"
+                                    placeholder="+1234567890"
+                                    value={formData.call_forwarding_number}
+                                    onChange={handleInputChange}
+                                    type="tel"
+                                    fullWidth
+                                    error={!!errors.call_forwarding_number}
+                                    helperText={
+                                        errors.call_forwarding_number
+                                    }
                                 />
 
-                                {formData.enable_call_forwarding && (
-                                    <Stack spacing={2}>
+                                <TextField
+                                    label="Message"
+                                    name="call_forwarding_role"
+                                    placeholder="eg. Please hold on"
+                                    value={formData.call_forwarding_role}
+                                    onChange={handleInputChange}
+                                    fullWidth
+                                    error={!!errors.call_forwarding_role}
+                                    helperText={
+                                        errors.call_forwarding_role
+                                    }
+                                />
 
-                                        <TextField
-                                            label="Forwarding Phone Number"
-                                            name="call_forwarding_number"
-                                            placeholder="+1234567890"
-                                            value={formData.call_forwarding_number}
-                                            onChange={handleInputChange}
-                                            type="tel"
-                                            fullWidth
-                                            error={!!errors.call_forwarding_number}
-                                            helperText={
-                                                errors.call_forwarding_number
-                                            }
-                                        />
+                                <TextField
+                                    label="Action Description"
+                                    name="call_forwarding_action_desc"
+                                    value={formData.call_forwarding_action_desc}
+                                    placeholder="Describe when calls should be forwarded (e.g., 'Forward to manager when customer requests escalation')"
+                                    onChange={handleInputChange}
+                                    multiline
+                                    rows={3}
+                                    fullWidth
+                                />
 
-                                        <TextField
-                                            label="Message"
-                                            name="call_forwarding_role"
-                                            placeholder="eg. Please hold on"
-                                            value={formData.call_forwarding_role}
-                                            onChange={handleInputChange}
-                                            fullWidth
-                                            error={!!errors.call_forwarding_role}
-                                            helperText={
-                                                errors.call_forwarding_role
-                                            }
-                                        />
-
-                                        <TextField
-                                            label="Action Description"
-                                            name="call_forwarding_action_desc"
-                                            value={formData.call_forwarding_action_desc}
-                                            placeholder="Describe when calls should be forwarded (e.g., 'Forward to manager when customer requests escalation')"
-                                            onChange={handleInputChange}
-                                            multiline
-                                            rows={3}
-                                            fullWidth
-                                        />
-
-                                    </Stack>
-                                )}
-                            </>
+                            </Stack>
                         )}
 
                     </Stack>

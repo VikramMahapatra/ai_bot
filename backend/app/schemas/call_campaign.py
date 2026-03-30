@@ -50,6 +50,7 @@ class CampaignUpdate(BaseModel):
     contacts: Optional[List[int]] = None
 
     start_datetime: Optional[str] = None
+    end_datetime: Optional[str] = None
     timezone: Optional[str] = None
 
     call_start_time: Optional[str] = None
