@@ -80,6 +80,7 @@ class ContactCreate(BaseModel):
     name: str | None
     email: str | None
     phone: str | None
+    company: str | None
     contact_list_id: int
     
     

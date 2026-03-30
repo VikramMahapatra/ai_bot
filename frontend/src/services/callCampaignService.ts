@@ -6,6 +6,7 @@ export interface Contact {
     name: string;
     email: string;
     phone: string;
+    company?: string;
     list_name?: string;
     contact_list_id: number;
 }
