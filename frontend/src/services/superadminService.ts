@@ -40,6 +40,25 @@ export const superadminService = {
     return response.data;
   },
 
+  async updateOrganization(
+    orgId: number,
+    payload: {
+      organization_name?: string;
+      description?: string;
+      admin_username?: string;
+      admin_email?: string;
+      admin_password?: string;
+    }
+  ) {
+    const response = await api.put<SuperAdminOrganization>(`/api/superadmin/organizations/${orgId}`, payload);
+    return response.data;
+  },
+
+  async deleteOrganization(orgId: number) {
+    const response = await api.delete<{ success: boolean; deleted_organization_id: number }>(`/api/superadmin/organizations/${orgId}`);
+    return response.data;
+  },
+
   async updateLimits(orgId: number, limits: Partial<OrganizationLimits>) {
     const response = await api.put<OrganizationLimits>(`/api/superadmin/organizations/${orgId}/limits`, limits);
     return response.data;
@@ -62,6 +81,11 @@ export const superadminService = {
 
   async updatePlan(planId: number, payload: Partial<Plan>) {
     const response = await api.put<Plan>(`/api/superadmin/plans/${planId}`, payload);
+    return response.data;
+  },
+
+  async deletePlan(planId: number) {
+    const response = await api.delete<{ success: boolean; deleted_plan_id: number }>(`/api/superadmin/plans/${planId}`);
     return response.data;
   },
 

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+import re
+import secrets
 from app.database import get_db
 from app.auth import get_password_hash, verify_password, create_access_token, require_superadmin
 from app.models import (
@@ -19,6 +21,7 @@ from app.schemas.superadmin import (
     SuperAdminLoginResponse,
     SuperAdminBootstrapRequest,
     SuperAdminCreateOrganizationRequest,
+    SuperAdminUpdateOrganizationRequest,
     SuperAdminOrganizationResponse,
     OrganizationLimitsUpdate,
     OrganizationLimitsResponse,
@@ -36,10 +39,11 @@ from app.services.limits_service import (
     get_active_subscription,
     get_subscription_days_left,
 )
-from sqlalchemy import func
+from sqlalchemy import func, text
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 import logging
+from sqlalchemy.exc import IntegrityError
 
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_calling_numbers import OrganizationCallingNumber
@@ -47,6 +51,85 @@ from app.models.organization_calling_numbers import OrganizationCallingNumber
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/superadmin", tags=["superadmin"])
+
+ORG_DELETE_BLOCKING_TABLES = [
+    "widget_configs",
+    "knowledge_sources",
+    "conversations",
+    "leads",
+    "campaigns",
+    "contact_lists",
+    "campaign_lead_rules",
+    "campaign_lead_conversions",
+    "call_campaigns",
+    "call_logs",
+    "calling_agents",
+    "appointments",
+    "appointment_intakes",
+    "handoff_sessions",
+    "products",
+    "message_feedback",
+    "conversation_metrics",
+    "retrieval_traces",
+    "funnel_categories",
+]
+
+ORG_DELETE_CLEANUP_TABLES = [
+    "organization_calling_numbers",
+    "organization_limits",
+    "organization_subscription_usage",
+    "organization_subscriptions",
+    "organization_usage",
+    "twilio_sms_channels",
+    "whatsapp_channels",
+    "users",
+]
+
+
+def _build_org_domain(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-") or "org"
+    return f"{base}-{secrets.token_hex(3)}"
+
+
+def _build_org_response(db: Session, org: Organization, admin_user: Optional[User] = None) -> SuperAdminOrganizationResponse:
+    if not admin_user:
+        admin_user = db.query(User).filter(
+            User.organization_id == org.id,
+            User.role == UserRole.ADMIN,
+        ).first()
+    limits = get_or_create_limits(db, org.id)
+    subscription = get_active_subscription(db, org.id)
+    plan = db.query(Plan).filter(Plan.id == limits.plan_id).first() if limits.plan_id else None
+
+    return SuperAdminOrganizationResponse(
+        id=org.id,
+        name=org.name,
+        description=org.description,
+        admin_username=admin_user.username if admin_user else None,
+        admin_email=admin_user.email if admin_user else None,
+        limits=limits,
+        plan=plan,
+        subscription={
+            "id": subscription.id,
+            "organization_id": subscription.organization_id,
+            "plan_id": subscription.plan_id,
+            "status": subscription.status,
+            "billing_cycle": subscription.billing_cycle,
+            "start_date": subscription.start_date,
+            "end_date": subscription.end_date,
+            "trial_end": subscription.trial_end,
+            "is_active": subscription.is_active,
+            "days_left": get_subscription_days_left(subscription),
+        } if subscription else None,
+    )
+
+
+def _table_exists(db: Session, table_name: str) -> bool:
+    try:
+        db.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))
+        return True
+    except Exception:
+        return False
 
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)
@@ -97,30 +180,52 @@ async def create_organization_with_admin(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin)
 ):
-    existing_org = db.query(Organization).filter(Organization.name == request.organization_name).first()
+    org_name = (request.organization_name or "").strip()
+    admin_username = (request.admin_username or "").strip()
+
+    if not org_name:
+        raise HTTPException(status_code=400, detail="Organization name is required")
+    if not admin_username:
+        raise HTTPException(status_code=400, detail="Admin username is required")
+
+    existing_org = db.query(Organization).filter(func.lower(Organization.name) == org_name.lower()).first()
     if existing_org:
         raise HTTPException(status_code=400, detail="Organization already exists")
 
-    existing_user = db.query(User).filter(User.username == request.admin_username).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Admin username already exists")
+    plan = db.query(Plan).filter(Plan.id == request.plan_id, Plan.is_active == True).first()
+    if not plan:
+        raise HTTPException(status_code=400, detail="Selected plan is invalid or inactive")
 
-    org = Organization(name=request.organization_name, description=request.description)
+    org = Organization(
+        name=org_name,
+        description=request.description,
+        org_domain=_build_org_domain(org_name),
+        access_token=secrets.token_urlsafe(32),
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
 
-    admin_user = User(
-        username=request.admin_username,
-        email=request.admin_email,
-        hashed_password=get_password_hash(request.admin_password),
-        role=UserRole.ADMIN,
-        organization_id=org.id,
-        is_active=True,
-    )
-    db.add(admin_user)
-    db.commit()
-    db.refresh(admin_user)
+    try:
+        admin_user = User(
+            username=admin_username,
+            email=request.admin_email,
+            hashed_password=get_password_hash(request.admin_password),
+            role=UserRole.ADMIN,
+            organization_id=org.id,
+            is_active=True,
+        )
+        db.add(admin_user)
+        db.commit()
+        db.refresh(admin_user)
+    except IntegrityError:
+        db.rollback()
+        db.delete(org)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Admin username or email already exists in this organization",
+        )
 
     limits_payload = request.limits.dict(exclude_unset=True) if request.limits else {}
     
@@ -141,8 +246,6 @@ async def create_organization_with_admin(
         billing_cycle=request.billing_cycle,
         trial_days=request.trial_days,
     )
-
-    plan = db.query(Plan).filter(Plan.id == request.plan_id).first()
 
     return SuperAdminOrganizationResponse(
         id=org.id,
@@ -173,42 +276,117 @@ async def list_organizations(
     superadmin: SuperAdmin = Depends(require_superadmin)
 ):
     orgs = db.query(Organization).all()
-    response = []
+    return [_build_org_response(db, org) for org in orgs]
 
-    for org in orgs:
-        admin_user = db.query(User).filter(
-            User.organization_id == org.id,
-            User.role == UserRole.ADMIN
+
+@router.put("/organizations/{org_id}", response_model=SuperAdminOrganizationResponse)
+async def update_organization_with_admin(
+    org_id: int,
+    request: SuperAdminUpdateOrganizationRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    admin_user = db.query(User).filter(
+        User.organization_id == org.id,
+        User.role == UserRole.ADMIN,
+    ).first()
+
+    if request.organization_name is not None:
+        org_name = request.organization_name.strip()
+        if not org_name:
+            raise HTTPException(status_code=400, detail="Organization name is required")
+        duplicate_org = db.query(Organization).filter(
+            func.lower(Organization.name) == org_name.lower(),
+            Organization.id != org.id,
         ).first()
-        limits = get_or_create_limits(db, org.id)
-        subscription = get_active_subscription(db, org.id)
-        plan = db.query(Plan).filter(Plan.id == limits.plan_id).first() if limits.plan_id else None
+        if duplicate_org:
+            raise HTTPException(status_code=400, detail="Organization already exists")
+        org.name = org_name
 
-        response.append(
-            SuperAdminOrganizationResponse(
-                id=org.id,
-                name=org.name,
-                description=org.description,
-                admin_username=admin_user.username if admin_user else None,
-                admin_email=admin_user.email if admin_user else None,
-                limits=limits,
-                plan=plan,
-                subscription={
-                    "id": subscription.id,
-                    "organization_id": subscription.organization_id,
-                    "plan_id": subscription.plan_id,
-                    "status": subscription.status,
-                    "billing_cycle": subscription.billing_cycle,
-                    "start_date": subscription.start_date,
-                    "end_date": subscription.end_date,
-                    "trial_end": subscription.trial_end,
-                    "is_active": subscription.is_active,
-                    "days_left": get_subscription_days_left(subscription),
-                } if subscription else None,
-            )
+    if request.description is not None:
+        org.description = request.description
+
+    admin_username = request.admin_username.strip() if request.admin_username is not None else None
+    admin_email = str(request.admin_email).strip() if request.admin_email is not None else None
+    admin_password = request.admin_password.strip() if request.admin_password is not None else None
+
+    if not admin_user:
+        if not admin_username:
+            raise HTTPException(status_code=400, detail="Admin username is required to create missing admin")
+        if not admin_email:
+            raise HTTPException(status_code=400, detail="Admin email is required to create missing admin")
+        if not admin_password:
+            raise HTTPException(status_code=400, detail="Admin password is required to create missing admin")
+
+        existing_username = db.query(User).filter(
+            User.organization_id == org.id,
+            func.lower(User.username) == admin_username.lower(),
+        ).first()
+        if existing_username:
+            raise HTTPException(status_code=400, detail="Admin username already exists in this organization")
+
+        existing_email = db.query(User).filter(
+            User.organization_id == org.id,
+            func.lower(User.email) == admin_email.lower(),
+        ).first()
+        if existing_email:
+            raise HTTPException(status_code=400, detail="Admin email already exists in this organization")
+
+        admin_user = User(
+            username=admin_username,
+            email=admin_email,
+            hashed_password=get_password_hash(admin_password),
+            role=UserRole.ADMIN,
+            organization_id=org.id,
+            is_active=True,
         )
+        db.add(admin_user)
+    else:
+        if (request.admin_email is not None or request.admin_password is not None) and request.admin_username is None:
+            raise HTTPException(status_code=400, detail="Admin username is required when updating admin credentials")
 
-    return response
+        if request.admin_username is not None:
+            if not admin_username:
+                raise HTTPException(status_code=400, detail="Admin username is required")
+            existing_username = db.query(User).filter(
+                User.organization_id == org.id,
+                func.lower(User.username) == admin_username.lower(),
+                User.id != admin_user.id,
+            ).first()
+            if existing_username:
+                raise HTTPException(status_code=400, detail="Admin username already exists in this organization")
+            admin_user.username = admin_username
+
+        if request.admin_email is not None:
+            if not admin_email:
+                raise HTTPException(status_code=400, detail="Admin email is required")
+            existing_email = db.query(User).filter(
+                User.organization_id == org.id,
+                func.lower(User.email) == admin_email.lower(),
+                User.id != admin_user.id,
+            ).first()
+            if existing_email:
+                raise HTTPException(status_code=400, detail="Admin email already exists in this organization")
+            admin_user.email = admin_email
+
+        if request.admin_password is not None:
+            if not admin_password:
+                raise HTTPException(status_code=400, detail="Admin password cannot be empty")
+            admin_user.hashed_password = get_password_hash(admin_password)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Failed to update organization details due to duplicate data")
+
+    db.refresh(org)
+    db.refresh(admin_user)
+    return _build_org_response(db, org, admin_user)
 
 
 @router.get("/organizations/{org_id}/limits", response_model=OrganizationLimitsResponse)
@@ -342,6 +520,78 @@ async def update_plan(
     db.commit()
     db.refresh(plan)
     return plan
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_plan(
+    plan_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    limits_usage = db.query(OrganizationLimits).filter(OrganizationLimits.plan_id == plan_id).count()
+    subscription_usage = db.query(OrganizationSubscription).filter(OrganizationSubscription.plan_id == plan_id).count()
+    if limits_usage > 0 or subscription_usage > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete plan because it is used by one or more organizations",
+        )
+
+    db.delete(plan)
+    db.commit()
+    return {"success": True, "deleted_plan_id": plan_id}
+
+
+@router.delete("/organizations/{org_id}")
+async def delete_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    blocking_tables: List[str] = []
+    for table_name in ORG_DELETE_BLOCKING_TABLES:
+        if not _table_exists(db, table_name):
+            continue
+        row_count = db.execute(
+            text(f"SELECT COUNT(1) FROM {table_name} WHERE organization_id = :org_id"),
+            {"org_id": org_id},
+        ).scalar()
+        if int(row_count or 0) > 0:
+            blocking_tables.append(table_name)
+
+    if blocking_tables:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete organization because related data exists in: "
+                + ", ".join(blocking_tables[:6])
+                + (" ..." if len(blocking_tables) > 6 else "")
+            ),
+        )
+
+    try:
+        for table_name in ORG_DELETE_CLEANUP_TABLES:
+            if not _table_exists(db, table_name):
+                continue
+            db.execute(
+                text(f"DELETE FROM {table_name} WHERE organization_id = :org_id"),
+                {"org_id": org_id},
+            )
+
+        db.delete(org)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Failed to delete organization due to related records")
+
+    return {"success": True, "deleted_organization_id": org_id}
 
 
 @router.get("/analytics/overview", response_model=SuperAdminOverviewResponse)

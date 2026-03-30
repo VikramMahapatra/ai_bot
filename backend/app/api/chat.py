@@ -37,6 +37,7 @@ from app.services.shopify_service import handle_shopify_intent, verify_shopify_c
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 
 def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) -> str:
@@ -51,11 +52,18 @@ def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) ->
         else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
     )
     return (
-        "Sorry—I don’t have a reliable answer for this right now. "
-        "If you’d like, I can connect you with our escalation contacts:\n"
-        f"• Level 1: {level_1}\n"
-        f"• Level 2: {level_2}\n"
+        "Sorry-I do not have a reliable answer for this right now. "
+        "If you'd like, I can connect you with our escalation contacts:\n"
+        f"- Level 1: {level_1}\n"
+        f"- Level 2: {level_2}\n"
         "Would you like me to help you reach them?"
+    )
+
+
+def _build_light_handoff_offer_prompt() -> str:
+    return (
+        "If you'd like, I can connect you with our escalation contacts. "
+        "Would you like me to connect you?"
     )
 
 
@@ -177,16 +185,24 @@ def _mentions_appointment_topic(text: str) -> bool:
     return bool(tokens & {"appointment", "appointments", "meeting", "meet", "call", "demo", "slot"})
 
 
+def _appointment_datetime_examples_message() -> str:
+    now_local = datetime.now()
+    example_1 = (now_local + timedelta(days=1)).replace(hour=15, minute=30, second=0, microsecond=0)
+    example_2 = (now_local + timedelta(days=2)).replace(hour=16, minute=0, second=0, microsecond=0)
+    example_3 = (now_local + timedelta(days=3)).replace(hour=10, minute=30, second=0, microsecond=0)
+    return (
+        "Please share your preferred appointment date and time. You can use:\n"
+        f"- {example_1.strftime('%Y-%m-%d %H:%M')}\n"
+        f"- {example_2.strftime('%d %B %Y %I:%M %p')}\n"
+        f"- {example_3.strftime('%d %B, at %I:%M %p')}"
+    )
+
+
 def _prompt_for_next_intake_field(next_field: str) -> str:
     if next_field == "name":
         return "Please share your full name to continue booking."
     if next_field == "appointment_at":
-        return (
-            "Please share your preferred appointment date and time. You can use:\n"
-            "• 2026-03-20 15:30\n"
-            "• 17 March 2026 4:00 PM\n"
-            "• 17th March, at 4:00 PM"
-        )
+        return _appointment_datetime_examples_message()
     if next_field == "timezone":
         return "Please share your timezone (for example: Asia/Kolkata, IST, or UTC)."
     if next_field == "contact":
@@ -459,7 +475,12 @@ def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[W
         return response_text
     if _response_offers_handoff(response_text):
         return response_text
-    return _build_escalation_contacts_message(widget_config)
+
+    base = (response_text or "").strip()
+    if not base:
+        return _build_escalation_contacts_message(widget_config)
+
+    return f"{base}\n\n{_build_light_handoff_offer_prompt()}"
 
 
 def _has_captured_lead_for_session(
@@ -966,6 +987,71 @@ def _sync_appointment_contact_to_agent_list(db: Session, widget_config: WidgetCo
     ))
 
 
+def _finalize_intake_appointment(
+    db: Session,
+    user: User,
+    widget_config: WidgetConfig,
+    active: AppointmentIntake,
+    session_id: str,
+    widget_id: str,
+) -> str:
+    dt_value = active.appointment_at
+    if not dt_value:
+        active.next_field = "appointment_at"
+        db.commit()
+        return f"I am missing appointment time. {_appointment_datetime_examples_message()}"
+
+    tz_name = _canonical_timezone(active.timezone or DEFAULT_APPOINTMENT_TIMEZONE) or DEFAULT_APPOINTMENT_TIMEZONE
+    try:
+        tz_obj = ZoneInfo(tz_name)
+    except Exception:
+        tz_obj = timezone.utc
+        tz_name = "UTC"
+
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=tz_obj)
+
+    now_value = datetime.now(timezone.utc)
+    if dt_value.astimezone(timezone.utc) <= now_value:
+        active.next_field = "appointment_at"
+        db.commit()
+        return f"That time is in the past. {_appointment_datetime_examples_message()}"
+
+    appointment = Appointment(
+        session_id=session_id,
+        widget_id=widget_id,
+        user_id=user.id,
+        organization_id=user.organization_id,
+        name=active.name or "Guest",
+        email=active.email,
+        phone=active.phone,
+        notes=active.notes,
+        timezone=tz_name,
+        appointment_at=dt_value,
+        status="booked",
+    )
+    db.add(appointment)
+    _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
+
+    active.appointment_at = dt_value
+    active.timezone = tz_name
+    active.status = "completed"
+    active.next_field = "completed"
+    db.commit()
+    db.refresh(appointment)
+
+    local_dt = appointment.appointment_at.astimezone(tz_obj)
+    time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
+    contact_line = appointment.email or appointment.phone or "not provided"
+
+    return _build_appointment_confirmation_message(
+        time_label=time_label,
+        tz_name=tz_name,
+        name=appointment.name,
+        contact=contact_line,
+    )
+
+
 def _handle_appointment_intake_flow(
     db: Session,
     user: User,
@@ -1041,50 +1127,50 @@ def _handle_appointment_intake_flow(
         active.name = name
         active.next_field = "appointment_at"
         db.commit()
-        return (
-            f"Thanks, {name}. Please share your preferred appointment date and time in this format: "
-            "YYYY-MM-DD HH:MM (24-hour). Example: 2026-03-20 15:30"
-        )
+        return f"Thanks, {name}. {_appointment_datetime_examples_message()}"
 
     if active.next_field == "appointment_at":
         dt_value = _parse_datetime_input(text)
         if not dt_value:
-            return (
-                "I could not parse the date/time. Please try one of these formats:\n"
-                "• 2026-03-20 15:30\n"
-                "• 17 March 2026 4:00 PM\n"
-                "• 17th March, at 4:00 PM"
-            )
+            return f"I could not parse the date/time. {_appointment_datetime_examples_message()}"
 
         active.appointment_at = dt_value
         detected_timezone = _extract_timezone(text)
-        if detected_timezone:
-            active.timezone = detected_timezone
-            active.next_field = "contact"
-            db.commit()
-            return (
-                f"Got it. I will use timezone {detected_timezone}. "
-                "Please share your email address or phone number so we can contact you (or type skip)."
-            )
-
-        active.next_field = "timezone"
+        active.timezone = _canonical_timezone(detected_timezone or active.timezone or DEFAULT_APPOINTMENT_TIMEZONE)
         db.commit()
-        return "Great. Please share your timezone (for example: Asia/Kolkata, IST, or UTC)."
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
+            session_id=session_id,
+            widget_id=widget_id,
+        )
 
     if active.next_field == "timezone":
         if _is_skip(text):
-            active.timezone = "UTC"
-            active.next_field = "contact"
-            db.commit()
-            return "No problem, I will use UTC. Please share your email address or phone number (or type skip)."
+            active.timezone = DEFAULT_APPOINTMENT_TIMEZONE
+        else:
+            timezone_name = _extract_timezone(text)
+            if not timezone_name:
+                return "Please provide a valid timezone, for example: Asia/Kolkata, IST, Europe/London, or UTC."
+            active.timezone = _canonical_timezone(timezone_name)
 
-        timezone_name = _extract_timezone(text)
-        if not timezone_name:
-            return "Please provide a valid timezone, for example: Asia/Kolkata, IST, Europe/London, or UTC."
-        active.timezone = timezone_name
-        active.next_field = "contact"
+        if not active.appointment_at:
+            active.next_field = "appointment_at"
+            db.commit()
+            return _appointment_datetime_examples_message()
+
         db.commit()
-        return "Please share your email address or phone number so we can contact you (or type skip)."
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
+            session_id=session_id,
+            widget_id=widget_id,
+        )
+
 
     if active.next_field == "contact":
         if not _is_skip(text):
@@ -1103,60 +1189,16 @@ def _handle_appointment_intake_flow(
     if active.next_field == "notes":
         notes = None if _is_skip(text) else text[:1000]
         active.notes = notes
-
-        dt_value = active.appointment_at
-        if not dt_value:
-            active.next_field = "appointment_at"
-            db.commit()
-            return "I am missing appointment time. Please provide: YYYY-MM-DD HH:MM"
-
-        tz_name = _canonical_timezone(active.timezone or "UTC")
-        try:
-            tz_obj = ZoneInfo(tz_name)
-        except Exception:
-            tz_obj = timezone.utc
-            tz_name = "UTC"
-
-        if dt_value.tzinfo is None:
-            dt_value = dt_value.replace(tzinfo=tz_obj)
-
-        now_value = datetime.now(timezone.utc)
-        if dt_value.astimezone(timezone.utc) <= now_value:
-            active.next_field = "appointment_at"
-            db.commit()
-            return "That time is in the past. Please provide a future appointment datetime: YYYY-MM-DD HH:MM"
-
-        appointment = Appointment(
+        db.commit()
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
             session_id=session_id,
             widget_id=widget_id,
-            user_id=user.id,
-            organization_id=user.organization_id,
-            name=active.name or "Guest",
-            email=active.email,
-            phone=active.phone,
-            notes=active.notes,
-            timezone=tz_name,
-            appointment_at=dt_value,
-            status="booked",
         )
-        db.add(appointment)
-        _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
 
-        active.status = "completed"
-        active.next_field = "completed"
-        db.commit()
-        db.refresh(appointment)
-
-        local_dt = appointment.appointment_at.astimezone(tz_obj)
-        time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
-        contact_line = appointment.email or appointment.phone or "not provided"
-
-        return _build_appointment_confirmation_message(
-            time_label=time_label,
-            tz_name=tz_name,
-            name=appointment.name,
-            contact=contact_line,
-        )
 
     return None
 
@@ -2096,7 +2138,7 @@ async def book_appointment(
     if appointment_time <= now:
         raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
-    canonical_tz = _canonical_timezone(request.timezone.strip()) if request.timezone else None
+    canonical_tz = _canonical_timezone(request.timezone.strip()) if request.timezone else DEFAULT_APPOINTMENT_TIMEZONE
 
     appointment = Appointment(
         session_id=request.session_id,
@@ -2120,7 +2162,7 @@ async def book_appointment(
     if appointment_dt.tzinfo is None:
         appointment_dt = appointment_dt.replace(tzinfo=timezone.utc)
 
-    tz_label = canonical_tz or "UTC"
+    tz_label = canonical_tz or DEFAULT_APPOINTMENT_TIMEZONE
     try:
         target_tz = ZoneInfo(tz_label)
     except Exception:
@@ -2612,3 +2654,4 @@ async def email_conversation(
     except Exception as e:
         logger.error(f"Error sending conversation email: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+

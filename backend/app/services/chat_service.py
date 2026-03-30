@@ -9,6 +9,7 @@ from typing import Tuple, List, Dict, Optional, Set
 import re
 import json
 import time
+import hashlib
 from threading import Lock
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -614,25 +615,50 @@ def _expand_queries(base_query: str, raw_message: str) -> List[str]:
     # keep bounded variants to avoid latency spikes
     return deduped[:5]
 
-
 def _build_escalation_message(level_1: str, level_2: str) -> str:
     return (
         "That sounds exciting, and I love the creativity. "
-        "I’m sorry—I don’t have reliable expertise on this specific topic in my current knowledge base. "
-        "If you’d like, I can still help with topics covered here (for example: our services, setup, pricing, or support). "
+        "I'm sorry-I don't have reliable expertise on this specific topic in my current knowledge base. "
+        "If you'd like, I can still help with topics covered here (for example: our services, setup, pricing, or support). "
         "Or I can connect you with our escalation contacts:\n"
-        f"• Level 1: {level_1}\n"
-        f"• Level 2: {level_2}\n"
+        f"- Level 1: {level_1}\n"
+        f"- Level 2: {level_2}\n"
         "Would you like me to connect you?"
     )
 
 
-def _build_soft_fallback_message() -> str:
-    return (
-        "That is a really creative idea. "
-        "I do not have reliable expertise on this topic in my current knowledge base yet. "
-        "I would still be happy to help with topics covered here, like our services, setup, pricing, or support."
-    )
+def _select_message_variant(options: List[str], seed_text: Optional[str]) -> str:
+    if not options:
+        return ""
+    if not seed_text:
+        return options[0]
+
+    digest = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(options)
+    return options[idx]
+
+
+def _build_soft_fallback_message(seed_text: Optional[str] = None) -> str:
+    variants = [
+        (
+            "I could not find reliable information about that in this knowledge base yet. "
+            "I can still help with our services, setup, pricing, or support."
+        ),
+        (
+            "That topic is not covered clearly in the available context right now. "
+            "If you want, I can help with what is documented here, like services, onboarding, pricing, or support."
+        ),
+        (
+            "I do not have enough verified context to answer that accurately yet. "
+            "I can still help with questions about our services, setup steps, pricing plans, or support options."
+        ),
+        (
+            "I am not seeing a reliable answer for that in the current knowledge base. "
+            "I can still help with common topics here, including services, setup, pricing, and support."
+        ),
+    ]
+    return _select_message_variant(variants, seed_text)
+
 
 
 def _is_escalation_contacts_message(text: Optional[str]) -> bool:
@@ -1135,8 +1161,8 @@ def _prepare_chat_payload(
 
 Follow these non-negotiable rules:
 - Answer using only the context from the user's knowledge base and the conversation history.
-- If the answer is not in context, do not guess. Offer escalation using this exact message:
-{escalation_message}
+- If the answer is not in context, do not guess. Say briefly that this topic is not covered in the current knowledge base, then offer to connect the user with escalation contacts.
+
 - Do not use outside knowledge or make assumptions.
 - You may derive simple aggregates (e.g., price ranges) from context if present, but do not expose step-by-step reasoning.
 {language_instruction}
@@ -1240,7 +1266,7 @@ def generate_chat_response(
                 ai_response = escalation_message
                 escalation_triggered = True
             else:
-                ai_response = _build_soft_fallback_message()
+                ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
                 escalation_triggered = False
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         else:
@@ -1264,7 +1290,7 @@ def generate_chat_response(
                     if _has_prior_escalation_contacts(db, session_id, widget_id):
                         ai_response = escalation_message
                     else:
-                        ai_response = _build_soft_fallback_message()
+                        ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
                         escalation_triggered = False
 
                 usage = getattr(response, "usage", None)
@@ -1288,7 +1314,7 @@ def generate_chat_response(
                     ai_response = escalation_message
                     escalation_triggered = True
                 else:
-                    ai_response = _build_soft_fallback_message()
+                    ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
                     escalation_triggered = False
 
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -1351,7 +1377,7 @@ def stream_chat_response(
             return None, sources, escalation_message, retrieval_trace
 
         retrieval_trace["escalation_triggered"] = False
-        return None, sources, _build_soft_fallback_message(), retrieval_trace
+        return None, sources, _build_soft_fallback_message(seed_text=f"{session_id}:{message}"), retrieval_trace
 
     try:
         stream = client.chat.completions.create(
@@ -1382,7 +1408,7 @@ def stream_chat_response(
             return None, sources, escalation_message, retrieval_trace
 
         retrieval_trace["escalation_triggered"] = False
-        return None, sources, _build_soft_fallback_message(), retrieval_trace
+        return None, sources, _build_soft_fallback_message(seed_text=f"{session_id}:{message}"), retrieval_trace
 
 
 def translate_text(text: str, target_language_code: Optional[str] = None, target_language_label: Optional[str] = None) -> str:
@@ -1406,3 +1432,4 @@ def translate_text(text: str, target_language_code: Optional[str] = None, target
     )
 
     return response.choices[0].message.content or text
+
