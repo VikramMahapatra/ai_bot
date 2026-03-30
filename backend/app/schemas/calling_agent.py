@@ -133,6 +133,7 @@ class CallingAgentRead(CallingAgentCreate):
         
 class TestCallRequest(BaseModel):
     phone_no: str
+    calling_no: str
     variables: Optional[Dict[str, str]] = {}
 
 class AgentStatusUpdate(BaseModel):
