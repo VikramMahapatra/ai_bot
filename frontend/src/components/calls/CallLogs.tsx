@@ -123,6 +123,7 @@ export const CallLogsTab = () => {
     const [endDate, setEndDate] = useState<string>(end);
     const [moveLeadOpen, setMoveLeadOpen] = useState(false);
     const [selectedLeadRow, setSelectedLeadRow] = useState<any>(null);
+    const [success, setSuccess] = useState('');
 
 
     const openMoveLeadDialog = (row: any) => {
@@ -139,7 +140,8 @@ export const CallLogsTab = () => {
                 showError(response.message)
             }
             else {
-                loadCallLogs();
+                showSuccess(response.message)
+                await loadCallLogs();
             }
         }
         catch {
@@ -153,6 +155,11 @@ export const CallLogsTab = () => {
 
     const showError = (message: string) => {
         setError(message);
+    };
+
+    const showSuccess = (message: string) => {
+        setError('');
+        setSuccess(message);
     };
 
     const loadCallLogs = async () => {
@@ -556,6 +563,29 @@ export const CallLogsTab = () => {
                         }
                     >
                         {error}
+                    </Alert>
+                </Stack>
+            )}
+
+            {success && (
+                <Stack
+                    mb={2}
+                >
+                    <Alert
+                        severity="success"
+                        sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}
+                        action={
+                            <IconButton
+                                aria-label="close"
+                                color="inherit"
+                                size="small"
+                                onClick={() => setSuccess("")} // clears the error
+                            >
+                                <CloseIcon fontSize="inherit" />
+                            </IconButton>
+                        }
+                    >
+                        {success}
                     </Alert>
                 </Stack>
             )}
