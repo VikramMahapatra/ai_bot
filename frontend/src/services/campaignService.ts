@@ -10,6 +10,8 @@ export interface CampaignItem {
   message_template: string;
   contact_list_id: number;
   contact_list_name?: string;
+  product_id?: number | null;
+  product_name?: string | null;
   scheduled_time?: string;
   status: CampaignStatus;
   number_sent: number;
@@ -33,8 +35,30 @@ export interface CampaignLogItem {
   contact_name?: string;
   email?: string;
   phone?: string;
-  status: 'sent' | 'failed' | 'pending';
+  status:
+    | 'pending'
+    | 'sent'
+    | 'delivered'
+    | 'opened'
+    | 'read'
+    | 'clicked'
+    | 'bounced'
+    | 'complained'
+    | 'unsubscribed'
+    | 'failed';
   sent_at?: string;
+  delivered_at?: string;
+  opened_at?: string;
+  read_at?: string;
+  clicked_at?: string;
+  bounced_at?: string;
+  complained_at?: string;
+  unsubscribed_at?: string;
+  open_count?: number;
+  click_count?: number;
+  provider_message_id?: string;
+  last_event_type?: string;
+  last_event_at?: string;
   error_message?: string;
   created_at: string;
 }
@@ -72,6 +96,7 @@ export interface ContactItem {
   name?: string;
   email?: string;
   phone?: string;
+  company?: string;
   contact_list_id: number;
   created_at: string;
 }
@@ -99,6 +124,7 @@ export interface CreateCampaignPayload {
   message_template: string;
   scheduled_time?: string;
   contact_list_id: number;
+  product_id?: number;
   status?: 'draft' | 'scheduled';
   email_content_mode?: 'manual' | 'prompt';
   email_subject?: string;
@@ -118,10 +144,36 @@ export interface GenerateEmailVariantsResponse {
   combinations: number;
 }
 
+export interface SpamScoreCombination {
+  combo_index: number;
+  subject_index: number;
+  body_index: number;
+  spam_score: number;
+  risk_level: 'low' | 'medium' | 'high';
+  reasons: string[];
+  suggestions: string[];
+}
+
+export interface SpamScoreResponse {
+  overall: {
+    average_spam_score: number;
+    highest_spam_score: number;
+    high_risk_count: number;
+  };
+  combinations: SpamScoreCombination[];
+  fallback_used?: boolean;
+}
+
 export interface CampaignFilters {
   search?: string;
   campaign_type?: CampaignType;
   status?: CampaignStatus;
+  product_id?: number;
+  contact_list_id?: number;
+  created_from?: string;
+  created_to?: string;
+  scheduled_from?: string;
+  scheduled_to?: string;
   skip?: number;
   limit?: number;
 }
@@ -137,6 +189,7 @@ export interface UploadManualContactsPayload {
     name?: string;
     email?: string;
     phone?: string;
+    company?: string;
   }>;
 }
 
@@ -158,6 +211,16 @@ export const campaignService = {
 
   async generateEmailVariants(payload: GenerateEmailVariantsPayload): Promise<GenerateEmailVariantsResponse> {
     const response = await api.post('/api/admin/campaigns/email/generate-variants', payload);
+    return response.data;
+  },
+
+  async scoreEmailSpamRisk(payload: {
+    campaign_name?: string;
+    prompt_context: string;
+    subjects: string[];
+    bodies: string[];
+  }): Promise<SpamScoreResponse> {
+    const response = await api.post('/api/admin/campaigns/email/spam-score', payload);
     return response.data;
   },
 

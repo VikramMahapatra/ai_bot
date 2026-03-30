@@ -134,6 +134,52 @@ def init_db():
                 col_names = {row[1] for row in cols}
                 if "external_contact_id" not in col_names:
                     conn.execute(text("ALTER TABLE contacts ADD COLUMN external_contact_id INTEGER"))
+                if "company" not in col_names:
+                    conn.execute(text("ALTER TABLE contacts ADD COLUMN company TEXT"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('campaigns')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "product_id" not in col_names:
+                    conn.execute(text("ALTER TABLE campaigns ADD COLUMN product_id INTEGER"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('campaign_logs')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "delivered_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN delivered_at DATETIME"))
+                if "opened_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN opened_at DATETIME"))
+                if "read_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN read_at DATETIME"))
+                if "clicked_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN clicked_at DATETIME"))
+                if "bounced_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN bounced_at DATETIME"))
+                if "complained_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN complained_at DATETIME"))
+                if "unsubscribed_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN unsubscribed_at DATETIME"))
+                if "provider_message_id" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN provider_message_id TEXT"))
+                if "tracking_token" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN tracking_token TEXT"))
+                if "open_count" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN open_count INTEGER DEFAULT 0"))
+                if "click_count" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN click_count INTEGER DEFAULT 0"))
+                if "last_event_type" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN last_event_type TEXT"))
+                if "last_event_at" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN last_event_at DATETIME"))
+                if "event_payload" not in col_names:
+                    conn.execute(text("ALTER TABLE campaign_logs ADD COLUMN event_payload TEXT"))
+                conn.execute(text("UPDATE campaign_logs SET open_count = 0 WHERE open_count IS NULL"))
+                conn.execute(text("UPDATE campaign_logs SET click_count = 0 WHERE click_count IS NULL"))
             except Exception:
                 pass
 
@@ -160,6 +206,26 @@ def init_db():
                     WHERE (lead_outcome IS NULL OR TRIM(lead_outcome) = '')
                       AND custom_fields IS NOT NULL
                 """))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('handoff_sessions')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "call_room_id" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_room_id TEXT"))
+                if "call_status" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_status TEXT DEFAULT 'none'"))
+                if "call_mode" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_mode TEXT DEFAULT 'video'"))
+                if "call_requested_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_requested_at DATETIME"))
+                if "call_started_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_started_at DATETIME"))
+                if "call_ended_at" not in col_names:
+                    conn.execute(text("ALTER TABLE handoff_sessions ADD COLUMN call_ended_at DATETIME"))
+                conn.execute(text("UPDATE handoff_sessions SET call_status = 'none' WHERE call_status IS NULL OR TRIM(call_status) = ''"))
+                conn.execute(text("UPDATE handoff_sessions SET call_mode = 'video' WHERE call_mode IS NULL OR TRIM(call_mode) = ''"))
             except Exception:
                 pass
 

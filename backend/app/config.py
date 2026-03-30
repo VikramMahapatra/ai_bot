@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     EMAIL_SENDER: str
     CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
     CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
+    CAMPAIGN_EMAIL_TRACKING_BASE_URL: str = "http://localhost:8000"
+    CAMPAIGN_EMAIL_WEBHOOK_SECRET: str = ""
 
     # Twilio SMS defaults (used for bootstrap/testing)
     TWILIO_SMS_DEFAULT_ACCOUNT_SID: str = ""

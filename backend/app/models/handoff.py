@@ -18,6 +18,12 @@ class HandoffSession(Base):
     wait_cycle = Column(Integer, nullable=False, default=1)
     waiting_expires_at = Column(DateTime(timezone=True), nullable=True)
     waiting_timeout_notified = Column(Boolean, nullable=False, default=False)
+    call_room_id = Column(String, nullable=True)
+    call_status = Column(String, nullable=False, default="none", index=True)  # none | requested | active | ended
+    call_mode = Column(String, nullable=False, default="video")  # video | audio
+    call_requested_at = Column(DateTime(timezone=True), nullable=True)
+    call_started_at = Column(DateTime(timezone=True), nullable=True)
+    call_ended_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)

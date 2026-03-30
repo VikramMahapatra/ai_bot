@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -8,6 +8,10 @@ import {
   Button,
   Chip,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   Grid,
   InputLabel,
@@ -42,6 +46,11 @@ import CodeIcon from '@mui/icons-material/Code';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import KeyboardDoubleArrowUpIcon from '@mui/icons-material/KeyboardDoubleArrowUp';
+import KeyboardDoubleArrowDownIcon from '@mui/icons-material/KeyboardDoubleArrowDown';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import AdminLayout from '../components/Layout/AdminLayout';
 import {
   campaignService,
@@ -50,12 +59,61 @@ import {
   ContactListItem,
   DashboardStats,
 } from '../services/campaignService';
+import { Product, productService } from '../services/productService';
+
+const IST_TIME_ZONE = 'Asia/Kolkata';
+
+const parseApiDate = (value?: string): Date | null => {
+  if (!value) return null;
+
+  const raw = value.trim();
+  if (!raw) return null;
+
+  let normalized = raw.replace(' ', 'T');
+  const hasExplicitTimezone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(normalized);
+  if (!hasExplicitTimezone) {
+    normalized = `${normalized}Z`;
+  }
+
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
 
 const formatDate = (value?: string) => {
   if (!value) return '-';
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString();
+  const dt = parseApiDate(value);
+  if (!dt) return value;
+
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIME_ZONE,
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(dt) + ' IST';
+};
+
+const convertIstLocalInputToUtcIso = (value?: string): string | undefined => {
+  if (!value) return undefined;
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  // datetime-local has no timezone; we interpret it as IST and convert to UTC.
+  const utcMillis = Date.UTC(year, month - 1, day, hour - 5, minute - 30, 0, 0);
+  return new Date(utcMillis).toISOString();
 };
 
 const statusColor = (status: string) => {
@@ -64,6 +122,14 @@ const statusColor = (status: string) => {
   if (status === 'scheduled') return 'warning';
   if (status === 'failed') return 'error';
   if (status === 'paused') return 'default';
+  return 'default';
+};
+
+const logStatusColor = (status: string): 'default' | 'success' | 'error' | 'warning' | 'info' => {
+  if (status === 'failed' || status === 'bounced' || status === 'complained') return 'error';
+  if (status === 'unsubscribed') return 'warning';
+  if (status === 'opened' || status === 'read' || status === 'clicked') return 'info';
+  if (status === 'sent' || status === 'delivered') return 'success';
   return 'default';
 };
 
@@ -114,6 +180,24 @@ const getContactListDescription = (list: ContactListItem) => {
   return '-';
 };
 
+type CreateCampaignFieldErrors = {
+  campaignName: boolean;
+  emailSubject: boolean;
+  emailBody: boolean;
+  promptContext: boolean;
+  contactList: boolean;
+  product: boolean;
+};
+
+const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
+  campaignName: false,
+  emailSubject: false,
+  emailBody: false,
+  promptContext: false,
+  contactList: false,
+  product: false,
+};
+
 const CampaignManagementPage: React.FC = () => {
   const theme = useTheme();
   const [tab, setTab] = useState(0);
@@ -136,6 +220,7 @@ const CampaignManagementPage: React.FC = () => {
   const [campaignSearch, setCampaignSearch] = useState('');
   const [campaignTypeFilter, setCampaignTypeFilter] = useState('');
   const [campaignStatusFilter, setCampaignStatusFilter] = useState('');
+  const [campaignProductFilter, setCampaignProductFilter] = useState<number | ''>('');
 
   const [contactLists, setContactLists] = useState<ContactListItem[]>([]);
   const [contactListSearch, setContactListSearch] = useState('');
@@ -157,22 +242,52 @@ const CampaignManagementPage: React.FC = () => {
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualContacts, setManualContacts] = useState<Array<{ name?: string; email?: string; phone?: string }>>([]);
+  const [manualCompany, setManualCompany] = useState('');
+  const [manualContacts, setManualContacts] = useState<Array<{ name?: string; email?: string; phone?: string; company?: string }>>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
   const [createCampaignName, setCreateCampaignName] = useState('');
   const [createCampaignType, setCreateCampaignType] = useState<'email' | 'whatsapp' | 'sms'>('email');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [createProductId, setCreateProductId] = useState<number | ''>('');
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductCode, setNewProductCode] = useState('');
+  const [newProductDescription, setNewProductDescription] = useState('');
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const [emailContentMode, setEmailContentMode] = useState<'manual' | 'prompt'>('manual');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailPromptContext, setEmailPromptContext] = useState('');
   const [generatedSubjects, setGeneratedSubjects] = useState<string[]>([]);
   const [generatedBodies, setGeneratedBodies] = useState<string[]>([]);
   const [generatingEmailVariants, setGeneratingEmailVariants] = useState(false);
+  const [spamScoreLoading, setSpamScoreLoading] = useState(false);
+  const [spamScoreResult, setSpamScoreResult] = useState<{
+    overall: {
+      average_spam_score: number;
+      highest_spam_score: number;
+      high_risk_count: number;
+    };
+    combinations: Array<{
+      combo_index: number;
+      subject_index: number;
+      body_index: number;
+      spam_score: number;
+      risk_level: 'low' | 'medium' | 'high';
+      reasons: string[];
+      suggestions: string[];
+    }>;
+    fallback_used?: boolean;
+  } | null>(null);
   const [createMessageTemplate, setCreateMessageTemplate] = useState('');
   const [emailEditorMode, setEmailEditorMode] = useState<'plain' | 'html'>('plain');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [createScheduledTime, setCreateScheduledTime] = useState('');
   const [createContactListId, setCreateContactListId] = useState<number | ''>('');
+  const [createCampaignErrors, setCreateCampaignErrors] = useState<CreateCampaignFieldErrors>(EMPTY_CREATE_CAMPAIGN_ERRORS);
+  const spamTableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [spamVisibleStart, setSpamVisibleStart] = useState(0);
+  const spamRowsPerView = 7;
 
   const [previewContacts, setPreviewContacts] = useState<ContactItem[]>([]);
   const [previewSearch, setPreviewSearch] = useState('');
@@ -219,6 +334,18 @@ const CampaignManagementPage: React.FC = () => {
       position: 'relative',
       zIndex: 1,
     },
+  } as const;
+
+  const compactInputSx = {
+    '& .MuiInputBase-root': {
+      minHeight: 40,
+    },
+  } as const;
+
+  const compactButtonSx = {
+    minHeight: 40,
+    px: 1.8,
+    whiteSpace: 'nowrap',
   } as const;
 
   const campaignKpis = [
@@ -268,6 +395,7 @@ const CampaignManagementPage: React.FC = () => {
       search: campaignSearch || undefined,
       campaign_type: (campaignTypeFilter || undefined) as any,
       status: (campaignStatusFilter || undefined) as any,
+      product_id: campaignProductFilter ? Number(campaignProductFilter) : undefined,
       skip: campaignPage * campaignRowsPerPage,
       limit: campaignRowsPerPage,
     });
@@ -283,6 +411,11 @@ const CampaignManagementPage: React.FC = () => {
     });
     setContactLists(data.items || []);
     setContactListTotal(data.pagination?.total || 0);
+  };
+
+  const loadProducts = async () => {
+    const data = await productService.productLookup();
+    setProducts(data || []);
   };
 
   const loadContacts = async (contactListId: number) => {
@@ -318,7 +451,7 @@ const CampaignManagementPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadDashboard(), loadCampaigns(), loadContactLists()]);
+      await Promise.all([loadDashboard(), loadCampaigns(), loadContactLists(), loadProducts()]);
     } catch (err: any) {
       showError(err?.response?.data?.detail || 'Failed to load campaign module data');
     } finally {
@@ -506,12 +639,68 @@ const CampaignManagementPage: React.FC = () => {
         name: manualName.trim() || undefined,
         email: manualEmail.trim() || undefined,
         phone: manualPhone.trim() || undefined,
+        company: manualCompany.trim() || undefined,
       },
     ]);
     setManualName('');
     setManualEmail('');
     setManualPhone('');
+    setManualCompany('');
     setError('');
+  };
+
+  const handleDownloadCsvTemplate = () => {
+    const template = 'name,email,phone,company\nJohn Doe,john@example.com,+15551234567,Acme Corp\n';
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'contacts_template.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCreateProductFromCampaign = async () => {
+    if (!newProductName.trim()) {
+      showError('Product name is required');
+      return;
+    }
+    if (!newProductCode.trim()) {
+      showError('Product code is required');
+      return;
+    }
+
+    setCreatingProduct(true);
+    try {
+      const response = await productService.createProduct({
+        name: newProductName.trim(),
+        code: newProductCode.trim(),
+        description: newProductDescription.trim(),
+      });
+
+      if (!response.success) {
+        showError(response.message || 'Failed to create product');
+        return;
+      }
+
+      const refreshed = await productService.productLookup();
+      setProducts(refreshed || []);
+
+      const selected = (refreshed || []).find((item) => item.code.toLowerCase() === newProductCode.trim().toLowerCase());
+      if (selected?.id) {
+        setCreateProductId(selected.id);
+      }
+
+      setNewProductName('');
+      setNewProductCode('');
+      setNewProductDescription('');
+      setProductDialogOpen(false);
+      showSuccess('Product added successfully');
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'Failed to create product');
+    } finally {
+      setCreatingProduct(false);
+    }
   };
 
   const handleManualUpload = async () => {
@@ -603,6 +792,13 @@ const CampaignManagementPage: React.FC = () => {
 
       setGeneratedSubjects(result.subjects || []);
       setGeneratedBodies(result.bodies || []);
+      setSpamScoreResult(null);
+      setSpamVisibleStart(0);
+      setCreateCampaignErrors((prev) => ({
+        ...prev,
+        promptContext: false,
+        emailSubject: false,
+      }));
 
       if ((result.bodies || []).length > 0) {
         setCreateMessageTemplate(result.bodies[0]);
@@ -618,6 +814,61 @@ const CampaignManagementPage: React.FC = () => {
     } finally {
       setGeneratingEmailVariants(false);
     }
+  };
+
+  const handleScorePromptEmailSpam = async () => {
+    if (!emailPromptContext.trim()) {
+      setCreateCampaignErrors((prev) => ({ ...prev, promptContext: true }));
+      showError('Prompt context is required before spam scoring');
+      return;
+    }
+
+    const subjects = ensureFive(generatedSubjects).map((item) => item.trim()).filter(Boolean);
+    const bodies = ensureFive(generatedBodies).map((item) => item.trim()).filter(Boolean);
+
+    if (subjects.length < 5 || bodies.length < 5) {
+      showError('Generate 5x5 variants first, then run spam score');
+      return;
+    }
+
+    setSpamScoreLoading(true);
+    setError('');
+    try {
+      const result = await campaignService.scoreEmailSpamRisk({
+        campaign_name: createCampaignName || 'Campaign',
+        prompt_context: emailPromptContext,
+        subjects: ensureFive(generatedSubjects),
+        bodies: ensureFive(generatedBodies),
+      });
+      setSpamScoreResult(result);
+      setSpamVisibleStart(0);
+      showSuccess(
+        `Spam score complete. Avg: ${result.overall.average_spam_score}, Highest: ${result.overall.highest_spam_score}, High risk combos: ${result.overall.high_risk_count}.`
+      );
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || 'Failed to evaluate spam score');
+    } finally {
+      setSpamScoreLoading(false);
+    }
+  };
+
+  const handleScrollSpamTable = (direction: 'up' | 'down' | 'top' | 'bottom') => {
+    const total = spamScoreResult?.combinations?.length || 0;
+    const maxStart = Math.max(0, total - spamRowsPerView);
+
+    if (direction === 'top') {
+      setSpamVisibleStart(0);
+      return;
+    }
+    if (direction === 'bottom') {
+      setSpamVisibleStart(maxStart);
+      return;
+    }
+    if (direction === 'up') {
+      setSpamVisibleStart((prev) => Math.max(0, prev - spamRowsPerView));
+      return;
+    }
+    setSpamVisibleStart((prev) => Math.min(maxStart, prev + spamRowsPerView));
   };
 
   const handleEditGeneratedSubject = (index: number, value: string) => {
@@ -643,25 +894,42 @@ const CampaignManagementPage: React.FC = () => {
   };
 
   const handleCreateCampaign = async () => {
-    if (!createCampaignName.trim()) {
-      showError('Campaign name is required');
+    const nextErrors: CreateCampaignFieldErrors = {
+      campaignName: !createCampaignName.trim(),
+      emailSubject: createCampaignType === 'email' ? !emailSubject.trim() : false,
+      emailBody:
+        createCampaignType === 'email' && emailContentMode === 'manual'
+          ? !createMessageTemplate.trim()
+          : createCampaignType !== 'email'
+            ? !createMessageTemplate.trim()
+            : false,
+      promptContext: createCampaignType === 'email' && emailContentMode === 'prompt' ? !emailPromptContext.trim() : false,
+      contactList: !createContactListId,
+      product: !createProductId,
+    };
+
+    setCreateCampaignErrors(nextErrors);
+
+    const missing: string[] = [];
+    if (nextErrors.campaignName) missing.push('Campaign Name');
+    if (nextErrors.emailSubject) missing.push('Email Subject');
+    if (nextErrors.contactList) missing.push('Contact List');
+    if (nextErrors.product) missing.push('Product');
+    if (nextErrors.emailBody) missing.push(createCampaignType === 'email' ? 'Email Body' : 'Message Template');
+    if (nextErrors.promptContext) missing.push('Prompt Context');
+
+    if (missing.length > 0) {
+      showError(`Please fill required fields: ${missing.join(', ')}`);
       return;
     }
-    if (createCampaignType !== 'email' && !createMessageTemplate.trim()) {
-      showError('Message template is required');
-      return;
-    }
-    if (createCampaignType === 'email' && emailContentMode === 'manual' && !createMessageTemplate.trim()) {
-      showError('Email body is required in manual mode');
-      return;
-    }
-    if (createCampaignType === 'email' && emailContentMode === 'prompt' && !emailPromptContext.trim()) {
-      showError('Prompt context is required in prompt mode');
-      return;
-    }
-    if (!createContactListId) {
-      showError('Select a contact list to target recipients');
-      return;
+
+    if (createCampaignType === 'email' && emailContentMode === 'prompt') {
+      const subjects = ensureFive(generatedSubjects).map((item) => item.trim()).filter(Boolean);
+      const bodies = ensureFive(generatedBodies).map((item) => item.trim()).filter(Boolean);
+      if (subjects.length < 5 || bodies.length < 5) {
+        showError('Generate all 5 subjects and 5 bodies in prompt mode before creating campaign');
+        return;
+      }
     }
 
     setLoading(true);
@@ -672,8 +940,9 @@ const CampaignManagementPage: React.FC = () => {
         message_template: createCampaignType === 'email'
           ? (emailContentMode === 'prompt' ? (generatedBodies[0] || createMessageTemplate || 'Generated campaign body') : createMessageTemplate)
           : createMessageTemplate,
-        scheduled_time: createScheduledTime || undefined,
+        scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
         contact_list_id: Number(createContactListId),
+        product_id: createProductId ? Number(createProductId) : undefined,
         status: createScheduledTime ? 'scheduled' : 'draft',
         email_content_mode: createCampaignType === 'email' ? emailContentMode : undefined,
         email_subject: createCampaignType === 'email' ? (emailSubject || createCampaignName) : undefined,
@@ -689,6 +958,9 @@ const CampaignManagementPage: React.FC = () => {
       setGeneratedBodies([]);
       setEmailContentMode('manual');
       setCreateScheduledTime('');
+      setCreateProductId('');
+      setSpamScoreResult(null);
+      setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
       showSuccess('Campaign created');
       await Promise.all([loadCampaigns(), loadDashboard()]);
       setTab(0);
@@ -785,6 +1057,8 @@ const CampaignManagementPage: React.FC = () => {
       setEmailPromptContext('');
       setGeneratedSubjects([]);
       setGeneratedBodies([]);
+      setSpamScoreResult(null);
+      setSpamVisibleStart(0);
     }
   }, [createCampaignType]);
 
@@ -855,10 +1129,10 @@ const CampaignManagementPage: React.FC = () => {
         </Box>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          <Button variant="outlined" onClick={() => setTab(3)} startIcon={<UploadFileIcon />}>
+          <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => setTab(3)} startIcon={<UploadFileIcon />}>
             Upload Contacts
           </Button>
-          <Button variant="contained" onClick={() => setTab(1)} startIcon={<AddIcon />}>
+          <Button size="small" sx={compactButtonSx} variant="contained" onClick={() => setTab(1)} startIcon={<AddIcon />}>
             New Campaign
           </Button>
         </Stack>
@@ -999,13 +1273,13 @@ const CampaignManagementPage: React.FC = () => {
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Campaign List</Typography>
                   <Typography variant="body2" color="text.secondary">Filter, run, pause, and inspect campaign executions.</Typography>
                 </Box>
-                <Button variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
+                <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleRunDueCampaigns} startIcon={<PlayArrowIcon />}>
                   Run Due Scheduled
                 </Button>
               </Stack>
 
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <TextField
                     size="small"
                     fullWidth
@@ -1014,7 +1288,7 @@ const CampaignManagementPage: React.FC = () => {
                     onChange={(e) => setCampaignSearch(e.target.value)}
                   />
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -1029,7 +1303,7 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
                     <Select
@@ -1047,9 +1321,26 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+                <Grid item xs={12} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Product</InputLabel>
+                    <Select
+                      value={campaignProductFilter}
+                      label="Product"
+                      onChange={(e) => setCampaignProductFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                    >
+                      <MenuItem value="">All</MenuItem>
+                      {products.map((item) => (
+                        <MenuItem key={item.id} value={item.id}>
+                          {item.name} ({item.code})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
                 <Grid item xs={12} md={2}>
                   <Stack direction="row" spacing={1}>
-                    <Button fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
+                    <Button size="small" sx={compactButtonSx} fullWidth variant="outlined" onClick={handleApplyCampaignFilters}>Apply</Button>
                   </Stack>
                 </Grid>
               </Grid>
@@ -1060,6 +1351,7 @@ const CampaignManagementPage: React.FC = () => {
                     <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
                       <TableCell>Campaign Name</TableCell>
                       <TableCell>Type</TableCell>
+                      <TableCell>Product</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Created</TableCell>
                       <TableCell>Actions</TableCell>
@@ -1076,6 +1368,7 @@ const CampaignManagementPage: React.FC = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>{item.campaign_type}</TableCell>
+                          <TableCell>{item.product_name || '-'}</TableCell>
                           <TableCell>
                             <Chip size="small" label={item.status} color={statusColor(item.status) as any} variant="outlined" />
                           </TableCell>
@@ -1103,7 +1396,7 @@ const CampaignManagementPage: React.FC = () => {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} align="center">No campaigns found.</TableCell>
+                        <TableCell colSpan={6} align="center">No campaigns found.</TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -1134,16 +1427,25 @@ const CampaignManagementPage: React.FC = () => {
               <Chip size="small" label="4. Launch or Schedule" variant="outlined" />
             </Stack>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <TextField
+                  size="small"
+                  sx={compactInputSx}
                   fullWidth
                   label="Campaign Name"
                   value={createCampaignName}
-                  onChange={(e) => setCreateCampaignName(e.target.value)}
+                  onChange={(e) => {
+                    setCreateCampaignName(e.target.value);
+                    if (createCampaignErrors.campaignName) {
+                      setCreateCampaignErrors((prev) => ({ ...prev, campaignName: false }));
+                    }
+                  }}
+                  error={createCampaignErrors.campaignName}
+                  helperText={createCampaignErrors.campaignName ? 'Campaign name is required' : ' '}
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
-                <FormControl fullWidth>
+              <Grid item xs={12} md={2}>
+                <FormControl fullWidth size="small" sx={compactInputSx}>
                   <InputLabel>Campaign Type</InputLabel>
                   <Select
                     value={createCampaignType}
@@ -1157,13 +1459,22 @@ const CampaignManagementPage: React.FC = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small" sx={compactInputSx} error={createCampaignErrors.contactList}>
                   <InputLabel>Contact List</InputLabel>
                   <Select
                     value={createContactListId}
                     label="Contact List"
-                    onChange={(e) => setCreateContactListId(Number(e.target.value))}
+                    onChange={(e) => {
+                      setCreateContactListId(e.target.value === '' ? '' : Number(e.target.value));
+                      if (createCampaignErrors.contactList) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, contactList: false }));
+                      }
+                    }}
+                    error={createCampaignErrors.contactList}
                   >
+                    <MenuItem value="">
+                      <em>Select Contact List</em>
+                    </MenuItem>
                     {contactLists.map((list) => (
                       <MenuItem key={list.id} value={list.id}>
                         {getContactListLabel(list)}
@@ -1171,6 +1482,42 @@ const CampaignManagementPage: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <FormControl fullWidth size="small" sx={compactInputSx} error={createCampaignErrors.product}>
+                  <InputLabel>Product</InputLabel>
+                  <Select
+                    value={createProductId}
+                    label="Product"
+                    onChange={(e) => {
+                      setCreateProductId(e.target.value === '' ? '' : Number(e.target.value));
+                      if (createCampaignErrors.product) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, product: false }));
+                      }
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>Select Product</em>
+                    </MenuItem>
+                    {products.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={1}>
+                <Button
+                  size="small"
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => setProductDialogOpen(true)}
+                  sx={compactButtonSx}
+                >
+                  Add
+                </Button>
               </Grid>
 
               <Grid item xs={12}>
@@ -1216,10 +1563,19 @@ const CampaignManagementPage: React.FC = () => {
                       </Stack>
 
                       <TextField
+                        size="small"
+                        sx={compactInputSx}
                         fullWidth
                         label="Email Subject"
                         value={emailSubject}
-                        onChange={(e) => setEmailSubject(e.target.value)}
+                        onChange={(e) => {
+                          setEmailSubject(e.target.value);
+                          if (createCampaignErrors.emailSubject) {
+                            setCreateCampaignErrors((prev) => ({ ...prev, emailSubject: false }));
+                          }
+                        }}
+                        error={createCampaignErrors.emailSubject}
+                        helperText={createCampaignErrors.emailSubject ? 'Email subject is required' : ' '}
                         placeholder="Leave blank to use campaign name"
                       />
 
@@ -1253,12 +1609,21 @@ const CampaignManagementPage: React.FC = () => {
                       ) : (
                         <>
                           <TextField
+                            size="small"
+                            sx={compactInputSx}
                             fullWidth
                             multiline
                             minRows={4}
                             label="Prompt Context"
                             value={emailPromptContext}
-                            onChange={(e) => setEmailPromptContext(e.target.value)}
+                            onChange={(e) => {
+                              setEmailPromptContext(e.target.value);
+                              if (createCampaignErrors.promptContext) {
+                                setCreateCampaignErrors((prev) => ({ ...prev, promptContext: false }));
+                              }
+                            }}
+                            error={createCampaignErrors.promptContext}
+                            helperText={createCampaignErrors.promptContext ? 'Prompt context is required for prompt mode' : ' '}
                             placeholder="Describe campaign intent, audience, offer, tone, CTA, and constraints..."
                           />
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
@@ -1277,61 +1642,194 @@ const CampaignManagementPage: React.FC = () => {
                             <Button size="small" variant="outlined" onClick={() => setShowEmailPreview((prev) => !prev)}>
                               {showEmailPreview ? 'Hide Preview' : 'Show Preview'}
                             </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              startIcon={<ErrorOutlineIcon />}
+                              onClick={handleScorePromptEmailSpam}
+                              disabled={spamScoreLoading || generatedSubjects.length < 5 || generatedBodies.length < 5}
+                            >
+                              {spamScoreLoading ? 'Scoring...' : 'Spam Score (5x5)'}
+                            </Button>
                           </Stack>
+
+                          {(generatingEmailVariants || spamScoreLoading) && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.6 }}>
+                                {generatingEmailVariants
+                                  ? 'Generating 5x5 variants. Please wait...'
+                                  : 'Running spam score across 25 combinations. Please wait...'}
+                              </Typography>
+                              <LinearProgress sx={{ borderRadius: 999 }} />
+                            </Box>
+                          )}
+
+                          {spamScoreResult && (
+                            <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.warning.main, 0.36) }}>
+                              {(() => {
+                                const total = spamScoreResult.combinations.length;
+                                const fromRow = total > 0 ? spamVisibleStart + 1 : 0;
+                                const toRow = Math.min(total, spamVisibleStart + spamRowsPerView);
+                                const maxStart = Math.max(0, total - spamRowsPerView);
+                                const canUp = spamVisibleStart > 0;
+                                const canDown = spamVisibleStart < maxStart;
+                                return (
+                                  <>
+                              {spamScoreResult.fallback_used && (
+                                <Alert severity="info" sx={{ mb: 1 }}>
+                                  Spam score used fallback heuristic due to model timeout/availability. You can retry for model-based scoring.
+                                </Alert>
+                              )}
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1 }}>
+                                <Chip color="warning" variant="outlined" label={`Avg Spam Score: ${spamScoreResult.overall.average_spam_score}`} />
+                                <Chip color="warning" variant="outlined" label={`Highest: ${spamScoreResult.overall.highest_spam_score}`} />
+                                <Chip color={spamScoreResult.overall.high_risk_count > 0 ? 'error' : 'success'} variant="outlined" label={`High Risk Combos: ${spamScoreResult.overall.high_risk_count}`} />
+                              </Stack>
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1 }}>
+                                <Button size="small" variant="outlined" startIcon={<KeyboardDoubleArrowUpIcon />} onClick={() => handleScrollSpamTable('top')} disabled={!canUp}>
+                                  Top
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<ArrowUpwardIcon />} onClick={() => handleScrollSpamTable('up')} disabled={!canUp}>
+                                  Up
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<ArrowDownwardIcon />} onClick={() => handleScrollSpamTable('down')} disabled={!canDown}>
+                                  Down
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<KeyboardDoubleArrowDownIcon />} onClick={() => handleScrollSpamTable('bottom')} disabled={!canDown}>
+                                  Bottom
+                                </Button>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                  Showing {fromRow}-{toRow} of {total} combinations
+                                </Typography>
+                              </Stack>
+                              <TableContainer
+                                id="spam-score-table-scroll"
+                                ref={spamTableContainerRef}
+                                sx={{ maxHeight: 280, overflowY: 'auto', overflowX: 'auto' }}
+                              >
+                                <Table size="small" stickyHeader>
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell>Combo</TableCell>
+                                      <TableCell>Subject</TableCell>
+                                      <TableCell>Body</TableCell>
+                                      <TableCell>Score</TableCell>
+                                      <TableCell>Risk</TableCell>
+                                      <TableCell>Notes</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {spamScoreResult.combinations.slice(spamVisibleStart, spamVisibleStart + spamRowsPerView).map((row) => (
+                                      <TableRow key={`spam-score-${row.combo_index}`}>
+                                        <TableCell>{row.combo_index}</TableCell>
+                                        <TableCell>{row.subject_index}</TableCell>
+                                        <TableCell>{row.body_index}</TableCell>
+                                        <TableCell>{row.spam_score}</TableCell>
+                                        <TableCell>
+                                          <Chip
+                                            size="small"
+                                            label={row.risk_level}
+                                            color={row.risk_level === 'high' ? 'error' : row.risk_level === 'medium' ? 'warning' : 'success'}
+                                            variant="outlined"
+                                          />
+                                        </TableCell>
+                                        <TableCell>{(row.reasons || []).slice(0, 1).join('; ') || '-'}</TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+                                  </>
+                                );
+                              })()}
+                            </Paper>
+                          )}
 
                           {(generatedSubjects.length > 0 || generatedBodies.length > 0) && (
                             <Paper variant="outlined" sx={{ p: 1.2, borderRadius: '10px', borderColor: alpha(theme.palette.primary.main, 0.2) }}>
                               <Grid container spacing={1.5}>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Subjects (Editable)</Typography>
-                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
-                                    {ensureFive(generatedSubjects).map((subject, idx) => (
-                                      <TextField
-                                        key={`subject-edit-${idx}`}
-                                        size="small"
-                                        label={`Subject ${idx + 1}`}
-                                        value={subject}
-                                        onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
-                                      />
-                                    ))}
-                                  </Stack>
+                                  <Accordion
+                                    disableGutters
+                                    sx={{
+                                      borderRadius: '8px',
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                      boxShadow: 'none',
+                                      '&:before': { display: 'none' },
+                                    }}
+                                  >
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        Generated Subjects (Editable)
+                                      </Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{ pt: 0.4 }}>
+                                      <Stack spacing={0.9}>
+                                        {ensureFive(generatedSubjects).map((subject, idx) => (
+                                          <TextField
+                                            key={`subject-edit-${idx}`}
+                                            size="small"
+                                            label={`Subject ${idx + 1}`}
+                                            value={subject}
+                                            onChange={(event) => handleEditGeneratedSubject(idx, event.target.value)}
+                                          />
+                                        ))}
+                                      </Stack>
+                                    </AccordionDetails>
+                                  </Accordion>
                                 </Grid>
                                 <Grid item xs={12} md={6}>
-                                  <Typography variant="caption" color="text.secondary">Generated Bodies (Editable)</Typography>
-                                  <Stack spacing={0.9} sx={{ mt: 0.6 }}>
-                                    {ensureFive(generatedBodies).map((body, idx) => (
-                                      <Accordion
-                                        key={`body-edit-${idx}`}
-                                        disableGutters
-                                        defaultExpanded={idx === 0}
-                                        sx={{
-                                          borderRadius: '8px',
-                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                          boxShadow: 'none',
-                                          '&:before': { display: 'none' },
-                                        }}
-                                      >
-                                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                            {`Body ${idx + 1}`}
-                                          </Typography>
-                                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                                            {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
-                                          </Typography>
-                                        </AccordionSummary>
-                                        <AccordionDetails sx={{ pt: 0.5 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            multiline
-                                            minRows={4}
-                                            value={body}
-                                            onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
-                                          />
-                                        </AccordionDetails>
-                                      </Accordion>
-                                    ))}
-                                  </Stack>
+                                  <Accordion
+                                    disableGutters
+                                    sx={{
+                                      borderRadius: '8px',
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                      boxShadow: 'none',
+                                      '&:before': { display: 'none' },
+                                    }}
+                                  >
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        Generated Bodies (Editable)
+                                      </Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{ pt: 0.4 }}>
+                                      <Stack spacing={0.9}>
+                                        {ensureFive(generatedBodies).map((body, idx) => (
+                                          <Accordion
+                                            key={`body-edit-${idx}`}
+                                            disableGutters
+                                            sx={{
+                                              borderRadius: '8px',
+                                              border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                              boxShadow: 'none',
+                                              '&:before': { display: 'none' },
+                                            }}
+                                          >
+                                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                {`Body ${idx + 1}`}
+                                              </Typography>
+                                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                                {(body || '').slice(0, 70)}{(body || '').length > 70 ? '...' : ''}
+                                              </Typography>
+                                            </AccordionSummary>
+                                            <AccordionDetails sx={{ pt: 0.5 }}>
+                                              <TextField
+                                                fullWidth
+                                                size="small"
+                                                multiline
+                                                minRows={4}
+                                                value={body}
+                                                onChange={(event) => handleEditGeneratedBody(idx, event.target.value)}
+                                              />
+                                            </AccordionDetails>
+                                          </Accordion>
+                                        ))}
+                                      </Stack>
+                                    </AccordionDetails>
+                                  </Accordion>
                                 </Grid>
                               </Grid>
                             </Paper>
@@ -1344,19 +1842,42 @@ const CampaignManagementPage: React.FC = () => {
 
                 {(createCampaignType !== 'email' || emailContentMode === 'manual') && (
                   <TextField
+                    size="small"
+                    sx={{
+                      ...compactInputSx,
+                      ...(emailEditorMode === 'html'
+                        ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } }
+                        : {}),
+                    }}
                     fullWidth
                     multiline
                     minRows={emailEditorMode === 'html' ? 9 : 6}
                     label={createCampaignType === 'email' ? `Email Template (${emailEditorMode.toUpperCase()})` : 'Message Template'}
                     value={createMessageTemplate}
-                    onChange={(e) => setCreateMessageTemplate(e.target.value)}
+                    onChange={(e) => {
+                      setCreateMessageTemplate(e.target.value);
+                      if (createCampaignErrors.emailBody) {
+                        setCreateCampaignErrors((prev) => ({ ...prev, emailBody: false }));
+                      }
+                    }}
+                    error={createCampaignErrors.emailBody}
+                    helperText={createCampaignErrors.emailBody ? (createCampaignType === 'email' ? 'Email body is required' : 'Message template is required') : ' '}
                     placeholder={
                       createCampaignType === 'email' && emailEditorMode === 'html'
                         ? '<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>'
                         : 'Write your campaign message here...'
                     }
-                    sx={emailEditorMode === 'html' ? { '& .MuiInputBase-input': { fontFamily: 'Consolas, Menlo, monospace' } } : undefined}
                   />
+                )}
+
+                {(createCampaignErrors.contactList || createCampaignErrors.product) && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {createCampaignErrors.contactList && createCampaignErrors.product
+                      ? 'Contact List and Product are required.'
+                      : createCampaignErrors.contactList
+                        ? 'Contact List is required.'
+                        : 'Product is required.'}
+                  </Alert>
                 )}
 
                 {createCampaignType === 'email' && emailContentMode === 'prompt' && (
@@ -1412,18 +1933,21 @@ const CampaignManagementPage: React.FC = () => {
 
               <Grid item xs={12} md={4}>
                 <TextField
+                  size="small"
+                  sx={compactInputSx}
                   fullWidth
                   type="datetime-local"
-                  label="Schedule Time (optional)"
+                  label="Schedule Time (IST, optional)"
                   value={createScheduledTime}
                   onChange={(e) => setCreateScheduledTime(e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  helperText="All campaign times are shown and interpreted in IST."
                 />
               </Grid>
 
               <Grid item xs={12} md={8}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                  <Button size="small" sx={compactButtonSx} variant="outlined" component="label" startIcon={<UploadFileIcon />}>
                     Upload Template File
                     <input
                       hidden
@@ -1432,7 +1956,7 @@ const CampaignManagementPage: React.FC = () => {
                       onChange={(e) => handleTemplateFileUpload(e.target.files?.[0] || null)}
                     />
                   </Button>
-                  <Button variant="contained" onClick={handleCreateCampaign} startIcon={<AddIcon />}>
+                  <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleCreateCampaign} startIcon={<AddIcon />}>
                     Create Campaign
                   </Button>
                 </Stack>
@@ -1446,11 +1970,14 @@ const CampaignManagementPage: React.FC = () => {
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
                     <TextField
                       size="small"
+                      sx={compactInputSx}
                       label="Filter Contacts"
                       value={previewSearch}
                       onChange={(e) => setPreviewSearch(e.target.value)}
                     />
                     <Button
+                      size="small"
+                      sx={compactButtonSx}
                       variant="outlined"
                       onClick={() => createContactListId && loadPreviewContacts(Number(createContactListId))}
                     >
@@ -1461,7 +1988,7 @@ const CampaignManagementPage: React.FC = () => {
                     <Stack spacing={0.75}>
                       {previewContacts.map((contact) => (
                         <Typography key={contact.id} variant="body2">
-                          {(contact.name || 'Unnamed')} - {contact.email || '-'} {contact.phone ? `| ${contact.phone}` : ''}
+                          {(contact.name || 'Unnamed')} - {contact.email || '-'} {contact.phone ? `| ${contact.phone}` : ''} {contact.company ? `| ${contact.company}` : ''}
                         </Typography>
                       ))}
                     </Stack>
@@ -1481,6 +2008,8 @@ const CampaignManagementPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
                   <TextField
+                    size="small"
+                    sx={compactInputSx}
                     fullWidth
                     label="List Name"
                     value={newListName}
@@ -1489,6 +2018,8 @@ const CampaignManagementPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
+                    size="small"
+                    sx={compactInputSx}
                     fullWidth
                     label="Description"
                     value={newListDescription}
@@ -1496,7 +2027,7 @@ const CampaignManagementPage: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={2}>
-                  <Button fullWidth variant="contained" onClick={handleCreateList}>Create</Button>
+                  <Button size="small" sx={compactButtonSx} fullWidth variant="contained" onClick={handleCreateList}>Create</Button>
                 </Grid>
               </Grid>
             </Paper>
@@ -1506,11 +2037,12 @@ const CampaignManagementPage: React.FC = () => {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
                 <TextField
                   size="small"
+                  sx={compactInputSx}
                   label="Filter Lists"
                   value={contactListSearch}
                   onChange={(e) => setContactListSearch(e.target.value)}
                 />
-                <Button variant="outlined" onClick={() => { setContactListPage(0); loadContactLists(); }}>
+                <Button size="small" sx={compactButtonSx} variant="outlined" onClick={() => { setContactListPage(0); loadContactLists(); }}>
                   Apply
                 </Button>
               </Stack>
@@ -1584,11 +2116,12 @@ const CampaignManagementPage: React.FC = () => {
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
                   <TextField
                     size="small"
+                    sx={compactInputSx}
                     label="Filter Contacts"
                     value={contactSearch}
                     onChange={(e) => setContactSearch(e.target.value)}
                   />
-                  <Button variant="outlined" onClick={handleFilterContacts}>Apply</Button>
+                  <Button size="small" sx={compactButtonSx} variant="outlined" onClick={handleFilterContacts}>Apply</Button>
                 </Stack>
                 <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
                   <Table>
@@ -1597,6 +2130,7 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>Name</TableCell>
                         <TableCell>Email</TableCell>
                         <TableCell>Phone</TableCell>
+                        <TableCell>Company</TableCell>
                         <TableCell>Created</TableCell>
                         <TableCell>Actions</TableCell>
                       </TableRow>
@@ -1608,6 +2142,7 @@ const CampaignManagementPage: React.FC = () => {
                             <TableCell>{contact.name || '-'}</TableCell>
                             <TableCell>{contact.email || '-'}</TableCell>
                             <TableCell>{contact.phone || '-'}</TableCell>
+                            <TableCell>{contact.company || '-'}</TableCell>
                             <TableCell>{formatDate(contact.created_at)}</TableCell>
                             <TableCell>
                               <Button size="small" color="error" onClick={() => handleDeleteContact(contact.id)}>
@@ -1618,7 +2153,7 @@ const CampaignManagementPage: React.FC = () => {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={5} align="center">No contacts found.</TableCell>
+                          <TableCell colSpan={6} align="center">No contacts found.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -1647,7 +2182,7 @@ const CampaignManagementPage: React.FC = () => {
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Upload Contacts</Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small" sx={compactInputSx}>
                     <InputLabel>Target Contact List</InputLabel>
                     <Select
                       value={uploadListId}
@@ -1661,30 +2196,49 @@ const CampaignManagementPage: React.FC = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Alert severity="info">CSV format: name,email,phone</Alert>
+                  <Alert severity="info">CSV/Excel format: name,email,phone,company</Alert>
                 </Grid>
               </Grid>
             </Paper>
 
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Manual Entry (Optional)</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Name" value={manualName} onChange={(e) => setManualName(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <TextField fullWidth label="Phone" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Stack direction="row" spacing={1}>
-                    <Button fullWidth variant="outlined" onClick={handleAddManualContact}>Add</Button>
-                    <Button fullWidth variant="contained" onClick={handleManualUpload}>Upload</Button>
-                  </Stack>
-                </Grid>
-              </Grid>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 160, flex: '1 1 180px' }}
+                  label="Name"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 200, flex: '1 1 220px' }}
+                  label="Email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 170, flex: '1 1 200px' }}
+                  label="Phone"
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  sx={{ ...compactInputSx, minWidth: 170, flex: '1 1 200px' }}
+                  label="Company"
+                  value={manualCompany}
+                  onChange={(e) => setManualCompany(e.target.value)}
+                />
+                <Button size="small" sx={{ ...compactButtonSx, minWidth: 90 }} variant="outlined" onClick={handleAddManualContact}>
+                  Add
+                </Button>
+                <Button size="small" sx={{ ...compactButtonSx, minWidth: 95 }} variant="contained" onClick={handleManualUpload}>
+                  Upload
+                </Button>
+              </Stack>
 
               {manualContacts.length > 0 && (
                 <TableContainer sx={{ mt: 2 }}>
@@ -1694,6 +2248,7 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>Name</TableCell>
                         <TableCell>Email</TableCell>
                         <TableCell>Phone</TableCell>
+                        <TableCell>Company</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1702,6 +2257,7 @@ const CampaignManagementPage: React.FC = () => {
                           <TableCell>{item.name || '-'}</TableCell>
                           <TableCell>{item.email || '-'}</TableCell>
                           <TableCell>{item.phone || '-'}</TableCell>
+                          <TableCell>{item.company || '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1713,19 +2269,22 @@ const CampaignManagementPage: React.FC = () => {
             <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>CSV Upload</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
-                  Choose CSV
+                <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleDownloadCsvTemplate}>
+                  Download CSV Template
+                </Button>
+                <Button size="small" sx={compactButtonSx} component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+                  Choose CSV/Excel
                   <input
                     hidden
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.xlsx,.xls"
                     onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
                   />
                 </Button>
                 <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                   {csvFile ? csvFile.name : 'No file selected'}
                 </Typography>
-                <Button variant="contained" onClick={handleCsvUpload}>Upload CSV</Button>
+                <Button size="small" sx={compactButtonSx} variant="contained" onClick={handleCsvUpload}>Upload File</Button>
               </Stack>
             </Paper>
           </Stack>
@@ -1755,6 +2314,13 @@ const CampaignManagementPage: React.FC = () => {
                   <InputLabel>Status</InputLabel>
                   <Select value={logStatusFilter} label="Status" onChange={(e) => setLogStatusFilter(e.target.value)}>
                     <MenuItem value="">All</MenuItem>
+                    <MenuItem value="delivered">Delivered</MenuItem>
+                    <MenuItem value="opened">Opened</MenuItem>
+                    <MenuItem value="read">Read</MenuItem>
+                    <MenuItem value="clicked">Clicked</MenuItem>
+                    <MenuItem value="bounced">Bounced</MenuItem>
+                    <MenuItem value="complained">Complained</MenuItem>
+                    <MenuItem value="unsubscribed">Unsubscribed</MenuItem>
                     <MenuItem value="sent">Sent</MenuItem>
                     <MenuItem value="failed">Failed</MenuItem>
                     <MenuItem value="pending">Pending</MenuItem>
@@ -1779,7 +2345,10 @@ const CampaignManagementPage: React.FC = () => {
                     <TableCell>Email</TableCell>
                     <TableCell>Phone</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Sent At</TableCell>
+                    <TableCell>Delivered</TableCell>
+                    <TableCell>Opened / Read</TableCell>
+                    <TableCell>Clicks</TableCell>
+                    <TableCell>Last Event</TableCell>
                     <TableCell>Error</TableCell>
                   </TableRow>
                 </TableHead>
@@ -1791,15 +2360,39 @@ const CampaignManagementPage: React.FC = () => {
                         <TableCell>{item.email || '-'}</TableCell>
                         <TableCell>{item.phone || '-'}</TableCell>
                         <TableCell>
-                          <Chip size="small" label={item.status} color={item.status === 'sent' ? 'success' : item.status === 'failed' ? 'error' : 'default'} variant="outlined" />
+                          <Chip size="small" label={item.status} color={logStatusColor(item.status)} variant="outlined" />
                         </TableCell>
-                        <TableCell>{formatDate(item.sent_at || item.created_at)}</TableCell>
+                        <TableCell>{formatDate(item.delivered_at || item.sent_at || item.created_at)}</TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Open: {formatDate(item.opened_at)}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Read: {formatDate(item.read_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Count: {item.click_count || 0}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Last: {formatDate(item.clicked_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {item.last_event_type || '-'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {formatDate(item.last_event_at)}
+                          </Typography>
+                        </TableCell>
                         <TableCell>{item.error_message || '-'}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} align="center">No logs found.</TableCell>
+                      <TableCell colSpan={9} align="center">No logs found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -1819,6 +2412,40 @@ const CampaignManagementPage: React.FC = () => {
             />
           </Paper>
         )}
+
+        <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Add Product</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              <TextField
+                fullWidth
+                label="Product Name"
+                value={newProductName}
+                onChange={(e) => setNewProductName(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Product Code"
+                value={newProductCode}
+                onChange={(e) => setNewProductCode(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                minRows={3}
+                value={newProductDescription}
+                onChange={(e) => setNewProductDescription(e.target.value)}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setProductDialogOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleCreateProductFromCampaign} disabled={creatingProduct}>
+              {creatingProduct ? 'Saving...' : 'Save Product'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
       </Box>
     </AdminLayout>

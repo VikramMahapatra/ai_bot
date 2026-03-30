@@ -19,6 +19,7 @@ class ConversationMetricsResponse(BaseModel):
     lead_name: Optional[str]
     lead_email: Optional[str]
     outcome: Optional[str] = None
+    ai_funnel: Optional[str] = None
     conversation_start: Optional[datetime]
     conversation_end: Optional[datetime]
     created_at: datetime

@@ -38,6 +38,9 @@ import MicOffIcon from '@mui/icons-material/MicOff';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import VideocamIcon from '@mui/icons-material/Videocam';
+import PhoneIcon from '@mui/icons-material/Phone';
+import CallEndIcon from '@mui/icons-material/CallEnd';
 import { chatService } from '../../services/chatService';
 import { leadService } from '../../services/leadService';
 import { dashboardService } from '../../services/dashboardService';
@@ -121,6 +124,17 @@ const ChatInterface: React.FC = () => {
   const [appointmentNotes, setAppointmentNotes] = useState('');
   const [bookingAppointment, setBookingAppointment] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
+  const [handoffEnabled, setHandoffEnabled] = useState(false);
+  const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
+  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [callRoomId, setCallRoomId] = useState<string | null>(null);
+  const [callDialogOpen, setCallDialogOpen] = useState(false);
+  const [requestingCall, setRequestingCall] = useState(false);
+  const [updatingCallMode, setUpdatingCallMode] = useState(false);
+  const [endingCall, setEndingCall] = useState(false);
+  const [callError, setCallError] = useState('');
 
   const voiceLanguages = [
     { code: 'en-IN', label: 'English (India)' },
@@ -151,6 +165,20 @@ const ChatInterface: React.FC = () => {
   }, [widgets, selectedWidgetId]);
 
   const isResponding = loading || streaming;
+
+  const callStatusColor: 'default' | 'warning' | 'success' | 'info' = callStatus === 'active'
+    ? 'success'
+    : callStatus === 'requested'
+      ? 'warning'
+      : callStatus === 'ended'
+        ? 'default'
+        : 'info';
+
+  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+    const safeRoom = encodeURIComponent(roomId);
+    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
+  };
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -270,14 +298,98 @@ const ChatInterface: React.FC = () => {
         const features = await chatService.getFeatureFlags();
         setVoiceEnabled(!!features.voice_chat_enabled);
         setMultilingualTextEnabled(!!features.multilingual_text_enabled);
+        setHandoffEnabled(!!features.human_handoff_enabled);
       } catch (err) {
         setVoiceEnabled(false);
         setMultilingualTextEnabled(false);
+        setHandoffEnabled(false);
       }
     };
 
     loadFeatures();
   }, []);
+
+  useEffect(() => {
+    if (!handoffEnabled || !selectedWidgetId || !sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHandoffStatus = async () => {
+      try {
+        const status = await chatService.getHandoffSessionStatus(sessionId, selectedWidgetId, handoffChatId || undefined);
+        if (cancelled) return;
+        setHandoffChatId(status.chat_id || null);
+        setHandoffStatus(status.status || null);
+        setCallStatus(status.call_status || 'none');
+        setCallMode((status.call_mode as 'video' | 'audio') || 'video');
+        setCallRoomId(status.call_room_id || null);
+      } catch {
+        if (cancelled) return;
+      }
+    };
+
+    loadHandoffStatus();
+    const intervalId = window.setInterval(loadHandoffStatus, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [handoffEnabled, selectedWidgetId, sessionId, handoffChatId]);
+
+  const handleRequestVideoCall = async () => {
+    if (!selectedWidgetId || requestingCall) return;
+    setRequestingCall(true);
+    setCallError('');
+    try {
+      const status = await chatService.requestVideoCall(sessionId, selectedWidgetId);
+      setHandoffChatId(status.chat_id || null);
+      setHandoffStatus(status.status || null);
+      setCallStatus(status.call_status || 'requested');
+      setCallMode((status.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(status.call_room_id || null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Video call request sent to a handoff user. You can join once they start the call.' },
+      ]);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to request video call');
+    } finally {
+      setRequestingCall(false);
+    }
+  };
+
+  const handleToggleCallMode = async () => {
+    if (!selectedWidgetId || updatingCallMode || callStatus === 'none') return;
+    const nextMode: 'video' | 'audio' = callMode === 'video' ? 'audio' : 'video';
+    setUpdatingCallMode(true);
+    setCallError('');
+    try {
+      const status = await chatService.setHandoffCallMode(sessionId, selectedWidgetId, nextMode);
+      setCallMode((status.call_mode as 'video' | 'audio') || nextMode);
+      setCallStatus(status.call_status || callStatus);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to switch call mode');
+    } finally {
+      setUpdatingCallMode(false);
+    }
+  };
+
+  const handleEndLiveCall = async () => {
+    if (!selectedWidgetId || endingCall) return;
+    setEndingCall(true);
+    setCallError('');
+    try {
+      const status = await chatService.endHandoffCall(sessionId, selectedWidgetId);
+      setCallStatus(status.call_status || 'ended');
+      setCallDialogOpen(false);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to end call');
+    } finally {
+      setEndingCall(false);
+    }
+  };
 
   const checkLeadCapture = async (targetSessionId: string = sessionId) => {
     try {
@@ -933,6 +1045,14 @@ const ChatInterface: React.FC = () => {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.7, flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+              {handoffEnabled && (
+                <Chip
+                  size="small"
+                  label={`Call: ${callStatus}`}
+                  color={callStatusColor}
+                  variant="outlined"
+                />
+              )}
               {(multilingualTextEnabled || voiceEnabled) && (
                 <FormControl
                   size="small"
@@ -996,27 +1116,98 @@ const ChatInterface: React.FC = () => {
             </Box>
 
             {messages.length > 0 && (
-              <Tooltip title="Email this conversation" placement="left">
-                <Button
-                  onClick={handleEmailConversation}
-                  startIcon={<EmailIcon />}
-                  sx={{
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    borderRadius: 1.8,
-                    color: 'white',
-                    background: 'linear-gradient(135deg, rgba(79,70,229,0.95) 0%, rgba(99,102,241,0.95) 100%)',
-                    boxShadow: '0 6px 14px rgba(79,70,229,0.28)',
-                    '&:hover': {
-                      background: 'linear-gradient(135deg, rgba(67,56,202,0.98) 0%, rgba(79,70,229,0.98) 100%)',
-                    },
-                  }}
-                >
-                  Email Chat
-                </Button>
-              </Tooltip>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                {handoffEnabled && (
+                  <>
+                    <Button
+                      onClick={handleRequestVideoCall}
+                      startIcon={<VideocamIcon />}
+                      disabled={!selectedWidgetId || requestingCall || callStatus === 'requested' || callStatus === 'active'}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        color: 'white',
+                        background: 'linear-gradient(135deg, rgba(14,165,233,0.95) 0%, rgba(2,132,199,0.95) 100%)',
+                        boxShadow: '0 6px 14px rgba(14,165,233,0.28)',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, rgba(8,145,178,0.98) 0%, rgba(3,105,161,0.98) 100%)',
+                        },
+                      }}
+                    >
+                      {requestingCall ? 'Requesting...' : 'Video Call'}
+                    </Button>
+                    <Button
+                      onClick={() => setCallDialogOpen(true)}
+                      startIcon={callMode === 'audio' ? <PhoneIcon /> : <VideocamIcon />}
+                      disabled={callStatus !== 'active' || !callRoomId}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        border: '1px solid rgba(14,165,233,0.35)',
+                        color: 'info.main',
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                        '&:hover': {
+                          bgcolor: 'rgba(236,254,255,0.95)',
+                        },
+                      }}
+                    >
+                      Join Call
+                    </Button>
+                    <Button
+                      onClick={handleToggleCallMode}
+                      startIcon={callMode === 'video' ? <PhoneIcon /> : <VideocamIcon />}
+                      disabled={(callStatus !== 'active' && callStatus !== 'requested') || updatingCallMode}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        border: '1px solid rgba(56,109,255,0.3)',
+                        color: 'primary.main',
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      {updatingCallMode ? 'Switching...' : (callMode === 'video' ? 'Audio Only' : 'Video Mode')}
+                    </Button>
+                    <Button
+                      onClick={handleEndLiveCall}
+                      startIcon={<CallEndIcon />}
+                      color="error"
+                      disabled={callStatus !== 'active' || endingCall}
+                      sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 1.8 }}
+                    >
+                      {endingCall ? 'Ending...' : 'End Call'}
+                    </Button>
+                  </>
+                )}
+                <Tooltip title="Email this conversation" placement="left">
+                  <Button
+                    onClick={handleEmailConversation}
+                    startIcon={<EmailIcon />}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 1.8,
+                      color: 'white',
+                      background: 'linear-gradient(135deg, rgba(79,70,229,0.95) 0%, rgba(99,102,241,0.95) 100%)',
+                      boxShadow: '0 6px 14px rgba(79,70,229,0.28)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, rgba(67,56,202,0.98) 0%, rgba(79,70,229,0.98) 100%)',
+                      },
+                    }}
+                  >
+                    Email Chat
+                  </Button>
+                </Tooltip>
+              </Box>
             )}
           </Box>
+          {callError && (
+            <Alert severity="error" sx={{ mt: 0.5 }}>
+              {callError}
+            </Alert>
+          )}
         </Box>
         {!multilingualTextEnabled && (
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -1341,6 +1532,41 @@ const ChatInterface: React.FC = () => {
         )}
         <div ref={messagesEndRef} />
       </Paper>
+
+      <Dialog open={callDialogOpen} onClose={() => setCallDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {callMode === 'audio' ? <PhoneIcon color="primary" /> : <VideocamIcon color="primary" />}
+            <Typography sx={{ fontWeight: 700 }}>
+              Live {callMode === 'audio' ? 'Audio' : 'Video'} Call
+            </Typography>
+          </Box>
+          <Chip size="small" label={`Status: ${callStatus}`} color={callStatusColor} variant="outlined" />
+        </DialogTitle>
+        <DialogContent>
+          {!callRoomId ? (
+            <Alert severity="warning">Call room is not available yet.</Alert>
+          ) : (
+            <Box sx={{ width: '100%', height: { xs: 360, md: 560 }, borderRadius: 2, overflow: 'hidden', border: '1px solid #dbe6f5' }}>
+              <iframe
+                title="handoff-live-call"
+                src={getMeetingUrl(callRoomId, callMode)}
+                style={{ width: '100%', height: '100%', border: 0 }}
+                allow="camera; microphone; fullscreen; display-capture"
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleToggleCallMode} startIcon={callMode === 'video' ? <PhoneIcon /> : <VideocamIcon />} disabled={(callStatus !== 'active' && callStatus !== 'requested') || updatingCallMode}>
+            {updatingCallMode ? 'Switching...' : (callMode === 'video' ? 'Switch to Audio' : 'Switch to Video')}
+          </Button>
+          <Button color="error" onClick={handleEndLiveCall} startIcon={<CallEndIcon />} disabled={callStatus !== 'active' || endingCall}>
+            {endingCall ? 'Ending...' : 'End Call'}
+          </Button>
+          <Button onClick={() => setCallDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog 
         open={showLeadForm} 

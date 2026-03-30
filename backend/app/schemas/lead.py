@@ -6,6 +6,7 @@ from datetime import datetime
 class LeadCreate(BaseModel):
     session_id: str
     widget_id: Optional[str] = None
+    product_id: Optional[str] = None
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
@@ -20,6 +21,8 @@ class LeadResponse(BaseModel):
     id: int
     session_id: str
     widget_id: Optional[str]
+    product_id: Optional[str]
+    product_name: Optional[str] = None
     organization_id: Optional[int]
     user_id: Optional[int]
     name: Optional[str]
