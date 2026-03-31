@@ -568,7 +568,7 @@ async def list_appointments(
     if status:
         query = query.filter(Appointment.status == status)
     if upcoming_only:
-        query = query.filter(Appointment.appointment_at >= datetime.utcnow())
+        query = query.filter(Appointment.appointment_at >= datetime.now(timezone.utc))
 
     if start_date:
         try:
