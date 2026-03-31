@@ -12,6 +12,10 @@ from app.models import Conversation, Lead, FunnelCategory
 
 import logging
 
+from app.models.call_campaigns import CallCampaign
+from app.services.call_campaign_service import sync_campaign_from_echoleads
+from app.utils.echoleads_client import EcholeadsClient
+
 logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=settings.OPENAPI_KEY2)
@@ -345,6 +349,39 @@ def process_pending_lead_funnel_tags(
 
     return tagged, failed
 
+def process_call_campaigns_data(
+    db: Session,
+    batch_size: int = 100,
+    organization_id: Optional[int] = None,
+    last_id: Optional[int] = None,
+) -> Tuple[int, int, Optional[int]]:
+    SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
+
+    query = db.query(CallCampaign).filter(
+        CallCampaign.is_deleted == False,
+        CallCampaign.status.in_(SYNC_STATUSES)
+    )
+
+    if last_id:
+        query = query.filter(CallCampaign.id < last_id)
+
+    campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
+
+    echolead_client = EcholeadsClient()
+    synced = 0
+    failed = 0
+
+    for campaign in campaign_models:
+        try:
+            sync_campaign_from_echoleads(db, echolead_client, campaign)
+            synced += 1
+        except Exception as exc:
+            failed += 1
+
+    # Return last processed ID to skip in next batch
+    new_last_id = campaign_models[-1].id if campaign_models else None
+    return synced, failed, new_last_id
+
 
 def run_outcome_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
     total_processed = 0
@@ -429,3 +466,73 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
             )
         except Exception as exc:
             logger.error("Scheduled outcome processing failed: %s", str(exc), exc_info=True)
+            
+            
+def run_call_campaign_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
+    total_processed = 0
+    total_failed = 0
+
+    db = SessionLocal()
+    try:
+        last_id = None
+        for _ in range(max_batches):
+            synced, sync_failed, last_id  = process_call_campaigns_data(
+                db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+                last_id =last_id
+            )
+            total_processed += synced
+            total_failed += sync_failed 
+            if synced == 0:
+                break
+    finally:
+        db.close()
+
+    return total_processed, total_failed
+
+
+
+async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
+    """Run call campaign fetching once at startup, then once per day at configured UTC time."""
+    initial_delay = max(settings.OUTCOME_DAEMON_INITIAL_DELAY_SECONDS, 0)
+    if initial_delay:
+        await asyncio.sleep(initial_delay)
+
+    try:
+        processed, failed = run_call_campaign_processing_batches(
+            batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
+            max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
+        )
+        logger.info(
+            "Initial call campaign processing completed: processed=%s failed=%s",
+            processed,
+            failed,
+        )
+    except Exception as exc:
+        logger.error("Initial call campaign processing failed: %s", str(exc), exc_info=True)
+
+    while not stop_event.is_set():
+        wait_seconds = _seconds_until_next_run(
+            settings.OUTCOME_DAEMON_HOUR_UTC,
+            settings.OUTCOME_DAEMON_MINUTE_UTC,
+        )
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
+            break
+        except asyncio.TimeoutError:
+            pass
+
+        try:
+            processed, failed = run_call_campaign_processing_batches(
+                batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
+                max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
+            )
+            logger.info(
+                "Scheduled call campaign processing completed: processed=%s failed=%s",
+                processed,
+                failed,
+            )
+        except Exception as exc:
+            logger.error("Scheduled call campaign processing failed: %s", str(exc), exc_info=True)

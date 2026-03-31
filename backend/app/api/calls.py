@@ -39,7 +39,7 @@ def call_analytics(
     org_id = current_user.organization_id
     
     ## SYNC WITH ECHOLEADS
-    sync_call_logs(db, org_id, None, start_date, end_date)
+    #sync_call_logs(db, org_id, None, start_date, end_date)
     
     # --- Get all campaigns in the org ---
     campaigns = db.query(CallCampaign).filter(
@@ -256,6 +256,9 @@ def sync_bookings(
             CallLog.external_call_a_id == call_id
         ).first()
         
+        if not call_log or not call_log.external_call_a_id:
+            continue
+        
         contact = db.query(Contact).filter(
             Contact.id == call_log.contact_id   
         ).first() if call_log and call_log.contact_id else None
@@ -265,12 +268,15 @@ def sync_bookings(
         ).first() if call_log and call_log.campaign_id else None
         
         phone = booking.get("customer_number")
-        phone = phone if phone.startswith("+") else f"+{phone}"
+        if phone:
+            phone = phone if phone.startswith("+") else f"+{phone}"
+        else:
+            phone = None  # or handle error / skip / raise
         
 
         appointment = Appointment(
             organization_id=call_log.organization_id,
-            session_id=call_id,
+            session_id=call_log.external_call_a_id,
             widget_id = call_log.agent_id,
             name=contact.name if contact else "Unknown",
             phone=phone,

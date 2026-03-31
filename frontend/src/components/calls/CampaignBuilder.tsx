@@ -166,7 +166,7 @@ const CampaignBuilder = () => {
             } else {
                 setCampaignContacts([]);
             }
-            setSendOption(data.start_datetime || data.active_days ? "schedule" : "now")
+            setSendOption(!data.start_datetime && (!data.active_days || data.active_days.length === 0) ? "now" : "schedule")
             setCampaignId(id);
             setMode("edit");
             setView("form");
@@ -190,7 +190,10 @@ const CampaignBuilder = () => {
 
             const payload = {
                 ...campaignForm,
-                product_id: campaignForm.product_id || undefined
+                product_id: campaignForm.product_id || undefined,
+                active_days: sendOption === "now" ? [] : campaignForm.active_days, // conditional
+                start_datetime: formatDateForBackend(campaignForm.start_datetime),
+                end_datetime: formatDateForBackend(campaignForm.end_datetime),
             };
             let response;
 
@@ -321,6 +324,12 @@ const CampaignBuilder = () => {
         if (Object.keys(newErrors).length > 0) return;
 
         handleSaveCampaign();
+    };
+
+    const formatDateForBackend = (value: any) => {
+        if (!value) return null; // null or empty string
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? null : date.toISOString();
     };
 
     const renderStep = () => {

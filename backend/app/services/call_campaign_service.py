@@ -1,7 +1,9 @@
 
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 from typing import List, Optional
+from urllib import response
 from fastapi import HTTPException
 from sqlalchemy import case, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
@@ -22,6 +24,8 @@ from app.models.products import Product
 
 STALE_MINUTES = 1
 SYNC_STATUSES = ["active", "running", "pending", "scheduled"] 
+
+logger = logging.getLogger(__name__)
 
 
 def should_sync(campaign):
@@ -412,7 +416,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     payload = {
         "campaign_name": f"{org.name}-{data.name}",
         "agent_id": agent.external_agent_id,
-        "from_number": agent.calling_no,
+        "from_number": data.calling_no,
         "send_option": send_option,
         "schedule_date": schedule_date,
         "schedule_time": schedule_time,
@@ -564,6 +568,7 @@ def update_campaign(
     payload = {
         "campaign_name": f"{org.name}-{campaign.name}",
         "agent_id": agent.external_agent_id if agent else None,
+        "from_number": data.calling_no,
         "send_option": send_option,
         "schedule_date": schedule_date,
         "schedule_time": schedule_time,
@@ -577,6 +582,8 @@ def update_campaign(
         "retry_after": data.retry_interval,
         "dialer_schedule_days": build_schedule_days(data)
     }
+    
+    print("Update campaign payload:", payload)
 
     if external_contact_ids is not None:
         payload["contact_ids"] = external_contact_ids
@@ -678,6 +685,8 @@ def build_schedule_days(data):
         DAY_MAP.get(day.lower())
         for day in (data.active_days or [])
     ]
+    
+    print("start date and end date:", data.start_datetime, data.end_datetime)
 
     if data.start_datetime and data.end_datetime:
         start = datetime.fromisoformat(data.start_datetime)
@@ -1176,7 +1185,7 @@ def sync_campaign_from_echoleads(
 ):
     try:
         # Fetch Campaign
-        if campaign.external_campaign_name:
+        if campaign.external_campaign_name and not campaign.external_campaign_id:
             
             response = echolead_client.get_campaign_by_name(
                 campaign.external_campaign_name

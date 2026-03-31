@@ -399,7 +399,7 @@ export const CallLogsTab = () => {
                 <Collapse in={showFilters}>
                     <Grid container spacing={2} mt={1}>
                         {/* Agent */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}>
                             <TextField
                                 select
                                 label="Agent"
@@ -418,7 +418,7 @@ export const CallLogsTab = () => {
                         </Grid>
 
                         {/* Campaign */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}>
                             <TextField
                                 select
                                 label="Campaign"
@@ -436,6 +436,9 @@ export const CallLogsTab = () => {
                             </TextField>
                         </Grid>
 
+
+                    </Grid>
+                    <Grid container spacing={2} mt={1}>
                         {/* Status */}
                         <Grid item xs={12} md={4}>
                             <TextField
@@ -452,10 +455,8 @@ export const CallLogsTab = () => {
                                 <MenuItem value="failed">Failed</MenuItem>
                             </TextField>
                         </Grid>
-                    </Grid>
-                    <Grid container spacing={2} mt={1}>
                         {/* Call End Reason */}
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
@@ -473,7 +474,7 @@ export const CallLogsTab = () => {
                             </TextField>
                         </Grid>
                         {/* Sentiment */}
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
@@ -503,7 +504,7 @@ export const CallLogsTab = () => {
                                 <MenuItem value="true">True</MenuItem>
                                 <MenuItem value="false">False</MenuItem>
                             </TextField>
-                        </Grid> */}
+                        </Grid> 
 
                         <Grid item xs={12} sm={6} md={3}>
                             <TextField
@@ -535,7 +536,7 @@ export const CallLogsTab = () => {
                                 <MenuItem value="true">Yes</MenuItem>
                                 <MenuItem value="false">No</MenuItem>
                             </TextField>
-                        </Grid>
+                        </Grid> */}
                     </Grid>
                 </Collapse>
             </Paper>
@@ -749,7 +750,23 @@ export const CallLogsTab = () => {
                                     {/* <TableCell>
                                         {log.testCall ? "Yes" : "No"}
                                     </TableCell> */}
-                                    <TableCell>{log.sentiment || "N/A"}</TableCell>
+                                    <TableCell>
+                                        {log.sentiment && log.sentiment !== "N/A" ? (
+                                            <Chip
+                                                label={log.sentiment}
+                                                color={
+                                                    log.sentiment.toLowerCase() === "positive"
+                                                        ? "success"
+                                                        : log.sentiment.toLowerCase() === "negative"
+                                                            ? "error"
+                                                            : "default"
+                                                }
+                                                size="small"
+                                            />
+                                        ) : (
+                                            "N/A"
+                                        )}
+                                    </TableCell>
                                     <TableCell>
                                         <Chip label={log.status} color={getStatusColor(log.status) as any} size="small" />
                                     </TableCell>
@@ -771,7 +788,7 @@ export const CallLogsTab = () => {
                                                 whiteSpace: "nowrap"
                                             }}
                                         >
-                                            {log.lead_qualified_status === "Pending" && (
+                                            {/* {log.lead_qualified_status === "Pending" && (
                                                 <Tooltip title="Move to Sales Funnel">
                                                     <IconButton
                                                         size="small"
@@ -781,7 +798,7 @@ export const CallLogsTab = () => {
                                                         <LayersIcon fontSize="small" />
                                                     </IconButton>
                                                 </Tooltip>
-                                            )}
+                                            )} */}
                                             <Tooltip title="View Insights">
                                                 <IconButton
                                                     size="small"

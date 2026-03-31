@@ -163,7 +163,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     {selectedCall.contact || "N/A"}
                                 </Typography>
                             </Box>
-                            <Box display="flex" alignItems="center" gap={1} mb={2}>
+                            {/* <Box display="flex" alignItems="center" gap={1} mb={2}>
                                 <LeadIcon fontSize="small" color="success" />
                                 <Typography variant="body2" color="text.secondary">
                                     Lead Status:
@@ -183,7 +183,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         Not Qualified
                                     </Typography>
                                 )}
-                            </Box>
+                            </Box> */}
                             <Box display="flex" alignItems="center" gap={1}>
                                 <BugReportIcon fontSize="small" color="warning" />
                                 <Typography variant="body2" color="text.secondary">

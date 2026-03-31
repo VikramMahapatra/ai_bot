@@ -14,6 +14,7 @@ from app.utils.echoleads_client import EcholeadsClient
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Contact
 from app.config import settings
+from app.models.conversation import Conversation
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -38,11 +39,13 @@ def get_call_logs(
             CallLog,
             Contact.name.label("contact_name"),
             CallingAgent.name.label("agent_name"),
-            CallCampaign.name.label("campaign_name")
+            CallCampaign.name.label("campaign_name"),
+            Lead.lead_outcome.label("lead_outcome")
         )
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
+        .outerjoin(Lead, Lead.session_id == CallLog.external_call_a_id)  # for lead qualification status
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -81,7 +84,7 @@ def get_call_logs(
 
     # SENTIMENT
     if params.sentiment:
-        query = query.filter(CallLog.sentiment == params.sentiment)
+        query = query.filter(Lead.lead_outcome == params.sentiment)
 
     # EVALUATION (boolean)
     if params.evaluation is not None:
@@ -138,7 +141,7 @@ def get_call_logs(
 
     rows = []
 
-    for log, contact_name, agent_name, campaign_name in logs:
+    for log, contact_name, agent_name, campaign_name, lead_outcome in logs:
 
         transcripts = (
             db.query(CallTranscript)
@@ -179,7 +182,7 @@ def get_call_logs(
             "testCall": False if log.campaign_id else True,
             "ended_reason": log.ended_reason,
             "call_summary": log.call_summary,
-            "sentiment": log.sentiment,
+            "sentiment": lead_outcome if lead_outcome and log.campaign_id else "N/A",
             "follow_up_recommended": log.follow_up_recommended or [],
             "extract_data": log.extract_data or {},
             "lead_info": log.lead_info or {},
@@ -345,8 +348,8 @@ def process_call(db, call, agent):
         CallLog.external_call_id == call["id"]
     ).first()
     
-    # if existing and existing.status == "ended":
-    #     return
+    if existing and existing.status == "ended":
+        return
     
     campaign_external_id = call["campaign_id"]
     
@@ -453,16 +456,12 @@ def process_call(db, call, agent):
     lead_quality_label = get_lead_quality_label(lead_quality_rate) if lead_quality_rate is not None else None
     
 
-    # Only create lead for High or Medium quality
-    if campaign and lead_quality_label in ["High", "Medium"]:
-        if settings.CAN_AUTO_SYNC_CAMPAIGN_LEAD:
-            lead = create_lead_from_call(db, call_log.id, call, agent, campaign, contact, lead_quality_label)
+    # Only create lead for Campaign calls, not for test calls.
+    if campaign:
+        lead = create_lead_from_call(db, call_log.id, call, agent, campaign, contact)
 
-            if lead:
-                # Mark call_log as lead qualified
-                call_log.is_lead_qualified = True
-                
-        else:
+        if lead:
+            # Mark call_log as lead qualified
             call_log.is_lead_qualified = True
             
         db.flush()
@@ -508,44 +507,48 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
             )
         )
         
-def create_lead_from_call(db, call_log_id, call, agent, campaign, contact, lead_quality_label):
+def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
     # Skip test calls
     if not campaign:
         return None
+    
+    call_log = db.query(CallLog).filter(CallLog.id == call_log_id).first()
 
     # Prevent duplicate
-    product_id = None
     query = db.query(Lead).filter(
-        Lead.phone == call.get("phone"),
-        Lead.organization_id == agent.organization_id
+        Lead.session_id == call_log.external_call_a_id,
+        Lead.organization_id == call_log.organization_id
     )
-    if product_id:
-        query = query.filter(Lead.product_id == product_id)
-
+    
     existing = query.first()
     if existing:
         return None
 
     lead = Lead(
         source="voice",
-        session_id=call_log_id,
-        widget_id=str(agent.id),
+        session_id=call_log.external_call_a_id,
+        widget_id=agent.external_agent_a_id,
         organization_id=agent.organization_id,
-        product_id = product_id,
+        product_id = str(campaign.product_id) if campaign.product_id else None,
         name=contact.name if contact else None,
         email=contact.email if contact else None,
         phone=call.get("phone"),
         company=contact.company if contact else None,
         custom_fields=json.dumps({
-            "lead_quality_label": lead_quality_label,
             "lead_info": call.get("lead_info"),
             "external_call_id": call.get("id")
-        }),
-        funnel_stage="lead_qualification"
+        })
     )
 
     db.add(lead)
-    db.flush()  # so we can get lead.id if needed
+    db.flush()
+    
+    create_conversation_from_transcripts(
+        db=db,
+        call_log=call_log,
+        agent=agent
+    )
+    
     return lead
 
 def create_manual_lead(db : Session, organization_id :int, call_log_id : int, payload: MoveToFunnelRequest):
@@ -609,27 +612,85 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
 
     lead = Lead(
         source="voice",
-        session_id=call_log_id,
-        widget_id=str(agent.id),
+        session_id=call.external_call_a_id,
+        widget_id=agent.external_agent_a_id,
         organization_id=agent.organization_id,
-        product_id=campaign.product_id,
+        product_id = str(campaign.product_id) if campaign.product_id else None,
         name=contact.name if contact else None,
         email=contact.email if contact else None,
         phone=call.phone,
         company=contact.company if contact else None,
-        custom_fields=json.dumps(custom_fields),
-        funnel_stage=payload.stage
+        custom_fields=json.dumps(custom_fields)
     )
 
     db.add(lead)
-    call.is_lead_qualified = True
-    
+    call.is_lead_qualified = True    
     db.flush()
+    
+    create_conversation_from_transcripts(
+        db=db,
+        call_log=call,
+        agent=agent
+    )
+    
     db.commit()
+    
     return {
             "success" : True,
             "message" : "Lead synced successfully"
         } 
+def create_conversation_from_transcripts(db, call_log, agent):
+    # Skip if already exists
+    exists = db.query(Conversation.id).filter(
+        Conversation.session_id == str(call_log.external_call_a_id)
+    ).first()
+    if exists:
+        return
+
+    transcripts = (
+        db.query(CallTranscript)
+        .filter(CallTranscript.call_log_id == call_log.id)
+        .order_by(CallTranscript.created_at.asc())
+        .all()
+    )
+
+    conversations = []
+    current_message = None
+
+    for t in transcripts:
+        role = "assistant" if t.speaker.lower() == "agent" else "user"
+
+        if role == "user":
+            # Start new conversation row with user message
+            current_message = Conversation(
+                session_id=str(call_log.external_call_a_id),
+                widget_id=str(agent.external_agent_a_id),
+                organization_id=call_log.organization_id,
+                message=t.text,
+                response="",
+                role="assistant",  # role of the “responder”
+                created_at=t.created_at
+            )
+            conversations.append(current_message)
+
+        elif role == "assistant":
+            if current_message:
+                # attach assistant response to last user message
+                current_message.response = t.text
+            else:
+                # First message is assistant, create a new row
+                current_message = Conversation(
+                    session_id=str(call_log.external_call_a_id),
+                    widget_id=str(agent.external_agent_a_id),
+                    organization_id=call_log.organization_id,
+                    message="",
+                    response=t.text,
+                    role="assistant",
+                    created_at=t.created_at
+                )
+                conversations.append(current_message)
+
+    db.add_all(conversations)
     
 def get_lead_quality_label(rate: int):
     for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():
