@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -37,6 +37,10 @@ class LeadResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        
+    @field_validator("product_id", mode="before")
+    def convert_to_string(cls, v):
+        return str(v) if v is not None else v
 
 
 class LeadFunnelStageUpdate(BaseModel):

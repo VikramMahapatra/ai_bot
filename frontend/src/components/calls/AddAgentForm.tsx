@@ -37,6 +37,54 @@ interface AddAgentFormProps {
     loading: boolean;
 }
 
+
+const timezones = [
+    {
+        value: "Asia/Kolkata",
+        label: "India (IST - Asia/Kolkata)"
+    },
+    {
+        value: "Asia/Dubai",
+        label: "UAE (GST - Asia/Dubai)"
+    },
+    {
+        value: "America/New_York",
+        label: "US Eastern (EST/EDT - America/New_York)"
+    },
+    {
+        value: "America/Chicago",
+        label: "US Central (CST/CDT - America/Chicago)"
+    },
+    {
+        value: "America/Denver",
+        label: "US Mountain (MST/MDT - America/Denver)"
+    },
+    {
+        value: "America/Los_Angeles",
+        label: "US Pacific (PST/PDT - America/Los_Angeles)"
+    },
+    {
+        value: "America/Toronto",
+        label: "Canada Eastern (EST/EDT - America/Toronto)"
+    },
+    {
+        value: "America/Winnipeg",
+        label: "Canada Central (CST/CDT - America/Winnipeg)"
+    },
+    {
+        value: "America/Edmonton",
+        label: "Canada Mountain (MST/MDT - America/Edmonton)"
+    },
+    {
+        value: "America/Vancouver",
+        label: "Canada Pacific (PST/PDT - America/Vancouver)"
+    },
+    {
+        value: "America/Halifax",
+        label: "Canada Atlantic (AST/ADT - America/Halifax)"
+    }
+];
+
 // const destinationOptions = ['India', 'USA', 'UK', 'Canada', 'Australia'];
 
 // const voiceOptions = [
@@ -633,7 +681,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                             Select a timezone
                                         </MenuItem>
 
-                                        {timezoneOptions.map((tz) => (
+                                        {timezones.map((tz) => (
                                             <MenuItem key={tz.value} value={tz.value}>
                                                 {tz.label}
                                             </MenuItem>

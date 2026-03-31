@@ -128,13 +128,12 @@ export default function CallInsightsDrawer({ open, onClose, data }: Props) {
                 </Box>
 
                 {/* ================= Lead Info ================= */}
-                <Box sx={{ mb: 3 }}>
+                {/* <Box sx={{ mb: 3 }}>
                     <Typography fontWeight={700} mb={2}>
                         Lead Information
                     </Typography>
 
                     <Grid container spacing={2}>
-                        {/* Lead Quality */}
                         <Grid item xs={6}>
                             <Box
                                 sx={{
@@ -168,7 +167,6 @@ export default function CallInsightsDrawer({ open, onClose, data }: Props) {
                             </Box>
                         </Grid>
 
-                        {/* Follow Up */}
                         <Grid item xs={6}>
                             <Box
                                 sx={{
@@ -203,7 +201,7 @@ export default function CallInsightsDrawer({ open, onClose, data }: Props) {
                             </Box>
                         </Grid>
                     </Grid>
-                </Box>
+                </Box> */}
 
                 {/* ================= Extracted Data ================= */}
                 <Box>
