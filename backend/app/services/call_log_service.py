@@ -624,7 +624,6 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
     )
 
     db.add(lead)
-    call.is_lead_qualified = True    
     db.flush()
     
     create_conversation_from_transcripts(
@@ -639,6 +638,7 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
             "success" : True,
             "message" : "Lead synced successfully"
         } 
+    
 def create_conversation_from_transcripts(db, call_log, agent):
     # Skip if already exists
     exists = db.query(Conversation.id).filter(
@@ -690,7 +690,9 @@ def create_conversation_from_transcripts(db, call_log, agent):
                 )
                 conversations.append(current_message)
 
-    db.add_all(conversations)
+    if conversations:
+        db.add_all(conversations)
+        db.flush()  
     
 def get_lead_quality_label(rate: int):
     for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():

@@ -239,17 +239,7 @@ def sync_bookings(
     inserted_records = []
 
     for booking in bookings:
-
-        # Avoid duplicate insert
-        existing = (
-            db.query(Appointment)
-            .filter(Appointment.session_id == str(booking.get("id")))
-            .first()
-        )
-
-        if existing:
-            continue
-       
+        
         call_id = booking.get("call_id")
         
         call_log = db.query(CallLog).filter(
@@ -258,6 +248,16 @@ def sync_bookings(
         
         if not call_log or not call_log.external_call_a_id:
             continue
+
+        # Avoid duplicate insert
+        existing = (
+            db.query(Appointment)
+            .filter(Appointment.session_id == call_log.external_call_a_id)
+            .first()
+        )
+
+        if existing:
+            continue      
         
         contact = db.query(Contact).filter(
             Contact.id == call_log.contact_id   
