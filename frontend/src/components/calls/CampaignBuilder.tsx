@@ -460,7 +460,7 @@ const CampaignBuilder = () => {
                         {activeStep == 2 &&
                             <Grid item xs={6} textAlign="right">
                                 <Button variant="contained" onClick={handleSave} sx={{ ml: 1 }} disabled={loading}>
-                                    {mode === "edit" ? "Update" : "Add"}
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
                                 </Button>
                             </Grid>
                         }
@@ -500,7 +500,7 @@ const CampaignBuilder = () => {
                                     onClick={handleSave}
                                     disabled={loading}
                                 >
-                                    {mode === "edit" ? "Update" : "Add"}
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
                                 </Button>
                             </Box>
                         </Grid>

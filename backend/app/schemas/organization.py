@@ -73,3 +73,31 @@ class UserListResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class AgentReport(BaseModel):
+    name: str
+    external_agent_name: Optional[str]
+    external_agent_id: Optional[str]
+
+
+class CampaignReport(BaseModel):
+    name: str
+    external_campaign_name: Optional[str]
+    external_campaign_id: Optional[int]
+
+
+class OrganizationReport(BaseModel):
+    organization_id: int
+    organization_name: str
+
+    agents_created: int
+    agent_limit: Optional[int]
+
+    campaign_created: int
+    campaign_limit: Optional[int]
+
+    calls_done: int
+    calls_limit: Optional[int]
+
+    agents: List[AgentReport]
+    campaigns: List[CampaignReport]

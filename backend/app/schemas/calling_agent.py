@@ -12,6 +12,7 @@ class CallingAgentCreate(BaseModel):
     destination: Optional[List[str]] = []
     status: str = "pending"
     server_location: Optional[str] = None
+    inbound_phone_number: Optional[str] = None
 
     # Credit & campaign
     active_campaigns: int = 0
@@ -75,6 +76,7 @@ class CallingAgentUpdate(BaseModel):
     prompt: Optional[str] = None
     destination: Optional[List[str]] = None
     server_location: Optional[str] = None
+    inbound_phone_number: Optional[str] = None
 
     # Voice
     gender: Optional[str] = None
@@ -138,3 +140,6 @@ class TestCallRequest(BaseModel):
 
 class AgentStatusUpdate(BaseModel):
     status: str  # Active | Paused | Draft
+    
+class CallingNumberRequest(BaseModel):
+    type: str

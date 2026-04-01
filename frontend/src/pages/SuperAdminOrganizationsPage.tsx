@@ -39,7 +39,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
 import { superadminService } from '../services/superadminService';
-import { OrganizationLimits, SuperAdminOrganization, Plan } from '../types';
+import { OrganizationLimits, SuperAdminOrganization, Plan, CallingNumber } from '../types';
 import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
 import DeleteIcon from "@mui/icons-material/Delete";
 
@@ -157,10 +157,12 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const [isSavingOrg, setIsSavingOrg] = useState(false);
   const [deletingOrgId, setDeletingOrgId] = useState<number | null>(null);
-  const [callingform, setCallingForm] = useState({
+
+  const [callingform, setCallingForm] = useState<Omit<CallingNumber, "id">>({
     calling_number: "",
     is_default: false,
-    is_active: true
+    is_active: true,
+    type: "outbound"
   })
 
   const [callingFormError, setCallingFormError] = useState({
@@ -244,6 +246,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       valid = false
     }
 
+    if (!callingform.type) {
+      errors.type = "Type is required"
+      valid = false
+    }
+
+    console.log(errors)
+
     setCallingFormError(errors)
     return valid
   }
@@ -254,7 +263,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setCallingForm({
       calling_number: "",
       is_default: false,
-      is_active: true
+      is_active: true,
+      type: "outbound"
     })
 
     setOpenCallingNumberForm(true)
@@ -267,7 +277,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setCallingForm({
       calling_number: row.calling_number,
       is_default: row.is_default,
-      is_active: row.is_active
+      is_active: row.is_active,
+      type: row.type
     })
 
     setOpenCallingNumberForm(true)
@@ -622,7 +633,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   />
                 </Stack>
 
-                <Stack direction="row" spacing={1} sx={{ mt: 1.2, flexWrap: 'wrap', useFlexGap: true }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap={true} sx={{ mt: 1.2 }}>
                   <Chip label={org.plan?.name || 'Unassigned'} size="small" variant="outlined" />
                   <Chip label={`Days left: ${org.subscription?.days_left ?? 0}`} size="small" />
                 </Stack>
@@ -963,7 +974,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '18px' } }}
       >
-      <DialogTitle>Edit Organization</DialogTitle>
+        <DialogTitle>Edit Organization</DialogTitle>
         <DialogContent>
           {editingOrg && !editingOrg.admin_username && (
             <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
@@ -1225,6 +1236,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Calling Number</TableCell>
+                <TableCell>Type</TableCell>
                 <TableCell>Default</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell align="right">Actions</TableCell>
@@ -1243,6 +1255,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   <TableRow key={row.id}>
                     <TableCell>
                       {row.calling_number}
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip label={row.type} variant='outlined' size="small" />
                     </TableCell>
 
                     <TableCell>
@@ -1317,6 +1333,24 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             }
             sx={{ mt: 1 }}
           />
+
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel id="calling-type-label">Type</InputLabel>
+            <Select
+              labelId="calling-type-label"
+              value={callingform.type || "outbound"}
+              label="Type"
+              onChange={(e) =>
+                setCallingForm({
+                  ...callingform,
+                  type: e.target.value as "inbound" | "outbound"
+                })
+              }
+            >
+              <MenuItem value="inbound">Inbound</MenuItem>
+              <MenuItem value="outbound">Outbound</MenuItem>
+            </Select>
+          </FormControl>
 
         </DialogContent>
 

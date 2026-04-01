@@ -195,7 +195,7 @@ export const CallingAgentTab: React.FC = () => {
         const newStatus = agent.status === "paused" ? "active" : "paused";
         try {
             await callingAgentService.updateAgentStatus(agent.id!, newStatus);
-            loadCallingAgents();
+            await loadCallingAgents();
         } catch (error: any) {
             showError(error?.response?.data?.detail || `Failed to update the status`);
         } finally {
@@ -574,6 +574,7 @@ export const CallingAgentTab: React.FC = () => {
                                                             <Tooltip title="Test Call">
                                                                 <IconButton
                                                                     size="small"
+                                                                    color='primary'
                                                                     onClick={() => handleTestCall(agent)}
                                                                 >
                                                                     <CallIcon />
@@ -592,6 +593,11 @@ export const CallingAgentTab: React.FC = () => {
                                                                 >
                                                                     <IconButton
                                                                         size="small"
+                                                                        color={
+                                                                            agent.status === "active"
+                                                                                ? "warning"
+                                                                                : "primary"
+                                                                        }
                                                                         onClick={() => handlePause(agent)}
                                                                     >
                                                                         {agent.status === "active" ? (
@@ -608,6 +614,7 @@ export const CallingAgentTab: React.FC = () => {
                                                                 <Tooltip title="Edit">
                                                                     <IconButton
                                                                         size="small"
+                                                                        color='primary'
                                                                         onClick={() => handleEdit(agent)}
                                                                     >
                                                                         <EditIcon />

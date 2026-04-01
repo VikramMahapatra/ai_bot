@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import re
@@ -39,7 +39,7 @@ from app.services.limits_service import (
     get_active_subscription,
     get_subscription_days_left,
 )
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 import logging
@@ -47,6 +47,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_calling_numbers import OrganizationCallingNumber
+from app.models.call_campaigns import CallCampaign
+from app.models.call_logs import CallLog
+from app.models.calling_agents import CallingAgent
 
 logger = logging.getLogger(__name__)
 
@@ -724,7 +727,8 @@ def create_calling_number(
 ):
     obj = OrganizationCallingNumber(
         organization_id=org_id,
-        calling_number=payload.calling_number
+        calling_number=payload.calling_number,
+        type=payload.type
     )
 
     db.add(obj)
@@ -745,6 +749,7 @@ def update_calling_number(
     ).get(id)
 
     obj.calling_number = payload.calling_number
+    obj.type = payload.type
 
     db.commit()
     return obj
@@ -798,3 +803,102 @@ def delete_calling_number(
     db.commit()
 
     return {"success": True}
+
+
+### REPORTS ####
+
+
+@router.get("/org/organization-calling-report")
+def organization_calling_report(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin)
+):
+
+    query = db.query(Organization)
+
+    if search:
+        query = query.filter(Organization.name.contains(search))
+
+    total = query.count()
+
+    organizations = (
+        query
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    report = []
+
+    for org in organizations:
+
+        limits = db.query(OrganizationLimits).filter(
+            OrganizationLimits.organization_id == org.id
+        ).first()
+
+        agent_count = db.query(CallingAgent).filter(
+            CallingAgent.organization_id == org.id,
+            or_(
+                CallingAgent.is_deleted == False,
+                CallingAgent.is_deleted.is_(None)
+            )
+        ).count()
+
+        campaign_count = db.query(CallCampaign).filter(
+            CallCampaign.organization_id == org.id,
+            CallCampaign.is_deleted == False
+        ).count()
+
+        call_count = db.query(CallLog).filter(
+            CallLog.organization_id == org.id
+        ).count()
+
+        agents = db.query(CallingAgent).filter(
+            CallingAgent.organization_id == org.id,
+            CallingAgent.is_deleted == False
+        ).all()
+
+        campaigns = db.query(CallCampaign).filter(
+            CallCampaign.organization_id == org.id,
+            CallCampaign.is_deleted == False
+        ).all()
+
+        report.append({
+            "organization_id": org.id,
+            "organization_name": org.name,
+
+            "agents_created": agent_count,
+            "agent_limit": limits.max_agents if limits else None,
+
+            "campaign_created": campaign_count,
+            "campaign_limit": limits.max_campaigns if limits else None,
+
+            "calls_done": call_count,
+            "calls_limit": limits.max_calls if limits else None,
+
+            "agents": [
+                {
+                    "name": a.name,
+                    "external_agent_name": a.external_agent_name,
+                    "external_agent_id": a.external_agent_id
+                } for a in agents
+            ],
+
+            "campaigns": [
+                {
+                    "name": c.name,
+                    "external_campaign_name": c.external_campaign_name,
+                    "external_campaign_id": c.external_campaign_id
+                } for c in campaigns
+            ]
+        })
+
+    return {
+        "items": report,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }

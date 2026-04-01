@@ -27,6 +27,7 @@ import StopIcon from "@mui/icons-material/Stop";
 import IconButton from "@mui/material/IconButton";
 import moment from 'moment-timezone';
 import { callingAgentService, Voice } from '../../services/callingAgentService';
+import { CallingNumberType, callService } from '../../services/callService';
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -189,7 +190,7 @@ const emptyFormData = {
 
     enable_prompt_timezone: false,
     prompt_timezone: "",
-    inbound_phone: "",
+    inbound_phone_number: "",
     enable_call_forwarding: false,
     call_forwarding_number: "",
     call_forwarding_role: "",
@@ -225,6 +226,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [formData, setFormData] = useState(emptyFormData);
+    const [inboundCallingNumbers, setInboundCallingNumbers] = useState<any[]>([])
 
     useEffect(() => {
         const defaults = agentType === "inbound"
@@ -247,7 +249,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             enable_prompt_timezone: agent?.enable_prompt_timezone || false,
             prompt_timezone: agent?.prompt_timezone || "",
 
-            inbound_phone: agent?.inbound_phone || "",
+            inbound_phone_number: agent?.inbound_phone_number || "",
 
             enable_call_forwarding: agent?.enable_call_forwarding || false,
             call_forwarding_number: agent?.call_forwarding_number || "",
@@ -283,18 +285,19 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     }, [agent, agentType]);
 
     useEffect(() => {
-        const fetchVoices = async () => {
-            try {
-                const voices = await callingAgentService.allVoices();
-                setVoiceOptions(voices);
-
-            } catch (err) {
-                console.error("Failed to load voices", err);
-            }
-        };
-
         fetchVoices();
-    }, []);
+        loadInboundCallingNoLookup();
+    }, [mode]);
+
+    const fetchVoices = async () => {
+        try {
+            const voices = await callingAgentService.allVoices();
+            setVoiceOptions(voices);
+
+        } catch (err) {
+            console.error("Failed to load voices", err);
+        }
+    };
 
     const filteredVoices = useMemo(() => {
 
@@ -402,8 +405,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         }
 
         if (agentType == "inbound") {
-            if (!formData.inbound_phone) {
-                newErrors.inbound_phone = "Inbound phone number is required";
+            if (!formData.inbound_phone_number) {
+                newErrors.inbound_phone_number = "Inbound phone number is required";
             }
         }
         else {
@@ -501,6 +504,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         stopPreview();
     }, [formData.voice]);
 
+    const loadInboundCallingNoLookup = async () => {
+        const data = await callService.getCallingNumbers(CallingNumberType.INBOUND);
+        setInboundCallingNumbers(data || []);
+    };
+
     return (
         <Card sx={{ mb: 3, p: 3, borderRadius: 2, boxShadow: 2, position: 'sticky', zIndex: 1 }}>
             <Stack spacing={3}>
@@ -523,7 +531,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             Cancel
                         </Button>
                         <Button variant="contained" onClick={handleSubmit} sx={{ ml: 1 }} disabled={loading}>
-                            {mode === "create" ? "Save" : "Update"}
+                            {mode === "create" ? "Add Agent" : "Update Agent"}
                         </Button>
                     </Box>
                 </Stack>
@@ -946,25 +954,30 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                 {agentType === "inbound" &&
                     <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                         <Typography variant="subtitle1" mb={2}>
-                            Inbound Phone Number
+                            Inbound Phone Number *
                         </Typography>
 
                         <FormControl
                             fullWidth
                             required
-                            error={!!errors.inbound_phone}
+                            error={!!errors.inbound_phone_number}
                         >
                             <Select
-                                value={formData.inbound_phone}
+                                value={formData.inbound_phone_number}
                                 onChange={(e) =>
-                                    handleSelectChange("inbound_phone", e.target.value)
+                                    handleSelectChange("inbound_phone_number", e.target.value)
                                 }
                                 displayEmpty
                             >
+                                {inboundCallingNumbers.map((phone) => (
+                                    <MenuItem key={phone.id} value={phone.id}>
+                                        {phone.calling_number}
+                                    </MenuItem>
+                                ))}
 
                             </Select>
                         </FormControl>
-                        <FormHelperText>{errors.inbound_phone}</FormHelperText>
+                        <FormHelperText>{errors.inbound_phone_number}</FormHelperText>
                     </Card>
                 }
 
@@ -1378,8 +1391,11 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                 {/* Save Button aligned right */}
                 <Box display="flex" justifyContent="flex-end" >
-                    <Button variant="contained" onClick={handleSubmit} disabled={loading}>
-                        {mode === "create" ? "Save" : "Update"}
+                    <Button color="error" variant='outlined' onClick={onCancel}>
+                        Cancel
+                    </Button>
+                    <Button variant="contained" onClick={handleSubmit} sx={{ ml: 1 }} disabled={loading}>
+                        {mode === "create" ? "Add Agent" : "Update Agent"}
                     </Button>
                 </Box >
             </Stack >

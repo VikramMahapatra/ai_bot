@@ -132,8 +132,9 @@ export const callLogService = {
         return response.data;
     },
 
-    async campaignLookup(): Promise<FilterLookupResponse[]> {
-        const response = await api.get<FilterLookupResponse[]>('/api/call-campaigns/lookup');
+    async campaignLookup(agentId?: number): Promise<FilterLookupResponse[]> {
+        const params = agentId ? { agent_id: agentId } : {};
+        const response = await api.get<FilterLookupResponse[]>('/api/call-campaigns/lookup', { params });
         return response.data;
     },
 

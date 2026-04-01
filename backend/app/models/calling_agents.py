@@ -38,6 +38,7 @@ class CallingAgent(Base):
     enable_call_summary = Column(Boolean, default=False)
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
+    inbound_phone_number = Column(String, nullable=True)
     
     gender = Column(String, nullable=False)
     accent = Column(String)

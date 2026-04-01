@@ -343,6 +343,44 @@ export interface SuperAdminOrganization {
 export interface CallingNumber {
   id: number;
   calling_number: string;
+  type: 'inbound' | 'outbound';
   is_default?: boolean;
   is_active?: boolean;
+}
+
+
+export interface AgentReport {
+  name: string;
+  external_agent_name?: string | null;
+  external_agent_id?: string | null;
+}
+
+
+export interface CampaignReport {
+  name: string;
+  external_campaign_name?: string | null;
+  external_campaign_id?: number | null;
+}
+
+export interface OrganizationReportResponse {
+  items: OrganizationReport[];
+  total: number;
+}
+
+
+export interface OrganizationReport {
+  organization_id: number;
+  organization_name: string;
+
+  agents_created: number;
+  agent_limit?: number | null;
+
+  campaign_created: number;
+  campaign_limit?: number | null;
+
+  calls_done: number;
+  calls_limit?: number | null;
+
+  agents: AgentReport[];
+  campaigns: CampaignReport[];
 }

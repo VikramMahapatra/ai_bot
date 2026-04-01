@@ -533,6 +533,11 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 >
                                                     <IconButton
                                                         size="small"
+                                                        color={
+                                                            campaign.status === "running"
+                                                                ? "warning"
+                                                                : "primary"
+                                                        }
                                                         onClick={() => handlePause(campaign)}
                                                     >
                                                         {campaign.status === "running" ? (

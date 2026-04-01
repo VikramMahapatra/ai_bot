@@ -131,7 +131,7 @@ class EcholeadsClient:
             "limit": limit,
             "search": search
         }
-        return self._get("/agent-tables")
+        return self._get("/agent-tables", params=params)
     
     def create_agent(self, payload: dict):
         return self._post("/agent-tables", payload)

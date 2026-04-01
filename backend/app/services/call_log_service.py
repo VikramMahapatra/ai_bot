@@ -49,6 +49,9 @@ def get_call_logs(
         .filter(CallLog.organization_id == organization_id)
     )
     
+    if params.agent_id:
+        query = query.filter(CallLog.agent_id == params.agent_id)
+    
     if params.campaign_id:
         query = query.filter(CallLog.campaign_id == params.campaign_id)
 
@@ -249,10 +252,7 @@ def sync_call_logs(
     agent_id=None
 ):
     client = EcholeadsClient()
-    
-    print(f"campaign : {campaign_id}")
-    print(f"from date : {from_date}")
-    print(f"to date : {to_date}")
+    total_calls = 0
     
     if agent_id:
         print("Syncing WITH agent_id (direct agent mode)")
@@ -302,6 +302,7 @@ def sync_call_logs(
         calls = response.get("calls", [])
 
         for call in calls:
+            total_calls += 1            
             call_start = parse_datetime(call.get("created_at"))
             if not call_start:
                 continue
@@ -313,7 +314,6 @@ def sync_call_logs(
 
             if not agent:
                 continue
-
             process_call(db, call, agent)
     else:
         print("Syncing WITH agent_id (agent-wise mode)")
@@ -333,10 +333,9 @@ def sync_call_logs(
             )
 
             calls = response.get("calls", [])
-
-            for call in calls:               
+            for call in calls:   
                 process_call(db, call, agent)
-
+                
     db.commit()
     
 def process_call(db, call, agent):
@@ -348,113 +347,118 @@ def process_call(db, call, agent):
         CallLog.external_call_id == call["id"]
     ).first()
     
-    if existing and existing.status == "ended":
-        return
-    
-    campaign_external_id = call["campaign_id"]
-    
     campaign = None
-    if campaign_external_id:
-        campaign = db.query(CallCampaign).filter(
-            CallCampaign.external_campaign_id == campaign_external_id
-        ).first()
+    
+    if not existing or existing.status != "ended":
+        campaign_external_id = call["campaign_id"]
         
-    contact = None
-    if call.get("contact_id"):
-        contact = db.query(Contact).filter(
-            Contact.external_contact_id == call.get("contact_id")
-        ).first()
-
-    # Prepare common values
-    duration = int(call.get("duration")) if call.get("duration") else None
-    ended_reason = call.get("ended_reason")
-    call_summary = call.get("call_summary")
-    sentiment = call.get("sentiment")
-    follow_up_recommended = call.get("follow_up_recommended")
-    extract_data = call.get("extract_data")
-    lead_info = call.get("lead_info")
-    success_eval_str = call.get("success_evaluation") if call.get("success_evaluation") else "false"
-
-    # convert extract_data if string
-    if isinstance(extract_data, str):
-        try:
-            extract_data = json.loads(extract_data)
-        except:
-            extract_data = None
+        if campaign_external_id:
+            campaign = db.query(CallCampaign).filter(
+                CallCampaign.external_campaign_id == campaign_external_id
+            ).first()
             
-    call_log_id = None
-
-    if existing:
-        existing.organization_id = agent.organization_id
-        existing.external_call_a_id = call.get("call_id")
-        existing.agent_id = agent.id
-        existing.campaign_id = campaign.id if campaign else None
-        existing.contact_id = contact.id if contact else None
-        existing.type = agent.type
-        existing.mode = "Voice"
-        existing.phone = call.get("phone")
-        existing.status = call.get("status").lower() if call.get("status") else existing.status
-
-        existing.start_time = call_start
-        existing.end_time = parse_datetime(call.get("call_ended_at"))
-        existing.audio_url = call.get("recording_url")
-        existing.cost = float(call.get("cost")) if call.get("cost") else None
-
-        existing.duration = duration
-        existing.ended_reason = ended_reason
-        existing.call_summary = call_summary
-        existing.sentiment = sentiment
-        existing.follow_up_recommended = follow_up_recommended
-        existing.extract_data = extract_data
-        existing.lead_info = lead_info
-        existing.success_evaluation = success_eval_str.lower() == "true"
+        contact = None
         
-        db.flush()
-        
-        save_transcripts(db, existing.id, call.get("transcript"))
+        if call.get("contact_id"):
+            contact = db.query(Contact).filter(
+                Contact.external_contact_id == call.get("contact_id")
+            ).first()
 
+        # Prepare common values
+        duration = int(call.get("duration")) if call.get("duration") else None
+        ended_reason = call.get("ended_reason")
+        call_summary = call.get("call_summary")
+        sentiment = call.get("sentiment")
+        follow_up_recommended = call.get("follow_up_recommended")
+        extract_data = call.get("extract_data")
+        lead_info = call.get("lead_info")
+        success_eval_str = call.get("success_evaluation") if call.get("success_evaluation") else "false"
+
+        # convert extract_data if string
+        if isinstance(extract_data, str):
+            try:
+                extract_data = json.loads(extract_data)
+            except:
+                extract_data = None            
+
+        if existing:
+            existing.organization_id = agent.organization_id
+            existing.external_call_a_id = call.get("call_id")
+            existing.agent_id = agent.id
+            existing.campaign_id = campaign.id if campaign else None
+            existing.contact_id = contact.id if contact else None
+            existing.type = agent.type
+            existing.mode = "Voice"
+            existing.phone = call.get("phone")
+            existing.status = call.get("status").lower() if call.get("status") else existing.status
+
+            existing.start_time = call_start
+            existing.end_time = parse_datetime(call.get("call_ended_at"))
+            existing.audio_url = call.get("recording_url")
+            existing.cost = float(call.get("cost")) if call.get("cost") else None
+
+            existing.duration = duration
+            existing.ended_reason = ended_reason
+            existing.call_summary = call_summary
+            existing.sentiment = sentiment
+            existing.follow_up_recommended = follow_up_recommended
+            existing.extract_data = extract_data
+            existing.lead_info = lead_info
+            existing.success_evaluation = success_eval_str.lower() == "true"
+            db.flush()
+            
+            save_transcripts(db, existing.id, call.get("transcript"))
+        else:
+            call_log = CallLog(
+                external_call_id=call["id"],
+                external_call_a_id=call["call_id"],
+                organization_id=agent.organization_id,
+                agent_id=agent.id,
+                campaign_id=campaign.id if campaign else None,
+                contact_id = contact.id if contact else None,
+                type=agent.type,
+                mode="Voice",
+                phone=call.get("phone"),
+                status=call.get("status").lower() if call.get("status") else "queued",
+
+                start_time=call_start,
+                end_time=parse_datetime(call.get("call_ended_at")),
+                audio_url=call.get("recording_url"), 
+                cost=float(call.get("cost")) if call.get("cost") else None,
+
+                duration=duration,
+                ended_reason=ended_reason,
+                call_summary=call_summary,
+                sentiment=sentiment,
+                follow_up_recommended=follow_up_recommended,
+                extract_data=extract_data,
+                lead_info=lead_info,
+                success_evaluation=success_eval_str.lower() == "true",
+                created_at = parse_datetime(call.get("created_at")),
+            )
+
+            db.add(call_log)
+            db.flush()
+            
+            save_transcripts(db, call_log.id, call.get("transcript"))
+    else: 
+        # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
         call_log = existing
-    else:
-        call_log = CallLog(
-            external_call_id=call["id"],
-            external_call_a_id=call["call_id"],
-            organization_id=agent.organization_id,
-            agent_id=agent.id,
-            campaign_id=campaign.id if campaign else None,
-            contact_id = contact.id if contact else None,
-            type=agent.type,
-            mode="Voice",
-            phone=call.get("phone"),
-            status=call.get("status").lower() if call.get("status") else "queued",
-
-            start_time=call_start,
-            end_time=parse_datetime(call.get("call_ended_at")),
-            audio_url=call.get("recording_url"), 
-            cost=float(call.get("cost")) if call.get("cost") else None,
-
-            duration=duration,
-            ended_reason=ended_reason,
-            call_summary=call_summary,
-            sentiment=sentiment,
-            follow_up_recommended=follow_up_recommended,
-            extract_data=extract_data,
-            lead_info=lead_info,
-            success_evaluation=success_eval_str.lower() == "true",
-            created_at = parse_datetime(call.get("created_at")),
-        )
-
-        db.add(call_log)
-        db.flush()
         
-        save_transcripts(db, call_log.id, call.get("transcript"))
+        campaign = db.query(CallCampaign).filter(
+                CallCampaign.id == existing.campaign_id
+        ).first()  
         
-        call_log_id = call_log.id
+        contact = db.query(Contact).filter(
+                Contact.id == existing.contact_id
+        ).first() 
         
-    # Create lead if eligible
-    
-    lead_quality_rate = lead_info.get("lead_quality", {}).get("rate")
-    lead_quality_label = get_lead_quality_label(lead_quality_rate) if lead_quality_rate is not None else None
-    
+        transcript_exists = db.query(CallTranscript.id).filter(
+            CallTranscript.call_log_id == existing.id
+        ).first()
+
+        if not transcript_exists:
+            save_transcripts(db, existing.id, call.get("transcript"))    
 
     # Only create lead for Campaign calls, not for test calls.
     if campaign:
@@ -507,6 +511,8 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
             )
         )
         
+    db.flush()
+        
 def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
     # Skip test calls
     if not campaign:
@@ -521,27 +527,28 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
     )
     
     existing = query.first()
-    if existing:
-        return None
+    
+    if not existing:
+        lead = Lead(
+            source="voice",
+            session_id=call_log.external_call_a_id,
+            widget_id=agent.external_agent_a_id,
+            organization_id=agent.organization_id,
+            product_id = str(campaign.product_id) if campaign.product_id else None,
+            name=contact.name if contact else None,
+            email=contact.email if contact else None,
+            phone=call.get("phone"),
+            company=contact.company if contact else None,
+            custom_fields=json.dumps({
+                "lead_info": call.get("lead_info"),
+                "external_call_id": call.get("id")
+            })
+        )
 
-    lead = Lead(
-        source="voice",
-        session_id=call_log.external_call_a_id,
-        widget_id=agent.external_agent_a_id,
-        organization_id=agent.organization_id,
-        product_id = str(campaign.product_id) if campaign.product_id else None,
-        name=contact.name if contact else None,
-        email=contact.email if contact else None,
-        phone=call.get("phone"),
-        company=contact.company if contact else None,
-        custom_fields=json.dumps({
-            "lead_info": call.get("lead_info"),
-            "external_call_id": call.get("id")
-        })
-    )
-
-    db.add(lead)
-    db.flush()
+        db.add(lead)
+        db.flush()
+    else:
+        lead = existing
     
     create_conversation_from_transcripts(
         db=db,
@@ -644,6 +651,7 @@ def create_conversation_from_transcripts(db, call_log, agent):
     exists = db.query(Conversation.id).filter(
         Conversation.session_id == str(call_log.external_call_a_id)
     ).first()
+    
     if exists:
         return
 

@@ -28,7 +28,7 @@ import PublicIcon from "@mui/icons-material/Public";
 import PersonIcon from '@mui/icons-material/Person';
 import { CallingAgent, callingAgentService } from "../../services/callingAgentService";
 import { alpha, useTheme } from '@mui/material/styles';
-import { callService } from "../../services/callService";
+import { CallingNumberType, callService } from "../../services/callService";
 
 interface Props {
     open: boolean;
@@ -70,7 +70,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
     const fetchCallingNumbers = async () => {
         if (!agent?.organization_id) return;
 
-        const res = await callService.getCallingNumbers()
+        const res = await callService.getCallingNumbers(CallingNumberType.OUTBOUND);
         const activeNumbers = res.filter((n: any) => n.is_active)
         setCallingNumbers(activeNumbers)
 

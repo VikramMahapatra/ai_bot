@@ -18,6 +18,7 @@ from app.models.calling_agents import CallingAgent
 from app.models.widget_config import WidgetConfig
 from app.models.organization_calling_numbers import OrganizationCallingNumber
 from app.models.campaign import Contact
+from app.schemas.calling_agent import CallingNumberRequest
 
 logger = logging.getLogger(__name__)
 
@@ -299,10 +300,12 @@ def sync_bookings(
 
 @router.get("/org/calling-numbers")
 def get_calling_numbers(
+    params: CallingNumberRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     return db.query(OrganizationCallingNumber).filter(
         OrganizationCallingNumber.organization_id == current_user.organization_id,
-        OrganizationCallingNumber.is_active == True
+        OrganizationCallingNumber.is_active == True,
+        OrganizationCallingNumber.type == params.type
     ).all()

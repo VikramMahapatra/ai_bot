@@ -52,6 +52,11 @@ export interface CallAnalytics {
     };
 }
 
+export const CallingNumberType = {
+    INBOUND: 'inbound',
+    OUTBOUND: 'outbound',
+};
+
 export const callService = {
 
     async callAnalytics(params: CallAnalyticsFilters): Promise<CallAnalytics> {
@@ -59,8 +64,8 @@ export const callService = {
         return response.data;
     },
 
-    async getCallingNumbers(): Promise<CallingNumber[]> {
-        const response = await api.get<CallingNumber[]>(`/api/calls/org/calling-numbers`);
+    async getCallingNumbers(type: string): Promise<CallingNumber[]> {
+        const response = await api.get<CallingNumber[]>(`/api/calls/org/calling-numbers`, { params: { type } });
         return response.data;
     },
 

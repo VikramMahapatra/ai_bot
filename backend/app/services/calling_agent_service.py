@@ -36,6 +36,8 @@ def create_agent(
     if not org:
         raise ValueError("Organization not found")
     
+    unique_agent_code = f"ORG{organization_id}AG{uuid4().hex[:5]}".upper()
+    
     limits = db.query(OrganizationLimits).filter(
         OrganizationLimits.organization_id == organization_id
     ).first()
@@ -77,6 +79,7 @@ def create_agent(
         greeting=agent.greeting,
         prompt=agent.prompt,
         server_location=agent.server_location,
+        inbound_phone_number=agent.inbound_phone_number if agent.type.lower() == "inbound" else None,
 
         # Voice
         gender=agent.gender,
@@ -131,7 +134,7 @@ def create_agent(
         transcriber_model=agent.transcriber_model,
         
         status= "pending",
-        external_agent_name=  f"{org.name}-{agent.name}"
+        external_agent_name=  unique_agent_code
     )
 
     db.add(db_agent)
@@ -141,7 +144,7 @@ def create_agent(
     echoleads = EcholeadsClient()
     echo_payload ={
         "name": db_agent.external_agent_name,
-        "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",
+        "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",        
         "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
         "firstMessage": agent.greeting,
         "prompt": agent.prompt,
@@ -201,6 +204,10 @@ def create_agent(
         "call_forwarding_message": agent.call_forwarding_role,
     }
     
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
+    
     external_agent_id = None
     external_agent_a_id = None
     external_agent_status = "pending"
@@ -253,12 +260,17 @@ def update_agent(
     
     if not db_agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Selected Agent not synced correctly")
+    
+    unique_agent_code = f"ORG{org.id}AG{uuid4().hex[:5]}".upper()
+    
+    if not db_agent.external_agent_name:
+        db_agent.external_agent_name = unique_agent_code
 
     # 🔹 Update Echoleads
     echoleads = EcholeadsClient()
     
     echo_payload = {
-        "name": f"{org.name}-{agent.name}",
+        "name": db_agent.external_agent_name,
         "agent_call_type":  "outgoing" if db_agent.type.lower() == "outbound" else "incoming",
         "language": agent.transcriber_language or db_agent.transcriber_language,
         "firstMessage": agent.greeting if agent.greeting else db_agent.greeting,
@@ -290,6 +302,10 @@ def update_agent(
         "transcriber_model": agent.transcriber_model,       
         "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
     }
+    
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
     
     #print(echo_payload)
     # Call Echoleads update
@@ -365,20 +381,23 @@ def read_agents(
     echo_failed = False
     echo_leads = EcholeadsClient()
     try:
-        echo_response = echo_leads.fetch_agents(total_org_agents, org.name)
-        if echo_response and "data" in echo_response:
+        echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
+        
+        if echo_response and echo_response.get("data"):
+
             echo_agents = echo_response["data"]
 
             echo_map = {
                 agent.get("name"): agent
                 for agent in echo_agents if agent.get("name")
             }
-            
+
             db_agents = db.query(CallingAgent).filter(
                 CallingAgent.organization_id == organization_id
             ).all()
-            
+
             for db_agent in db_agents:
+
                 echo_agent = None
 
                 if db_agent.external_agent_id:
@@ -390,10 +409,19 @@ def read_agents(
                 if not echo_agent and db_agent.external_agent_name:
                     echo_agent = echo_map.get(db_agent.external_agent_name)
 
+                # Only update if echo_agent exists
                 if echo_agent:
-                    external_agent_status = echo_agent.get("agent_status", db_agent.status)
-                     
-                    db_agent.status = "testing" if external_agent_status == "draft" else external_agent_status
+                    if db_agent.status == "paused":
+                        continue
+
+                    external_agent_status = echo_agent.get("agent_status")
+
+                    if external_agent_status:
+                        db_agent.status = (
+                            "testing"
+                            if external_agent_status == "draft"
+                            else external_agent_status
+                        )
 
                     if not db_agent.external_agent_id:
                         db_agent.external_agent_id = echo_agent.get("id")
@@ -401,9 +429,7 @@ def read_agents(
                     if not db_agent.external_agent_a_id:
                         db_agent.external_agent_a_id = echo_agent.get("a_id")
 
-                        db.commit() 
-                    else:
-                        echo_failed = True
+            db.commit()
             
     except Exception as e:
         print(f"Sync failed: {str(e)}")
@@ -680,6 +706,10 @@ def publish_agent(
         "call_forwarding_action_desc": agent.call_forwarding_action_desc,
         "call_forwarding_message": agent.call_forwarding_role,
     }
+    
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
   
     print(echo_payload)
 

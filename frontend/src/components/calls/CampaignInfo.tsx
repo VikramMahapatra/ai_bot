@@ -2,7 +2,7 @@ import { Grid, TextField, Button, MenuItem } from "@mui/material";
 import { useEffect, useState } from "react";
 import { CallingAgentLookup, callingAgentService } from "../../services/callingAgentService";
 import { Product, productService } from "../../services/productService";
-import { callService } from "../../services/callService";
+import { CallingNumberType, callService } from "../../services/callService";
 import { CallingNumber } from "../../types";
 
 interface CampaignInfoProps {
@@ -29,7 +29,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
     };
 
     const loadCallingNoLookup = async () => {
-        const data = await callService.getCallingNumbers();
+        const data = await callService.getCallingNumbers(CallingNumberType.OUTBOUND);
         setCallingNumbers(data || []);
     };
 

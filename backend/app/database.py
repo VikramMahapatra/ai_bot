@@ -319,6 +319,8 @@ def init_db():
                 col_names = {row[1] for row in cols}
                 if "external_agent_name" not in col_names:
                     conn.execute(text("ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT"))
+                if "inbound_phone_number" not in col_names:
+                    conn.execute(text("ALTER TABLE calling_agents ADD COLUMN inbound_phone_number TEXT"))
             except Exception:
                 pass
             
@@ -383,3 +385,15 @@ def init_db():
                     )
             except Exception as e:
                 print(str(e))
+                
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_calling_numbers')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "type" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_calling_numbers ADD COLUMN type TEXT"))
+                if "type" not in col_names:
+                    conn.execute(
+                        text("UPDATE organization_calling_numbers SET type = 'outbound' WHERE type IS NULL")
+                    )
+            except Exception:
+                pass
