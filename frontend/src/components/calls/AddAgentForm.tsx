@@ -970,7 +970,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 displayEmpty
                             >
                                 {inboundCallingNumbers.map((phone) => (
-                                    <MenuItem key={phone.id} value={phone.id}>
+                                    <MenuItem key={phone.id} value={phone.calling_number}>
                                         {phone.calling_number}
                                     </MenuItem>
                                 ))}

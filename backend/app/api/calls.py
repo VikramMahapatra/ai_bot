@@ -264,6 +264,10 @@ def sync_bookings(
             Contact.id == call_log.contact_id   
         ).first() if call_log and call_log.contact_id else None
         
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == call_log.agent_id
+        ).first() if call_log and call_log.agent_id else None
+        
         campaign = db.query(CallCampaign).filter(
             CallCampaign.id == call_log.campaign_id   
         ).first() if call_log and call_log.campaign_id else None
@@ -277,8 +281,8 @@ def sync_bookings(
 
         appointment = Appointment(
             organization_id=call_log.organization_id,
-            session_id=call_log.external_call_a_id,
-            widget_id = call_log.agent_id,
+            session_id=call_log.call_session_id,
+            widget_id = agent.widget_id if agent else None,
             name=contact.name if contact else "Unknown",
             phone=phone,
             appointment_at=parser.parse(booking.get("start_date")),

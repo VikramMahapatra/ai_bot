@@ -30,6 +30,7 @@ import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
 import ProductManagementPage from './pages/ProductManagementPage.tsx';
 import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalyticsReport.tsx';
+import ContactBookPage from './pages/ContactBookPage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -604,6 +605,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="ADMIN">
             <ProductManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/contacts"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ContactBookPage />
           </ProtectedRoute>
         }
       />

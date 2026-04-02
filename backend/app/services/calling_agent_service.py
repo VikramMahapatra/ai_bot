@@ -1,6 +1,7 @@
 # Create Agent
 from datetime import datetime, timezone
 import os
+import random
 import shutil
 from typing import List, Optional
 from uuid import UUID, uuid4
@@ -71,11 +72,14 @@ def create_agent(
                 buffer.write(file.file.read())
 
             saved_files.append(file_path)
+            
+    agent_widget_id = f"widget_{int(datetime.now().timestamp()*1000)}_{random.randint(1000,9999)}"
 
     db_agent = CallingAgent(
         organization_id=organization_id,
         name=agent.name,
         type=agent.type.lower(),
+        widget_id=agent_widget_id,
         greeting=agent.greeting,
         prompt=agent.prompt,
         server_location=agent.server_location,
@@ -595,13 +599,15 @@ def test_call(
         "dynamicFieldValues": dynamic_values
     }
 
-    print(payload)
     echo_success = True
     external_call_id = None
     call_status = "failed"
     
     try:
         api_response = echoleads.create_call(payload)
+        
+        print("EchoLeads Test Call Response:", api_response)
+        
         if api_response and "data" in api_response:
             sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
             

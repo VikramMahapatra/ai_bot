@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { alpha, useTheme } from '@mui/material/styles';
-import { IconButton } from "@mui/material";
+import { ButtonGroup, IconButton, Menu } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
     Grid,
@@ -26,9 +26,14 @@ import {
     Select
 } from "@mui/material";
 import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
-import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { campaignService } from "../../services/campaignService";
 import React from "react";
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import GroupIcon from '@mui/icons-material/Group';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+
 interface ContactsProps {
     form: any;
     setForm: any;
@@ -64,6 +69,17 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
     const theme = useTheme();
     const [dialogContacts, setDialogContacts] = useState<Contact[]>([]);
     const [uploadResult, setUploadResult] = React.useState<any>(null);
+    const [anchorEl, setAnchorEl] = useState(null)
+    const [openContactList, setOpenContactList] = useState(false)
+    const [selectedContactLists, setSelectedContactLists] = useState<number[]>([])
+
+    const handleMenuOpen = (event: any) => {
+        setAnchorEl(event.currentTarget)
+    }
+
+    const handleMenuClose = () => {
+        setAnchorEl(null)
+    }
 
     const handleAddContacts = () => {
         const existingIds = new Set(campaignContacts.map(c => c.id));
@@ -101,6 +117,47 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         setOpenAdd(false);
     };
 
+    const handleAddContactLists = () => {
+
+        const selectedSet = new Set(selectedContactLists)
+
+        // Get contacts belonging to selected lists
+        const listContacts = crmContacts.filter(contact =>
+            selectedSet.has(contact.contact_list_id)
+        )
+
+        // Keep manually added contacts (optional but recommended)
+        const manualContacts = campaignContacts.filter(
+            c => !c.contact_list_id
+        )
+
+        // Merge list contacts + manual contacts
+        const mergedContacts = [
+            ...manualContacts,
+            ...listContacts
+        ]
+
+        // Remove duplicates
+        const uniqueMap = new Map()
+
+        mergedContacts.forEach(c => {
+            if (c?.id) uniqueMap.set(c.id, c)
+        })
+
+        const finalContacts = Array.from(uniqueMap.values())
+
+        // Update campaign contacts
+        setCampaignContacts(finalContacts)
+
+        // Update form
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: finalContacts.map(c => c.id)
+        }))
+
+        setOpenContactList(false)
+    }
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -126,7 +183,15 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         loadContactLists();
         loadExistingContacts();
         setUploadResult(null)
-    }, [form]);
+    }, []);
+
+
+    useEffect(() => {
+        const selectedContactListIds = [
+            ...new Set(dialogContacts.map(c => c.contact_list_id))
+        ];
+        setSelectedContactLists(selectedContactListIds);
+    }, [dialogContacts]);
 
 
     const validate = () => {
@@ -187,6 +252,10 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         setMode(null)
     };
 
+    const handleCloseContactListDialog = () => {
+        setOpenContactList(false);
+    };
+
     const handleContinue = () => {
         if (form.contacts.length === 0) {
             setContactError("Please add at least one contact");
@@ -220,6 +289,32 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         setSuccess(message);
     };
 
+    const handleOpenExistingContacts = () => {
+        setDialogContacts(campaignContacts); // preload selected contacts
+        setOpenAdd(true);
+        setMode("crm")
+        setCsvFile(null);
+        setUploadListId('');
+    }
+
+
+    const handleOpenContactList = () => {
+        setDialogContacts(campaignContacts); // preload selected contacts
+        setOpenContactList(true);
+        setMode(null)
+        setCsvFile(null);
+        setUploadListId('');
+
+    }
+
+
+
+    const handleOpenUploadContacts = () => {
+        setOpenAdd(true);
+        setMode("csv")
+        setCsvFile(null);
+        setUploadListId('');
+    }
 
     const handleOpenAddContacts = () => {
         setDialogContacts(campaignContacts); // preload selected contacts
@@ -265,29 +360,52 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
         }));
     };
 
+    const handleMenuAction = (action: () => void) => {
+        handleMenuClose()
+        action()
+    }
+
     return (
         <Grid container spacing={2}>
 
             {/* BUTTONS */}
-
             <Grid item xs={12} textAlign="right">
 
                 <Button
-                    variant="outlined"
-                    sx={{ mr: 2 }}
-                    onClick={() => {
-                        setOpenNewContact(true)
-                    }}
-                >
-                    New Contact
-                </Button>
-
-                <Button
                     variant="contained"
-                    onClick={handleOpenAddContacts}
+                    endIcon={<ArrowDropDownIcon />}
+                    onClick={handleMenuOpen}
                 >
                     Add Contacts
                 </Button>
+
+                <Menu
+                    anchorEl={anchorEl}
+                    open={Boolean(anchorEl)}
+                    onClose={handleMenuClose}
+                >
+
+                    <MenuItem onClick={() => handleMenuAction(() => setOpenNewContact(true))}>
+                        <PersonAddIcon sx={{ mr: 1 }} />
+                        Add New Contact
+                    </MenuItem>
+
+                    <MenuItem onClick={() => handleMenuAction(handleOpenExistingContacts)}>
+                        <GroupIcon sx={{ mr: 1 }} />
+                        Select Existing Contacts
+                    </MenuItem>
+
+                    <MenuItem onClick={() => handleMenuAction(() => setOpenContactList(true))}>
+                        <ListAltIcon sx={{ mr: 1 }} />
+                        Select Contact List
+                    </MenuItem>
+
+                    <MenuItem onClick={() => handleMenuAction(handleOpenUploadContacts)}>
+                        <UploadFileIcon sx={{ mr: 1 }} />
+                        Upload Contacts
+                    </MenuItem>
+
+                </Menu>
 
             </Grid>
 
@@ -491,6 +609,44 @@ const Contacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextSt
                 <DialogActions>
                     <Button variant="outlined" onClick={handleCloseDialog} color="error">Cancel</Button>
                     <Button variant="contained" onClick={handleAddContacts}>
+                        Done
+                    </Button>
+                </DialogActions>
+
+            </Dialog>
+
+            {/* CONTACT LIST SELECTION */}
+
+            <Dialog open={openContactList} onClose={() => setOpenContactList(false)} maxWidth="sm" fullWidth>
+
+                <DialogTitle>Add Contact Lists</DialogTitle>
+                <DialogContent>
+                    <Box mt={2}>
+
+                        <Autocomplete
+                            multiple
+                            options={contactLists}
+                            getOptionLabel={(option: ContactList) => option.list_name ?? ""}
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+
+                            value={contactLists.filter(list =>
+                                selectedContactLists.includes(list.id)
+                            )}
+
+                            onChange={(event, newValue) =>
+                                setSelectedContactLists(newValue.map(item => item.id))
+                            }
+
+                            renderInput={(params) => (
+                                <TextField {...params} label="Select Contact Lists" />
+                            )}
+                        />
+                    </Box>
+                </DialogContent>
+
+                <DialogActions>
+                    <Button variant="outlined" onClick={handleCloseContactListDialog} color="error">Cancel</Button>
+                    <Button variant="contained" onClick={handleAddContactLists}>
                         Done
                     </Button>
                 </DialogActions>

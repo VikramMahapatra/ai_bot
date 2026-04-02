@@ -867,6 +867,7 @@ def get_contacts_lookup(db: Session, organization_id: int):
             "email": row.email,
             "phone": row.phone,
             "company": row.company,
+            "contact_list_id": row.contact_list_id,
         }
         for row in rows
     ]
