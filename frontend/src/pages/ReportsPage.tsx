@@ -341,6 +341,46 @@ const ReportsPage: React.FC = () => {
     }
   };
 
+  const buildVoiceReportParams = () => ({
+    agent_name: voiceAgentName || undefined,
+    campaign_name: voiceCampaignName || undefined,
+    lead_outcomes: voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined,
+    start_date: toIsoStartOfDay(voiceCreatedFrom),
+    end_date: toIsoEndOfDay(voiceCreatedTo),
+  });
+
+  const fetchAllVoiceCampaignDataForExport = async () => {
+    const pageSize = 1000;
+    const params = buildVoiceReportParams();
+    let skip = 0;
+    let total = 0;
+    let summary: VoiceCampaignReportSummary | null = null;
+    const allItems: VoiceCampaignReportItem[] = [];
+
+    while (true) {
+      const response = await reportService.getVoiceCampaignReport({
+        ...params,
+        skip,
+        limit: pageSize,
+      });
+
+      if (!summary) {
+        summary = response.summary || null;
+      }
+
+      total = response.total || 0;
+      const batch = response.items || [];
+      allItems.push(...batch);
+      skip += batch.length;
+
+      if (batch.length === 0 || skip >= total) {
+        break;
+      }
+    }
+
+    return { items: allItems, summary };
+  };
+
   const fetchVoiceCampaignFilterOptions = async () => {
     try {
       const data = await reportService.getVoiceCampaignFilterOptions();
@@ -488,6 +528,18 @@ const ReportsPage: React.FC = () => {
   // Handle export CSV
   const handleExportCSV = async () => {
     try {
+      if (tabValue === 5 && campaignReportTab === 1) {
+        setLoading(true);
+        setError(null);
+        const { items, summary } = await fetchAllVoiceCampaignDataForExport();
+        if (items.length === 0) {
+          setError('No voice campaign data to export.');
+          return;
+        }
+        await reportService.exportVoiceCampaignToExcel(items, summary, 'voice_campaign_report');
+        return;
+      }
+
       await reportService.exportToCSV({
         start_date: startDate,
         end_date: endDate,
@@ -495,6 +547,10 @@ const ReportsPage: React.FC = () => {
       });
     } catch (err: any) {
       setError(err.message || 'Failed to export CSV');
+    } finally {
+      if (tabValue === 5 && campaignReportTab === 1) {
+        setLoading(false);
+      }
     }
   };
 
@@ -537,11 +593,29 @@ const ReportsPage: React.FC = () => {
             setError('No daily stats to export. Please fetch daily stats first.');
           }
           break;
+        case 5: // Campaign report
+          if (campaignReportTab === 1) {
+            setLoading(true);
+            setError(null);
+            const { items, summary } = await fetchAllVoiceCampaignDataForExport();
+            if (items.length > 0) {
+              await reportService.exportVoiceCampaignToPDF(items, summary, 'Voice Campaign Report');
+            } else {
+              setError('No voice campaign data to export. Please fetch voice report first.');
+            }
+          } else {
+            setError('PDF export is currently available for Voice report tab.');
+          }
+          break;
         default:
           setError('Invalid tab selected');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to export PDF');
+    } finally {
+      if (tabValue === 5 && campaignReportTab === 1) {
+        setLoading(false);
+      }
     }
   };
 
@@ -549,6 +623,9 @@ const ReportsPage: React.FC = () => {
   const handlePrint = () => {
     window.print();
   };
+
+  const exportPrimaryLabel =
+    tabValue === 5 && campaignReportTab === 1 ? 'Export Excel' : 'Export CSV';
 
   const truncateSessionId = (sessionId: string) => {
     if (!sessionId || sessionId.length <= 18) return sessionId;
@@ -719,7 +796,7 @@ const ReportsPage: React.FC = () => {
             variant="outlined"
             onClick={handleExportCSV}
           >
-            Export CSV
+            {exportPrimaryLabel}
           </Button>
           <Button
             startIcon={<FileDownloadIcon />}

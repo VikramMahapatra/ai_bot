@@ -1,5 +1,8 @@
 import api from './api';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 export interface ReportSummary {
   total_conversations: number;
@@ -150,6 +153,51 @@ export interface VoiceCampaignReportResponse {
   summary: VoiceCampaignReportSummary;
   items: VoiceCampaignReportItem[];
 }
+
+const toDisplayDateTime = (value: string | null | undefined) => (
+  value ? new Date(value).toLocaleString() : '-'
+);
+
+const normalizeLeadOutcome = (value: string | null | undefined) => {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return '-';
+  if (normalized === 'positive' || normalized === 'satisfactory') return 'Positive';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const drawPdfBranding = (
+  doc: jsPDF,
+  title: string,
+  generatedAt: string,
+  pageNumber: number,
+  pageCount: number,
+) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(44);
+  doc.setTextColor(238, 242, 249);
+  doc.text('ZENTRIXEL', pageWidth / 2, pageHeight / 2, { align: 'center', angle: 35 });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(18, 52, 104);
+  doc.text(title, 10, 10);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(102, 116, 142);
+  doc.text(`Generated: ${generatedAt}`, 10, 14.5);
+  doc.setDrawColor(210, 220, 236);
+  doc.line(10, 16.5, pageWidth - 10, 16.5);
+
+  doc.setDrawColor(220, 228, 240);
+  doc.line(10, pageHeight - 10, pageWidth - 10, pageHeight - 10);
+  doc.setFontSize(8);
+  doc.setTextColor(92, 102, 120);
+  doc.text('Powered by: Zentrixel', 10, pageHeight - 6);
+  doc.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: 'right' });
+};
 
 export const reportService = {
   async getReportSummary(params: {
@@ -615,6 +663,144 @@ export const reportService = {
     });
 
     doc.save('daily_stats_report.pdf');
+  },
+
+  async exportVoiceCampaignToPDF(
+    items: VoiceCampaignReportItem[],
+    summary?: VoiceCampaignReportSummary | null,
+    title: string = 'Voice Campaign Report'
+  ): Promise<void> {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const generatedAt = new Date().toLocaleString();
+    const totalCall = summary?.total_calls ?? items.length;
+    const successfulAttempt = summary?.successful_attempts ?? 0;
+    const successRate = totalCall > 0 ? ((successfulAttempt / totalCall) * 100).toFixed(1) : '0.0';
+
+    autoTable(doc, {
+      startY: 30,
+      head: [[
+        'Agent Name',
+        'Customer Name',
+        'Email',
+        'Company',
+        'Organization',
+        'Campaign Name',
+        'Campaign Source',
+        'Funnel Stage',
+        'Lead Outcome',
+        'Product',
+        'Created At',
+      ]],
+      body: items.map((item) => [
+        item.agent_name || '-',
+        item.customer_name || '-',
+        item.email || '-',
+        item.company || '-',
+        item.organization_name || '-',
+        item.campaign_name || '-',
+        item.campaign_source || '-',
+        item.funnel_stage || '-',
+        normalizeLeadOutcome(item.lead_outcome),
+        item.product_name || '-',
+        toDisplayDateTime(item.created_at),
+      ]),
+      styles: {
+        fontSize: 7,
+        cellPadding: 2,
+        overflow: 'linebreak',
+      },
+      headStyles: {
+        fillColor: [47, 107, 255],
+      },
+      margin: { left: 8, right: 8, top: 28, bottom: 14 },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      drawPdfBranding(doc, title, generatedAt, i, pageCount);
+      if (i === 1) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.2);
+        doc.setTextColor(78, 92, 118);
+        doc.text(
+          `Total Call: ${totalCall}  |  Successful Attempt: ${successfulAttempt} (${successRate}%)  |  Sum of Call Duration: ${summary?.sum_call_duration_label || '0s'}  |  Campaign Duration: ${summary?.campaign_duration_label || '0s'}`,
+          10,
+          21.8
+        );
+      }
+    }
+
+    doc.save('voice_campaign_report.pdf');
+  },
+
+  async exportVoiceCampaignToExcel(
+    items: VoiceCampaignReportItem[],
+    summary?: VoiceCampaignReportSummary | null,
+    fileName: string = 'voice_campaign_report'
+  ): Promise<void> {
+    const totalCall = summary?.total_calls ?? items.length;
+    const successfulAttempt = summary?.successful_attempts ?? 0;
+    const successRate = totalCall > 0 ? Number(((successfulAttempt / totalCall) * 100).toFixed(2)) : 0;
+    const generatedAt = new Date().toLocaleString();
+
+    const headerRows: (string | number)[][] = [
+      ['Voice Campaign Report'],
+      [`Generated At: ${generatedAt}`],
+      ['Watermark: ZENTRIXEL'],
+      ['Powered by: Zentrixel'],
+      [],
+      ['Total Call', totalCall, 'Successful Attempt', successfulAttempt],
+      ['Success Rate (%)', successRate, 'Sum of Call Duration', summary?.sum_call_duration_label || '0s'],
+      ['Campaign Duration', summary?.campaign_duration_label || '0s', '', ''],
+      [],
+      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name', 'Campaign Source', 'Funnel Stage', 'Lead Outcome', 'Product', 'Created At'],
+    ];
+
+    const detailRows = items.map((item) => ([
+      item.agent_name || '-',
+      item.customer_name || '-',
+      item.email || '-',
+      item.company || '-',
+      item.organization_name || '-',
+      item.campaign_name || '-',
+      item.campaign_source || '-',
+      item.funnel_stage || '-',
+      normalizeLeadOutcome(item.lead_outcome),
+      item.product_name || '-',
+      toDisplayDateTime(item.created_at),
+    ]));
+    const footerRows: (string | number)[][] = [[], ['Powered by: Zentrixel']];
+
+    const workbook = XLSX.utils.book_new();
+    const reportSheet = XLSX.utils.aoa_to_sheet([...headerRows, ...detailRows, ...footerRows]);
+    reportSheet['!cols'] = [
+      { wch: 20 },
+      { wch: 24 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 24 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 22 },
+    ];
+    reportSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
+
+    XLSX.utils.book_append_sheet(workbook, reportSheet, 'Voice Report');
+
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: 'xlsx',
+      type: 'array',
+    });
+
+    const blob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+    });
+
+    saveAs(blob, `${fileName}_${Date.now()}.xlsx`);
   },
 
   
