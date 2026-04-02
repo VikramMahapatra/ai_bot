@@ -113,6 +113,44 @@ export interface DailyStats {
   leads_captured: number;
 }
 
+export interface VoiceCampaignReportItem {
+  agent_name: string;
+  customer_name: string | null;
+  email: string | null;
+  company: string | null;
+  organization_name: string;
+  campaign_name: string;
+  campaign_source: string;
+  funnel_stage: string | null;
+  lead_outcome: string | null;
+  created_at: string | null;
+  product_name: string | null;
+}
+
+export interface VoiceCampaignReportSummary {
+  total_calls: number;
+  successful_attempts: number;
+  sum_call_duration_seconds: number;
+  sum_call_duration_minutes: number;
+  sum_call_duration_label: string;
+  campaign_duration_seconds: number;
+  campaign_duration_minutes: number;
+  campaign_duration_label: string;
+}
+
+export interface VoiceCampaignFilterOptions {
+  agent_names: string[];
+  campaign_names: string[];
+  lead_outcomes: string[];
+  default_campaign_name?: string | null;
+}
+
+export interface VoiceCampaignReportResponse {
+  total: number;
+  summary: VoiceCampaignReportSummary;
+  items: VoiceCampaignReportItem[];
+}
+
 export const reportService = {
   async getReportSummary(params: {
     start_date?: string;
@@ -157,6 +195,36 @@ export const reportService = {
 
   async getDailyStats(params: { days?: number }): Promise<{ daily_stats: DailyStats[] }> {
     const response = await api.get('/api/reports/daily-stats', { params });
+    return response.data;
+  },
+
+  async getVoiceCampaignFilterOptions(): Promise<VoiceCampaignFilterOptions> {
+    const response = await api.get('/api/reports/voice-campaign/filters');
+    return response.data;
+  },
+
+  async getVoiceCampaignReport(params: {
+    skip?: number;
+    limit?: number;
+    agent_name?: string;
+    campaign_name?: string;
+    lead_outcomes?: string[];
+    start_date?: string;
+    end_date?: string;
+  }): Promise<VoiceCampaignReportResponse> {
+    const queryParams = new URLSearchParams();
+
+    if (params.skip !== undefined) queryParams.append('skip', String(params.skip));
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit));
+    if (params.agent_name) queryParams.append('agent_name', params.agent_name);
+    if (params.campaign_name) queryParams.append('campaign_name', params.campaign_name);
+    if (params.start_date) queryParams.append('start_date', params.start_date);
+    if (params.end_date) queryParams.append('end_date', params.end_date);
+    (params.lead_outcomes || []).forEach((item) => {
+      if (item) queryParams.append('lead_outcomes', item);
+    });
+
+    const response = await api.get('/api/reports/voice-campaign', { params: queryParams });
     return response.data;
   },
 
