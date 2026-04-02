@@ -6,6 +6,7 @@ from app.database import get_db
 from app.auth import require_admin
 from app.models import User, Conversation, Lead, WidgetConfig, KnowledgeSource
 from app.services.report_service import get_plan_usage_summary
+from app.services.funnel_category_service import get_funnel_categories
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,9 @@ def _to_iso_string(dt_value):
     if hasattr(dt_value, 'isoformat'):
         return dt_value.isoformat()
     return str(dt_value)
+
+
+LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"]
 
 
 @router.get("/stats")
@@ -167,6 +171,9 @@ async def get_recent_leads(
                     "email": lead.email,
                     "phone": lead.phone,
                     "company": lead.company,
+                    "lead_outcome": lead.lead_outcome,
+                    "source": lead.source,
+                    "funnel_stage": lead.funnel_stage,
                     "session_id": lead.session_id,
                     "created_at": _to_iso_string(lead.created_at),
                 }
@@ -261,36 +268,88 @@ async def get_leads_by_source(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """Get leads distribution by widget/source"""
+    """Get leads distribution by lead source"""
     try:
         org_id = current_user.organization_id
-        
-        leads_by_widget = db.query(
-            Lead.widget_id,
+
+        leads_by_source = db.query(
+            Lead.source,
             func.count(Lead.id).label('count')
         ).filter(
             Lead.organization_id == org_id
-        ).group_by(Lead.widget_id).all()
-        
-        data = []
-        for widget_id, count in leads_by_widget:
-            widget_name = "Direct (No Widget)"
-            if widget_id:
-                widget = db.query(WidgetConfig).filter(
-                    WidgetConfig.widget_id == widget_id
-                ).first()
-                if widget:
-                    widget_name = widget.name
-            
-            data.append({
-                "source": widget_name,
-                "count": count,
-                "widget_id": widget_id
-            })
-        
+        ).group_by(Lead.source).all()
+
+        counts = {source: 0 for source in LEAD_SOURCES}
+        for source, count in leads_by_source:
+            key = (source or "chat").strip().lower()
+            if key in counts:
+                counts[key] = int(count)
+
+        data = [{"source": source, "count": counts[source]} for source in LEAD_SOURCES]
+
         return {"data": data}
     except Exception as e:
         logger.error(f"Error getting leads by source: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/leads/funnel")
+async def get_leads_funnel(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get lead counts by funnel stage"""
+    try:
+        org_id = current_user.organization_id
+
+        categories = get_funnel_categories(db, org_id, include_inactive=True)
+
+        rows = db.query(
+            Lead.funnel_stage,
+            func.count(Lead.id).label('count')
+        ).filter(
+            Lead.organization_id == org_id
+        ).group_by(Lead.funnel_stage).all()
+
+        counts = {category.key: 0 for category in categories}
+        unassigned = 0
+
+        for stage, count in rows:
+            normalized = (stage or "").strip().lower()
+            if normalized in counts:
+                counts[normalized] = int(count)
+            else:
+                unassigned += int(count)
+
+        top_count = counts[categories[0].key] if categories else 0
+        data = []
+        for category in categories:
+            category_count = counts.get(category.key, 0)
+            conversion_rate = 0.0
+            if top_count > 0:
+                conversion_rate = round((category_count / top_count) * 100, 1)
+            data.append({
+                "stage_key": category.key,
+                "stage_name": category.name,
+                "color": category.color,
+                "position": category.position,
+                "count": category_count,
+                "conversion_rate": conversion_rate,
+            })
+
+        if unassigned:
+            data.append({
+                "stage_key": "unassigned",
+                "stage_name": "Unassigned",
+                "color": "#9aa8bb",
+                "position": 999,
+                "count": unassigned,
+                "conversion_rate": 0.0 if top_count <= 0 else round((unassigned / top_count) * 100, 1),
+            })
+
+        return {"data": data}
+    except Exception as e:
+        logger.error(f"Error getting leads funnel: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

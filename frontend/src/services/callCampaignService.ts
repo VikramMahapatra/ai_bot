@@ -6,6 +6,7 @@ export interface Contact {
     name: string;
     email: string;
     phone: string;
+    company?: string;
     list_name?: string;
     contact_list_id: number;
 }
@@ -34,13 +35,24 @@ export interface CampaignContactListResponse {
 export interface Campaign {
     id?: number;
     name: string;
-    agent_name: string;
-    from_number: string;
-    category: string;
-    status: "Active" | "Paused" | "Completed";
-    contacts: number;
-    progress: number;
-    created_at: string;
+    description: string;
+    agent_name?: string;
+    product_name?: string;
+    calling_no?: string;
+    category?: string;
+    status: "draft" | "pending" | "running" | "paused" | "completed" | "scheduled";
+    contacts?: number;
+    progress?: number;
+    created_at?: string;
+    total_calls: number;
+    completed_calls: number;
+    avg_duration: string;
+    response_rate: string;
+    sentiment: Sentiment;
+    key_insights: KeyInsight[];
+    ai_recommendations: AIRecommendation[];
+    timeline: Timeline;
+    engagement: CampaignEngagement;
 }
 
 
@@ -60,35 +72,64 @@ export interface CampaignStats {
     completedCampaigns: number;
 }
 
+export interface KeyInsight {
+    title: string;
+    value: string;
+    change?: string;
+    description: string;
+    color: "blue" | "purple" | "green" | "orange";
+}
+
+interface AIRecommendation {
+    title: string;
+    impact: string;
+}
+
+export interface Sentiment {
+    positive: number;
+    neutral: number;
+    negative: number;
+}
+
+export interface Timeline {
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CampaignEngagement {
+    engagement_rate: number;
+    conversion: number;
+    avg_call_time: string;
+}
+
 export interface CallCampaign {
     id?: number;
     name: string;
     description: string;
     category: string;
     priority: string;
+    calling_no: string;
     agent_id: number | "";
-
+    product_id?: number | "";
     contacts: number[];
-
     start_datetime: string;
+    end_datetime: string;
     timezone: string;
-
     call_start_time: string;
     call_end_time: string;
     call_interval: number | "";
-
     active_days: string[];
-
     max_retry_attempts: number | "";
     retry_interval: number | "";
-
     retry_on_no_answer: boolean;
     retry_on_busy: boolean;
     retry_on_voicemail: boolean;
+    call_logs?: [];
 }
 
-export interface CreateCampaignResponse {
+export interface CampaignResponse {
     message: string;
+    success: boolean;
 }
 
 export const callCampaignService = {
@@ -112,13 +153,23 @@ export const callCampaignService = {
         return response.data;
     },
 
-    async createCampaign(payload: any): Promise<CreateCampaignResponse> {
+    async getCampaignDetails(campaign_id?: number): Promise<CallCampaign> {
+        const response = await api.get(`/api/call-campaigns/${campaign_id}/detail`);
+        return response.data;
+    },
+
+    async createCampaign(payload: any): Promise<CampaignResponse> {
         const response = await api.post('/api/call-campaigns/create', payload);
         return response.data;
     },
 
-    async updateCampaign(payload: any, campaign_id: number): Promise<CreateCampaignResponse> {
+    async updateCampaign(payload: any, campaign_id: number): Promise<CampaignResponse> {
         const response = await api.put(`/api/call-campaigns/update/${campaign_id}`, payload);
+        return response.data;
+    },
+
+    async deleteCampaign(campaign_id: number): Promise<CampaignResponse> {
+        const response = await api.delete(`/api/call-campaigns/${campaign_id}/delete`);
         return response.data;
     },
 
@@ -145,6 +196,18 @@ export const callCampaignService = {
 
     async campaignStats(): Promise<CampaignStats> {
         const response = await api.get('/api/call-campaigns/stats');
+        return response.data;
+    },
+
+    async updateCampaignStatus(campaign_id: number, status: string): Promise<CampaignResponse> {
+        const response = await api.post(`/api/call-campaigns/${campaign_id}/status`, {
+            status
+        });
+        return response.data;
+    },
+
+    async getCampaignAnalytics(campaign_id: number): Promise<Campaign> {
+        const response = await api.get(`/api/call-campaigns/${campaign_id}/analytics`);
         return response.data;
     },
 };

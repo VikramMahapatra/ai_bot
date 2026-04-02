@@ -34,6 +34,20 @@ class OrganizationLimitsBase(BaseModel):
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
     human_handoff_enabled: Optional[bool] = None
+    email_campaign_enabled: Optional[bool] = None
+    sms_campaign_enabled: Optional[bool] = None
+    module_knowledge_enabled: Optional[bool] = None
+    module_leads_enabled: Optional[bool] = None
+    module_analytics_enabled: Optional[bool] = None
+    module_advanced_analytics_enabled: Optional[bool] = None
+    module_reports_enabled: Optional[bool] = None
+    module_campaigns_enabled: Optional[bool] = None
+    module_appointments_enabled: Optional[bool] = None
+    module_products_enabled: Optional[bool] = None
+    module_users_enabled: Optional[bool] = None
+    max_agents: Optional[int] = None
+    max_campaigns: Optional[int] = None
+    max_calls: Optional[int] = None
 
 
 class OrganizationLimitsUpdate(BaseModel):
@@ -49,6 +63,20 @@ class OrganizationLimitsUpdate(BaseModel):
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
     human_handoff_enabled: Optional[bool] = None
+    email_campaign_enabled: Optional[bool] = None
+    sms_campaign_enabled: Optional[bool] = None
+    module_knowledge_enabled: Optional[bool] = None
+    module_leads_enabled: Optional[bool] = None
+    module_analytics_enabled: Optional[bool] = None
+    module_advanced_analytics_enabled: Optional[bool] = None
+    module_reports_enabled: Optional[bool] = None
+    module_campaigns_enabled: Optional[bool] = None
+    module_appointments_enabled: Optional[bool] = None
+    module_products_enabled: Optional[bool] = None
+    module_users_enabled: Optional[bool] = None
+    max_agents: Optional[int] = None
+    max_campaigns: Optional[int] = None
+    max_calls: Optional[int] = None
 
 
 class OrganizationLimitsResponse(OrganizationLimitsBase):
@@ -72,6 +100,14 @@ class SuperAdminCreateOrganizationRequest(BaseModel):
     billing_cycle: str = "monthly"
     trial_days: Optional[int] = None
     limits: Optional[OrganizationLimitsUpdate] = None
+
+
+class SuperAdminUpdateOrganizationRequest(BaseModel):
+    organization_name: Optional[str] = None
+    description: Optional[str] = None
+    admin_username: Optional[str] = None
+    admin_email: Optional[EmailStr] = None
+    admin_password: Optional[str] = None
 
 
 class SuperAdminOrganizationResponse(BaseModel):
@@ -127,6 +163,17 @@ class PlanCreate(BaseModel):
     multilingual_text_enabled: bool
     whatsapp_enabled: bool = False
     human_handoff_enabled: bool = False
+    email_campaign_enabled: bool = True
+    sms_campaign_enabled: bool = True
+    module_knowledge_enabled: bool = True
+    module_leads_enabled: bool = True
+    module_analytics_enabled: bool = True
+    module_advanced_analytics_enabled: bool = True
+    module_reports_enabled: bool = True
+    module_campaigns_enabled: bool = True
+    module_appointments_enabled: bool = True
+    module_products_enabled: bool = True
+    module_users_enabled: bool = True
 
 
 class PlanUpdate(BaseModel):
@@ -147,6 +194,17 @@ class PlanUpdate(BaseModel):
     multilingual_text_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
     human_handoff_enabled: Optional[bool] = None
+    email_campaign_enabled: Optional[bool] = None
+    sms_campaign_enabled: Optional[bool] = None
+    module_knowledge_enabled: Optional[bool] = None
+    module_leads_enabled: Optional[bool] = None
+    module_analytics_enabled: Optional[bool] = None
+    module_advanced_analytics_enabled: Optional[bool] = None
+    module_reports_enabled: Optional[bool] = None
+    module_campaigns_enabled: Optional[bool] = None
+    module_appointments_enabled: Optional[bool] = None
+    module_products_enabled: Optional[bool] = None
+    module_users_enabled: Optional[bool] = None
 
 
 class PlanResponse(PlanCreate):
@@ -175,6 +233,29 @@ class SubscriptionResponse(BaseModel):
     trial_end: Optional[datetime] = None
     is_active: bool
     days_left: int
+
+    class Config:
+        from_attributes = True
+        
+
+class CallingNumberBase(BaseModel):
+    calling_number: str
+    type: str = "outbound"  # 'outbound' or 'inbound'
+    is_default: Optional[bool] = False
+    is_active: Optional[bool] = True
+    
+class CallingNumberCreate(CallingNumberBase):
+    pass
+
+class CallingNumberUpdate(CallingNumberBase):
+    pass
+
+class CallingNumberResponse(BaseModel):
+    id: int
+    organization_id: int
+    calling_number: str
+    is_default: bool
+    is_active: bool
 
     class Config:
         from_attributes = True

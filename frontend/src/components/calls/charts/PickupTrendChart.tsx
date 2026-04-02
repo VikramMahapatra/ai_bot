@@ -7,21 +7,25 @@ import {
     CartesianGrid,
     ResponsiveContainer
 } from "recharts";
+import { PickupTrendEntry } from "../../../services/callService";
 
-const pickupData = [
-    { day: "Mon", rate: 52 },
-    { day: "Tue", rate: 55 },
-    { day: "Wed", rate: 58 },
-    { day: "Thu", rate: 61 },
-    { day: "Fri", rate: 59 },
-    { day: "Sat", rate: 64 },
-    { day: "Sun", rate: 57 }
-];
+// const pickupData = [
+//     { day: "Mon", rate: 52 },
+//     { day: "Tue", rate: 55 },
+//     { day: "Wed", rate: 58 },
+//     { day: "Thu", rate: 61 },
+//     { day: "Fri", rate: 59 },
+//     { day: "Sat", rate: 64 },
+//     { day: "Sun", rate: 57 }
+// ];
+interface Props {
+    data: PickupTrendEntry[];
+}
 
-export default function PickupTrendChart() {
+export default function PickupTrendChart({ data }: Props) {
     return (
         <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={pickupData}>
+            <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis unit="%" />

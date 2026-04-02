@@ -9,6 +9,7 @@ class Lead(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=True)
+    product_id = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String, nullable=True)
@@ -16,4 +17,7 @@ class Lead(Base):
     phone = Column(String, nullable=True)
     company = Column(String, nullable=True)
     custom_fields = Column(Text, nullable=True)  # JSON string
+    lead_outcome = Column(String, nullable=True)
+    source = Column(String, nullable=False, default="chat", server_default="chat", index=True)
+    funnel_stage = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

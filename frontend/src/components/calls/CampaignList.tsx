@@ -15,7 +15,9 @@ import {
     Grid,
     TablePagination,
     TextField,
-    InputAdornment
+    InputAdornment,
+    Tooltip,
+    Alert
 } from "@mui/material";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -28,56 +30,45 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import GroupIcon from "@mui/icons-material/Group";
 import AddIcon from "@mui/icons-material/Add";
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import InsightsIcon from "@mui/icons-material/Insights";
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
+import { formatDateTime } from "../../utils/dateUtils";
+import CampaignAnalyticsDrawer from "./CampaignAnalyticsDrawer";
+import { alpha, useTheme } from '@mui/material/styles';
+import CloseIcon from "@mui/icons-material/Close";
 
 interface Props {
     onAddCampaign: () => void;
     onEditCampaign: (id?: number) => void;
+    onViewCampaign: (id?: number) => void;
+    onDeleteCampaign: (id?: number) => void;
 }
-
-const campaigns = [
-    {
-        id: 1,
-        name: "Real Estate Leads",
-        category: "Sales",
-        status: "Active",
-        contacts: 120,
-        progress: 65
-    },
-    {
-        id: 2,
-        name: "Loan Follow-up",
-        category: "Paused",
-        contacts: 50,
-        status: "Paused",
-        progress: 20
-    },
-    {
-        id: 3,
-        name: "Insurance Renewal",
-        category: "Reminder",
-        status: "Completed",
-        contacts: 200,
-        progress: 100
-    }
-];
 
 const getStatusColor = (status: string) => {
     switch (status) {
-        case "Active":
+        case "active":
             return "secondary";
-        case "Paused":
+        case "running":
+            return "secondary";
+        case "scheduled":
+            return "secondary";
+        case "paused":
             return "warning";
-        case "Completed":
+        case "completed":
             return "primary";
         default:
             return "default";
     }
 };
 
-const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
+const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCampaign, onDeleteCampaign }) => {
+    const theme = useTheme();
     const [loading, setLoading] = useState(false);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [campaignTotal, setCampaignTotal] = useState(0);
@@ -93,6 +84,20 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
     const [search, setSearch] = useState("");
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+
+    const openDrawer = (campaign: Campaign) => {
+        setSelectedCampaign(campaign);
+        setDrawerOpen(true);
+    };
+
+    const closeDrawer = () => {
+        setDrawerOpen(false);
+        setSelectedCampaign(null);
+    };
 
     const showError = (message: string) => {
         setSuccess('');
@@ -122,7 +127,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
     };
 
     useEffect(() => {
-        loadCampaigns();
         loadCampaignStats();
     }, []);
 
@@ -137,9 +141,32 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
         run();
     }, [search, campaignPage, campaignRowsPerPage]);
 
+
+    const handlePause = async (campaign: Campaign) => {
+        setLoading(true);
+        const newStatus = campaign.status === "paused" ? "running" : "paused";
+        try {
+            const response = await callCampaignService.updateCampaignStatus(campaign.id!, newStatus);
+
+            if (response.success) {
+                loadCampaigns();
+                showSuccess(response.message)
+            }
+            else {
+                showError(response.message)
+            }
+        } catch (error: any) {
+            showError(error?.response?.data?.detail || `Failed to update the status`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getStatusBg = (status: string) => {
         switch (status) {
             case "active":
+                return "#dcfce7";
+            case "running":
                 return "#dcfce7";
             case "paused":
                 return "#fef3c7";
@@ -163,15 +190,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
         }
     };
 
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "numeric",
-        });
-    };
-
-
     return (
         <Box>
 
@@ -180,6 +198,52 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                 <Box mb={3}>
                     <LinearProgress sx={{ borderRadius: 1.2 }} />
                 </Box>
+            )}
+
+            {(error || success) && (
+                <Stack
+                    mb={2}
+                >
+                    {error && (
+                        <Alert
+                            severity="error"
+                            sx={{
+                                borderRadius: "14px",
+                                boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
+                            }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setError("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {error}
+                        </Alert>
+                    )}
+                    {success && (
+                        <Alert
+                            severity="success"
+                            sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}
+                            action={
+                                <IconButton
+                                    aria-label="close"
+                                    color="inherit"
+                                    size="small"
+                                    onClick={() => setSuccess("")} // clears the error
+                                >
+                                    <CloseIcon fontSize="inherit" />
+                                </IconButton>
+                            }
+                        >
+                            {success}
+                        </Alert>
+                    )}
+                </Stack>
             )}
 
             <Grid container spacing={3} mb={3}>
@@ -332,7 +396,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                             <TableCell>Campaign Name</TableCell>
                             <TableCell>From Number</TableCell>
                             <TableCell>Agent</TableCell>
-                            <TableCell>Total Contacts</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Created At</TableCell>
                             <TableCell align="right">Actions</TableCell>
@@ -342,7 +405,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                     <TableBody>
                         {campaigns.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} sx={{ py: 8, textAlign: "center" }}>
+                                <TableCell colSpan={6} sx={{ py: 8, textAlign: "center" }}>
                                     <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
                                     <Typography>No campaigns found</Typography>
                                 </TableCell>
@@ -353,11 +416,45 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
 
                                     {/* CAMPAIGN NAME */}
                                     <TableCell>
-                                        <Box display="flex" alignItems="center" gap={2}>
-                                            <Box>
-                                                <Typography fontWeight={600}>
-                                                    {campaign.name}
-                                                </Typography>
+                                        <Box display="flex" flexDirection="column" gap={0.5}>
+                                            <Typography fontWeight={600}>
+                                                {campaign.name}
+                                            </Typography>
+
+                                            <Box display="flex" alignItems="center" gap={2}>
+
+                                                {/* Product */}
+                                                {campaign.product_name && (
+                                                    <Box display="flex" alignItems="center" gap={0.5}>
+                                                        <Inventory2Icon
+                                                            fontSize="small"
+                                                            sx={{ fontSize: 16 }}
+                                                            color="action"
+                                                        />
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            {campaign.product_name}
+                                                        </Typography>
+                                                    </Box>
+                                                )}
+
+                                                {/* Contacts */}
+                                                <Box display="flex" alignItems="center" gap={0.5}>
+                                                    <GroupIcon
+                                                        fontSize="small"
+                                                        sx={{ fontSize: 16 }}
+                                                        color="action"
+                                                    />
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        {campaign.contacts} contacts
+                                                    </Typography>
+                                                </Box>
+
                                             </Box>
                                         </Box>
                                     </TableCell>
@@ -365,9 +462,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                                     {/* FROM NUMBER */}
                                     <TableCell>
                                         <Box display="flex" alignItems="center" gap={1}>
-                                            <PhoneIcon fontSize="small" color="disabled" />
+                                            <PhoneIcon fontSize="small" color="primary" />
                                             <Typography variant="body2">
-                                                {campaign.from_number}
+                                                {campaign.calling_no}
                                             </Typography>
                                         </Box>
                                     </TableCell>
@@ -375,22 +472,29 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                                     {/* AGENT */}
                                     <TableCell>
                                         <Box display="flex" alignItems="center" gap={1}>
-                                            <SmartToyIcon fontSize="small" color="disabled" />
+                                            <SmartToyIcon fontSize="small" color="primary" />
                                             <Typography variant="body2">
                                                 {campaign.agent_name}
                                             </Typography>
                                         </Box>
                                     </TableCell>
+                                    {/* <TableCell>
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            {campaign.product_name && <Inventory2Icon fontSize="small" color="primary" />}
+                                            <Typography variant="body2">
+                                                {campaign.product_name || "-"}
+                                            </Typography>
+                                        </Box>
+                                    </TableCell>
 
-                                    {/* CONTACTS */}
                                     <TableCell>
                                         <Box display="flex" alignItems="center" gap={1}>
-                                            <GroupIcon fontSize="small" color="disabled" />
+                                            <GroupIcon fontSize="small" color="primary" />
                                             <Typography variant="body2">
                                                 {campaign.contacts}
                                             </Typography>
                                         </Box>
-                                    </TableCell>
+                                    </TableCell> */}
 
                                     {/* STATUS */}
                                     <TableCell>
@@ -410,22 +514,69 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                                     {/* CREATED AT */}
                                     <TableCell>
                                         <Typography variant="body2" color="text.secondary">
-                                            {formatDate(campaign.created_at)}
+                                            {formatDateTime(campaign.created_at)}
                                         </Typography>
                                     </TableCell>
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
+
+                                        {["running", "paused"].includes(campaign.status) && (
+                                            <>
+
+                                                <Tooltip
+                                                    title={
+                                                        campaign.status === "running"
+                                                            ? "Pause Campaign"
+                                                            : "Start Campaign"
+                                                    }
+                                                >
+                                                    <IconButton
+                                                        size="small"
+                                                        color={
+                                                            campaign.status === "running"
+                                                                ? "warning"
+                                                                : "primary"
+                                                        }
+                                                        onClick={() => handlePause(campaign)}
+                                                    >
+                                                        {campaign.status === "running" ? (
+                                                            <PauseIcon />
+                                                        ) : (
+                                                            <PlayArrowIcon />
+                                                        )}
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </>
+                                        )}
+                                        <Tooltip title="View Analytics">
+                                            <IconButton onClick={() => openDrawer(campaign)}>
+                                                <InsightsIcon color="primary" />
+                                            </IconButton>
+                                        </Tooltip>
                                         <IconButton
                                             size="small"
-                                            onClick={() => onEditCampaign(campaign.id)}
+                                            onClick={() => onViewCampaign(campaign.id)}
                                         >
-                                            <EditIcon />
+                                            <VisibilityIcon />
                                         </IconButton>
-
-                                        <IconButton size="small" color="error">
-                                            <DeleteIcon />
-                                        </IconButton>
+                                        {["draft"].includes(campaign.status) && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => onEditCampaign(campaign.id)}
+                                            >
+                                                <EditIcon />
+                                            </IconButton>
+                                        )}
+                                        {/* {["completed", "pending"].includes(campaign.status) && (
+                                            <IconButton
+                                                size="small"
+                                                color="error"
+                                                onClick={() => onDeleteCampaign(campaign.id)}
+                                            >
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        )} */}
                                     </TableCell>
 
                                 </TableRow>
@@ -446,6 +597,11 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign }) => {
                     rowsPerPageOptions={[10, 25, 50]}
                 />
             </Paper>
+            <CampaignAnalyticsDrawer
+                open={drawerOpen}
+                onClose={closeDrawer}
+                campaign={selectedCampaign}
+            />
 
         </Box>
     );

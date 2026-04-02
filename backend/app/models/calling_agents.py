@@ -12,13 +12,14 @@ class CallingAgent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    widget_id = Column(String, unique=True, index=True)
     
     # Agent info
     name = Column(String, nullable=False)
     type = Column(String, nullable=False, default="outbound")  # 'inbound' | 'outbound'
     calling_no = Column(String, nullable=True)
     destination = Column(String, nullable=True)  # comma-separated list of countries
-    status = Column(String, default="Draft")  # Active / Paused
+    status = Column(String, default="draft")  # Active / Paused
     server_location = Column(String)
 
     # Campaign & credits
@@ -38,6 +39,7 @@ class CallingAgent(Base):
     enable_call_summary = Column(Boolean, default=False)
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
+    inbound_phone_number = Column(String, nullable=True)
     
     gender = Column(String, nullable=False)
     accent = Column(String)
@@ -75,6 +77,7 @@ class CallingAgent(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     
     external_agent_id = Column(String, nullable=True) 
+    external_agent_name = Column(String, nullable=True) 
     external_agent_a_id = Column(String, nullable=True)
     
     campaigns = relationship("CallCampaign", back_populates="agent")

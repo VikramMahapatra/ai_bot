@@ -17,6 +17,8 @@ router = APIRouter(prefix="/api/admin/handoff", tags=["handoff"])
 
 class AgentReplyRequest(BaseModel):
     message: str
+class HandoffCallModeRequest(BaseModel):
+    mode: str
 
 
 def _serialize_session(session: HandoffSession) -> dict:
@@ -33,6 +35,12 @@ def _serialize_session(session: HandoffSession) -> dict:
         "created_at": session.created_at,
         "updated_at": session.updated_at,
         "closed_at": session.closed_at,
+        "call_room_id": session.call_room_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_requested_at": session.call_requested_at,
+        "call_started_at": session.call_started_at,
+        "call_ended_at": session.call_ended_at,
     }
 
 
@@ -289,6 +297,134 @@ async def send_handoff_agent_message(
     })
 
     return _serialize_message(message)
+
+@router.post("/{chat_id}/call/start")
+async def start_handoff_call(
+    chat_id: str,
+    payload: Optional[HandoffCallModeRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_handoff_operator),
+):
+    session = _get_session_for_org(db, chat_id, current_user.organization_id)
+    _assert_session_access(db, current_user, session)
+
+    if session.status == "waiting_for_agent":
+        raise HTTPException(status_code=409, detail="Accept the handoff request before starting a call")
+
+    if session.status != "assigned" or session.assigned_agent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned admin can start the call")
+
+    requested_mode = ((payload.mode if payload else "video") or "video").strip().lower()
+    if requested_mode not in {"video", "audio"}:
+        raise HTTPException(status_code=400, detail="mode must be video or audio")
+
+    now = datetime.utcnow()
+    if not (session.call_room_id or "").strip():
+        session.call_room_id = f"ai-bot-{session.organization_id}-{session.id}-{int(now.timestamp())}"
+
+    session.call_mode = requested_mode
+    session.call_status = "active"
+    if not session.call_requested_at:
+        session.call_requested_at = now
+    session.call_started_at = now
+    session.call_ended_at = None
+    session.updated_at = now
+
+    db.add(HandoffMessage(
+        handoff_session_id=session.id,
+        sender_type="system",
+        sender_user_id=current_user.id,
+        message=f"Live {requested_mode} call started.",
+    ))
+    db.commit()
+    db.refresh(session)
+
+    await handoff_hub.broadcast(current_user.organization_id, {
+        "type": "handoff_call_started",
+        "chat_id": session.chat_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_room_id": session.call_room_id,
+    })
+
+    return _serialize_session(session)
+
+@router.post("/{chat_id}/call/mode")
+async def update_handoff_call_mode(
+    chat_id: str,
+    payload: HandoffCallModeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_handoff_operator),
+):
+    session = _get_session_for_org(db, chat_id, current_user.organization_id)
+    _assert_session_access(db, current_user, session)
+
+    if session.status != "assigned" or session.assigned_agent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned admin can change call mode")
+
+    if session.call_status not in {"requested", "active"}:
+        raise HTTPException(status_code=409, detail="No active/requested call to update")
+
+    requested_mode = (payload.mode or "").strip().lower()
+    if requested_mode not in {"video", "audio"}:
+        raise HTTPException(status_code=400, detail="mode must be video or audio")
+
+    session.call_mode = requested_mode
+    session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=session.id,
+        sender_type="system",
+        sender_user_id=current_user.id,
+        message=f"Call switched to {requested_mode} mode.",
+    ))
+    db.commit()
+    db.refresh(session)
+
+    await handoff_hub.broadcast(current_user.organization_id, {
+        "type": "handoff_call_mode_changed",
+        "chat_id": session.chat_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_room_id": session.call_room_id,
+    })
+
+    return _serialize_session(session)
+
+@router.post("/{chat_id}/call/end")
+async def end_handoff_call(
+    chat_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_handoff_operator),
+):
+    session = _get_session_for_org(db, chat_id, current_user.organization_id)
+    _assert_session_access(db, current_user, session)
+
+    if session.status != "assigned" or session.assigned_agent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned admin can end the call")
+
+    session.call_status = "ended"
+    session.call_ended_at = datetime.utcnow()
+    session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=session.id,
+        sender_type="system",
+        sender_user_id=current_user.id,
+        message="Live call ended.",
+    ))
+    db.commit()
+    db.refresh(session)
+
+    await handoff_hub.broadcast(current_user.organization_id, {
+        "type": "handoff_call_ended",
+        "chat_id": session.chat_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_room_id": session.call_room_id,
+    })
+
+    return _serialize_session(session)
 
 
 @router.websocket("/ws")

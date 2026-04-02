@@ -13,6 +13,7 @@ from html import unescape
 import dns.resolver
 from email_validator import EmailNotValidError, validate_email
 from typing import Iterable, Optional
+from urllib.parse import quote
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -346,6 +347,30 @@ def _sanitize_email_html(content: str) -> str:
         return sanitized
 
 
+def _linkify_plain_urls(content: str) -> str:
+        """Convert plain http/https URLs into clickable anchors in safe HTML fragments."""
+        if not content:
+            return ""
+
+        def _replace(match: re.Match[str]) -> str:
+            url = (match.group(1) or "").strip()
+            if not url:
+                return match.group(0)
+
+            # Trim common trailing punctuation that should not be part of URL.
+            trailing = ""
+            while url and url[-1] in ".,!?;:)":
+                trailing = url[-1] + trailing
+                url = url[:-1]
+
+            if not url:
+                return match.group(0)
+
+            return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>{trailing}'
+
+        return re.sub(r"(?<![\"'=])(https?://[^\s<]+)", _replace, content, flags=re.IGNORECASE)
+
+
 def _html_to_plain_text(content: str) -> str:
         if not content:
                 return ""
@@ -358,9 +383,22 @@ def _html_to_plain_text(content: str) -> str:
         return plain.strip()
 
 
-def _render_campaign_wrapper(recipient_name: str, campaign_name: str, body_html: str) -> str:
+def _starts_with_greeting(content: str) -> bool:
+        plain = _html_to_plain_text(content or "").strip().lower()
+        if not plain:
+                return False
+        return bool(re.match(r"^(hi|hello|hey|dear)\b", plain))
+
+
+def _render_campaign_wrapper(
+        recipient_name: str,
+        campaign_name: str,
+        body_html: str,
+        include_greeting: bool = True,
+) -> str:
         safe_name = _escape_html((recipient_name or "there").strip() or "there")
         safe_campaign = _escape_html(campaign_name or "Campaign Update")
+        greeting_html = f'<p style="margin-top:0; color:#425b84; font-size:15px;">Hi {safe_name},</p>' if include_greeting else ""
         return f"""
         <!DOCTYPE html>
         <html>
@@ -368,17 +406,21 @@ def _render_campaign_wrapper(recipient_name: str, campaign_name: str, body_html:
                 <meta charset=\"UTF-8\" />
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
             </head>
-            <body style=\"margin:0; padding:0; background:#f4f7fb; font-family:Arial, sans-serif; color:#1e293b;\">
-                <div style=\"max-width:640px; margin:0 auto; background:#ffffff;\">
-                    <div style=\"padding:22px 24px; background:linear-gradient(135deg,#3c7be0 0%,#4fb6da 100%);\">
-                        <h1 style=\"margin:0; font-size:20px; line-height:1.3; color:#ffffff;\">{safe_campaign}</h1>
+            <body style=\"margin:0; padding:22px 10px; background:#eef3fb; font-family:Segoe UI,Arial,sans-serif; color:#1e293b;\">
+                <div style=\"max-width:660px; margin:0 auto; background:#ffffff; border:1px solid #dbe6f7; border-radius:14px; overflow:hidden; box-shadow:0 12px 34px rgba(32,57,96,0.08);\">
+                    <div style=\"padding:26px 26px 22px; background:linear-gradient(135deg,#1f4f95 0%,#2f6fd4 52%,#44acd6 100%);\">
+                        <div style=\"display:inline-block; padding:5px 10px; margin-bottom:10px; font-size:11px; letter-spacing:0.9px; text-transform:uppercase; color:#dff4ff; border:1px solid rgba(223,244,255,0.45); border-radius:999px;\">Zentrixel Campaign</div>
+                        <h1 style=\"margin:0; font-size:24px; line-height:1.3; color:#ffffff;\">{safe_campaign}</h1>
                     </div>
-                    <div style=\"padding:24px;\">
-                        <p style=\"margin-top:0; color:#425b84; font-size:15px;\">Hi {safe_name},</p>
-                        <div style=\"font-size:15px; line-height:1.65; color:#253757;\">{body_html}</div>
+                    <div style=\"padding:26px;\">
+                        {greeting_html}
+                        <div style=\"font-size:15px; line-height:1.72; color:#223659;\">{body_html}</div>
+                        <div style=\"margin-top:22px; padding:14px 16px; border:1px solid #d9e7ff; border-radius:10px; background:#f8fbff; color:#4a628b; font-size:13px;\">
+                            Need help or have questions? Simply reply to this email.
+                        </div>
                     </div>
-                    <div style=\"padding:16px 24px; border-top:1px solid #e4ecf8; font-size:12px; color:#6b7fa5;\">
-                        Sent via Zentrixel Campaigns
+                    <div style=\"padding:15px 26px; border-top:1px solid #e4ecf8; font-size:12px; color:#6b7fa5; background:#fbfdff;\">
+                        Powered by: <a href=\"https://zentrixel.com/\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color:#4c7ccf; text-decoration:none;\">zentrixel.com</a>
                     </div>
                 </div>
             </body>
@@ -491,15 +533,78 @@ def send_new_lead_notification(
         return False
 
 
-def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name: str, message_template: str) -> tuple[bool, str | None]:
+def send_campaign_email(
+    recipient_email: str,
+    recipient_name: str,
+    campaign_name: str,
+    message_template: str,
+    subject: Optional[str] = None,
+    tracking_token: Optional[str] = None,
+    tracking_base_url: Optional[str] = None,
+) -> tuple[bool, str | None, str | None]:
     """Send a campaign email and return success/failure with an optional error message."""
+
+    def _append_attribution(html: str) -> str:
+        if "zentrixel.com" in (html or "").lower():
+            return html
+
+        attribution_html = (
+            '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #e6edf8;'
+            'font-size:11px;line-height:1.5;color:#7b8faa;text-align:center;">'
+            'Powered by: '
+            '<a href="https://zentrixel.com/" target="_blank" rel="noopener noreferrer" '
+            'style="color:#4c7ccf;text-decoration:none;">zentrixel.com</a>'
+            '</div>'
+        )
+
+        if "</body>" in html.lower():
+            return re.sub(r"</body>", f"{attribution_html}</body>", html, count=1, flags=re.IGNORECASE)
+        return f"{html}{attribution_html}"
+
+    def _inject_tracking(html: str) -> str:
+        if not tracking_token or not tracking_base_url:
+            return _append_attribution(html)
+
+        base = tracking_base_url.strip().rstrip("/")
+        if not base:
+            return _append_attribution(html)
+
+        # Route all campaign hyperlinks through click-tracking redirect.
+        def _href_rewrite(match: re.Match[str]) -> str:
+            quote_char = match.group(1)
+            original_url = (match.group(2) or "").strip()
+            if not original_url.lower().startswith(("http://", "https://")):
+                return match.group(0)
+            tracked = f"{base}/api/admin/campaigns/public/email-track/click/{tracking_token}?url={quote(original_url, safe='')}"
+            return f"href={quote_char}{tracked}{quote_char}"
+
+        tracked_html = re.sub(
+            r"href\s*=\s*([\"'])([^\"']+)\1",
+            _href_rewrite,
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        pixel_url = f"{base}/api/admin/campaigns/public/email-track/open/{tracking_token}.gif"
+        pixel_tag = (
+            f'<img src="{pixel_url}" width="1" height="1" alt="" '
+            'style="display:none;max-width:1px;max-height:1px;opacity:0;" />'
+        )
+
+        if "</body>" in tracked_html.lower():
+            tracked_html = re.sub(r"</body>", f"{pixel_tag}</body>", tracked_html, count=1, flags=re.IGNORECASE)
+        else:
+            tracked_html = f"{tracked_html}{pixel_tag}"
+
+        return _append_attribution(tracked_html)
+
     normalized_email, validation_error = _validate_email_address(recipient_email)
     if not normalized_email:
-        return False, validation_error or "Missing or invalid email"
+        return False, validation_error or "Missing or invalid email", None
 
     rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email)
     if rcpt_ok is False:
-        return False, rcpt_error or "Recipient mailbox rejected"
+        return False, rcpt_error or "Recipient mailbox rejected", None
     if rcpt_ok is None and rcpt_error:
         logger.warning("Campaign recipient precheck inconclusive for %s: %s", normalized_email, rcpt_error)
 
@@ -507,10 +612,10 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
         sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
         envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
         if not sender_email:
-            return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
+            return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = campaign_name or "Campaign Update"
+        msg["Subject"] = (subject or campaign_name or "Campaign Update").strip() or "Campaign Update"
         msg["From"] = sender_email
         msg["Reply-To"] = sender_email
         msg["To"] = normalized_email
@@ -527,17 +632,24 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
             if _looks_like_full_email_html(html_source):
                 final_html = html_source
             else:
+                include_greeting = not _starts_with_greeting(html_source)
                 final_html = _render_campaign_wrapper(
                     recipient_name=recipient_name,
                     campaign_name=campaign_name,
-                    body_html=html_source,
+                    body_html=_linkify_plain_urls(html_source),
+                    include_greeting=include_greeting,
                 )
         else:
+            escaped_body = _escape_html(personalized_template)
+            include_greeting = not _starts_with_greeting(escaped_body)
             final_html = _render_campaign_wrapper(
                 recipient_name=recipient_name,
                 campaign_name=campaign_name,
-                body_html=_escape_html(personalized_template),
+                body_html=_linkify_plain_urls(escaped_body),
+                include_greeting=include_greeting,
             )
+
+        final_html = _inject_tracking(final_html)
 
         plain_fallback = _html_to_plain_text(final_html) or (personalized_template or "")
 
@@ -560,8 +672,8 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
             refusal = refused_recipients.get(normalized_email) or next(iter(refused_recipients.values()))
             if isinstance(refusal, tuple) and len(refusal) >= 2:
                 code, message = refusal[0], _decode_smtp_message(refusal[1])
-                return False, f"SMTP recipient refused ({code}): {message}"
-            return False, "SMTP recipient refused"
+                return False, f"SMTP recipient refused ({code}): {message}", msg.get("Message-ID")
+            return False, "SMTP recipient refused", msg.get("Message-ID")
 
         logger.info(
             "Campaign email accepted by SMTP for %s (from=%s, message_id=%s)",
@@ -569,10 +681,10 @@ def send_campaign_email(recipient_email: str, recipient_name: str, campaign_name
             sender_email,
             msg.get("Message-ID"),
         )
-        return True, None
+        return True, None, msg.get("Message-ID")
     except Exception as e:
         logger.error("Failed campaign email to %s: %s", normalized_email, str(e), exc_info=True)
-        return False, str(e)
+        return False, str(e), None
 
 
 def send_widget_test_link_email(

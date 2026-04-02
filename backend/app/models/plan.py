@@ -25,6 +25,18 @@ class Plan(Base):
     multilingual_text_enabled = Column(Boolean, default=False)
     whatsapp_enabled = Column(Boolean, default=False)
     human_handoff_enabled = Column(Boolean, default=False)
+    email_campaign_enabled = Column(Boolean, default=True)
+    sms_campaign_enabled = Column(Boolean, default=True)
+
+    module_knowledge_enabled = Column(Boolean, default=True)
+    module_leads_enabled = Column(Boolean, default=True)
+    module_analytics_enabled = Column(Boolean, default=True)
+    module_advanced_analytics_enabled = Column(Boolean, default=True)
+    module_reports_enabled = Column(Boolean, default=True)
+    module_campaigns_enabled = Column(Boolean, default=True)
+    module_appointments_enabled = Column(Boolean, default=True)
+    module_products_enabled = Column(Boolean, default=True)
+    module_users_enabled = Column(Boolean, default=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

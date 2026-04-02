@@ -13,11 +13,20 @@ from app.models.feedback import MessageFeedback
 from app.models.report_metrics import ConversationMetrics
 from app.models.retrieval_trace import RetrievalTrace
 from app.models.whatsapp_channel import WhatsAppChannel
+from app.models.twilio_sms_channel import TwilioSmsChannel
 from app.models.appointment import Appointment
 from app.models.appointment_intake import AppointmentIntake
-from app.models.campaign import Campaign, ContactList, Contact, CampaignLog
+from app.models.campaign import (
+    Campaign,
+    ContactList,
+    Contact,
+    CampaignLog,
+    CampaignLeadRule,
+    CampaignLeadConversion,
+)
 from app.models.handoff import HandoffSession, HandoffMessage
 from app.models.handoff_agent_assignment import HandoffAgentAssignment
+from app.models.funnel_category import FunnelCategory
 
 __all__ = [
     "User",
@@ -38,13 +47,17 @@ __all__ = [
     "ConversationMetrics",
     "RetrievalTrace",
     "WhatsAppChannel",
+    "TwilioSmsChannel",
     "Appointment",
     "AppointmentIntake",
     "Campaign",
     "ContactList",
     "Contact",
     "CampaignLog",
+    "CampaignLeadRule",
+    "CampaignLeadConversion",
     "HandoffSession",
     "HandoffMessage",
     "HandoffAgentAssignment",
+    "FunnelCategory",
 ]

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Box,
     Paper,
@@ -10,7 +10,8 @@ import {
     Stack,
     Alert,
     IconButton,
-    LinearProgress
+    LinearProgress,
+    Grid
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from '@mui/material/styles';
@@ -20,6 +21,9 @@ import Contacts from "./Contacts";
 import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
+import CampaignDetails from "./CampaignDetails";
+import moment from "moment-timezone";
+
 
 const steps = [
     "Campaign Info",
@@ -29,20 +33,36 @@ const steps = [
 
 const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+const timezoneAliasMap: any = {
+    "Asia/Calcutta": "Asia/Kolkata",
+    "US/Eastern": "America/New_York",
+    "US/Central": "America/Chicago",
+    "US/Mountain": "America/Denver",
+    "US/Pacific": "America/Los_Angeles"
+};
+
+const normalizedTimezone =
+    timezoneAliasMap[browserTimezone] || browserTimezone;
+
+const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 const emptyCampaignForm: CallCampaign = {
     // CAMPAIGN INFO
     name: "",
     description: "",
     category: "",
     priority: "",
+    calling_no: "",
     agent_id: "",
+    product_id: "",
     contacts: [],
     start_datetime: "",
-    timezone: browserTimezone,
+    end_datetime: "",
+    timezone: normalizedTimezone,
     call_start_time: "09:00",
     call_end_time: "21:00",
     call_interval: 5,
-    active_days: [],
+    active_days: days,
 
     max_retry_attempts: "",
     retry_interval: "",
@@ -53,7 +73,7 @@ const emptyCampaignForm: CallCampaign = {
 };
 
 const CampaignBuilder = () => {
-    const [view, setView] = useState<"list" | "form">("list");
+    const [view, setView] = useState<"list" | "form" | "details">("list");
     const [mode, setMode] = useState<"create" | "edit">("create");
     const [campaignId, setCampaignId] = useState<number | null>(null);
     const [activeStep, setActiveStep] = useState(0);
@@ -62,10 +82,21 @@ const CampaignBuilder = () => {
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
     const theme = useTheme();
-    const nextStep = () => setActiveStep((prev) => prev + 1);
-    const prevStep = () => setActiveStep((prev) => prev - 1);
-    const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
 
+
+    const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
+    const [errors, setErrors] = useState<any>({});
+    const [sendOption, setSendOption] = useState<"now" | "schedule">("schedule");
+
+    const nextStep = () => {
+        setActiveStep((prev) => prev + 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const prevStep = () => {
+        setActiveStep((prev) => prev - 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+    };
     const showError = (message: string) => {
         setSuccess('');
         setError(message);
@@ -85,14 +116,19 @@ const CampaignBuilder = () => {
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
+        setErrors({});
         setActiveStep(0);
+        setSendOption("schedule");
+        setMode("create");
     };
 
     const handleEditCampaign = async (id?: number) => {
         if (id === undefined) return;
         setError('');
         setSuccess('');
+        setErrors({});
         setActiveStep(0);
+        window.scrollTo({ top: 0, behavior: "smooth" });
 
         try {
             const data = await callCampaignService.getCampaign(id);
@@ -102,10 +138,12 @@ const CampaignBuilder = () => {
                 category: data.category,
                 priority: data.priority,
                 agent_id: data.agent_id,
-
+                product_id: data.product_id,
                 contacts: data.contacts || [],
+                calling_no: data.calling_no,
 
-                start_datetime: data.start_datetime,
+                start_datetime: moment(data.start_datetime).format("YYYY-MM-DD"),
+                end_datetime: moment(data.end_datetime).format("YYYY-MM-DD"),
                 timezone: data.timezone,
 
                 call_start_time: data.call_start_time,
@@ -128,7 +166,7 @@ const CampaignBuilder = () => {
             } else {
                 setCampaignContacts([]);
             }
-
+            setSendOption(!data.start_datetime && (!data.active_days || data.active_days.length === 0) ? "now" : "schedule")
             setCampaignId(id);
             setMode("edit");
             setView("form");
@@ -138,20 +176,58 @@ const CampaignBuilder = () => {
         }
     };
 
+    useEffect(() => {
+        if (loading) {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+    }, [loading]);
+
     const handleSaveCampaign = async () => {
-        console.log("Campaign Data", campaignForm);
         setError('');
         setSuccess('');
         setLoading(true);
         try {
 
+            const payload = {
+                ...campaignForm,
+                product_id: campaignForm.product_id || undefined,
+                active_days: sendOption === "now" ? [] : campaignForm.active_days, // conditional
+                start_datetime: formatDateForBackend(campaignForm.start_datetime),
+                end_datetime: formatDateForBackend(campaignForm.end_datetime),
+            };
+            let response;
+
             if (mode == "edit" && campaignId) {
-                await callCampaignService.updateCampaign(campaignForm, campaignId);
+                response = await callCampaignService.updateCampaign(payload, campaignId);
             }
             else {
-                await callCampaignService.createCampaign(campaignForm);
+                response = await callCampaignService.createCampaign(payload);
             }
-            showSuccess("Campaign saved successfully")
+
+            if (response.success) {
+                showSuccess(response.message || "Campaign saved successfully")
+            }
+            else {
+                showError(response.message || "Failed to save the campaign data")
+            }
+            setView("list");
+        }
+        catch (err: any) {
+            showError(err?.response?.data?.detail || err?.detail || 'Failed to save the campaign data');
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteCampaign = async () => {
+        setError('');
+        setSuccess('');
+        setLoading(true);
+        try {
+            await callCampaignService.createCampaign(campaignForm);
+            showSuccess("Campaign delete successfully")
             setView("list");
         }
         catch (err: any) {
@@ -168,6 +244,92 @@ const CampaignBuilder = () => {
         setCampaignId(null);
         setCampaignForm(emptyCampaignForm);
         setCampaignContacts([]);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const handleViewCampaign = (id?: number) => {
+        if (id === undefined) return;
+        setCampaignId(id);
+        setView("details");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const handleSave = () => {
+        const newErrors: any = {};
+
+        if (sendOption === "schedule") {
+
+            // Active Days Required
+            if (!campaignForm.active_days || campaignForm.active_days.length === 0) {
+                newErrors.active_days = "Please select at least one active day";
+            }
+
+            const hasStart = !!campaignForm.start_datetime;
+            const hasEnd = !!campaignForm.end_datetime;
+
+            console.log("hasStart", hasStart, "hasEnd", hasEnd)
+
+            // If only start selected
+            if (hasStart && !hasEnd) {
+                newErrors.end_datetime = "End date is required";
+            }
+
+            // If only end selected
+            if (!hasStart && hasEnd) {
+                newErrors.start_datetime = "Start date is required";
+            }
+
+            // If both selected validate range
+            if (hasStart && hasEnd && campaignForm.start_datetime > campaignForm.end_datetime) {
+                newErrors.end_datetime = "End date must be after start date";
+            }
+
+            // Timezone required
+            if (!campaignForm.timezone) {
+                newErrors.timezone = "Timezone is required";
+            }
+
+            // Call time validation
+            if (
+                campaignForm.call_start_time &&
+                campaignForm.call_end_time &&
+                campaignForm.call_start_time >= campaignForm.call_end_time
+            ) {
+                newErrors.call_end_time =
+                    "End time must be after start time";
+            }
+
+            // Call window required
+            if (!campaignForm.call_start_time) {
+                newErrors.call_start_time = "Start time required";
+            }
+
+            if (!campaignForm.call_end_time) {
+                newErrors.call_end_time = "End time required";
+            }
+        }
+
+        // Send Now Validation
+        if (sendOption === "now") {
+            const now = moment().tz(campaignForm.timezone || moment.tz.guess());
+            const currentHour = now.hour();
+
+            if (currentHour < 9 || currentHour >= 21) {
+                newErrors.send_now =
+                    "Calls allowed between 9:00 AM and 9:00 PM only";
+            }
+        }
+
+        setErrors(newErrors);
+        if (Object.keys(newErrors).length > 0) return;
+
+        handleSaveCampaign();
+    };
+
+    const formatDateForBackend = (value: any) => {
+        if (!value) return null; // null or empty string
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? null : date.toISOString();
     };
 
     const renderStep = () => {
@@ -196,11 +358,11 @@ const CampaignBuilder = () => {
             case 2:
                 return (
                     <Schedule
-                        mode={mode}
                         form={campaignForm}
                         setForm={setCampaignForm}
-                        prevStep={prevStep}
-                        saveCampaign={handleSaveCampaign}
+                        sendOption={sendOption}
+                        setSendOption={setSendOption}
+                        errors={errors}
                     />
                 );
             default:
@@ -210,9 +372,28 @@ const CampaignBuilder = () => {
 
     if (view === "list") {
         return (
-            <CampaignList onAddCampaign={handleAddCampaign} onEditCampaign={handleEditCampaign} />
+            <CampaignList
+                onAddCampaign={handleAddCampaign}
+                onEditCampaign={handleEditCampaign}
+                onViewCampaign={handleViewCampaign}
+                onDeleteCampaign={handleViewCampaign}
+            />
         );
     }
+
+    if (view === "details" && campaignId) {
+        return (
+            <CampaignDetails
+                campaignId={campaignId}
+                onBack={handleBackToList}
+                onEdit={(id) => {
+                    handleEditCampaign(id);
+                    setView("form");
+                }}
+            />
+        );
+    }
+
 
     return (
         <>
@@ -269,12 +450,21 @@ const CampaignBuilder = () => {
             <Paper sx={{ p: 4 }}>
                 <Box display="flex" justifyContent="space-between" mb={2}>
                     <Typography variant="h5">
-                        Create Campaign
+                        {mode === "edit" ? "Edit Campaign" : "Create Campaign"}
                     </Typography>
 
-                    <Button variant="outlined" color="error" onClick={handleBackToList}>
-                        Cancel
-                    </Button>
+                    <Box display="flex" justifyContent="flex-end" >
+                        <Button variant="outlined" color="error" onClick={handleBackToList}>
+                            Cancel
+                        </Button>
+                        {activeStep == 2 &&
+                            <Grid item xs={6} textAlign="right">
+                                <Button variant="contained" onClick={handleSave} sx={{ ml: 1 }} disabled={loading}>
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
+                                </Button>
+                            </Grid>
+                        }
+                    </Box>
                 </Box>
 
 
@@ -289,6 +479,34 @@ const CampaignBuilder = () => {
                 <Box>
                     {renderStep()}
                 </Box>
+                {activeStep == 2 &&
+                    <Grid container alignItems="center" mt={2}>
+                        <Grid item xs={6}>
+                            <Button onClick={prevStep}>Back</Button>
+                        </Grid>
+
+                        <Grid item xs={6}>
+                            <Box display="flex" justifyContent="flex-end" gap={1}>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    onClick={handleBackToList}
+                                >
+                                    Cancel
+                                </Button>
+
+                                <Button
+                                    variant="contained"
+                                    onClick={handleSave}
+                                    disabled={loading}
+                                >
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
+                                </Button>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                }
+
             </Paper>
         </>
     );

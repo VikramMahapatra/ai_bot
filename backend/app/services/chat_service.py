@@ -8,7 +8,10 @@ import logging
 from typing import Tuple, List, Dict, Optional, Set
 import re
 import json
-from urllib.parse import urlparse
+import time
+import hashlib
+from threading import Lock
+from urllib.parse import parse_qs, unquote, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ _STOPWORDS = {
     "were", "what", "when", "where", "which", "who", "how", "why", "can", "could",
     "would", "should", "a", "an", "in", "on", "of", "to", "is", "it", "as", "at",
     "by", "or", "we", "our", "us", "i", "me", "my", "they", "their", "them", "about",
+    "those", "these", "have", "has", "had", "many",
 }
 
 
@@ -60,6 +64,29 @@ _SUGGESTION_PATTERNS = [
     (r"security|privacy|compliance|gdpr|soc", "How do you handle security and privacy?"),
 ]
 
+_GENERIC_URL_SEGMENTS = {
+    "home", "index", "default", "page", "pages", "blog", "blogs", "post", "posts",
+    "search", "label", "category", "categories", "tag", "tags", "about", "contact",
+    "login", "signup", "register", "api", "docs", "documentation",
+}
+
+_GENERIC_TOPIC_WORDS = {
+    "web", "www", "com", "co", "in", "org", "net", "site", "website", "blogspot",
+}
+
+_TOPIC_PREFIX_STOPWORDS = {"and", "or", "the", "a", "an", "to", "of", "for"}
+
+_GENERIC_TOPICS = {
+    "about", "about us", "contact", "contact us", "home", "welcome", "main", "index",
+    "login", "signup", "register",
+}
+
+_SUGGESTED_QUESTIONS_CACHE_TTL_SECONDS = 120
+_SUGGESTED_QUESTIONS_CACHE_MAX_ITEMS = 300
+_SUGGESTED_QUESTIONS_CACHE_VERSION = 2
+_suggested_questions_cache: Dict[Tuple[int, str, int], Tuple[float, List[str]]] = {}
+_suggested_questions_cache_lock = Lock()
+
 
 def _clean_label(label: str) -> str:
     cleaned = re.sub(r"^web:\s*", "", label.strip(), flags=re.IGNORECASE)
@@ -75,11 +102,161 @@ def _clean_label(label: str) -> str:
     return cleaned.strip()
 
 
+def _normalize_topic(raw_topic: str) -> Optional[str]:
+    if not raw_topic:
+        return None
+
+    topic = unquote(raw_topic)
+    topic = topic.replace("+", " ")
+    topic = re.sub(r"[^a-zA-Z0-9\s]", " ", topic)
+    topic = re.sub(r"\s+", " ", topic).strip()
+    if len(topic) < 3:
+        return None
+
+    words = [w for w in topic.split() if w and w.lower() not in _GENERIC_TOPIC_WORDS]
+    while words and words[0].lower() in _TOPIC_PREFIX_STOPWORDS:
+        words.pop(0)
+    if not words:
+        return None
+
+    normalized = " ".join(words)
+    if re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", normalized.lower()):
+        return None
+    if normalized.lower() in _GENERIC_TOPICS:
+        return None
+    return normalized
+
+
+def _topic_from_url(raw_url: str) -> Optional[str]:
+    if not raw_url:
+        return None
+
+    cleaned_url = re.sub(r"^web:\s*", "", raw_url.strip(), flags=re.IGNORECASE)
+    if not (cleaned_url.startswith("http://") or cleaned_url.startswith("https://")):
+        return None
+
+    parsed = urlparse(cleaned_url)
+    path_segments = [seg for seg in parsed.path.split("/") if seg]
+
+    qs = parse_qs(parsed.query)
+    for key in ("label", "category", "topic", "tag"):
+        values = qs.get(key)
+        if values:
+            topic = _normalize_topic(values[0])
+            if topic:
+                return topic
+
+    lower_segments = [seg.lower() for seg in path_segments]
+    if "label" in lower_segments:
+        idx = lower_segments.index("label")
+        if idx + 1 < len(path_segments):
+            topic = _normalize_topic(path_segments[idx + 1])
+            if topic:
+                return topic
+
+    for segment in reversed(path_segments):
+        topic = _normalize_topic(segment)
+        if not topic:
+            continue
+        if topic.lower() in _GENERIC_URL_SEGMENTS:
+            continue
+        return topic
+
+    return None
+
+
+def _extract_metadata_labels(raw_metadata: Optional[str], limit: int = 8) -> List[str]:
+    if not raw_metadata:
+        return []
+    if len(raw_metadata) > 250000:
+        return []
+
+    try:
+        metadata = json.loads(raw_metadata)
+    except Exception:
+        return []
+
+    labels: List[str] = []
+    if isinstance(metadata, dict):
+        page_cache = metadata.get("page_cache")
+        if isinstance(page_cache, dict):
+            for cached_url in page_cache.keys():
+                if isinstance(cached_url, str) and cached_url:
+                    labels.append(cached_url)
+                    if len(labels) >= limit:
+                        break
+
+    return labels
+
+
+def _iter_source_labels(source: KnowledgeSource) -> List[str]:
+    raw_labels: List[str] = []
+
+    # Prefer deeper crawled URLs first since they are usually more specific.
+    raw_labels.extend(_extract_metadata_labels(source.source_metadata))
+
+    if source.url:
+        raw_labels.append(source.url)
+
+    if source.name:
+        name = source.name.strip()
+        # Skip noisy default names that duplicate the source URL.
+        if not (name.lower().startswith("web:") and source.url and source.url in name):
+            raw_labels.append(source.name)
+
+    deduped: List[str] = []
+    seen = set()
+    for label in raw_labels:
+        key = label.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(label)
+    return deduped
+
+
+def _labels_from_chroma_metadatas(raw_metadatas: object, limit: int = 30) -> List[str]:
+    labels: List[str] = []
+    if not raw_metadatas:
+        return labels
+
+    metadatas = raw_metadatas
+    if isinstance(metadatas, list) and metadatas and isinstance(metadatas[0], list):
+        metadatas = metadatas[0]
+
+    if not isinstance(metadatas, list):
+        return labels
+
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+        for key in ("title", "filename", "url", "source_name", "path"):
+            value = meta.get(key)
+            if isinstance(value, str) and value.strip():
+                labels.append(value.strip())
+        if len(labels) >= limit:
+            break
+
+    return labels[:limit]
+
+
 def _question_from_label(label: str) -> Optional[str]:
     if not label:
         return None
+
+    url_topic = _topic_from_url(label)
+    if url_topic:
+        lowered_topic = url_topic.lower()
+        for pattern, question in _SUGGESTION_PATTERNS:
+            if re.search(pattern, lowered_topic):
+                return question
+        return f"Can you tell me about {url_topic}?"
+
     cleaned = _clean_label(label)
     if not cleaned or len(cleaned) < 3:
+        return None
+
+    if re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", cleaned.lower()):
         return None
 
     lowered = cleaned.lower()
@@ -87,10 +264,25 @@ def _question_from_label(label: str) -> Optional[str]:
         if re.search(pattern, lowered):
             return question
 
-    short = cleaned if len(cleaned) <= 60 else f"{cleaned[:57]}..."
-    if short.lower().startswith("how") or short.lower().startswith("what"):
-        return short.rstrip("?") + "?"
-    return f"Tell me about {short}."
+    normalized_topic = _normalize_topic(cleaned)
+    if not normalized_topic:
+        return None
+
+    lower_topic = normalized_topic.lower()
+    if lower_topic.endswith("solutions"):
+        base = normalized_topic[: -len("solutions")].strip()
+        if base:
+            return f"What {base} solutions do you offer?"
+    if lower_topic.endswith("services"):
+        base = normalized_topic[: -len("services")].strip()
+        if base:
+            return f"What {base} services do you provide?"
+
+    if normalized_topic.lower().startswith("how") or normalized_topic.lower().startswith("what"):
+        return normalized_topic.rstrip("?") + "?"
+    if len(normalized_topic.split()) == 1:
+        return f"What should I know about {normalized_topic}?"
+    return f"Can you explain {normalized_topic}?"
 
 
 def get_suggested_questions(
@@ -99,8 +291,27 @@ def get_suggested_questions(
     db: Session,
     limit: int = 6
 ) -> List[str]:
+    cache_key = (_SUGGESTED_QUESTIONS_CACHE_VERSION, organization_id, widget_id or "", int(limit))
+    now = time.monotonic()
+    with _suggested_questions_cache_lock:
+        cached = _suggested_questions_cache.get(cache_key)
+        if cached and (now - cached[0]) < _SUGGESTED_QUESTIONS_CACHE_TTL_SECONDS:
+            return list(cached[1])
+
     suggestions: List[str] = []
     used = set()
+
+    def finalize() -> List[str]:
+        final_suggestions = suggestions[:limit]
+        with _suggested_questions_cache_lock:
+            _suggested_questions_cache[cache_key] = (time.monotonic(), list(final_suggestions))
+            if len(_suggested_questions_cache) > _SUGGESTED_QUESTIONS_CACHE_MAX_ITEMS:
+                oldest_key = min(
+                    _suggested_questions_cache,
+                    key=lambda key: _suggested_questions_cache[key][0],
+                )
+                _suggested_questions_cache.pop(oldest_key, None)
+        return final_suggestions
 
     def add(question: Optional[str]) -> None:
         if not question:
@@ -118,34 +329,32 @@ def get_suggested_questions(
     ).order_by(KnowledgeSource.created_at.desc()).limit(12).all()
 
     for source in sources:
-        label = source.name or source.url or ""
-        add(_question_from_label(label))
-        if len(suggestions) >= limit:
-            return suggestions[:limit]
+        for label in _iter_source_labels(source):
+            add(_question_from_label(label))
+            if len(suggestions) >= limit:
+                return finalize()
 
-    results = chroma_client.query(
-        "overview faq support help",
-        n_results=12,
-        organization_id=organization_id,
-        widget_id=widget_id,
-    )
+    try:
+        chroma_docs = chroma_client.get_documents(
+            organization_id=organization_id,
+            widget_id=widget_id,
+            include_documents=False,
+            limit=120,
+        )
+        for label in _labels_from_chroma_metadatas(chroma_docs.get("metadatas")):
+            add(_question_from_label(label))
+            if len(suggestions) >= limit:
+                return finalize()
+    except Exception:
+        pass
 
-    metadatas = []
-    if results and results.get("metadatas"):
-        metadatas = results["metadatas"][0] or []
-
-    for meta in metadatas:
-        if not isinstance(meta, dict):
-            continue
-        label = meta.get("title") or meta.get("filename") or meta.get("url") or ""
-        add(_question_from_label(label))
-        if len(suggestions) >= limit:
-            return suggestions[:limit]
+    # Keep this endpoint lightweight under heavy UI traffic: avoid vector retrieval
+    # (which can trigger embedding calls and delay first paint of suggestions).
 
     for _, question in _SUGGESTION_PATTERNS:
         add(question)
         if len(suggestions) >= limit:
-            return suggestions[:limit]
+            return finalize()
 
     for question in [
         "What products or services do you offer?",
@@ -154,14 +363,23 @@ def get_suggested_questions(
     ]:
         add(question)
         if len(suggestions) >= limit:
-            return suggestions[:limit]
+            return finalize()
 
-    return suggestions[:limit]
+    return finalize()
 
 
 def _keyword_query(text: str) -> str:
     tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
-    keywords = [t for t in tokens if t not in _STOPWORDS]
+
+    def _normalize_token(token: str) -> str:
+        # Light stemming to keep singular/plural variants aligned (post/posts).
+        if len(token) > 4 and token.endswith("ies"):
+            return f"{token[:-3]}y"
+        if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+            return token[:-1]
+        return token
+
+    keywords = [_normalize_token(t) for t in tokens if t not in _STOPWORDS]
     return " ".join(keywords[:12])
 
 
@@ -321,7 +539,49 @@ def _should_include_previous_message(current_message: str, previous_message: str
         lower_current,
     )
     short_query = len(current_keywords) <= 5
-    return bool(followup_pattern and short_query)
+
+    # Capture under-specified follow-ups like "want to write my first program"
+    # so they inherit the previous topical context (for example: Docker).
+    starter_pattern = re.search(
+        r"^(want to|i want to|need to|i need to|how to|can you|could you|help me|guide me|show me|teach me)\b",
+        lower_current,
+    )
+    generic_followup_tokens = {
+        "a", "an", "and", "are", "begin", "build", "can", "could", "create", "do", "first",
+        "for", "get", "give", "help", "how", "i", "learn", "make", "me", "my", "need", "on", "program",
+        "show", "start", "step", "steps", "teach", "tell", "to", "want", "write", "you", "your",
+        "guide", "guidance", "instruction", "instructions", "example", "examples", "detail", "details",
+        "more", "next",
+    }
+    non_generic_tokens = {token for token in current_keywords if token not in generic_followup_tokens}
+    underspecified_followup = bool(starter_pattern and short_query and len(non_generic_tokens) == 0)
+
+    return bool((followup_pattern and short_query) or underspecified_followup)
+
+
+def _followup_overlap_score(current_message: str, previous_message: str) -> float:
+    current_keywords = set(_keyword_query(current_message).split())
+    previous_keywords = set(_keyword_query(previous_message).split())
+    if not current_keywords or not previous_keywords:
+        return 0.0
+    return len(current_keywords & previous_keywords) / max(len(current_keywords), 1)
+
+
+def _is_referential_followup(message: str) -> bool:
+    lower = (message or "").lower().strip()
+    if not lower:
+        return False
+
+    has_reference = bool(re.search(r"\b(it|that|those|them|this|these|same|again|previous|earlier)\b", lower))
+    is_short = len(_keyword_query(message).split()) <= 6
+    return has_reference and is_short
+
+
+def _compact_response_for_retrieval(text: str, max_chars: int = 240) -> str:
+    compact = " ".join((text or "").split()).strip()
+    if len(compact) <= max_chars:
+        return compact
+    return f"{compact[:max_chars - 3]}..."
 
 
 def _expand_queries(base_query: str, raw_message: str) -> List[str]:
@@ -355,25 +615,50 @@ def _expand_queries(base_query: str, raw_message: str) -> List[str]:
     # keep bounded variants to avoid latency spikes
     return deduped[:5]
 
-
 def _build_escalation_message(level_1: str, level_2: str) -> str:
     return (
         "That sounds exciting, and I love the creativity. "
-        "I’m sorry—I don’t have reliable expertise on this specific topic in my current knowledge base. "
-        "If you’d like, I can still help with topics covered here (for example: our services, setup, pricing, or support). "
+        "I'm sorry-I don't have reliable expertise on this specific topic in my current knowledge base. "
+        "If you'd like, I can still help with topics covered here (for example: our services, setup, pricing, or support). "
         "Or I can connect you with our escalation contacts:\n"
-        f"• Level 1: {level_1}\n"
-        f"• Level 2: {level_2}\n"
+        f"- Level 1: {level_1}\n"
+        f"- Level 2: {level_2}\n"
         "Would you like me to connect you?"
     )
 
 
-def _build_soft_fallback_message() -> str:
-    return (
-        "That is a really creative idea. "
-        "I do not have reliable expertise on this topic in my current knowledge base yet. "
-        "I would still be happy to help with topics covered here, like our services, setup, pricing, or support."
-    )
+def _select_message_variant(options: List[str], seed_text: Optional[str]) -> str:
+    if not options:
+        return ""
+    if not seed_text:
+        return options[0]
+
+    digest = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(options)
+    return options[idx]
+
+
+def _build_soft_fallback_message(seed_text: Optional[str] = None) -> str:
+    variants = [
+        (
+            "I could not find reliable information about that in this knowledge base yet. "
+            "I can still help with our services, setup, pricing, or support."
+        ),
+        (
+            "That topic is not covered clearly in the available context right now. "
+            "If you want, I can help with what is documented here, like services, onboarding, pricing, or support."
+        ),
+        (
+            "I do not have enough verified context to answer that accurately yet. "
+            "I can still help with questions about our services, setup steps, pricing plans, or support options."
+        ),
+        (
+            "I am not seeing a reliable answer for that in the current knowledge base. "
+            "I can still help with common topics here, including services, setup, pricing, and support."
+        ),
+    ]
+    return _select_message_variant(variants, seed_text)
+
 
 
 def _is_escalation_contacts_message(text: Optional[str]) -> bool:
@@ -604,14 +889,29 @@ def _prepare_chat_payload(
 
     query_text = retrieval_message or message
     if history:
-        recent_user_message = history[0].message
-        if (
-            recent_user_message
-            and recent_user_message.strip()
-            and recent_user_message.strip() != message.strip()
-            and _should_include_previous_message(message, recent_user_message)
-        ):
-            query_text = f"{query_text}\n\nPrevious user message: {recent_user_message.strip()}"
+        best_followup_row = None
+        best_followup_score = -1.0
+        for row in history:
+            prior_message = (row.message or "").strip()
+            if not prior_message or prior_message == message.strip():
+                continue
+            if not _should_include_previous_message(message, prior_message):
+                continue
+
+            score = _followup_overlap_score(message, prior_message)
+            if score > best_followup_score:
+                best_followup_score = score
+                best_followup_row = row
+
+        if best_followup_row is not None:
+            prior_message = (best_followup_row.message or "").strip()
+            query_text = f"{query_text}\n\nPrevious user message: {prior_message}"
+
+            # Referential prompts like "what are those posts" benefit from
+            # including a compact prior assistant summary as an anchor.
+            prior_response = _compact_response_for_retrieval(best_followup_row.response or "")
+            if prior_response and _is_referential_followup(message):
+                query_text = f"{query_text}\n\nPrevious assistant response: {prior_response}"
 
     context_parts = []
     source_ids = set()
@@ -861,8 +1161,8 @@ def _prepare_chat_payload(
 
 Follow these non-negotiable rules:
 - Answer using only the context from the user's knowledge base and the conversation history.
-- If the answer is not in context, do not guess. Offer escalation using this exact message:
-{escalation_message}
+- If the answer is not in context, do not guess. Say briefly that this topic is not covered in the current knowledge base, then offer to connect the user with escalation contacts.
+
 - Do not use outside knowledge or make assumptions.
 - You may derive simple aggregates (e.g., price ranges) from context if present, but do not expose step-by-step reasoning.
 {language_instruction}
@@ -966,38 +1266,58 @@ def generate_chat_response(
                 ai_response = escalation_message
                 escalation_triggered = True
             else:
-                ai_response = _build_soft_fallback_message()
+                ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
                 escalation_triggered = False
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         else:
-            # Generate response
-            response = client.chat.completions.create(
-                model=settings.OPENAI_CHAT_MODEL,
-                messages=messages,
-                max_tokens=220,
-                temperature=0.3
-            )
+            try:
+                response = client.chat.completions.create(
+                    model=settings.OPENAI_CHAT_MODEL,
+                    messages=messages,
+                    max_tokens=220,
+                    temperature=0.3,
+                    timeout=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS),
+                )
 
-            ai_response = response.choices[0].message.content
-            if has_context and _looks_like_no_answer(ai_response):
+                ai_response = response.choices[0].message.content
+                if has_context and _looks_like_no_answer(ai_response):
+                    grounded_response = _build_context_grounded_response(message, retrieval_trace)
+                    if grounded_response:
+                        ai_response = grounded_response
+
+                escalation_triggered = not has_context or _looks_like_no_answer(ai_response)
+                if escalation_triggered:
+                    if _has_prior_escalation_contacts(db, session_id, widget_id):
+                        ai_response = escalation_message
+                    else:
+                        ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
+                        escalation_triggered = False
+
+                usage = getattr(response, "usage", None)
+                token_usage = {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                    "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                    "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
+                }
+            except Exception as completion_error:
+                logger.warning(
+                    "OpenAI completion failed for widget_id=%s session_id=%s: %s",
+                    widget_id,
+                    session_id,
+                    str(completion_error),
+                )
                 grounded_response = _build_context_grounded_response(message, retrieval_trace)
                 if grounded_response:
                     ai_response = grounded_response
-
-            escalation_triggered = not has_context or _looks_like_no_answer(ai_response)
-            if escalation_triggered:
-                if _has_prior_escalation_contacts(db, session_id, widget_id):
+                    escalation_triggered = False
+                elif _has_prior_escalation_contacts(db, session_id, widget_id):
                     ai_response = escalation_message
+                    escalation_triggered = True
                 else:
-                    ai_response = _build_soft_fallback_message()
+                    ai_response = _build_soft_fallback_message(seed_text=f"{session_id}:{message}")
                     escalation_triggered = False
 
-            usage = getattr(response, "usage", None)
-            token_usage = {
-                "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
-                "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
-                "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0,
-            }
+                token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn)
         retrieval_trace["escalation_triggered"] = escalation_triggered
@@ -1057,18 +1377,38 @@ def stream_chat_response(
             return None, sources, escalation_message, retrieval_trace
 
         retrieval_trace["escalation_triggered"] = False
-        return None, sources, _build_soft_fallback_message(), retrieval_trace
+        return None, sources, _build_soft_fallback_message(seed_text=f"{session_id}:{message}"), retrieval_trace
 
-    stream = client.chat.completions.create(
-        model=settings.OPENAI_CHAT_MODEL,
-        messages=messages,
-        max_tokens=220,
-        temperature=0.3,
-        stream=True,
-        stream_options={"include_usage": True}
-    )
+    try:
+        stream = client.chat.completions.create(
+            model=settings.OPENAI_CHAT_MODEL,
+            messages=messages,
+            max_tokens=220,
+            temperature=0.3,
+            stream=True,
+            stream_options={"include_usage": True},
+            timeout=float(settings.OPENAI_STREAM_TIMEOUT_SECONDS),
+        )
+        return stream, sources, escalation_message, retrieval_trace
+    except Exception as stream_error:
+        logger.warning(
+            "OpenAI stream init failed for widget_id=%s session_id=%s: %s",
+            widget_id,
+            session_id,
+            str(stream_error),
+        )
 
-    return stream, sources, escalation_message, retrieval_trace
+        grounded_response = _build_context_grounded_response(message, retrieval_trace)
+        if grounded_response:
+            retrieval_trace["escalation_triggered"] = False
+            return None, sources, grounded_response, retrieval_trace
+
+        if _has_prior_escalation_contacts(db, session_id, widget_id):
+            retrieval_trace["escalation_triggered"] = True
+            return None, sources, escalation_message, retrieval_trace
+
+        retrieval_trace["escalation_triggered"] = False
+        return None, sources, _build_soft_fallback_message(seed_text=f"{session_id}:{message}"), retrieval_trace
 
 
 def translate_text(text: str, target_language_code: Optional[str] = None, target_language_label: Optional[str] = None) -> str:
@@ -1087,7 +1427,9 @@ def translate_text(text: str, target_language_code: Optional[str] = None, target
             {"role": "user", "content": text}
         ],
         max_tokens=400,
-        temperature=0.2
+        temperature=0.2,
+        timeout=float(settings.OPENAI_TRANSLATION_TIMEOUT_SECONDS),
     )
 
     return response.choices[0].message.content or text
+

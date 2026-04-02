@@ -23,6 +23,22 @@ class OrganizationLimits(Base):
     multilingual_text_enabled = Column(Boolean, nullable=True)
     whatsapp_enabled = Column(Boolean, nullable=True)
     human_handoff_enabled = Column(Boolean, nullable=True)
+    email_campaign_enabled = Column(Boolean, nullable=True)
+    sms_campaign_enabled = Column(Boolean, nullable=True)
+
+    module_knowledge_enabled = Column(Boolean, nullable=True)
+    module_leads_enabled = Column(Boolean, nullable=True)
+    module_analytics_enabled = Column(Boolean, nullable=True)
+    module_advanced_analytics_enabled = Column(Boolean, nullable=True)
+    module_reports_enabled = Column(Boolean, nullable=True)
+    module_campaigns_enabled = Column(Boolean, nullable=True)
+    module_appointments_enabled = Column(Boolean, nullable=True)
+    module_products_enabled = Column(Boolean, nullable=True)
+    module_users_enabled = Column(Boolean, nullable=True)
+    
+    max_agents = Column(Integer, nullable=True)       # max number of agents
+    max_campaigns = Column(Integer, nullable=True)    # max number of campaigns
+    max_calls = Column(Integer, nullable=True)        # max number of calls
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

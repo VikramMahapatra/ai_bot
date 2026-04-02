@@ -144,10 +144,18 @@ export interface Lead {
   id: number;
   session_id: string;
   widget_id?: string;
+  product_id?: string;
+  product_name?: string;
   name?: string;
   email?: string;
   phone?: string;
   company?: string;
+  lead_outcome?: string;
+  source: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
+  funnel_stage?: string;
+  custom_fields?: string;
+  organization_id?: number;
+  user_id?: number;
   created_at: string;
 }
 
@@ -160,10 +168,33 @@ export interface Organization {
 export interface LeadCreate {
   session_id: string;
   widget_id?: string;
+  product_id?: string;
   name?: string;
   email?: string;
   phone?: string;
   company?: string;
+  lead_outcome?: string;
+  source?: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
+  funnel_stage?: string;
+}
+
+export interface FunnelCategory {
+  id: number;
+  organization_id: number;
+  name: string;
+  key: string;
+  color: string;
+  position: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface FunnelCategoryPayload {
+  name: string;
+  key: string;
+  color: string;
+  position: number;
+  is_active: boolean;
 }
 
 export interface WidgetConfig {
@@ -222,7 +253,22 @@ export interface OrganizationLimits {
   lead_generation_enabled: boolean;
   voice_chat_enabled?: boolean;
   multilingual_text_enabled?: boolean;
+  whatsapp_enabled?: boolean;
   human_handoff_enabled?: boolean;
+  email_campaign_enabled?: boolean;
+  sms_campaign_enabled?: boolean;
+  module_knowledge_enabled?: boolean;
+  module_leads_enabled?: boolean;
+  module_analytics_enabled?: boolean;
+  module_advanced_analytics_enabled?: boolean;
+  module_reports_enabled?: boolean;
+  module_campaigns_enabled?: boolean;
+  module_appointments_enabled?: boolean;
+  module_products_enabled?: boolean;
+  module_users_enabled?: boolean;
+  max_agents?: number;
+  max_campaigns?: number;
+  max_calls?: number;
 }
 
 export interface Plan {
@@ -242,7 +288,19 @@ export interface Plan {
   lead_generation_enabled: boolean;
   voice_chat_enabled: boolean;
   multilingual_text_enabled: boolean;
+  whatsapp_enabled?: boolean;
   human_handoff_enabled?: boolean;
+  email_campaign_enabled?: boolean;
+  sms_campaign_enabled?: boolean;
+  module_knowledge_enabled?: boolean;
+  module_leads_enabled?: boolean;
+  module_analytics_enabled?: boolean;
+  module_advanced_analytics_enabled?: boolean;
+  module_reports_enabled?: boolean;
+  module_campaigns_enabled?: boolean;
+  module_appointments_enabled?: boolean;
+  module_products_enabled?: boolean;
+  module_users_enabled?: boolean;
 }
 
 export interface Subscription {
@@ -279,4 +337,50 @@ export interface SuperAdminOrganization {
   limits?: OrganizationLimits;
   plan?: Plan;
   subscription?: Subscription;
+}
+
+
+export interface CallingNumber {
+  id: number;
+  calling_number: string;
+  type: 'inbound' | 'outbound';
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+
+export interface AgentReport {
+  name: string;
+  external_agent_name?: string | null;
+  external_agent_id?: string | null;
+}
+
+
+export interface CampaignReport {
+  name: string;
+  external_campaign_name?: string | null;
+  external_campaign_id?: number | null;
+}
+
+export interface OrganizationReportResponse {
+  items: OrganizationReport[];
+  total: number;
+}
+
+
+export interface OrganizationReport {
+  organization_id: number;
+  organization_name: string;
+
+  agents_created: number;
+  agent_limit?: number | null;
+
+  campaign_created: number;
+  campaign_limit?: number | null;
+
+  calls_done: number;
+  calls_limit?: number | null;
+
+  agents: AgentReport[];
+  campaigns: CampaignReport[];
 }

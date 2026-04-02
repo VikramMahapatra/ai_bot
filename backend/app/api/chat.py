@@ -37,6 +37,7 @@ from app.services.shopify_service import handle_shopify_intent, verify_shopify_c
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 
 def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) -> str:
@@ -51,11 +52,18 @@ def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) ->
         else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
     )
     return (
-        "Sorry—I don’t have a reliable answer for this right now. "
-        "If you’d like, I can connect you with our escalation contacts:\n"
-        f"• Level 1: {level_1}\n"
-        f"• Level 2: {level_2}\n"
+        "Sorry-I do not have a reliable answer for this right now. "
+        "If you'd like, I can connect you with our escalation contacts:\n"
+        f"- Level 1: {level_1}\n"
+        f"- Level 2: {level_2}\n"
         "Would you like me to help you reach them?"
+    )
+
+
+def _build_light_handoff_offer_prompt() -> str:
+    return (
+        "If you'd like, I can connect you with our escalation contacts. "
+        "Would you like me to connect you?"
     )
 
 
@@ -65,6 +73,12 @@ def _is_booking_intent(text: str) -> bool:
         "book appointment",
         "book an appointment",
         "schedule appointment",
+        "please schedule",
+        "schedule please",
+        "please book",
+        "book please",
+        "please set up a meeting",
+        "set up a meeting",
         "set appointment",
         "set an appointment",
         "set the appointment",
@@ -86,12 +100,19 @@ def _is_booking_intent(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z0-9]+", lower))
     has_appointment_word = bool(tokens & {"appointment", "meeting", "call", "demo", "slot"})
     has_action_word = bool(tokens & {"book", "schedule", "set"})
-    return has_appointment_word and has_action_word
+    if has_appointment_word and has_action_word:
+        return True
+
+    # Handle concise intents like "please schedule" during escalation/handoff flows.
+    if has_action_word and "please" in tokens and len(tokens) <= 3:
+        return True
+
+    return False
 
 
 def _is_affirmative(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z0-9]+", (text or "").lower()))
-    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect"})
+    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect", "sure"})
 
 
 def _is_escalation_opt_in(text: str) -> bool:
@@ -116,6 +137,8 @@ def _is_escalation_opt_in(text: str) -> bool:
         "contact them",
         "help me reach them",
         "proceed",
+        "yes please",
+        "sure"
     }
     if raw in direct_phrases:
         return True
@@ -162,16 +185,24 @@ def _mentions_appointment_topic(text: str) -> bool:
     return bool(tokens & {"appointment", "appointments", "meeting", "meet", "call", "demo", "slot"})
 
 
+def _appointment_datetime_examples_message() -> str:
+    now_local = datetime.now()
+    example_1 = (now_local + timedelta(days=1)).replace(hour=15, minute=30, second=0, microsecond=0)
+    example_2 = (now_local + timedelta(days=2)).replace(hour=16, minute=0, second=0, microsecond=0)
+    example_3 = (now_local + timedelta(days=3)).replace(hour=10, minute=30, second=0, microsecond=0)
+    return (
+        "Please share your preferred appointment date and time. You can use:\n"
+        f"- {example_1.strftime('%Y-%m-%d %H:%M')}\n"
+        f"- {example_2.strftime('%d %B %Y %I:%M %p')}\n"
+        f"- {example_3.strftime('%d %B, at %I:%M %p')}"
+    )
+
+
 def _prompt_for_next_intake_field(next_field: str) -> str:
     if next_field == "name":
         return "Please share your full name to continue booking."
     if next_field == "appointment_at":
-        return (
-            "Please share your preferred appointment date and time. You can use:\n"
-            "• 2026-03-20 15:30\n"
-            "• 17 March 2026 4:00 PM\n"
-            "• 17th March, at 4:00 PM"
-        )
+        return _appointment_datetime_examples_message()
     if next_field == "timezone":
         return "Please share your timezone (for example: Asia/Kolkata, IST, or UTC)."
     if next_field == "contact":
@@ -345,6 +376,8 @@ def _last_response_was_escalation(db: Session, session_id: str, widget_id: str) 
         "level 1:",
         "level 2:",
         "would you like me to connect you",
+        "set up a meeting now",
+        "set up a meeting for you", 
         "don’t have a reliable answer",
         "don't have a reliable answer",
         "don’t have reliable expertise",
@@ -442,7 +475,12 @@ def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[W
         return response_text
     if _response_offers_handoff(response_text):
         return response_text
-    return _build_escalation_contacts_message(widget_config)
+
+    base = (response_text or "").strip()
+    if not base:
+        return _build_escalation_contacts_message(widget_config)
+
+    return f"{base}\n\n{_build_light_handoff_offer_prompt()}"
 
 
 def _has_captured_lead_for_session(
@@ -600,6 +638,18 @@ def _next_handoff_wait_expiry(from_time: Optional[datetime] = None) -> datetime:
     return base + timedelta(seconds=_handoff_wait_timeout_seconds())
 
 
+def _final_handoff_timeout_message() -> str:
+    base = (settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE or "").strip()
+    if not base:
+        base = "Live users are still busy."
+
+    normalized = base.lower()
+    if "set up a meeting" in normalized or "schedule" in normalized:
+        return base
+
+    return f"{base} If you want, I can set up a meeting for you now."
+
+
 def _close_handoff_to_bot_after_timeout(
     db: Session,
     handoff_session: HandoffSession,
@@ -613,7 +663,7 @@ def _close_handoff_to_bot_after_timeout(
             handoff_session_id=handoff_session.id,
             sender_type="bot",
             sender_user_id=None,
-            message=settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE,
+            message=_final_handoff_timeout_message(),
         ))
 
     db.add(HandoffMessage(
@@ -665,14 +715,12 @@ def _emit_handoff_timeout_prompt_if_needed(db: Session, handoff_session: Handoff
         return False
 
     current_cycle = max(1, int(handoff_session.wait_cycle or 1))
-    if current_cycle >= _handoff_max_wait_cycles():
+    max_wait_cycles = _handoff_max_wait_cycles()
+    if current_cycle >= max_wait_cycles:
         _close_handoff_to_bot_after_timeout(db, handoff_session, now=now, include_bot_message=True)
         db.commit()
         db.refresh(handoff_session)
         return True
-
-    if handoff_session.waiting_timeout_notified:
-        return False
 
     db.add(HandoffMessage(
         handoff_session_id=handoff_session.id,
@@ -680,6 +728,8 @@ def _emit_handoff_timeout_prompt_if_needed(db: Session, handoff_session: Handoff
         sender_user_id=None,
         message=settings.HUMAN_HANDOFF_BUSY_MESSAGE,
     ))
+    handoff_session.wait_cycle = min(max_wait_cycles, current_cycle + 1)
+    handoff_session.waiting_expires_at = _next_handoff_wait_expiry(now)
     handoff_session.waiting_timeout_notified = True
     handoff_session.updated_at = now
     db.commit()
@@ -761,51 +811,82 @@ def _route_user_message_to_handoff_if_active(
             session.waiting_expires_at = _next_handoff_wait_expiry(now)
 
         current_wait_cycle = max(1, int(session.wait_cycle or 1))
+        wants_booking = _is_booking_intent(message_text) or _mentions_appointment_topic(message_text)
 
-        if session.waiting_timeout_notified and _is_booking_intent(message_text):
+        if session.waiting_timeout_notified and wants_booking:
             response_text = "If you would like to set a meeting, please fill this short form and I will set it up for you."
             ui_action = "open_appointment_form"
             add_bot_message_text = response_text
+            session.status = "bot_active"
+            session.assigned_agent_id = None
+            session.waiting_expires_at = None
+            session.waiting_timeout_notified = True
+            session.closed_at = now
+        elif session.waiting_expires_at is not None and now >= session.waiting_expires_at:
+            if current_wait_cycle >= max_wait_cycles:
+                if wants_booking:
+                    response_text = "Live users are still busy, so I am moving you back to bot support. If you would like to set a meeting, please fill this short form and I will set it up for you."
+                    ui_action = "open_appointment_form"
+                    session.status = "bot_active"
+                    session.assigned_agent_id = None
+                    session.waiting_expires_at = None
+                    session.waiting_timeout_notified = True
+                    session.closed_at = now
+                else:
+                    response_text = _final_handoff_timeout_message()
+                    ui_action = None
+                    _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
+                add_bot_message_text = response_text
+            else:
+                session.wait_cycle = min(max_wait_cycles, current_wait_cycle + 1)
+                session.waiting_expires_at = _next_handoff_wait_expiry(now)
+                session.waiting_timeout_notified = True
+                response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
+                add_bot_message_text = response_text
         elif session.waiting_timeout_notified and _is_wait_more_intent(message_text):
             if current_wait_cycle >= max_wait_cycles:
-                response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
+                response_text = _final_handoff_timeout_message()
                 add_bot_message_text = response_text
                 ui_action = None
                 _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
             else:
-                session.wait_cycle = current_wait_cycle + 1
+                session.wait_cycle = min(max_wait_cycles, current_wait_cycle + 1)
                 session.waiting_expires_at = _next_handoff_wait_expiry(now)
                 session.waiting_timeout_notified = False
                 response_text = "Thanks for waiting. I will try to connect you with a live user for 2 more minutes."
                 add_bot_message_text = response_text
         elif session.waiting_timeout_notified:
             response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
-        elif session.waiting_expires_at is not None and now >= session.waiting_expires_at:
-            if current_wait_cycle >= max_wait_cycles:
-                if _is_booking_intent(message_text):
-                    response_text = "Live users are still busy, so I am moving you back to bot support. If you would like to set a meeting, please fill this short form and I will set it up for you."
-                    ui_action = "open_appointment_form"
-                else:
-                    response_text = settings.HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE
-                    ui_action = None
-                add_bot_message_text = response_text
-                _close_handoff_to_bot_after_timeout(db, session, now=now, include_bot_message=False)
-            else:
-                session.waiting_timeout_notified = True
-                response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
-                add_bot_message_text = response_text
         else:
             response_text = settings.HUMAN_HANDOFF_WAITING_MESSAGE
     elif session.status == "assigned":
         # Avoid repeating a bot acknowledgement while a live user is already assigned.
         response_text = ""
 
-    db.add(HandoffMessage(
-        handoff_session_id=session.id,
-        sender_type="user",
-        sender_user_id=None,
-        message=(message_text or "")[:4000] or "",
-    ))
+    normalized_user_message = ((message_text or "")[:4000] or "").strip()
+    should_store_user_message = bool(normalized_user_message)
+    if normalized_user_message:
+        latest_user_message = db.query(HandoffMessage).filter(
+            HandoffMessage.handoff_session_id == session.id,
+            HandoffMessage.sender_type == "user",
+        ).order_by(HandoffMessage.id.desc()).first()
+
+        if latest_user_message:
+            same_text = ((latest_user_message.message or "").strip() == normalized_user_message)
+            latest_created_at = getattr(latest_user_message, "created_at", None)
+            is_recent_duplicate = bool(
+                latest_created_at and (now - latest_created_at).total_seconds() <= 3
+            )
+            if same_text and is_recent_duplicate:
+                should_store_user_message = False
+
+    if should_store_user_message:
+        db.add(HandoffMessage(
+            handoff_session_id=session.id,
+            sender_type="user",
+            sender_user_id=None,
+            message=normalized_user_message,
+        ))
 
     if add_bot_message_text:
         db.add(HandoffMessage(
@@ -906,6 +987,71 @@ def _sync_appointment_contact_to_agent_list(db: Session, widget_config: WidgetCo
     ))
 
 
+def _finalize_intake_appointment(
+    db: Session,
+    user: User,
+    widget_config: WidgetConfig,
+    active: AppointmentIntake,
+    session_id: str,
+    widget_id: str,
+) -> str:
+    dt_value = active.appointment_at
+    if not dt_value:
+        active.next_field = "appointment_at"
+        db.commit()
+        return f"I am missing appointment time. {_appointment_datetime_examples_message()}"
+
+    tz_name = _canonical_timezone(active.timezone or DEFAULT_APPOINTMENT_TIMEZONE) or DEFAULT_APPOINTMENT_TIMEZONE
+    try:
+        tz_obj = ZoneInfo(tz_name)
+    except Exception:
+        tz_obj = timezone.utc
+        tz_name = "UTC"
+
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=tz_obj)
+
+    now_value = datetime.now(timezone.utc)
+    if dt_value.astimezone(timezone.utc) <= now_value:
+        active.next_field = "appointment_at"
+        db.commit()
+        return f"That time is in the past. {_appointment_datetime_examples_message()}"
+
+    appointment = Appointment(
+        session_id=session_id,
+        widget_id=widget_id,
+        user_id=user.id,
+        organization_id=user.organization_id,
+        name=active.name or "Guest",
+        email=active.email,
+        phone=active.phone,
+        notes=active.notes,
+        timezone=tz_name,
+        appointment_at=dt_value,
+        status="booked",
+    )
+    db.add(appointment)
+    _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
+
+    active.appointment_at = dt_value
+    active.timezone = tz_name
+    active.status = "completed"
+    active.next_field = "completed"
+    db.commit()
+    db.refresh(appointment)
+
+    local_dt = appointment.appointment_at.astimezone(tz_obj)
+    time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
+    contact_line = appointment.email or appointment.phone or "not provided"
+
+    return _build_appointment_confirmation_message(
+        time_label=time_label,
+        tz_name=tz_name,
+        name=appointment.name,
+        contact=contact_line,
+    )
+
+
 def _handle_appointment_intake_flow(
     db: Session,
     user: User,
@@ -981,50 +1127,50 @@ def _handle_appointment_intake_flow(
         active.name = name
         active.next_field = "appointment_at"
         db.commit()
-        return (
-            f"Thanks, {name}. Please share your preferred appointment date and time in this format: "
-            "YYYY-MM-DD HH:MM (24-hour). Example: 2026-03-20 15:30"
-        )
+        return f"Thanks, {name}. {_appointment_datetime_examples_message()}"
 
     if active.next_field == "appointment_at":
         dt_value = _parse_datetime_input(text)
         if not dt_value:
-            return (
-                "I could not parse the date/time. Please try one of these formats:\n"
-                "• 2026-03-20 15:30\n"
-                "• 17 March 2026 4:00 PM\n"
-                "• 17th March, at 4:00 PM"
-            )
+            return f"I could not parse the date/time. {_appointment_datetime_examples_message()}"
 
         active.appointment_at = dt_value
         detected_timezone = _extract_timezone(text)
-        if detected_timezone:
-            active.timezone = detected_timezone
-            active.next_field = "contact"
-            db.commit()
-            return (
-                f"Got it. I will use timezone {detected_timezone}. "
-                "Please share your email address or phone number so we can contact you (or type skip)."
-            )
-
-        active.next_field = "timezone"
+        active.timezone = _canonical_timezone(detected_timezone or active.timezone or DEFAULT_APPOINTMENT_TIMEZONE)
         db.commit()
-        return "Great. Please share your timezone (for example: Asia/Kolkata, IST, or UTC)."
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
+            session_id=session_id,
+            widget_id=widget_id,
+        )
 
     if active.next_field == "timezone":
         if _is_skip(text):
-            active.timezone = "UTC"
-            active.next_field = "contact"
-            db.commit()
-            return "No problem, I will use UTC. Please share your email address or phone number (or type skip)."
+            active.timezone = DEFAULT_APPOINTMENT_TIMEZONE
+        else:
+            timezone_name = _extract_timezone(text)
+            if not timezone_name:
+                return "Please provide a valid timezone, for example: Asia/Kolkata, IST, Europe/London, or UTC."
+            active.timezone = _canonical_timezone(timezone_name)
 
-        timezone_name = _extract_timezone(text)
-        if not timezone_name:
-            return "Please provide a valid timezone, for example: Asia/Kolkata, IST, Europe/London, or UTC."
-        active.timezone = timezone_name
-        active.next_field = "contact"
+        if not active.appointment_at:
+            active.next_field = "appointment_at"
+            db.commit()
+            return _appointment_datetime_examples_message()
+
         db.commit()
-        return "Please share your email address or phone number so we can contact you (or type skip)."
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
+            session_id=session_id,
+            widget_id=widget_id,
+        )
+
 
     if active.next_field == "contact":
         if not _is_skip(text):
@@ -1043,60 +1189,16 @@ def _handle_appointment_intake_flow(
     if active.next_field == "notes":
         notes = None if _is_skip(text) else text[:1000]
         active.notes = notes
-
-        dt_value = active.appointment_at
-        if not dt_value:
-            active.next_field = "appointment_at"
-            db.commit()
-            return "I am missing appointment time. Please provide: YYYY-MM-DD HH:MM"
-
-        tz_name = _canonical_timezone(active.timezone or "UTC")
-        try:
-            tz_obj = ZoneInfo(tz_name)
-        except Exception:
-            tz_obj = timezone.utc
-            tz_name = "UTC"
-
-        if dt_value.tzinfo is None:
-            dt_value = dt_value.replace(tzinfo=tz_obj)
-
-        now_value = datetime.now(timezone.utc)
-        if dt_value.astimezone(timezone.utc) <= now_value:
-            active.next_field = "appointment_at"
-            db.commit()
-            return "That time is in the past. Please provide a future appointment datetime: YYYY-MM-DD HH:MM"
-
-        appointment = Appointment(
+        db.commit()
+        return _finalize_intake_appointment(
+            db=db,
+            user=user,
+            widget_config=widget_config,
+            active=active,
             session_id=session_id,
             widget_id=widget_id,
-            user_id=user.id,
-            organization_id=user.organization_id,
-            name=active.name or "Guest",
-            email=active.email,
-            phone=active.phone,
-            notes=active.notes,
-            timezone=tz_name,
-            appointment_at=dt_value,
-            status="booked",
         )
-        db.add(appointment)
-        _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
 
-        active.status = "completed"
-        active.next_field = "completed"
-        db.commit()
-        db.refresh(appointment)
-
-        local_dt = appointment.appointment_at.astimezone(tz_obj)
-        time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
-        contact_line = appointment.email or appointment.phone or "not provided"
-
-        return _build_appointment_confirmation_message(
-            time_label=time_label,
-            tz_name=tz_name,
-            name=appointment.name,
-            contact=contact_line,
-        )
 
     return None
 
@@ -1174,6 +1276,17 @@ class AppointmentBookingResponse(BaseModel):
     widget_id: str
     appointment_at: datetime
     message: str
+
+
+class HandoffVideoCallRequest(BaseModel):
+    session_id: str
+    widget_id: str
+
+
+class HandoffCallModeRequest(BaseModel):
+    session_id: str
+    widget_id: str
+    mode: str
 
 
 @router.get("/suggested-questions", response_model=SuggestedQuestionsResponse)
@@ -1684,8 +1797,9 @@ async def chat_stream(
                 def handoff_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
                         if (waiting_response or "").strip():
-                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1731,7 +1845,7 @@ async def chat_stream(
                         }
                         if ui_action:
                             done_payload["ui_action"] = ui_action
-                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+                        yield f"data: {json.dumps(done_payload)}\n\n"
 
                 return StreamingResponse(handoff_event_generator(), media_type="text/event-stream")
 
@@ -1746,7 +1860,8 @@ async def chat_stream(
                 def lead_prompt_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
-                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(lead_prompt)} }}\\n\\n"
+                        yield "data: {\"type\": \"ready\"}\n\n"
+                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(lead_prompt)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1793,8 +1908,9 @@ async def chat_stream(
                 def confirmed_handoff_event_generator():
                     token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                     try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
                         if (waiting_response or "").strip():
-                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\\n\\n"
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\n\n"
                     finally:
                         persist_conversation(
                             db,
@@ -1839,7 +1955,7 @@ async def chat_stream(
                             "handoff_chat_id": confirmed_handoff.chat_id,
                             "handoff_status": confirmed_handoff.status,
                         }
-                        yield f"data: {json.dumps(done_payload)}\\n\\n"
+                        yield f"data: {json.dumps(done_payload)}\n\n"
 
                 return StreamingResponse(confirmed_handoff_event_generator(), media_type="text/event-stream")
 
@@ -1858,6 +1974,7 @@ async def chat_stream(
             def appointment_event_generator():
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
                 try:
+                    yield "data: {\"type\": \"ready\"}\n\n"
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(intake_response)} }}\n\n"
                 finally:
                     persist_conversation(
@@ -1892,27 +2009,43 @@ async def chat_stream(
 
             return StreamingResponse(appointment_event_generator(), media_type="text/event-stream")
 
-        stream, sources, escalation_fallback_text, retrieval_trace = stream_chat_response(
-            message.message,
-            message.session_id,
-            message.widget_id,
-            user_id,
-            user.organization_id,
-            db,
-            language_code=message.language_code,
-            language_label=message.language_label,
-            retrieval_message=message.retrieval_message
-        )
-
         is_first_turn = db.query(Conversation.id).filter(
             Conversation.session_id == message.session_id,
             Conversation.widget_id == message.widget_id,
         ).first() is None
 
         def event_generator():
+            # Emit an immediate event so clients can mark the stream as alive
+            # before retrieval/model latency is paid.
+            yield "data: {\"type\": \"ready\"}\n\n"
+
             collected_parts = []
             usage_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            sources = []
+            retrieval_trace = {
+                "user_query": message.message,
+                "retrieval_query": None,
+                "query_variants": [],
+                "retrieved_chunks": [],
+                "selected_chunks": [],
+                "source_ids": [],
+                "has_context": False,
+                "escalation_triggered": False,
+                "top_distance": None,
+            }
             try:
+                stream, sources, escalation_fallback_text, retrieval_trace = stream_chat_response(
+                    message.message,
+                    message.session_id,
+                    message.widget_id,
+                    user_id,
+                    user.organization_id,
+                    db,
+                    language_code=message.language_code,
+                    language_label=message.language_label,
+                    retrieval_message=message.retrieval_message
+                )
+
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
@@ -1936,6 +2069,14 @@ async def chat_stream(
                         if delta:
                             collected_parts.append(delta)
                             yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(delta)} }}\n\n"
+            except Exception as stream_error:
+                logger.error("Error preparing chat stream: %s", str(stream_error))
+                if not collected_parts:
+                    fallback_text = "Sorry—I don’t have a reliable answer for this right now."
+                    if limits.get("human_handoff_enabled"):
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
+                    collected_parts.append(fallback_text)
+                    yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
             finally:
                 full_text = "".join(collected_parts)
                 final_text = append_appointment_cta_if_needed(full_text, is_first_turn)
@@ -1997,7 +2138,7 @@ async def book_appointment(
     if appointment_time <= now:
         raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
-    canonical_tz = _canonical_timezone(request.timezone.strip()) if request.timezone else None
+    canonical_tz = _canonical_timezone(request.timezone.strip()) if request.timezone else DEFAULT_APPOINTMENT_TIMEZONE
 
     appointment = Appointment(
         session_id=request.session_id,
@@ -2021,7 +2162,7 @@ async def book_appointment(
     if appointment_dt.tzinfo is None:
         appointment_dt = appointment_dt.replace(tzinfo=timezone.utc)
 
-    tz_label = canonical_tz or "UTC"
+    tz_label = canonical_tz or DEFAULT_APPOINTMENT_TIMEZONE
     try:
         target_tz = ZoneInfo(tz_label)
     except Exception:
@@ -2115,6 +2256,12 @@ async def get_handoff_session_status(
             "chat_id": None,
             "status": None,
             "assigned_agent_id": None,
+            "call_room_id": None,
+            "call_status": "none",
+            "call_mode": "video",
+            "call_requested_at": None,
+            "call_started_at": None,
+            "call_ended_at": None,
             "updated_at": None,
             "wait_cycle": None,
             "waiting_expires_at": None,
@@ -2130,6 +2277,12 @@ async def get_handoff_session_status(
         "chat_id": session.chat_id,
         "status": session.status,
         "assigned_agent_id": session.assigned_agent_id,
+        "call_room_id": session.call_room_id,
+        "call_status": session.call_status,
+        "call_mode": session.call_mode,
+        "call_requested_at": session.call_requested_at,
+        "call_started_at": session.call_started_at,
+        "call_ended_at": session.call_ended_at,
         "updated_at": session.updated_at,
         "wait_cycle": session.wait_cycle,
         "waiting_expires_at": session.waiting_expires_at,
@@ -2168,6 +2321,12 @@ async def get_handoff_messages(
             "chat_id": chat_id,
             "status": None,
             "assigned_agent_id": None,
+            "call_room_id": None,
+            "call_status": "none",
+            "call_mode": "video",
+            "call_requested_at": None,
+            "call_started_at": None,
+            "call_ended_at": None,
             "wait_cycle": None,
             "waiting_expires_at": None,
             "waiting_timeout_notified": None,
@@ -2187,6 +2346,12 @@ async def get_handoff_messages(
         "chat_id": handoff_session.chat_id,
         "status": handoff_session.status,
         "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
         "wait_cycle": handoff_session.wait_cycle,
         "waiting_expires_at": handoff_session.waiting_expires_at,
         "waiting_timeout_notified": handoff_session.waiting_timeout_notified,
@@ -2202,6 +2367,194 @@ async def get_handoff_messages(
             for row in rows
             if row.sender_type != "system"
         ],
+    }
+
+
+@router.post("/handoff/request-video-call")
+async def request_handoff_video_call(
+    payload: HandoffVideoCallRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    limits = get_effective_limits(db, widget_config.organization_id)
+    if not bool(limits.get("human_handoff_enabled")):
+        raise HTTPException(status_code=403, detail="Human handoff is disabled for this organization")
+
+    handoff_session = _create_or_get_handoff_session(
+        db,
+        widget_config.organization_id,
+        payload.session_id,
+        payload.widget_id,
+        "User requested video call",
+        "User requested a live video call.",
+        "video_call_request",
+    )
+
+    now = datetime.utcnow()
+    if not (handoff_session.call_room_id or "").strip():
+        handoff_session.call_room_id = f"ai-bot-{widget_config.organization_id}-{handoff_session.id}-{int(now.timestamp())}"
+    handoff_session.call_mode = "video"
+    handoff_session.call_status = "requested"
+    handoff_session.call_requested_at = now
+    handoff_session.call_started_at = None
+    handoff_session.call_ended_at = None
+    handoff_session.updated_at = now
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=None,
+        message="Video call requested by user.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_video_call_requested",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
+    }
+
+
+@router.post("/handoff/call-mode")
+async def set_handoff_call_mode(
+    payload: HandoffCallModeRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    handoff_session = _get_open_handoff_session(
+        db,
+        payload.session_id,
+        payload.widget_id,
+        widget_config.organization_id,
+    )
+    if not handoff_session:
+        raise HTTPException(status_code=404, detail="No active handoff session found")
+
+    requested_mode = (payload.mode or "").strip().lower()
+    if requested_mode not in {"video", "audio"}:
+        raise HTTPException(status_code=400, detail="mode must be video or audio")
+
+    if handoff_session.call_status not in {"requested", "active"}:
+        raise HTTPException(status_code=409, detail="No requested/active call found")
+
+    handoff_session.call_mode = requested_mode
+    handoff_session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=(current_user.id if current_user else None),
+        message=f"Call switched to {requested_mode} mode.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_call_mode_changed",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
+    }
+
+
+@router.post("/handoff/end-call")
+async def end_handoff_call_from_chat(
+    payload: HandoffVideoCallRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    widget_config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == payload.widget_id).first()
+    if not widget_config:
+        raise HTTPException(status_code=404, detail="Invalid widget_id")
+
+    if current_user and current_user.organization_id != widget_config.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this organization")
+
+    handoff_session = _get_open_handoff_session(
+        db,
+        payload.session_id,
+        payload.widget_id,
+        widget_config.organization_id,
+    )
+    if not handoff_session:
+        raise HTTPException(status_code=404, detail="No active handoff session found")
+
+    handoff_session.call_status = "ended"
+    handoff_session.call_ended_at = datetime.utcnow()
+    handoff_session.updated_at = datetime.utcnow()
+
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="system",
+        sender_user_id=(current_user.id if current_user else None),
+        message="Live call ended.",
+    ))
+    db.commit()
+    db.refresh(handoff_session)
+
+    await handoff_hub.broadcast(widget_config.organization_id, {
+        "type": "handoff_call_ended",
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_room_id": handoff_session.call_room_id,
+    })
+
+    return {
+        "chat_id": handoff_session.chat_id,
+        "status": handoff_session.status,
+        "assigned_agent_id": handoff_session.assigned_agent_id,
+        "call_room_id": handoff_session.call_room_id,
+        "call_status": handoff_session.call_status,
+        "call_mode": handoff_session.call_mode,
+        "call_requested_at": handoff_session.call_requested_at,
+        "call_started_at": handoff_session.call_started_at,
+        "call_ended_at": handoff_session.call_ended_at,
     }
 
 
@@ -2301,3 +2654,4 @@ async def email_conversation(
     except Exception as e:
         logger.error(f"Error sending conversation email: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+

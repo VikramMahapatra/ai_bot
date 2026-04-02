@@ -17,10 +17,14 @@ from app.api import (
     calling_agent_router,
     call_campaign_router,
     call_log_router,
+    twilio_sms_router,
+    calls_router,
+    funnel_categories_router,
+    product_router
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
-from app.services.conversation_outcome_service import run_daily_outcome_daemon
+from app.services.conversation_outcome_service import run_daily_call_campaign_daemon, run_daily_outcome_daemon
 import logging
 import asyncio
 
@@ -34,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 outcome_daemon_task = None
 outcome_daemon_stop_event = asyncio.Event()
+
+call_campaign_daemon_task = None
+call_campaign_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -69,6 +76,10 @@ app.include_router(handoff_router)
 app.include_router(calling_agent_router)
 app.include_router(call_campaign_router)
 app.include_router(call_log_router)
+app.include_router(twilio_sms_router)
+app.include_router(calls_router)
+app.include_router(funnel_categories_router)
+app.include_router(product_router)
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")
@@ -80,6 +91,7 @@ async def options_handler(full_path: str):
 async def startup_event():
     """Initialize database on startup"""
     global outcome_daemon_task
+    # global call_campaign_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -87,6 +99,10 @@ async def startup_event():
     outcome_daemon_stop_event.clear()
     outcome_daemon_task = asyncio.create_task(run_daily_outcome_daemon(outcome_daemon_stop_event))
     logger.info("Conversation outcome daemon started")
+    
+    call_campaign_daemon_stop_event.clear()
+    call_campaign_daemon_task = asyncio.create_task(run_daily_call_campaign_daemon(call_campaign_daemon_stop_event))
+    logger.info("Call campaign daemon started")
 
     logger.info("✅ Backend is ready!")
 
@@ -95,12 +111,20 @@ async def startup_event():
 async def shutdown_event():
     """Gracefully stop background tasks"""
     global outcome_daemon_task
+    global call_campaign_daemon_task
     outcome_daemon_stop_event.set()
+    call_campaign_daemon_stop_event.set()
     if outcome_daemon_task:
         try:
             await outcome_daemon_task
         except Exception:
             logger.exception("Error while stopping outcome daemon")
+
+    if call_campaign_daemon_task:
+        try:
+            await call_campaign_daemon_task
+        except Exception:
+            logger.exception("Error while stopping call campaign daemon")
 
 
 @app.get("/")

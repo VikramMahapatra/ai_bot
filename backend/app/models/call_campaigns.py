@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -11,18 +11,42 @@ class CallCampaign(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
+    calling_no = Column(String, nullable=True)
     category = Column(String)
     priority = Column(String)
     status = Column(String, default="Draft")
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     total_calls = Column(Integer, default=0)        
     completed_calls = Column(Integer, default=0)    
+    
+    success_rate = Column(Float, default=0.0)
+    response_rate = Column(Float, default=0.0)
 
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
+    external_campaign_name = Column(String, nullable=True) 
 
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")
     schedule = relationship("CampaignSchedule", uselist=False, back_populates="campaign")
+    
+    key_insights = relationship(
+        "CampaignKeyInsight",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )
+
+    sentiments = relationship(
+        "CampaignSentiment",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )
+
+    ai_recommendations = relationship(
+        "CampaignAIRecommendation",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )

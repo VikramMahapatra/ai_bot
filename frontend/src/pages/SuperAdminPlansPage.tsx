@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -21,11 +21,16 @@ import {
   IconButton,
   Tooltip,
   Chip,
+  Stack,
+  Divider,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
 import { superadminService } from '../services/superadminService';
 import { Plan } from '../types';
@@ -50,6 +55,25 @@ const numericLimitFields: Array<[PlanNumericKey, string]> = [
   ['max_query_words', 'Max Query Words'],
 ];
 
+const featureToggleFields: Array<[keyof PlanForm, string]> = [
+  ['lead_generation_enabled', 'Lead Generation Enabled'],
+  ['voice_chat_enabled', 'Voice Chat Enabled'],
+  ['multilingual_text_enabled', 'Multilingual Text Enabled'],
+  ['whatsapp_enabled', 'WhatsApp Enabled'],
+  ['email_campaign_enabled', 'Email Campaign Enabled'],
+  ['sms_campaign_enabled', 'SMS Campaign Enabled'],
+  ['module_knowledge_enabled', 'Knowledge Module Enabled'],
+  ['module_leads_enabled', 'Leads Module Enabled'],
+  ['module_analytics_enabled', 'Analytics Module Enabled'],
+  ['module_advanced_analytics_enabled', 'Advanced Analytics Module Enabled'],
+  ['module_reports_enabled', 'Reports Module Enabled'],
+  ['module_campaigns_enabled', 'Campaigns Module Enabled'],
+  ['module_appointments_enabled', 'Appointments Module Enabled'],
+  ['module_products_enabled', 'Products Module Enabled'],
+  ['module_users_enabled', 'Users Module Enabled'],
+  ['human_handoff_enabled', 'Human Handoff Enabled'],
+];
+
 const defaultPlan: PlanForm = {
   name: '',
   description: '',
@@ -66,6 +90,19 @@ const defaultPlan: PlanForm = {
   lead_generation_enabled: true,
   voice_chat_enabled: false,
   multilingual_text_enabled: false,
+  whatsapp_enabled: false,
+  email_campaign_enabled: true,
+  sms_campaign_enabled: true,
+  module_knowledge_enabled: true,
+  module_leads_enabled: true,
+  module_analytics_enabled: true,
+  module_advanced_analytics_enabled: true,
+  module_reports_enabled: true,
+  module_campaigns_enabled: true,
+  module_appointments_enabled: true,
+  module_products_enabled: true,
+  module_users_enabled: true,
+  human_handoff_enabled: false,
 };
 
 const SuperAdminPlansPage: React.FC = () => {
@@ -77,6 +114,21 @@ const SuperAdminPlansPage: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [editForm, setEditForm] = useState<PlanForm>(defaultPlan);
+  const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isSeedingPlans, setIsSeedingPlans] = useState(false);
+  const [togglingPlanId, setTogglingPlanId] = useState<number | null>(null);
+  const [deletingPlanId, setDeletingPlanId] = useState<number | null>(null);
+
+  const planStats = useMemo(() => {
+    const total = plans.length;
+    const active = plans.filter((plan) => plan.is_active).length;
+    const avgPrice = total > 0 ? Math.round(plans.reduce((sum, plan) => sum + Number(plan.price_inr || 0), 0) / total) : 0;
+    const yearly = plans.filter((plan) => plan.billing_cycle === 'yearly').length;
+    return { total, active, avgPrice, yearly };
+  }, [plans]);
 
   const loadPlans = async () => {
     const data = await superadminService.listPlans();
@@ -88,10 +140,20 @@ const SuperAdminPlansPage: React.FC = () => {
   }, []);
 
   const handleCreate = async () => {
-    await superadminService.createPlan(form);
-    setForm(defaultPlan);
-    setCreateOpen(false);
-    loadPlans();
+    try {
+      setIsCreatingPlan(true);
+      setActionError('');
+      setActionSuccess('');
+      await superadminService.createPlan(form);
+      setForm(defaultPlan);
+      setCreateOpen(false);
+      await loadPlans();
+      setActionSuccess('Plan created successfully.');
+    } catch (error: any) {
+      setActionError(error?.response?.data?.detail || 'Failed to create plan');
+    } finally {
+      setIsCreatingPlan(false);
+    }
   };
 
   const handleSeedDefaults = async () => {
@@ -111,6 +173,19 @@ const SuperAdminPlansPage: React.FC = () => {
       lead_generation_enabled: true,
       voice_chat_enabled: true,
       multilingual_text_enabled: true,
+      whatsapp_enabled: true,
+      email_campaign_enabled: true,
+      sms_campaign_enabled: true,
+      module_knowledge_enabled: true,
+      module_leads_enabled: true,
+      module_analytics_enabled: true,
+      module_advanced_analytics_enabled: true,
+      module_reports_enabled: true,
+      module_campaigns_enabled: true,
+      module_appointments_enabled: true,
+      module_products_enabled: true,
+      module_users_enabled: true,
+      human_handoff_enabled: true,
     };
 
     const growth = {
@@ -129,20 +204,53 @@ const SuperAdminPlansPage: React.FC = () => {
       lead_generation_enabled: true,
       voice_chat_enabled: true,
       multilingual_text_enabled: true,
+      whatsapp_enabled: true,
+      email_campaign_enabled: true,
+      sms_campaign_enabled: true,
+      module_knowledge_enabled: true,
+      module_leads_enabled: true,
+      module_analytics_enabled: true,
+      module_advanced_analytics_enabled: true,
+      module_reports_enabled: true,
+      module_campaigns_enabled: true,
+      module_appointments_enabled: true,
+      module_products_enabled: true,
+      module_users_enabled: true,
+      human_handoff_enabled: true,
     };
 
     try {
-      await superadminService.createPlan(starter as Omit<Plan, 'id'>);
-    } catch {}
-    try {
-      await superadminService.createPlan(growth as Omit<Plan, 'id'>);
-    } catch {}
-    loadPlans();
+      setIsSeedingPlans(true);
+      setActionError('');
+      setActionSuccess('');
+      try {
+        await superadminService.createPlan(starter as Omit<Plan, 'id'>);
+      } catch {}
+      try {
+        await superadminService.createPlan(growth as Omit<Plan, 'id'>);
+      } catch {}
+      await loadPlans();
+      setActionSuccess('Seed process completed.');
+    } catch (error: any) {
+      setActionError(error?.response?.data?.detail || 'Failed to seed default plans');
+    } finally {
+      setIsSeedingPlans(false);
+    }
   };
 
   const handleToggleActive = async (plan: Plan) => {
-    await superadminService.updatePlan(plan.id, { is_active: !plan.is_active });
-    loadPlans();
+    try {
+      setTogglingPlanId(plan.id);
+      setActionError('');
+      setActionSuccess('');
+      await superadminService.updatePlan(plan.id, { is_active: !plan.is_active });
+      await loadPlans();
+      setActionSuccess(`Plan "${plan.name}" updated successfully.`);
+    } catch (error: any) {
+      setActionError(error?.response?.data?.detail || 'Failed to update plan status');
+    } finally {
+      setTogglingPlanId(null);
+    }
   };
 
   const handleOpenView = (plan: Plan) => {
@@ -168,16 +276,64 @@ const SuperAdminPlansPage: React.FC = () => {
       lead_generation_enabled: plan.lead_generation_enabled,
       voice_chat_enabled: plan.voice_chat_enabled,
       multilingual_text_enabled: plan.multilingual_text_enabled,
+      whatsapp_enabled: !!plan.whatsapp_enabled,
+      email_campaign_enabled: !!plan.email_campaign_enabled,
+      sms_campaign_enabled: !!plan.sms_campaign_enabled,
+      module_knowledge_enabled: !!plan.module_knowledge_enabled,
+      module_leads_enabled: !!plan.module_leads_enabled,
+      module_analytics_enabled: !!plan.module_analytics_enabled,
+      module_advanced_analytics_enabled: !!plan.module_advanced_analytics_enabled,
+      module_reports_enabled: !!plan.module_reports_enabled,
+      module_campaigns_enabled: !!plan.module_campaigns_enabled,
+      module_appointments_enabled: !!plan.module_appointments_enabled,
+      module_products_enabled: !!plan.module_products_enabled,
+      module_users_enabled: !!plan.module_users_enabled,
+      human_handoff_enabled: !!plan.human_handoff_enabled,
     });
     setEditOpen(true);
   };
 
   const handleSaveEdit = async () => {
     if (!activePlan) return;
-    await superadminService.updatePlan(activePlan.id, editForm);
-    setEditOpen(false);
-    setActivePlan(null);
-    loadPlans();
+    try {
+      setIsSavingPlan(true);
+      setActionError('');
+      setActionSuccess('');
+      await superadminService.updatePlan(activePlan.id, editForm);
+      setEditOpen(false);
+      setActivePlan(null);
+      await loadPlans();
+      setActionSuccess('Plan updated successfully.');
+    } catch (error: any) {
+      setActionError(error?.response?.data?.detail || 'Failed to update plan');
+    } finally {
+      setIsSavingPlan(false);
+    }
+  };
+
+  const handleDeletePlan = async (plan: Plan) => {
+    const confirmDelete = window.confirm(
+      `Delete plan "${plan.name}"? This cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setDeletingPlanId(plan.id);
+      setActionError('');
+      setActionSuccess('');
+      await superadminService.deletePlan(plan.id);
+      if (activePlan?.id === plan.id) {
+        setActivePlan(null);
+        setViewOpen(false);
+        setEditOpen(false);
+      }
+      await loadPlans();
+      setActionSuccess(`Plan "${plan.name}" deleted successfully.`);
+    } catch (error: any) {
+      setActionError(error?.response?.data?.detail || 'Failed to delete plan');
+    } finally {
+      setDeletingPlanId(null);
+    }
   };
 
   return (
@@ -185,223 +341,322 @@ const SuperAdminPlansPage: React.FC = () => {
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 2, md: 2.3 },
+          p: { xs: 2.2, md: 3 },
           mb: 3,
           borderRadius: '22px',
-          border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-          background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+          border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+          background: `linear-gradient(132deg, ${alpha('#c8dbf8', 0.95)} 0%, ${alpha(
             theme.palette.background.paper,
-            0.84
-          )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
-          boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            0.82
+          )} 68%, ${alpha('#8cb4e8', 0.94)} 100%)`,
+          boxShadow: `0 20px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(118deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.08) 38%, rgba(255,255,255,0) 64%)',
+            pointerEvents: 'none',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            bottom: '-42%',
+            right: '-8%',
+            width: '45%',
+            height: '160%',
+            background: 'radial-gradient(circle, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 72%)',
+            pointerEvents: 'none',
+          },
+          '& > *': {
             position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              background:
-                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-              pointerEvents: 'none',
-            },
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              top: '-24%',
-              right: '-6%',
-              width: '42%',
-              height: '150%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-              pointerEvents: 'none',
-            },
-            '& > *': {
-              position: 'relative',
-              zIndex: 1,
-            },
+            zIndex: 1,
+          },
         }}
       >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            Plans
+          <Typography variant="overline" sx={{ letterSpacing: 1.4, fontWeight: 700, color: alpha(theme.palette.primary.dark, 0.75) }}>
+            Subscription Studio
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Manage subscription plans and their limits.
+          <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
+            Super Admin Plans
+          </Typography>
+          <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.75), mt: 0.75 }}>
+            Configure pricing, usage limits, and product entitlements from one control surface.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <Button variant="outlined" onClick={handleSeedDefaults}>
-            Seed Starter/Growth
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+          <Button
+            variant="outlined"
+            onClick={handleSeedDefaults}
+            disabled={isSeedingPlans}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            {isSeedingPlans ? <CircularProgress size={18} color="inherit" /> : null}
+            {isSeedingPlans ? 'Seeding...' : 'Seed Starter/Growth'}
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
             New Plan
           </Button>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
       </Paper>
+
+      {actionError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError('')}>
+          {actionError}
+        </Alert>
+      )}
+      {actionSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setActionSuccess('')}>
+          {actionSuccess}
+        </Alert>
+      )}
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          { label: 'Total Plans', value: planStats.total },
+          { label: 'Active Plans', value: planStats.active },
+          { label: 'Average Price', value: `INR ${planStats.avgPrice}` },
+          { label: 'Yearly Billing', value: planStats.yearly },
+        ].map((item) => (
+          <Grid item xs={12} sm={6} md={3} key={item.label}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.8,
+                borderRadius: '16px',
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                background: `linear-gradient(155deg, ${alpha('#eff5ff', 0.9)} 0%, ${alpha('#ffffff', 1)} 85%)`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: alpha(theme.palette.text.primary, 0.65), fontWeight: 600 }}>
+                {item.label}
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.4 }}>
+                {item.value}
+              </Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
 
       <Grid container spacing={3}>
         {plans.map((plan) => (
           <Grid item xs={12} md={6} key={plan.id}>
             <Card sx={{
               border: '1px solid',
-              borderColor: alpha(theme.palette.primary.main, 0.18),
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, rgba(53,108,255,0.1) 0%, rgba(255,255,255,1) 60%)',
-              transition: 'all 0.2s ease',
-              '&:hover': { boxShadow: 3, transform: 'translateY(-2px)' },
+              borderColor: alpha(theme.palette.primary.main, 0.16),
+              borderRadius: '18px',
+              background: `linear-gradient(145deg, ${alpha('#edf3ff', 0.9)} 0%, rgba(255,255,255,1) 63%)`,
+              transition: 'all 0.24s ease',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 4,
+                background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              },
+              '&:hover': { boxShadow: `0 12px 24px ${alpha(theme.palette.primary.main, 0.16)}`, transform: 'translateY(-3px)' },
             }}>
               <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {plan.name}
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      {plan.name}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.68) }}>
+                      INR {plan.price_inr} / {plan.billing_cycle}
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={
+                      <Switch
+                        checked={plan.is_active}
+                        disabled={togglingPlanId === plan.id}
+                        onChange={() => handleToggleActive(plan)}
+                      />
+                    }
+                    label={plan.is_active ? 'Live' : 'Off'}
+                  />
+                </Stack>
+
+                <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.66), mt: 1.2, minHeight: 40 }}>
+                  {plan.description || 'No description provided for this plan yet.'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  ₹{plan.price_inr} / {plan.billing_cycle}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {plan.description || 'No description'}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+
+                <Stack direction="row" spacing={1} sx={{ mt: 1.2, flexWrap: 'wrap', useFlexGap: true }}>
                   <Chip label={plan.is_active ? 'Active' : 'Inactive'} color={plan.is_active ? 'success' : 'default'} size="small" />
-                  <Chip label={`${plan.monthly_conversation_limit} conv/mo`} size="small" variant="outlined" />
-                </Box>
-                <FormControlLabel
-                  sx={{ mt: 1 }}
-                  control={
-                    <Switch
-                      checked={plan.is_active}
-                      onChange={() => handleToggleActive(plan)}
-                    />
-                  }
-                  label={plan.is_active ? 'Active' : 'Inactive'}
-                />
-                <Grid container spacing={1} sx={{ mt: 1 }}>
-                  <Grid item>
-                    <Tooltip title="View">
-                      <IconButton
-                        onClick={() => handleOpenView(plan)}
-                        sx={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.primary.main, 0.15),
-                          color: 'primary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
-                        }}
-                      >
-                        <VisibilityIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Grid>
-                  <Grid item>
-                    <Tooltip title="Edit">
-                      <IconButton
-                        onClick={() => handleOpenEdit(plan)}
-                        sx={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
-                          color: 'secondary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Grid>
-                </Grid>
+                  <Chip label={`${Number(plan.monthly_conversation_limit || 0).toLocaleString()} conv/mo`} size="small" variant="outlined" />
+                  <Chip label={`${Number(plan.monthly_token_limit || 0).toLocaleString()} tokens`} size="small" variant="outlined" />
+                </Stack>
+
+                <Divider sx={{ my: 1.4, borderColor: alpha(theme.palette.primary.main, 0.16) }} />
+
+                <Stack direction="row" spacing={1}>
+                  <Tooltip title="View">
+                    <IconButton
+                      onClick={() => handleOpenView(plan)}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.primary.main, 0.15),
+                        color: 'primary.main',
+                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
+                      }}
+                    >
+                      <VisibilityIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Edit">
+                    <IconButton
+                      onClick={() => handleOpenEdit(plan)}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                        color: 'secondary.main',
+                        '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                      }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete Plan">
+                    <IconButton
+                      onClick={() => handleDeletePlan(plan)}
+                      disabled={deletingPlanId === plan.id}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.error.main, 0.14),
+                        color: 'error.main',
+                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.24) },
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Create Plan</DialogTitle>
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '18px' } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Box flex={1}>
+              <Typography variant="h5" fontWeight={700}>Create New Plan</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Define a new subscription plan, its pricing, limits, and feature entitlements. All organizations on this plan will inherit these values unless overridden.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
-              <TextField label="Plan Name" fullWidth value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: '14px', border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`, background: `linear-gradient(150deg, ${alpha('#eef6ff', 0.9)} 0%, ${alpha('#ffffff', 1)} 88%)` }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <TextField label="Plan Name" fullWidth value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField label="Price (INR)" type="number" fullWidth value={form.price_inr} onChange={(e) => setForm({ ...form, price_inr: Number(e.target.value) })} />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth>
+                  <InputLabel>Billing Cycle</InputLabel>
+                  <Select
+                    label="Billing Cycle"
+                    value={form.billing_cycle}
+                    onChange={(e) => setForm({ ...form, billing_cycle: e.target.value as 'monthly' | 'yearly' })}
+                  >
+                    <MenuItem value="monthly">Monthly</MenuItem>
+                    <MenuItem value="yearly">Yearly</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Description" fullWidth value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField label="Price (INR)" type="number" fullWidth value={form.price_inr} onChange={(e) => setForm({ ...form, price_inr: Number(e.target.value) })} />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField label="Description" fullWidth value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Billing Cycle</InputLabel>
-                <Select
-                  label="Billing Cycle"
-                  value={form.billing_cycle}
-                  onChange={(e) => setForm({ ...form, billing_cycle: e.target.value as 'monthly' | 'yearly' })}
-                >
-                  <MenuItem value="monthly">Monthly</MenuItem>
-                  <MenuItem value="yearly">Yearly</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          </Paper>
 
-          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
-            Limits
-          </Typography>
+          <Typography variant="subtitle1" sx={{ mt: 2, mb: 1.2, fontWeight: 700 }}>Limits</Typography>
           <Grid container spacing={2}>
             {numericLimitFields.map(([key, label]) => (
               <Grid item xs={12} md={4} key={key}>
-                <TextField
-                  label={label}
-                  type="number"
-                  fullWidth
-                  value={form[key]}
-                  onChange={(e) => setForm({ ...form, [key]: Number(e.target.value) })}
-                />
+                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: '12px', borderColor: alpha(theme.palette.primary.main, 0.18) }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
+                  <TextField
+                    size="small"
+                    type="number"
+                    fullWidth
+                    value={form[key]}
+                    onChange={(e) => setForm({ ...form, [key]: Number(e.target.value) })}
+                    sx={{ mt: 1 }}
+                  />
+                </Paper>
               </Grid>
             ))}
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.lead_generation_enabled}
-                    onChange={(e) => setForm({ ...form, lead_generation_enabled: e.target.checked })}
-                  />
-                }
-                label="Lead Generation Enabled"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.voice_chat_enabled}
-                    onChange={(e) => setForm({ ...form, voice_chat_enabled: e.target.checked })}
-                  />
-                }
-                label="Voice Chat Enabled"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.multilingual_text_enabled}
-                    onChange={(e) => setForm({ ...form, multilingual_text_enabled: e.target.checked })}
-                  />
-                }
-                label="Multilingual Text Enabled"
-              />
-            </Grid>
+          </Grid>
+
+          <Typography variant="subtitle1" sx={{ mt: 3, mb: 1.2, fontWeight: 700 }}>Feature Entitlements</Typography>
+          <Grid container spacing={2}>
+            {featureToggleFields.map(([key, label]) => (
+              <Grid item xs={12} md={4} key={String(key)}>
+                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: '12px', borderColor: alpha(theme.palette.secondary.main, 0.24) }}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
+                    <Switch
+                      checked={Boolean(form[key])}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.checked })}
+                    />
+                  </Stack>
+                </Paper>
+              </Grid>
+            ))}
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate}>Create</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={isCreatingPlan}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            {isCreatingPlan ? <CircularProgress size={18} color="inherit" /> : null}
+            {isCreatingPlan ? 'Creating...' : 'Create'}
+          </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={viewOpen} onClose={() => setViewOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '18px' } }}
+      >
         <DialogTitle>Plan Details</DialogTitle>
         <DialogContent>
           {activePlan && (
@@ -431,15 +686,11 @@ const SuperAdminPlansPage: React.FC = () => {
                   <TextField label={label} fullWidth value={activePlan[key] as number} InputProps={{ readOnly: true }} />
                 </Grid>
               ))}
-              <Grid item xs={12} md={4}>
-                <TextField label="Lead Generation Enabled" fullWidth value={activePlan.lead_generation_enabled ? 'Yes' : 'No'} InputProps={{ readOnly: true }} />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField label="Voice Chat Enabled" fullWidth value={activePlan.voice_chat_enabled ? 'Yes' : 'No'} InputProps={{ readOnly: true }} />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField label="Multilingual Text Enabled" fullWidth value={activePlan.multilingual_text_enabled ? 'Yes' : 'No'} InputProps={{ readOnly: true }} />
-              </Grid>
+              {featureToggleFields.map(([key, label]) => (
+                <Grid item xs={12} md={4} key={String(key)}>
+                  <TextField label={label} fullWidth value={activePlan[key] ? 'Yes' : 'No'} InputProps={{ readOnly: true }} />
+                </Grid>
+              ))}
             </Grid>
           )}
         </DialogContent>
@@ -448,7 +699,13 @@ const SuperAdminPlansPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '18px' } }}
+      >
         <DialogTitle>Edit Plan</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -491,39 +748,19 @@ const SuperAdminPlansPage: React.FC = () => {
                 />
               </Grid>
             ))}
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={editForm.lead_generation_enabled}
-                    onChange={(e) => setEditForm({ ...editForm, lead_generation_enabled: e.target.checked })}
-                  />
-                }
-                label="Lead Generation Enabled"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={editForm.voice_chat_enabled}
-                    onChange={(e) => setEditForm({ ...editForm, voice_chat_enabled: e.target.checked })}
-                  />
-                }
-                label="Voice Chat Enabled"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={editForm.multilingual_text_enabled}
-                    onChange={(e) => setEditForm({ ...editForm, multilingual_text_enabled: e.target.checked })}
-                  />
-                }
-                label="Multilingual Text Enabled"
-              />
-            </Grid>
+            {featureToggleFields.map(([key, label]) => (
+              <Grid item xs={12} md={4} key={String(key)}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(editForm[key])}
+                      onChange={(e) => setEditForm({ ...editForm, [key]: e.target.checked })}
+                    />
+                  }
+                  label={label}
+                />
+              </Grid>
+            ))}
           </Grid>
 
           <FormControlLabel
@@ -539,7 +776,15 @@ const SuperAdminPlansPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveEdit}>Save</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEdit}
+            disabled={isSavingPlan}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            {isSavingPlan ? <CircularProgress size={18} color="inherit" /> : null}
+            {isSavingPlan ? 'Saving...' : 'Save'}
+          </Button>
         </DialogActions>
       </Dialog>
     </SuperAdminLayout>

@@ -13,6 +13,12 @@ export interface HandoffSessionItem {
   created_at?: string | null;
   updated_at?: string | null;
   closed_at?: string | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
 }
 
 export interface HandoffMessageItem {
@@ -72,6 +78,21 @@ export const handoffService = {
 
   async close(chatId: string): Promise<HandoffSessionItem> {
     const response = await api.post<HandoffSessionItem>(`/api/admin/handoff/${encodeURIComponent(chatId)}/close`);
+    return response.data;
+  },
+
+  async startCall(chatId: string, mode: 'video' | 'audio' = 'video'): Promise<HandoffSessionItem> {
+    const response = await api.post<HandoffSessionItem>(`/api/admin/handoff/${encodeURIComponent(chatId)}/call/start`, { mode });
+    return response.data;
+  },
+
+  async updateCallMode(chatId: string, mode: 'video' | 'audio'): Promise<HandoffSessionItem> {
+    const response = await api.post<HandoffSessionItem>(`/api/admin/handoff/${encodeURIComponent(chatId)}/call/mode`, { mode });
+    return response.data;
+  },
+
+  async endCall(chatId: string): Promise<HandoffSessionItem> {
+    const response = await api.post<HandoffSessionItem>(`/api/admin/handoff/${encodeURIComponent(chatId)}/call/end`);
     return response.data;
   },
 

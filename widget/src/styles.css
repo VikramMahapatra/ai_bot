@@ -157,7 +157,7 @@
 .chatbot-widget-header-btn {
   background: rgba(255, 255, 255, 0.2);
   border: none;
-  color: white;
+  color: inherit;
   font-size: 15px;
   cursor: pointer;
   padding: 4px 8px;
@@ -166,6 +166,52 @@
 
 .chatbot-widget-header-btn:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.chatbot-widget-header-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chatbot-widget-call-btn {
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatbot-header-emoji {
+  font-size: 16px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 rgba(15, 23, 42, 0.28));
+}
+
+.chatbot-widget-call-btn.is-join-ready {
+  border-color: rgba(255, 255, 255, 0.96);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(20, 184, 166, 0.45));
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 0 12px rgba(16, 185, 129, 0.58);
+  animation: chatbot-join-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes chatbot-join-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+.chatbot-widget-container.dark .chatbot-widget-call-btn.is-join-ready {
+  border-color: rgba(186, 230, 253, 0.95);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.4), rgba(14, 165, 233, 0.35));
+  box-shadow: 0 0 0 2px rgba(186, 230, 253, 0.18), 0 0 12px rgba(56, 189, 248, 0.5);
 }
 
 .chatbot-widget-header h3 {
@@ -299,7 +345,18 @@
   margin-top: 8px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.chatbot-handoff-call-chip {
+  font-size: 10px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.2);
+  color: #0c4a6e;
 }
 
 .chatbot-handoff-error {
@@ -348,6 +405,11 @@
 
 .chatbot-widget-container.dark .chatbot-handoff-error {
   color: #fca5a5;
+}
+
+.chatbot-widget-container.dark .chatbot-handoff-call-chip {
+  background: rgba(56, 189, 248, 0.25);
+  color: #bae6fd;
 }
 
 .chatbot-message {

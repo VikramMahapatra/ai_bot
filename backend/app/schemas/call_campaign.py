@@ -8,10 +8,13 @@ class CampaignCreate(BaseModel):
     category: Optional[str] = None
     priority: Optional[str] = None
     agent_id: int
+    product_id: Optional[int] = None
+    calling_no: str
 
     contacts: List[int]
 
     start_datetime: Optional[str] = None
+    end_datetime: Optional[str] = None
     timezone: Optional[str] = None
 
     call_start_time: Optional[str] = None
@@ -41,10 +44,13 @@ class CampaignUpdate(BaseModel):
     category: Optional[str] = None
     priority: Optional[str] = None
     agent_id: Optional[int] = None
+    product_id: Optional[int] = None
+    calling_no: str
 
     contacts: Optional[List[int]] = None
 
     start_datetime: Optional[str] = None
+    end_datetime: Optional[str] = None
     timezone: Optional[str] = None
 
     call_start_time: Optional[str] = None
@@ -66,14 +72,23 @@ class CampaignUpdate(BaseModel):
             return None
         return v
     
+class CampaignStatusUpdate(BaseModel):
+    status: str  # Active | Paused | Draft
+    
     
 class ContactCreate(BaseModel):
     name: str | None
     email: str | None
     phone: str | None
+    company: str | None
     contact_list_id: int
     
     
 class ContactByIdsRequest(BaseModel):
 
     ids: list[int]
+    
+    
+class CampaignLookupParameters(BaseModel):
+    search: Optional[str] = None
+    agent_id: Optional[int] = None

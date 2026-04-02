@@ -1,18 +1,62 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 from app.database import get_db
 from app.auth import require_admin, get_current_user_optional
 from app.models import User, Lead, WidgetConfig
-from app.schemas import LeadCreate, LeadResponse
+from app.models.products import Product
+from app.schemas import LeadCreate, LeadResponse, LeadFunnelStageUpdate
 from app.utils import export_leads_to_csv
 from app.services.email_service import send_new_lead_notification
 from app.services.limits_service import get_effective_limits, increment_usage
+from app.services.funnel_category_service import is_valid_funnel_stage
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/leads", tags=["leads"])
+
+ALLOWED_LEAD_SOURCES = {"chat", "voice", "email", "sms", "whatsapp"}
+
+
+def _normalize_source(source: Optional[str]) -> str:
+    normalized = (source or "chat").strip().lower()
+    if normalized not in ALLOWED_LEAD_SOURCES:
+        raise HTTPException(status_code=422, detail=f"Invalid lead source: {source}")
+    return normalized
+
+
+def _normalize_funnel_stage(stage: Optional[str]) -> Optional[str]:
+    if stage is None:
+        return None
+    normalized = stage.strip().lower().replace(" ", "_")
+    if not normalized:
+        return None
+    return normalized
+
+
+def _validate_funnel_stage_for_org(db: Session, organization_id: Optional[int], stage: Optional[str]) -> Optional[str]:
+    normalized = _normalize_funnel_stage(stage)
+    if not normalized:
+        return None
+    if organization_id and not is_valid_funnel_stage(db, organization_id, normalized):
+        raise HTTPException(status_code=422, detail=f"Invalid funnel stage: {stage}")
+    return normalized
+
+
+def _extract_lead_outcome_from_custom_fields(custom_fields: Optional[str]) -> Optional[str]:
+    if not custom_fields:
+        return None
+    try:
+        payload = json.loads(custom_fields)
+        outcome = payload.get("lead_outcome") or payload.get("call_outcome") or payload.get("outcome") or payload.get("callOutcome")
+        if isinstance(outcome, str):
+            normalized = outcome.strip()
+            return normalized or None
+    except Exception:
+        return None
+    return None
 
 
 @router.post("", response_model=LeadResponse)
@@ -46,6 +90,11 @@ async def create_lead(
         
         # Create lead dict and add org/user fields
         lead_data = lead.dict()
+        lead_data["lead_outcome"] = (
+            (lead_data.get("lead_outcome") or "").strip() or _extract_lead_outcome_from_custom_fields(lead_data.get("custom_fields"))
+        )
+        lead_data["source"] = _normalize_source(lead_data.get("source"))
+        lead_data["funnel_stage"] = _validate_funnel_stage_for_org(db, org_id, lead_data.get("funnel_stage"))
         lead_data['organization_id'] = org_id
         lead_data['user_id'] = user_id
 
@@ -91,6 +140,8 @@ async def create_lead(
                 logger.error(f"Failed to send lead notification: {str(e)}", exc_info=True)
         
         return new_lead
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating lead: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -101,6 +152,9 @@ async def list_leads(
     skip: int = 0,
     limit: int = 100,
     widget_id: Optional[str] = None,
+    source: Optional[str] = None,
+    funnel_stage: Optional[str] = None,
+    product_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -108,8 +162,59 @@ async def list_leads(
     query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
     if widget_id:
         query = query.filter(Lead.widget_id == widget_id)
-    leads = query.offset(skip).limit(limit).all()
+    if source:
+        query = query.filter(Lead.source == _normalize_source(source))
+    if funnel_stage:
+        normalized_stage = _validate_funnel_stage_for_org(db, current_user.organization_id, funnel_stage)
+        query = query.filter(Lead.funnel_stage == normalized_stage)
+    if product_id:
+        query = query.filter(Lead.product_id == product_id)
+    leads = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
+
+    product_ids = []
+    for lead in leads:
+        if not lead.product_id:
+            continue
+        try:
+            product_ids.append(int(lead.product_id))
+        except (TypeError, ValueError):
+            continue
+    product_ids = list(set(product_ids))
+    product_name_map = {}
+    if product_ids:
+        products = db.query(Product).filter(
+            Product.organization_id == current_user.organization_id,
+            Product.id.in_(product_ids),
+            Product.is_deleted == False,
+        ).all()
+        product_name_map = {str(product.id): product.name for product in products}
+
+    for lead in leads:
+        setattr(lead, "product_name", product_name_map.get(lead.product_id))
+
     return leads
+
+
+@router.patch("/{lead_id}/funnel-stage", response_model=LeadResponse)
+async def update_funnel_stage(
+    lead_id: int,
+    payload: LeadFunnelStageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Move a lead to a funnel stage"""
+    lead = db.query(Lead).filter(
+        Lead.id == lead_id,
+        Lead.organization_id == current_user.organization_id,
+    ).first()
+
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    lead.funnel_stage = _validate_funnel_stage_for_org(db, current_user.organization_id, payload.funnel_stage)
+    db.commit()
+    db.refresh(lead)
+    return lead
 
 
 @router.get("/export")
@@ -117,12 +222,15 @@ async def export_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
     widget_id: Optional[str] = None,
+    product_id: Optional[str] = None,
 ):
     """Export leads to CSV"""
     try:
         query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
         if widget_id:
             query = query.filter(Lead.widget_id == widget_id)
+        if product_id:
+            query = query.filter(Lead.product_id == product_id)
         leads = query.all()
         
         # Convert to dict
@@ -136,6 +244,9 @@ async def export_leads(
                 "email": lead.email,
                 "phone": lead.phone,
                 "company": lead.company,
+                "lead_outcome": lead.lead_outcome,
+                "source": lead.source,
+                "funnel_stage": lead.funnel_stage,
                 "created_at": lead.created_at.isoformat() if lead.created_at else "",
             })
         

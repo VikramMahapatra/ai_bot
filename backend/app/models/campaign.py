@@ -22,6 +22,7 @@ class Contact(Base):
     name = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True, index=True)
+    company = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True) 
 
@@ -32,9 +33,10 @@ class Campaign(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     campaign_name = Column(String, nullable=False, index=True)
-    campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp
+    campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
     message_template = Column(Text, nullable=False)
     contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
     status = Column(String, nullable=False, default="draft", index=True)
     number_sent = Column(Integer, nullable=False, default=0)
@@ -49,7 +51,60 @@ class CampaignLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
+    run_sequence = Column(Integer, nullable=False, default=1, index=True)
+    run_started_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, nullable=False, index=True)  # sent | failed | pending
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    clicked_at = Column(DateTime(timezone=True), nullable=True)
+    bounced_at = Column(DateTime(timezone=True), nullable=True)
+    complained_at = Column(DateTime(timezone=True), nullable=True)
+    unsubscribed_at = Column(DateTime(timezone=True), nullable=True)
+    provider_message_id = Column(String, nullable=True, index=True)
+    tracking_token = Column(String, nullable=True, index=True)
+    open_count = Column(Integer, nullable=False, default=0)
+    click_count = Column(Integer, nullable=False, default=0)
+    last_event_type = Column(String, nullable=True, index=True)
+    last_event_at = Column(DateTime(timezone=True), nullable=True)
+    event_payload = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
+    converted_lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CampaignLeadRule(Base):
+    __tablename__ = "campaign_lead_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    rule_name = Column(String, nullable=False, default="Default Campaign to Lead Rule")
+    is_active = Column(Integer, nullable=False, default=1, index=True)
+    auto_convert_enabled = Column(Integer, nullable=False, default=0)
+    min_score_threshold = Column(Integer, nullable=False, default=50)
+    dedupe_window_days = Column(Integer, nullable=False, default=30)
+    target_funnel_stage = Column(String, nullable=True)
+    include_statuses = Column(Text, nullable=True)  # JSON array
+    exclude_statuses = Column(Text, nullable=True)  # JSON array
+    score_config = Column(Text, nullable=True)  # JSON object
+    source_multipliers = Column(Text, nullable=True)  # JSON object
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CampaignLeadConversion(Base):
+    __tablename__ = "campaign_lead_conversions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
+    campaign_log_id = Column(Integer, ForeignKey("campaign_logs.id"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    rule_id = Column(Integer, ForeignKey("campaign_lead_rules.id"), nullable=False, index=True)
+    score = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default="skipped", index=True)
+    reason = Column(Text, nullable=True)
+    details = Column(Text, nullable=True)  # JSON payload
     created_at = Column(DateTime(timezone=True), server_default=func.now())

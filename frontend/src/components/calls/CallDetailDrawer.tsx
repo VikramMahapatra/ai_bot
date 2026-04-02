@@ -8,22 +8,55 @@ import {
     IconButton,
     Stack,
     Button,
-    Tooltip
+    Tooltip,
+    Avatar
 } from '@mui/material';
-
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import BusinessIcon from '@mui/icons-material/Business';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DescriptionIcon from '@mui/icons-material/Description';
+import TimerIcon from "@mui/icons-material/Timer";
+import CallEndIcon from "@mui/icons-material/CallEnd";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import CampaignIcon from "@mui/icons-material/Campaign";
+import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import BugReportIcon from "@mui/icons-material/BugReport";
+import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
+import CallMadeIcon from '@mui/icons-material/CallMade';
+import CallReceivedIcon from '@mui/icons-material/CallReceived';
+import { formatDateTime } from '../../utils/dateUtils';
+import LeadIcon from "@mui/icons-material/HowToReg";
 
 interface CallDetailDrawerProps {
-    selectedCall: any;
+    open: boolean;
     onClose: () => void;
+    selectedCall: any;
 }
 
-const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClose }) => {
+export const formatEndedReason = (reason?: string) => {
+    if (!reason) return "-";
+
+    // Handle problematic long reasons
+    if (reason.includes("failed-to-connect")) {
+        return "Failed to Connect";
+    }
+
+    if (reason.includes("temporarily-unavailable")) {
+        return "Temporarily Unavailable";
+    }
+
+    // Default: clean normal ones
+    return reason
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
+};
+
+const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSize="small" color='primary' /> : <CallReceivedIcon fontSize="small" color='primary' />;
+
+const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
 
     return (
@@ -33,11 +66,11 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
             BackdropProps={{
                 sx: { backgroundColor: 'rgba(0,0,0,0.5)' }, // subtle fade overlay
             }}
-            open={!!selectedCall}
+            open={open}
             onClose={onClose}
             PaperProps={{
                 sx: {
-                    width: { xs: '100%', md: 700 },
+                    width: { xs: '100%', md: 850 },
                     p: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -72,28 +105,132 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
 
                         <Stack spacing={1}>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">Start: {selectedCall.startTime
-                                    ? new Date(selectedCall.startTime).toLocaleString()
-                                    : "-"}</Typography>
+                                <AccessTimeIcon fontSize="small" color="warning" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Start:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.startTime
+                                        ? formatDateTime(selectedCall.startTime)
+                                        : "-"}
+                                </Typography>
+                            </Box>
+
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <AccessTimeIcon fontSize="small" color="warning" />
+                                <Typography variant="body2" color="text.secondary">
+                                    End:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.endTime
+                                        ? formatDateTime(selectedCall.endTime)
+                                        : "-"}
+                                </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <AccessTimeIcon fontSize="small" />
-                                <Typography variant="body2">End: {selectedCall.endTime
-                                    ? new Date(selectedCall.endTime).toLocaleString()
-                                    : "-"}</Typography>
+                                {getTypeIcon(selectedCall.type)}
+                                <Typography variant="body2" color="text.secondary">
+                                    Call type:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.type}
+                                </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Agent: {selectedCall.agent || "N/A"}</Typography>
+                                <SupportAgentIcon fontSize="small" color="secondary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Agent:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.agent || "N/A"}
+                                </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <PersonIcon fontSize="small" />
-                                <Typography variant="body2">Contact: {selectedCall.contact || "N/A"}</Typography>
+                                <CampaignIcon fontSize="small" color="primary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Campaign:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.campaign || "N/A"}
+                                </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <BusinessIcon fontSize="small" />
-                                <Typography variant="body2">Industry: {selectedCall.industry || "N/A"}</Typography>
+                                <PersonIcon fontSize="small" color="primary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Contact:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.contact || "N/A"}
+                                </Typography>
+                            </Box>
+                            {/* <Box display="flex" alignItems="center" gap={1} mb={2}>
+                                <LeadIcon fontSize="small" color="success" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Lead Status:
+                                </Typography>
+                                {selectedCall?.lead_qualified_status ? (
+                                    <Typography variant="body2" fontWeight={600} color={
+                                        selectedCall.lead_qualified_status === "Synced"
+                                            ? "success"
+                                            : selectedCall.lead_qualified_status === "Pending"
+                                                ? "warning"
+                                                : "default"
+                                    }>
+                                        {selectedCall.lead_qualified_status}
+                                    </Typography>
+                                ) : (
+                                    <Typography variant="body2" fontWeight={600}>
+                                        Not Qualified
+                                    </Typography>
+                                )}
+                            </Box> */}
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <BugReportIcon fontSize="small" color="warning" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Test Call:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.testCall ? "Yes" : "No"}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <TimerIcon fontSize="small" color="primary" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Duration:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.duration
+                                        ? `${selectedCall.duration} sec`
+                                        : "N/A"}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <SentimentSatisfiedAltIcon fontSize="small" color="info" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Sentiment:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                    {selectedCall.sentiment}
+                                </Typography>
+                            </Box>
+                            {/* <Box display="flex" alignItems="center" gap={1}>
+                                <AttachMoneyIcon fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Cost:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600} color="success.main">
+                                    {selectedCall.cost || "N/A"}
+                                </Typography>
+                            </Box> */}
+
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <CallEndIcon fontSize="small" color="error" />
+                                <Typography variant="body2" color="text.secondary">
+                                    Disconnected By:
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600} color="error.main">
+                                    {formatEndedReason(selectedCall.ended_reason) || "N/A"}
+                                </Typography>
                             </Box>
                         </Stack>
                     </Stack>
@@ -169,40 +306,60 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ selectedCall, onClo
                             if (el) el.scrollTop = el.scrollHeight;
                         }}
                     >
-                        {selectedCall.transcript.map((msg: any, index: number) => (
-                            <Box
-                                key={index}
-                                display="flex"
-                                justifyContent={msg.speaker === 'Agent' ? 'flex-start' : 'flex-end'}
-                            >
+                        {selectedCall.transcript.map((msg: any, index: number) => {
+                            const isAgent = msg.speaker === "Agent";
+
+                            return (
                                 <Box
-                                    sx={{
-                                        backgroundColor: msg.speaker === 'Agent' ? 'primary.main' : 'secondary.main',
-                                        color: 'white',
-                                        p: 1.5,
-                                        pr: 2.5, // extra right padding so timestamp has space
-                                        pb: 3,   // extra bottom padding so timestamp doesn't touch text
-                                        borderRadius: 2,
-                                        boxShadow: 1,
-                                        maxWidth: '75%',
-                                        position: 'relative',
-                                    }}
+                                    key={index}
+                                    display="flex"
+                                    justifyContent={isAgent ? "flex-start" : "flex-end"}
+                                    alignItems="flex-end"
+                                    gap={1}
                                 >
-                                    <Typography variant="body2">{msg.text}</Typography>
-                                    <Typography
-                                        variant="caption"
+                                    {/* Agent Avatar with Tooltip */}
+                                    {isAgent && (
+                                        <Tooltip title="AI Assistant" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
+
+                                    {/* Message Bubble */}
+                                    <Box
                                         sx={{
-                                            position: 'absolute',
-                                            bottom: 4, // move a little higher
-                                            right: 8,
-                                            color: 'rgba(255,255,255,0.7)',
+                                            backgroundColor: isAgent ? "primary.main" : "secondary.main",
+                                            color: "white",
+                                            p: 1.5,
+                                            borderRadius: 2,
+                                            boxShadow: 1,
+                                            maxWidth: "75%",
                                         }}
                                     >
-                                        {msg.timestamp || '10:25 AM'}
-                                    </Typography>
+                                        <Typography variant="body2">{msg.text}</Typography>
+
+                                        <Box display="flex" justifyContent="flex-end" mt={0.5}>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{ color: "rgba(255,255,255,0.7)" }}
+                                            >
+                                                {msg.timestamp || "10:25 AM"}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+
+                                    {/* User Avatar with Tooltip */}
+                                    {!isAgent && (
+                                        <Tooltip title="User" arrow placement="top">
+                                            <Avatar sx={{ bgcolor: "secondary.main", width: 32, height: 32 }}>
+                                                <PersonIcon fontSize="small" />
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
                                 </Box>
-                            </Box>
-                        ))}
+                            );
+                        })}
                     </Box>
                 </Grid>
             </Grid>

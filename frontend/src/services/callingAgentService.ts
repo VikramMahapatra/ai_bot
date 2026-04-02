@@ -2,12 +2,13 @@ import api from './api';
 
 export interface CallingAgent {
     id?: number
-
+    organization_id?: number;
     // Basic Info
     type: 'outbound' | 'inbound'
     name: string
     calling_no?: string
-    status: 'Active' | 'Paused' | 'Draft'
+    status: 'pending' | 'testing' | 'active' | 'paused'
+    inbound_phone_number?: string
 
     server_location?: "IN" | "US"
 
@@ -73,8 +74,8 @@ export interface CallingAgent {
     training_doc?: string[]
 
     // Metadata
-    created_at?: Date
-    updated_at?: Date
+    created_at?: string
+    updated_at?: string
 }
 
 export interface CallingAgentLookup {
@@ -112,16 +113,17 @@ export interface CallingAgentStatusResponse {
     message: string;
     agent_id: string;
     status: string;
+    success: boolean;
 }
 
 
 export const callingAgentService = {
-    async createCallingAgent(payload: FormData): Promise<CallingAgent> {
+    async createCallingAgent(payload: FormData): Promise<CallingAgentStatusResponse> {
         const response = await api.post('/api/calling-agent/create', payload);
         return response.data;
     },
 
-    async updateCallingAgent(payload: FormData, agent_id?: number): Promise<CallingAgent> {
+    async updateCallingAgent(payload: FormData, agent_id?: number): Promise<CallingAgentStatusResponse> {
         const response = await api.post(`/api/calling-agent/update/${agent_id}`, payload);
         console.log(response);
         return response.data;
@@ -144,10 +146,8 @@ export const callingAgentService = {
         return response.data;
     },
 
-    async testCall(agent_id: number, phone_no: string): Promise<CallingAgentStatusResponse> {
-        const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, {
-            phone_no
-        });
+    async testCall(agent_id: number, payload: any): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, payload);
         return response.data;
     },
 

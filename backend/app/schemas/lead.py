@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -6,17 +6,23 @@ from datetime import datetime
 class LeadCreate(BaseModel):
     session_id: str
     widget_id: Optional[str] = None
+    product_id: Optional[str] = None
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     company: Optional[str] = None
     custom_fields: Optional[str] = None
+    lead_outcome: Optional[str] = None
+    source: Optional[str] = "chat"
+    funnel_stage: Optional[str] = None
 
 
 class LeadResponse(BaseModel):
     id: int
     session_id: str
     widget_id: Optional[str]
+    product_id: Optional[str]
+    product_name: Optional[str] = None
     organization_id: Optional[int]
     user_id: Optional[int]
     name: Optional[str]
@@ -24,10 +30,21 @@ class LeadResponse(BaseModel):
     phone: Optional[str]
     company: Optional[str]
     custom_fields: Optional[str]
+    lead_outcome: Optional[str]
+    source: str
+    funnel_stage: Optional[str]
     created_at: datetime
     
     class Config:
         from_attributes = True
+        
+    @field_validator("product_id", mode="before")
+    def convert_to_string(cls, v):
+        return str(v) if v is not None else v
+
+
+class LeadFunnelStageUpdate(BaseModel):
+    funnel_stage: Optional[str] = None
 
 
 class WidgetConfigBase(BaseModel):

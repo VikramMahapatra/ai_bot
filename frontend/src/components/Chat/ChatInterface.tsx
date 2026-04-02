@@ -37,6 +37,10 @@ import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import VideocamIcon from '@mui/icons-material/Videocam';
+import PhoneIcon from '@mui/icons-material/Phone';
+import CallEndIcon from '@mui/icons-material/CallEnd';
 import { chatService } from '../../services/chatService';
 import { leadService } from '../../services/leadService';
 import { dashboardService } from '../../services/dashboardService';
@@ -120,6 +124,17 @@ const ChatInterface: React.FC = () => {
   const [appointmentNotes, setAppointmentNotes] = useState('');
   const [bookingAppointment, setBookingAppointment] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
+  const [handoffEnabled, setHandoffEnabled] = useState(false);
+  const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
+  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [callRoomId, setCallRoomId] = useState<string | null>(null);
+  const [callDialogOpen, setCallDialogOpen] = useState(false);
+  const [requestingCall, setRequestingCall] = useState(false);
+  const [updatingCallMode, setUpdatingCallMode] = useState(false);
+  const [endingCall, setEndingCall] = useState(false);
+  const [callError, setCallError] = useState('');
 
   const voiceLanguages = [
     { code: 'en-IN', label: 'English (India)' },
@@ -144,6 +159,26 @@ const ChatInterface: React.FC = () => {
     const elapsed = inactivityNowMs - lastActivityAtMs;
     return Math.max(0, Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
   }, [sessionClosedByInactivity, sessionEngaged, inactivityNowMs, lastActivityAtMs]);
+
+  const selectedWidgetName = useMemo(() => {
+    return widgets.find((item) => item.widget_id === selectedWidgetId)?.name || 'No widget selected';
+  }, [widgets, selectedWidgetId]);
+
+  const isResponding = loading || streaming;
+
+  const callStatusColor: 'default' | 'warning' | 'success' | 'info' = callStatus === 'active'
+    ? 'success'
+    : callStatus === 'requested'
+      ? 'warning'
+      : callStatus === 'ended'
+        ? 'default'
+        : 'info';
+
+  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+    const safeRoom = encodeURIComponent(roomId);
+    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
+  };
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -263,14 +298,98 @@ const ChatInterface: React.FC = () => {
         const features = await chatService.getFeatureFlags();
         setVoiceEnabled(!!features.voice_chat_enabled);
         setMultilingualTextEnabled(!!features.multilingual_text_enabled);
+        setHandoffEnabled(!!features.human_handoff_enabled);
       } catch (err) {
         setVoiceEnabled(false);
         setMultilingualTextEnabled(false);
+        setHandoffEnabled(false);
       }
     };
 
     loadFeatures();
   }, []);
+
+  useEffect(() => {
+    if (!handoffEnabled || !selectedWidgetId || !sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHandoffStatus = async () => {
+      try {
+        const status = await chatService.getHandoffSessionStatus(sessionId, selectedWidgetId, handoffChatId || undefined);
+        if (cancelled) return;
+        setHandoffChatId(status.chat_id || null);
+        setHandoffStatus(status.status || null);
+        setCallStatus(status.call_status || 'none');
+        setCallMode((status.call_mode as 'video' | 'audio') || 'video');
+        setCallRoomId(status.call_room_id || null);
+      } catch {
+        if (cancelled) return;
+      }
+    };
+
+    loadHandoffStatus();
+    const intervalId = window.setInterval(loadHandoffStatus, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [handoffEnabled, selectedWidgetId, sessionId, handoffChatId]);
+
+  const handleRequestVideoCall = async () => {
+    if (!selectedWidgetId || requestingCall) return;
+    setRequestingCall(true);
+    setCallError('');
+    try {
+      const status = await chatService.requestVideoCall(sessionId, selectedWidgetId);
+      setHandoffChatId(status.chat_id || null);
+      setHandoffStatus(status.status || null);
+      setCallStatus(status.call_status || 'requested');
+      setCallMode((status.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(status.call_room_id || null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Video call request sent to a handoff user. You can join once they start the call.' },
+      ]);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to request video call');
+    } finally {
+      setRequestingCall(false);
+    }
+  };
+
+  const handleToggleCallMode = async () => {
+    if (!selectedWidgetId || updatingCallMode || callStatus === 'none') return;
+    const nextMode: 'video' | 'audio' = callMode === 'video' ? 'audio' : 'video';
+    setUpdatingCallMode(true);
+    setCallError('');
+    try {
+      const status = await chatService.setHandoffCallMode(sessionId, selectedWidgetId, nextMode);
+      setCallMode((status.call_mode as 'video' | 'audio') || nextMode);
+      setCallStatus(status.call_status || callStatus);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to switch call mode');
+    } finally {
+      setUpdatingCallMode(false);
+    }
+  };
+
+  const handleEndLiveCall = async () => {
+    if (!selectedWidgetId || endingCall) return;
+    setEndingCall(true);
+    setCallError('');
+    try {
+      const status = await chatService.endHandoffCall(sessionId, selectedWidgetId);
+      setCallStatus(status.call_status || 'ended');
+      setCallDialogOpen(false);
+    } catch (err: any) {
+      setCallError(err?.response?.data?.detail || 'Failed to end call');
+    } finally {
+      setEndingCall(false);
+    }
+  };
 
   const checkLeadCapture = async (targetSessionId: string = sessionId) => {
     try {
@@ -395,6 +514,10 @@ const ChatInterface: React.FC = () => {
               const data = line.replace(/^data:\s?/, '');
               if (!data) continue;
               const payload = JSON.parse(data);
+              if (payload.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
               if (payload.type === 'token') {
                 if (!receivedToken) {
                   receivedToken = true;
@@ -587,6 +710,7 @@ const ChatInterface: React.FC = () => {
         email: leadEmail,
         phone: leadPhone,
         company: leadCompany || undefined,
+        source: 'chat',
       });
       setShowLeadForm(false);
       setLeadName('');
@@ -719,7 +843,7 @@ const ChatInterface: React.FC = () => {
     100% { transform: translateY(0); opacity: 0.35; }
   `;
 
-  const glassCardBg = 'linear-gradient(140deg, rgba(255,255,255,0.82) 0%, rgba(236,244,255,0.76) 100%)';
+  const glassCardBg = 'linear-gradient(145deg, rgba(255,255,255,0.92) 0%, rgba(236,246,255,0.86) 56%, rgba(224,239,255,0.84) 100%)';
 
   return (
     <Box
@@ -729,10 +853,21 @@ const ChatInterface: React.FC = () => {
         flexDirection: 'column',
         minHeight: 0,
         overflow: 'hidden',
+        borderRadius: 2.6,
+        background:
+          'radial-gradient(circle at 12% 0%, rgba(56,189,248,0.08), transparent 34%), radial-gradient(circle at 100% 100%, rgba(37,99,235,0.07), transparent 40%)',
       }}
     >
       {widgetError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert
+          severity="warning"
+          sx={{
+            mb: 1.2,
+            borderRadius: 2,
+            border: '1px solid rgba(245,158,11,0.35)',
+            bgcolor: 'rgba(255,251,235,0.92)',
+          }}
+        >
           {widgetError}
         </Alert>
       )}
@@ -740,94 +875,116 @@ const ChatInterface: React.FC = () => {
         data-scroll-reset="true"
         ref={messagesContainerRef}
         sx={{
-          flexGrow: 1,
+          flex: '1 1 0',
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          p: { xs: 1.3, md: 2 },
-          mb: 1.4,
-          borderRadius: 3,
-          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+          p: { xs: 1, md: 1.25 },
+          mb: 0.9,
+          borderRadius: 2.7,
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
           background: glassCardBg,
           backdropFilter: 'blur(8px)',
+          boxShadow: '0 12px 24px rgba(15,23,42,0.08)',
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#7da2ff rgba(203,213,225,0.45)',
+          '&::-webkit-scrollbar': {
+            width: '10px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'rgba(226,232,240,0.7)',
+            borderRadius: '999px',
+            margin: '8px 0',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'linear-gradient(180deg, rgba(59,130,246,0.82) 0%, rgba(37,99,235,0.82) 100%)',
+            borderRadius: '999px',
+            border: '2px solid rgba(226,232,240,0.75)',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: 'linear-gradient(180deg, rgba(37,99,235,0.94) 0%, rgba(30,64,175,0.94) 100%)',
+          },
         }}
       >
         <Box
           sx={{
-            mb: 2,
+            mb: 1.05,
             position: 'sticky',
             top: 0,
             zIndex: 2,
-            p: { xs: 1.1, md: 1.2 },
+            p: { xs: 0.85, md: 0.95 },
             borderRadius: 2.2,
-            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-            background: 'linear-gradient(120deg, rgba(232,240,255,0.88) 0%, rgba(215,238,255,0.9) 100%)',
-            backdropFilter: 'blur(8px)',
+            border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+            background: 'linear-gradient(132deg, rgba(255,255,255,0.97) 0%, rgba(241,248,255,0.96) 100%)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 1.2,
+            gap: 0.8,
+            boxShadow: '0 8px 18px rgba(15,23,42,0.08)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.2, flexWrap: 'wrap' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-              <Avatar sx={{ bgcolor: 'primary.main', mr: 1.2, boxShadow: '0 10px 20px rgba(54,109,255,0.24)' }}>
-              <SmartToyIcon />
-            </Avatar>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.05 }}>
-                Zentrixel AI Chat
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.82rem' }}>
-                Ask anything and get grounded, context-aware responses.
-              </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
+              <Avatar
+                sx={{
+                  width: 34,
+                  height: 34,
+                  bgcolor: 'rgba(56,109,255,0.12)',
+                  color: 'primary.main',
+                  boxShadow: '0 6px 14px rgba(45,122,240,0.2)',
+                }}
+              >
+                <SmartToyIcon />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.05, letterSpacing: '0.01em', fontSize: { xs: '1rem', md: '1.04rem' } }}>
+                  Assistant Workspace
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                  Grounded responses from your selected widget knowledge.
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, flexWrap: 'wrap' }}>
+              <Chip
+                size="small"
+                label={isResponding ? 'Replying...' : 'Ready'}
+                sx={{
+                  fontWeight: 700,
+                  bgcolor: isResponding ? 'rgba(251,191,36,0.2)' : 'rgba(34,197,94,0.16)',
+                  color: 'text.primary',
+                  border: '1px solid rgba(15,23,42,0.08)',
+                }}
+              />
+              <Chip
+                size="small"
+                label={selectedWidgetName}
+                sx={{
+                  maxWidth: 230,
+                  '& .MuiChip-label': {
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  },
+                  bgcolor: 'rgba(56,109,255,0.1)',
+                  color: 'primary.main',
+                  border: '1px solid rgba(56,109,255,0.2)',
+                }}
+              />
             </Box>
           </Box>
-          <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
-            <Button
-              onClick={openAppointmentDialog}
-              startIcon={<CalendarMonthIcon />}
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 0.65 }}>
+            <FormControl
+              size="small"
               sx={{
-                background: 'linear-gradient(135deg, #285ad9 0%, #2d8ef0 55%, #36c4ff 100%)',
-                color: 'white',
-                px: 1.8,
-                py: 0.9,
-                borderRadius: 2.2,
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                boxShadow: '0 8px 18px rgba(45,122,240,0.34)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #2049b8 0%, #2277d0 55%, #2ea9d8 100%)',
+                minWidth: 220,
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'rgba(255,255,255,0.96)',
                 },
               }}
             >
-              Book Appointment
-            </Button>
-            {messages.length > 0 && (
-              <Tooltip title="Email this conversation" placement="left">
-                <Button
-                  onClick={handleEmailConversation}
-                  startIcon={<EmailIcon />}
-                  sx={{ 
-                    background: 'linear-gradient(135deg, #355be0 0%, #5f75ff 100%)',
-                    color: 'white',
-                    px: 1.8,
-                    py: 0.9,
-                    borderRadius: 2.2,
-                    fontWeight: 700,
-                    fontSize: '0.78rem',
-                    boxShadow: '0 8px 18px rgba(53,91,224,0.32)',
-                    '&:hover': { 
-                      background: 'linear-gradient(135deg, #2948b7 0%, #4a5fd8 100%)',
-                    },
-                  }}
-                >
-                  Email Chat
-                </Button>
-              </Tooltip>
-            )}
-          </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 0.9 }}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
               <InputLabel id="chat-widget-select-label">Widget</InputLabel>
               <Select
                 labelId="chat-widget-select-label"
@@ -843,9 +1000,69 @@ const ChatInterface: React.FC = () => {
               </Select>
             </FormControl>
 
-            {(multilingualTextEnabled || voiceEnabled) && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
-                <FormControl size="small" sx={{ minWidth: 172 }}>
+            <Button
+              onClick={() => {
+                startFreshSession();
+                setExpandedSources(new Set());
+                setInput('');
+              }}
+              startIcon={<RestartAltIcon />}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 1.8,
+                border: '1px solid rgba(56,109,255,0.3)',
+                color: 'primary.main',
+                bgcolor: 'rgba(255,255,255,0.9)',
+                px: 1.4,
+                '&:hover': {
+                  bgcolor: 'rgba(237,245,255,0.95)',
+                },
+              }}
+            >
+              New Session
+            </Button>
+
+            <Button
+              onClick={openAppointmentDialog}
+              startIcon={<CalendarMonthIcon />}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 1.8,
+                px: 1.3,
+                color: 'white',
+                background: 'linear-gradient(135deg, rgba(8,145,178,0.95) 0%, rgba(14,165,233,0.95) 100%)',
+                boxShadow: '0 6px 14px rgba(14,165,233,0.28)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, rgba(6,112,138,0.98) 0%, rgba(2,132,199,0.98) 100%)',
+                },
+              }}
+            >
+              Book
+            </Button>
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.7, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+              {handoffEnabled && (
+                <Chip
+                  size="small"
+                  label={`Call: ${callStatus}`}
+                  color={callStatusColor}
+                  variant="outlined"
+                />
+              )}
+              {(multilingualTextEnabled || voiceEnabled) && (
+                <FormControl
+                  size="small"
+                  sx={{
+                    minWidth: 172,
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'rgba(255,255,255,0.96)',
+                    },
+                  }}
+                >
                   <InputLabel id="voice-lang-label">
                     {multilingualTextEnabled ? 'Language' : 'Voice Language'}
                   </InputLabel>
@@ -862,42 +1079,135 @@ const ChatInterface: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
-                {voiceEnabled && (
+              )}
+
+              {voiceEnabled && (
+                <>
+                  <Tooltip title={listening ? 'Stop voice input' : 'Start voice input'}>
+                    <span>
+                      <IconButton
+                        onClick={listening ? stopListening : startListening}
+                        disabled={!voiceSupported}
+                        sx={{
+                          bgcolor: listening ? 'rgba(239,68,109,0.14)' : 'rgba(56,109,255,0.12)',
+                          border: '1px solid rgba(56,109,255,0.2)',
+                        }}
+                      >
+                        {listening ? <MicOffIcon color="error" /> : <MicIcon color="primary" />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={speakReplies ? 'Disable voice replies' : 'Enable voice replies'}>
+                    <span>
+                      <IconButton
+                        onClick={() => setSpeakReplies((prev) => !prev)}
+                        disabled={!voiceSupported}
+                        sx={{
+                          bgcolor: speakReplies ? 'rgba(56,109,255,0.18)' : 'transparent',
+                          border: '1px solid rgba(56,109,255,0.2)',
+                        }}
+                      >
+                        <VolumeUpIcon color={speakReplies ? 'primary' : 'inherit'} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </>
+              )}
+            </Box>
+
+            {messages.length > 0 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                {handoffEnabled && (
                   <>
-                    <Tooltip title={listening ? 'Stop voice input' : 'Start voice input'}>
-                      <span>
-                        <IconButton
-                          onClick={listening ? stopListening : startListening}
-                          disabled={!voiceSupported}
-                          sx={{
-                            bgcolor: listening ? 'rgba(239,68,109,0.14)' : 'rgba(56,109,255,0.12)',
-                            border: '1px solid rgba(56,109,255,0.2)',
-                          }}
-                        >
-                          {listening ? <MicOffIcon color="error" /> : <MicIcon color="primary" />}
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title={speakReplies ? 'Disable voice replies' : 'Enable voice replies'}>
-                      <span>
-                        <IconButton
-                          onClick={() => setSpeakReplies((prev) => !prev)}
-                          disabled={!voiceSupported}
-                          sx={{
-                            bgcolor: speakReplies ? 'rgba(56,109,255,0.18)' : 'transparent',
-                            border: '1px solid rgba(56,109,255,0.2)',
-                          }}
-                        >
-                          <VolumeUpIcon color={speakReplies ? 'primary' : 'inherit'} />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
+                    <Button
+                      onClick={handleRequestVideoCall}
+                      startIcon={<VideocamIcon />}
+                      disabled={!selectedWidgetId || requestingCall || callStatus === 'requested' || callStatus === 'active'}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        color: 'white',
+                        background: 'linear-gradient(135deg, rgba(14,165,233,0.95) 0%, rgba(2,132,199,0.95) 100%)',
+                        boxShadow: '0 6px 14px rgba(14,165,233,0.28)',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, rgba(8,145,178,0.98) 0%, rgba(3,105,161,0.98) 100%)',
+                        },
+                      }}
+                    >
+                      {requestingCall ? 'Requesting...' : 'Video Call'}
+                    </Button>
+                    <Button
+                      onClick={() => setCallDialogOpen(true)}
+                      startIcon={callMode === 'audio' ? <PhoneIcon /> : <VideocamIcon />}
+                      disabled={callStatus !== 'active' || !callRoomId}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        border: '1px solid rgba(14,165,233,0.35)',
+                        color: 'info.main',
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                        '&:hover': {
+                          bgcolor: 'rgba(236,254,255,0.95)',
+                        },
+                      }}
+                    >
+                      Join Call
+                    </Button>
+                    <Button
+                      onClick={handleToggleCallMode}
+                      startIcon={callMode === 'video' ? <PhoneIcon /> : <VideocamIcon />}
+                      disabled={(callStatus !== 'active' && callStatus !== 'requested') || updatingCallMode}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 1.8,
+                        border: '1px solid rgba(56,109,255,0.3)',
+                        color: 'primary.main',
+                        bgcolor: 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      {updatingCallMode ? 'Switching...' : (callMode === 'video' ? 'Audio Only' : 'Video Mode')}
+                    </Button>
+                    <Button
+                      onClick={handleEndLiveCall}
+                      startIcon={<CallEndIcon />}
+                      color="error"
+                      disabled={callStatus !== 'active' || endingCall}
+                      sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 1.8 }}
+                    >
+                      {endingCall ? 'Ending...' : 'End Call'}
+                    </Button>
                   </>
                 )}
+                <Tooltip title="Email this conversation" placement="left">
+                  <Button
+                    onClick={handleEmailConversation}
+                    startIcon={<EmailIcon />}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 1.8,
+                      color: 'white',
+                      background: 'linear-gradient(135deg, rgba(79,70,229,0.95) 0%, rgba(99,102,241,0.95) 100%)',
+                      boxShadow: '0 6px 14px rgba(79,70,229,0.28)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, rgba(67,56,202,0.98) 0%, rgba(79,70,229,0.98) 100%)',
+                      },
+                    }}
+                  >
+                    Email Chat
+                  </Button>
+                </Tooltip>
               </Box>
             )}
           </Box>
-        </Box>
+          {callError && (
+            <Alert severity="error" sx={{ mt: 0.5 }}>
+              {callError}
+            </Alert>
+          )}
         </Box>
         {!multilingualTextEnabled && (
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -915,21 +1225,21 @@ const ChatInterface: React.FC = () => {
           </Alert>
         )}
         {messages.length === 0 && (suggestionsLoading || suggestedQuestions.length > 0 || suggestionsError) && (
-          <Box sx={{ mb: 2 }}>
+          <Box sx={{ mb: 1.2 }}>
             <Paper
               sx={{
-                p: 2,
+                p: 1.35,
                 borderRadius: 2,
-                border: '1px solid rgba(45, 179, 160, 0.15)',
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(224, 231, 255, 0.7) 45%, rgba(209, 250, 229, 0.6) 100%)',
-                boxShadow: '0 12px 24px rgba(15, 23, 42, 0.08)'
+                border: '1px solid rgba(59,130,246,0.2)',
+                background: 'linear-gradient(140deg, rgba(255,255,255,0.95) 0%, rgba(238,246,255,0.92) 100%)',
+                boxShadow: '0 8px 16px rgba(15, 23, 42, 0.07)'
               }}
             >
               <Typography
                 variant="overline"
                 sx={{
                   fontWeight: 700,
-                  letterSpacing: '0.08em',
+                  letterSpacing: '0.06em',
                   color: '#0f172a',
                 }}
               >
@@ -956,13 +1266,14 @@ const ChatInterface: React.FC = () => {
                       label={question}
                       onClick={() => handleSend(question)}
                       sx={(theme) => ({
-                        fontSize: '0.78rem',
-                        fontStyle: 'italic',
-                        borderRadius: '12px',
-                        bgcolor: alpha(theme.palette.primary.main, 0.08),
-                        border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                        fontSize: '0.77rem',
+                        borderRadius: '999px',
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                        color: theme.palette.primary.dark,
+                        fontWeight: 600,
                         '&:hover': {
-                          bgcolor: alpha(theme.palette.primary.main, 0.16),
+                          bgcolor: alpha(theme.palette.primary.main, 0.2),
                         }
                       })}
                     />
@@ -975,14 +1286,19 @@ const ChatInterface: React.FC = () => {
         {messages.length === 0 && (
           <Box
             sx={{
-              minHeight: 160,
+              minHeight: 136,
               display: 'grid',
               placeItems: 'center',
               color: 'text.secondary',
               textAlign: 'center',
+              borderRadius: 2.2,
+              border: '1px dashed rgba(148,163,184,0.6)',
+              background: 'rgba(255,255,255,0.58)',
             }}
           >
-            <Typography color="text.secondary">Start a conversation to see responses here.</Typography>
+            <Typography color="text.secondary" sx={{ px: 2, fontWeight: 500 }}>
+              Start a conversation to see responses here.
+            </Typography>
           </Box>
         )}
 
@@ -992,11 +1308,11 @@ const ChatInterface: React.FC = () => {
             <Box
               key={index}
               sx={{
-                mb: 1.8,
+                mb: 1.2,
                 display: 'flex',
                 flexDirection: isUser ? 'row-reverse' : 'row',
                 alignItems: 'flex-start',
-                gap: 1,
+                gap: 0.72,
                 animation: `${bubbleAppear} 320ms ease both`,
                 animationDelay: `${Math.min(index * 25, 350)}ms`,
               }}
@@ -1004,12 +1320,12 @@ const ChatInterface: React.FC = () => {
               <Tooltip title={isUser ? 'You' : 'AI'} placement={isUser ? 'right' : 'left'}>
                 <Avatar
                   sx={{
-                    width: 34,
-                    height: 34,
+                    width: 32,
+                    height: 32,
                     bgcolor: isUser ? 'primary.main' : 'rgba(255,255,255,0.95)',
                     color: isUser ? 'white' : 'primary.main',
                     border: isUser ? 'none' : '1px solid rgba(54,109,255,0.28)',
-                    boxShadow: isUser ? '0 10px 18px rgba(56,109,255,0.3)' : '0 8px 14px rgba(15,23,42,0.08)',
+                    boxShadow: isUser ? '0 9px 16px rgba(56,109,255,0.3)' : '0 8px 12px rgba(15,23,42,0.08)',
                     mt: 0.45,
                   }}
                 >
@@ -1017,18 +1333,18 @@ const ChatInterface: React.FC = () => {
                 </Avatar>
               </Tooltip>
 
-              <Box sx={{ maxWidth: { xs: '84%', md: '74%' } }}>
+              <Box sx={{ maxWidth: { xs: '86%', md: '76%' } }}>
                 <Paper
                   sx={{
-                    px: 1.5,
-                    py: 1.15,
+                    px: 1.35,
+                    py: 1.02,
                     borderRadius: isUser ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
                     background: isUser
                       ? 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 65%, #4bc8ff 100%)'
                       : 'linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(239,246,255,0.96) 100%)',
                     color: isUser ? 'common.white' : 'text.primary',
                     border: isUser ? 'none' : '1px solid rgba(53,108,255,0.2)',
-                    boxShadow: isUser ? '0 12px 24px rgba(45,122,240,0.28)' : '0 12px 24px rgba(15,23,42,0.08)',
+                    boxShadow: isUser ? '0 10px 20px rgba(45,122,240,0.28)' : '0 10px 20px rgba(15,23,42,0.08)',
                   }}
                 >
                   {message.role === 'assistant' ? (
@@ -1216,6 +1532,41 @@ const ChatInterface: React.FC = () => {
         )}
         <div ref={messagesEndRef} />
       </Paper>
+
+      <Dialog open={callDialogOpen} onClose={() => setCallDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {callMode === 'audio' ? <PhoneIcon color="primary" /> : <VideocamIcon color="primary" />}
+            <Typography sx={{ fontWeight: 700 }}>
+              Live {callMode === 'audio' ? 'Audio' : 'Video'} Call
+            </Typography>
+          </Box>
+          <Chip size="small" label={`Status: ${callStatus}`} color={callStatusColor} variant="outlined" />
+        </DialogTitle>
+        <DialogContent>
+          {!callRoomId ? (
+            <Alert severity="warning">Call room is not available yet.</Alert>
+          ) : (
+            <Box sx={{ width: '100%', height: { xs: 360, md: 560 }, borderRadius: 2, overflow: 'hidden', border: '1px solid #dbe6f5' }}>
+              <iframe
+                title="handoff-live-call"
+                src={getMeetingUrl(callRoomId, callMode)}
+                style={{ width: '100%', height: '100%', border: 0 }}
+                allow="camera; microphone; fullscreen; display-capture"
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleToggleCallMode} startIcon={callMode === 'video' ? <PhoneIcon /> : <VideocamIcon />} disabled={(callStatus !== 'active' && callStatus !== 'requested') || updatingCallMode}>
+            {updatingCallMode ? 'Switching...' : (callMode === 'video' ? 'Switch to Audio' : 'Switch to Video')}
+          </Button>
+          <Button color="error" onClick={handleEndLiveCall} startIcon={<CallEndIcon />} disabled={callStatus !== 'active' || endingCall}>
+            {endingCall ? 'Ending...' : 'End Call'}
+          </Button>
+          <Button onClick={() => setCallDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog 
         open={showLeadForm} 
@@ -1684,12 +2035,12 @@ const ChatInterface: React.FC = () => {
           display: 'grid',
           gridTemplateColumns: '1fr auto',
           alignItems: 'center',
-          gap: 1,
-          p: { xs: 1, md: 1.2 },
-          borderRadius: 2.5,
-          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
-          background: 'linear-gradient(150deg, rgba(255,255,255,0.95) 0%, rgba(234,243,255,0.92) 100%)',
-          boxShadow: '0 14px 30px rgba(15,23,42,0.08)',
+          gap: 0.65,
+          p: { xs: 0.85, md: 0.95 },
+          borderRadius: 2.4,
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(237,246,255,0.95) 100%)',
+          boxShadow: '0 10px 22px rgba(15,23,42,0.08)',
         }}
       >
         <TextField
@@ -1710,7 +2061,20 @@ const ChatInterface: React.FC = () => {
           sx={{
             '& .MuiOutlinedInput-root': {
               borderRadius: 2,
-              backgroundColor: 'rgba(255,255,255,0.92)',
+              backgroundColor: 'rgba(255,255,255,0.96)',
+              '& fieldset': {
+                borderColor: 'rgba(56,109,255,0.28)',
+              },
+              '&:hover fieldset': {
+                borderColor: 'rgba(56,109,255,0.5)',
+              },
+              '&.Mui-focused fieldset': {
+                borderColor: 'rgba(56,109,255,0.85)',
+              },
+            },
+            '& .MuiOutlinedInput-input': {
+              fontSize: '0.94rem',
+              py: 1.05,
             },
           }}
         />
@@ -1720,14 +2084,14 @@ const ChatInterface: React.FC = () => {
           disabled={loading || !input.trim()}
           endIcon={<SendIcon />}
           sx={{
-            minWidth: 116,
-            py: 1.1,
-            px: 2,
+            minWidth: 108,
+            py: 0.92,
+            px: 1.55,
             borderRadius: 2,
             textTransform: 'none',
             fontWeight: 800,
             background: 'linear-gradient(135deg, #2f5ce0 0%, #2d8ef0 100%)',
-            boxShadow: '0 10px 20px rgba(45,122,240,0.34)',
+            boxShadow: '0 8px 16px rgba(45,122,240,0.3)',
             '&:hover': {
               background: 'linear-gradient(135deg, #2747be 0%, #256fb8 100%)',
             },
@@ -1740,9 +2104,10 @@ const ChatInterface: React.FC = () => {
             variant="caption"
             sx={{
               gridColumn: '1 / -1',
-              mt: 0.2,
-              color: inactivityRemainingSeconds <= 15 ? 'error.main' : 'text.secondary',
+              mt: 0.05,
+              color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#475569',
               fontWeight: inactivityRemainingSeconds <= 15 ? 700 : 500,
+              letterSpacing: '0.01em',
             }}
           >
             Session auto-closes in {formatCountdownClock(inactivityRemainingSeconds)} if no activity.

@@ -16,24 +16,28 @@ import logging
 import uuid
 import re
 import json
+import secrets
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-DEFAULT_ESCALATION_CONTACT_LEVEL_1 = "Support Team: support@example.com | +1-555-0101"
-DEFAULT_ESCALATION_CONTACT_LEVEL_2 = "Escalation Manager: escalation@example.com | +1-555-0102"
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 DEFAULT_GOOGLE_MEET_LINK = "https://meet.google.com/new"
+
+
+def _build_org_domain(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-") or "org"
+    return f"{base}-{secrets.token_hex(3)}"
 
 
 def _ensure_widget_escalation_contacts(config) -> bool:
     changed = False
     if not getattr(config, "escalation_contact_level_1", None):
-        config.escalation_contact_level_1 = DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        config.escalation_contact_level_1 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
         changed = True
     if not getattr(config, "escalation_contact_level_2", None):
-        config.escalation_contact_level_2 = DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        config.escalation_contact_level_2 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
         changed = True
     return changed
 
@@ -246,16 +250,13 @@ async def register(
             detail="Organization already exists"
         )
     
-    # Check if username already exists globally (username should be unique)
-    existing_user = db.query(User).filter(User.username == request.username).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists"
-        )
-    
     # Create organization
-    org = Organization(name=request.organization_name)
+    org_name = (request.organization_name or "").strip()
+    org = Organization(
+        name=org_name,
+        org_domain=_build_org_domain(org_name),
+        access_token=secrets.token_urlsafe(32),
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -312,6 +313,18 @@ async def get_feature_flags(
         "voice_chat_enabled": limits.get("voice_chat_enabled", False),
         "multilingual_text_enabled": limits.get("multilingual_text_enabled", False),
         "human_handoff_enabled": limits.get("human_handoff_enabled", False),
+        "whatsapp_enabled": limits.get("whatsapp_enabled", False),
+        "email_campaign_enabled": limits.get("email_campaign_enabled", False),
+        "sms_campaign_enabled": limits.get("sms_campaign_enabled", False),
+        "module_knowledge_enabled": limits.get("module_knowledge_enabled", False),
+        "module_leads_enabled": limits.get("module_leads_enabled", False),
+        "module_analytics_enabled": limits.get("module_analytics_enabled", False),
+        "module_advanced_analytics_enabled": limits.get("module_advanced_analytics_enabled", False),
+        "module_reports_enabled": limits.get("module_reports_enabled", False),
+        "module_campaigns_enabled": limits.get("module_campaigns_enabled", False),
+        "module_appointments_enabled": limits.get("module_appointments_enabled", False),
+        "module_products_enabled": limits.get("module_products_enabled", False),
+        "module_users_enabled": limits.get("module_users_enabled", False),
     }
 
 
@@ -451,8 +464,8 @@ async def create_widget_config(
         position=config_data.get("position", "bottom-right"),
         lead_capture_enabled=config_data.get("lead_capture_enabled", True),
         lead_fields=config_data.get("lead_fields"),
-        escalation_contact_level_1=config_data.get("escalation_contact_level_1", DEFAULT_ESCALATION_CONTACT_LEVEL_1),
-        escalation_contact_level_2=config_data.get("escalation_contact_level_2", DEFAULT_ESCALATION_CONTACT_LEVEL_2),
+        escalation_contact_level_1=config_data.get("escalation_contact_level_1", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1),
+        escalation_contact_level_2=config_data.get("escalation_contact_level_2", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2),
     )
     db.add(config)
     db.commit()
@@ -555,7 +568,7 @@ async def list_appointments(
     if status:
         query = query.filter(Appointment.status == status)
     if upcoming_only:
-        query = query.filter(Appointment.appointment_at >= datetime.utcnow())
+        query = query.filter(Appointment.appointment_at >= datetime.now(timezone.utc))
 
     if start_date:
         try:

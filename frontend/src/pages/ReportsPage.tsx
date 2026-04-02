@@ -6,6 +6,11 @@ import {
   TextField,
   Button,
   Grid,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
   Card,
   CardContent,
   Tabs,
@@ -40,6 +45,8 @@ import {
 } from '@mui/icons-material';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { reportService, ConversationMetric, DailyStats, SessionMessage } from '../services/reportService';
+import { campaignService, CampaignItem, ContactListItem } from '../services/campaignService';
+import { productService, Product } from '../services/productService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -74,6 +81,17 @@ const ReportsPage: React.FC = () => {
   const [endDate, setEndDate] = useState('');
   const [widgetId, setWidgetId] = useState('');
 
+  // Campaign report filters
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [campaignType, setCampaignType] = useState('');
+  const [campaignStatus, setCampaignStatus] = useState('');
+  const [campaignProductId, setCampaignProductId] = useState<number | ''>('');
+  const [campaignContactListId, setCampaignContactListId] = useState<number | ''>('');
+  const [campaignCreatedFrom, setCampaignCreatedFrom] = useState('');
+  const [campaignCreatedTo, setCampaignCreatedTo] = useState('');
+  const [campaignScheduledFrom, setCampaignScheduledFrom] = useState('');
+  const [campaignScheduledTo, setCampaignScheduledTo] = useState('');
+
   // Summary data
   const [summary, setSummary] = useState<any>(null);
 
@@ -100,6 +118,14 @@ const ReportsPage: React.FC = () => {
 
   // Daily stats
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
+
+  // Campaign report data
+  const [campaignItems, setCampaignItems] = useState<CampaignItem[]>([]);
+  const [campaignTotal, setCampaignTotal] = useState(0);
+  const [campaignPage, setCampaignPage] = useState(0);
+  const [campaignRowsPerPage, setCampaignRowsPerPage] = useState(10);
+  const [campaignProducts, setCampaignProducts] = useState<Product[]>([]);
+  const [campaignContactLists, setCampaignContactLists] = useState<ContactListItem[]>([]);
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -212,6 +238,71 @@ const ReportsPage: React.FC = () => {
     }
   };
 
+  const toIsoStartOfDay = (value: string) => (value ? `${value}T00:00:00` : undefined);
+  const toIsoEndOfDay = (value: string) => (value ? `${value}T23:59:59` : undefined);
+
+  const fetchCampaignLookups = async () => {
+    try {
+      const [products, lists] = await Promise.all([
+        productService.productLookup(),
+        campaignService.listContactLists({ skip: 0, limit: 300 }),
+      ]);
+      setCampaignProducts(products || []);
+      setCampaignContactLists(lists.items || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load campaign filter options');
+    }
+  };
+
+  const fetchCampaignReport = async (pageValue?: number) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const currentPage = pageValue ?? campaignPage;
+      const data = await campaignService.listCampaigns({
+        search: campaignSearch || undefined,
+        campaign_type: (campaignType || undefined) as any,
+        status: (campaignStatus || undefined) as any,
+        product_id: campaignProductId ? Number(campaignProductId) : undefined,
+        contact_list_id: campaignContactListId ? Number(campaignContactListId) : undefined,
+        created_from: toIsoStartOfDay(campaignCreatedFrom),
+        created_to: toIsoEndOfDay(campaignCreatedTo),
+        scheduled_from: toIsoStartOfDay(campaignScheduledFrom),
+        scheduled_to: toIsoEndOfDay(campaignScheduledTo),
+        skip: currentPage * campaignRowsPerPage,
+        limit: campaignRowsPerPage,
+      });
+      setCampaignItems(data.items || []);
+      setCampaignTotal(data.pagination?.total || 0);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch campaign report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyCampaignReportFilters = async () => {
+    if (campaignPage !== 0) {
+      setCampaignPage(0);
+      return;
+    }
+    await fetchCampaignReport(0);
+  };
+
+  const handleResetCampaignReportFilters = async () => {
+    setCampaignSearch('');
+    setCampaignType('');
+    setCampaignStatus('');
+    setCampaignProductId('');
+    setCampaignContactListId('');
+    setCampaignCreatedFrom('');
+    setCampaignCreatedTo('');
+    setCampaignScheduledFrom('');
+    setCampaignScheduledTo('');
+    setCampaignPage(0);
+    await fetchCampaignReport(0);
+  };
+
   // Initial fetch
   useEffect(() => {
     fetchSummary();
@@ -222,6 +313,12 @@ const ReportsPage: React.FC = () => {
       fetchConversations();
     }
   }, [tabValue, page, rowsPerPage]);
+
+  useEffect(() => {
+    if (tabValue === 5) {
+      fetchCampaignReport();
+    }
+  }, [tabValue, campaignPage, campaignRowsPerPage]);
 
   // Tab change handler
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -244,6 +341,10 @@ const ReportsPage: React.FC = () => {
         break;
       case 4:
         fetchDailyStats();
+        break;
+      case 5:
+        fetchCampaignLookups();
+        fetchCampaignReport();
         break;
     }
   };
@@ -537,6 +638,7 @@ const ReportsPage: React.FC = () => {
             <Tab label="Token Usage" id="report-tab-2" aria-controls="report-tabpanel-2" />
             <Tab label="Lead Analytics" id="report-tab-3" aria-controls="report-tabpanel-3" />
             <Tab label="Daily Stats" id="report-tab-4" aria-controls="report-tabpanel-4" />
+            <Tab label="Campaign Report" id="report-tab-5" aria-controls="report-tabpanel-5" />
           </Tabs>
 
         {/* Summary Tab */}
@@ -762,7 +864,7 @@ const ReportsPage: React.FC = () => {
                   <TableCell align="right">Messages</TableCell>
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">Response Time</TableCell>
-                  <TableCell align="right">Satisfaction</TableCell>
+                  <TableCell>AI Funnel</TableCell>
                   <TableCell>Outcome</TableCell>
                   <TableCell>Lead</TableCell>
                   <TableCell>Date</TableCell>
@@ -782,10 +884,12 @@ const ReportsPage: React.FC = () => {
                     <TableCell align="right">
                       {conv.average_response_time?.toFixed(2)}s
                     </TableCell>
-                    <TableCell align="right">
-                      {conv.user_satisfaction
-                        ? `${conv.user_satisfaction.toFixed(1)}/5`
-                        : 'N/A'}
+                    <TableCell>
+                      {conv.ai_funnel ? (
+                        <Chip label={conv.ai_funnel} size="small" color="secondary" variant="outlined" />
+                      ) : (
+                        <Chip label="Unassigned" variant="outlined" size="small" />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -1054,6 +1158,194 @@ const ReportsPage: React.FC = () => {
               </Grid>
             </Grid>
           )}
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={5}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+              Campaign Report Filters
+            </Typography>
+            <Grid container spacing={1.5}>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Search Campaign"
+                  value={campaignSearch}
+                  onChange={(e) => setCampaignSearch(e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select value={campaignType} label="Type" onChange={(e) => setCampaignType(e.target.value)}>
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="email">Email</MenuItem>
+                    <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                    <MenuItem value="sms">SMS</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select value={campaignStatus} label="Status" onChange={(e) => setCampaignStatus(e.target.value)}>
+                    <MenuItem value="">All</MenuItem>
+                    <MenuItem value="draft">Draft</MenuItem>
+                    <MenuItem value="scheduled">Scheduled</MenuItem>
+                    <MenuItem value="running">Running</MenuItem>
+                    <MenuItem value="completed">Completed</MenuItem>
+                    <MenuItem value="failed">Failed</MenuItem>
+                    <MenuItem value="paused">Paused</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Product</InputLabel>
+                  <Select
+                    value={campaignProductId}
+                    label="Product"
+                    onChange={(e) => setCampaignProductId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {campaignProducts.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Contact List</InputLabel>
+                  <Select
+                    value={campaignContactListId}
+                    label="Contact List"
+                    onChange={(e) => setCampaignContactListId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {campaignContactLists.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.list_name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Created From"
+                  value={campaignCreatedFrom}
+                  onChange={(e) => setCampaignCreatedFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Created To"
+                  value={campaignCreatedTo}
+                  onChange={(e) => setCampaignCreatedTo(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Scheduled From"
+                  value={campaignScheduledFrom}
+                  onChange={(e) => setCampaignScheduledFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Scheduled To"
+                  value={campaignScheduledTo}
+                  onChange={(e) => setCampaignScheduledTo(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button variant="contained" size="small" onClick={handleApplyCampaignReportFilters}>
+                    Apply Filters
+                  </Button>
+                  <Button variant="outlined" size="small" onClick={handleResetCampaignReportFilters}>
+                    Reset
+                  </Button>
+                </Stack>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Campaign</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Product</TableCell>
+                  <TableCell>Contact List</TableCell>
+                  <TableCell>Scheduled</TableCell>
+                  <TableCell align="right">Sent</TableCell>
+                  <TableCell align="right">Failed</TableCell>
+                  <TableCell>Created</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {campaignItems.length > 0 ? (
+                  campaignItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">#{item.id}</Typography>
+                      </TableCell>
+                      <TableCell>{item.campaign_type}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={item.status} color={item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : 'primary'} variant="outlined" />
+                      </TableCell>
+                      <TableCell>{item.product_name || '-'}</TableCell>
+                      <TableCell>{item.contact_list_name || item.contact_list_id}</TableCell>
+                      <TableCell>{item.scheduled_time ? new Date(item.scheduled_time).toLocaleString() : '-'}</TableCell>
+                      <TableCell align="right">{item.number_sent}</TableCell>
+                      <TableCell align="right">{item.number_failed}</TableCell>
+                      <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">No campaigns found for selected filters.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[10, 25, 50]}
+            component="div"
+            count={campaignTotal}
+            rowsPerPage={campaignRowsPerPage}
+            page={campaignPage}
+            onPageChange={(_, newPage) => setCampaignPage(newPage)}
+            onRowsPerPageChange={(event) => {
+              setCampaignRowsPerPage(parseInt(event.target.value, 10));
+              setCampaignPage(0);
+            }}
+          />
         </TabPanel>
         </Paper>
 

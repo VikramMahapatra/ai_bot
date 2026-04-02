@@ -1,6 +1,7 @@
 # Create Agent
-from datetime import datetime
+from datetime import datetime, timezone
 import os
+import random
 import shutil
 from typing import List, Optional
 from uuid import UUID, uuid4
@@ -17,6 +18,9 @@ from app.utils.echoleads_client import EcholeadsClient
 from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
+from app.models.user import Organization
+from app.models.organization_limits import OrganizationLimits
+from app.services.call_log_service import process_call, sync_call_logs
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
@@ -26,71 +30,33 @@ def create_agent(
     agent: CallingAgentCreate,
     training_files: Optional[List[UploadFile]] = None
 ):
-    #CREATE REQUEST TO ECHO LEADS
-    echoleads = EcholeadsClient()
-    echo_payload ={
-        "name": agent.name,
-        "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",
-        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
-        "firstMessage": agent.greeting,
-        "prompt": agent.prompt,
-        "google_sheet_id": "",
-        "success_parameters": agent.success_parameters,
-        "data_extract": None,
-        "summary_capturing": agent.summary_prompt,
-        "summary":  "1" if agent.summary_prompt else "0",
-        "sentiment_detection": "1" if agent.enable_sentiment else "0",
-        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
-        "call_recording": "0",
-        "automated_follow_ups": "0",
-        "calendar_sync": agent.calendar_sync,
-        "temperature": "10",
-        "agent_status": "draft",
-        "remaning_call_count": None,
-        "voice_id": agent.voice,
-        "speaks_first":agent.who_speaks_first,
-        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
-        "silence_timeout": str(agent.silence_timeout),
-        "talking_speed": str(agent.talking_speed),
-        "max_duration_seconds": str(agent.max_call_duration),
-        "voice_mail_detection_enabled": "0",
-        "voicemail_provider": "vapi",
-        "voicemail_beep_max_await_seconds": "0",
-        "voicemail_max_retries": "10",
-        "voicemail_start_at_seconds": "5",
-        "voicemail_frequency_seconds": "5",
-        "background_sound": "" if agent.enable_background_sound else "off",
-        "background_sound_url": agent.background_sound_url,
-        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
-        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
-        "analysis_plan": None,
-        "plan_id": None,
-        "transaction_id": None,
-        "prompt_timezone": None,
-        "tool_ids": [],
-        "phone": None,
-        "transcriber": {
-            "provider": agent.transcriber_provider,
-            "language": agent.transcriber_language,
-            "model": agent.transcriber_model
-        },
-        "transcriber_provider": agent.transcriber_provider,
-        "transcriber_language": agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model,       
-        "punctuation_boundaries": [],
-        "server_location": agent.server_location,
-        "speech_to_speech": False
-    }
+    org = db.query(Organization).filter(
+        Organization.id == organization_id
+    ).first()
     
-    print(echo_payload)
-    echo_response = echoleads.create_agent(echo_payload)
-    external_agent_id = None
-    external_agent_a_id = None
-    if echo_response and "data" in echo_response:
-        external_agent_id = echo_response["data"].get("id")
-        external_agent_a_id = echo_response["data"].get("a_id")
-        
+    if not org:
+        raise ValueError("Organization not found")
+    
+    unique_agent_code = f"ORG{organization_id}AG{uuid4().hex[:5]}".upper()
+    
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == organization_id
+    ).first()
 
+    # Count existing agents
+    existing_agents_count = db.query(CallingAgent).filter(
+        CallingAgent.organization_id == organization_id,
+        CallingAgent.is_deleted == False
+    ).count()
+
+    # Check max_agents limit
+    if limits and limits.max_agents is not None and limits.max_agents > 0:
+        if existing_agents_count >= limits.max_agents:
+            raise HTTPException(
+                status_code=400,
+                detail = f"Cannot create agent. Maximum allowed agents: {limits.max_agents}"
+            )
+    
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     saved_files = []
@@ -106,15 +72,18 @@ def create_agent(
                 buffer.write(file.file.read())
 
             saved_files.append(file_path)
+            
+    agent_widget_id = f"widget_{int(datetime.now().timestamp()*1000)}_{random.randint(1000,9999)}"
 
     db_agent = CallingAgent(
         organization_id=organization_id,
-        calling_no = "+918046733457", ##### HARDCODED TO BE CHANGE ####
         name=agent.name,
         type=agent.type.lower(),
+        widget_id=agent_widget_id,
         greeting=agent.greeting,
         prompt=agent.prompt,
         server_location=agent.server_location,
+        inbound_phone_number=agent.inbound_phone_number if agent.type.lower() == "inbound" else None,
 
         # Voice
         gender=agent.gender,
@@ -168,17 +137,114 @@ def create_agent(
         transcriber_language=agent.transcriber_language,
         transcriber_model=agent.transcriber_model,
         
-        external_agent_id=external_agent_id,
-        external_agent_a_id= external_agent_a_id
+        status= "pending",
+        external_agent_name=  unique_agent_code
     )
 
     db.add(db_agent)
+    db.flush()
+    
+    #CREATE REQUEST TO ECHO LEADS
+    echoleads = EcholeadsClient()
+    echo_payload ={
+        "name": db_agent.external_agent_name,
+        "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",        
+        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
+        "firstMessage": agent.greeting,
+        "prompt": agent.prompt,
+        "google_sheet_id": "",
+        "success_parameters": agent.success_parameters,
+        "data_extract": None,
+        "summary_capturing": agent.summary_prompt,
+        "summary":  "1" if agent.summary_prompt else "0",
+        "sentiment_detection": "1" if agent.enable_sentiment else "0",
+        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
+        "call_recording": "0",
+        "automated_follow_ups": "0",
+        "calendar_sync": agent.calendar_sync,
+        "temperature": "10",
+        "agent_status": "draft",
+        "remaning_call_count": None,
+        "voice_id": agent.voice,
+        "speaks_first":agent.who_speaks_first,
+        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
+        "silence_timeout": str(agent.silence_timeout),
+        "talking_speed": str(agent.talking_speed),
+        "max_duration_seconds": str(agent.max_call_duration),
+        "voice_mail_detection_enabled": "0",
+        "voicemail_provider": "vapi",
+        "voicemail_beep_max_await_seconds": "0",
+        "voicemail_max_retries": "10",
+        "voicemail_start_at_seconds": "5",
+        "voicemail_frequency_seconds": "5",
+        "background_sound": "" if agent.enable_background_sound else "off",
+        "background_sound_url": agent.background_sound_url,
+        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
+        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
+        "analysis_plan": None,
+        "plan_id": None,
+        "transaction_id": None,
+        "prompt_timezone": None,
+        "tool_ids": [],
+        "phone": None,
+        "transcriber": {
+            "provider": agent.transcriber_provider,
+            "language": agent.transcriber_language,
+            "model": agent.transcriber_model
+        },
+        "transcriber_provider": agent.transcriber_provider,
+        "transcriber_language": agent.transcriber_language,
+        "transcriber_model": agent.transcriber_model,       
+        "punctuation_boundaries": [],
+        "server_location": agent.server_location,
+        "speech_to_speech": False,
+        
+        "is_pay_as_you_go": True,   
+        "is_connected_calls": False,
+        
+        "call_forwarding_enabled": agent.enable_call_forwarding,
+        "call_forwarding_number": agent.call_forwarding_number,
+        "call_forwarding_action_desc": agent.call_forwarding_action_desc,
+        "call_forwarding_message": agent.call_forwarding_role,
+    }
+    
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
+    
+    external_agent_id = None
+    external_agent_a_id = None
+    external_agent_status = "pending"
+    echo_failed = False
+    
+    try:
+        echo_response = echoleads.create_agent(echo_payload)
+        if echo_response and "data" in echo_response:
+            external_agent_id = echo_response["data"].get("id")
+            external_agent_a_id = echo_response["data"].get("a_id")
+            external_agent_status = echo_response["data"].get("agent_status")
+        else:
+            echo_failed = True
+    except Exception as e:
+        print(f"EchoLeads API failed: {str(e)}")
+        echo_failed = True
+   
+    db_agent.status = "testing" if external_agent_status == "draft" else external_agent_status
+    db_agent.external_agent_id = external_agent_id
+    db_agent.external_agent_a_id = external_agent_a_id
+    
     db.commit()
     db.refresh(db_agent)
-
+    
+    if echo_failed:
+        message = "Agent created successfully, but sync failed. Please reload the page to sync the agent."
+    else:
+        message = "Agent created successfully"
+    
     return {
-        "message": "Agent created successfully",
-        "agent_id": db_agent.id
+        "message": message,
+        "agent_id": db_agent.id,
+        "status": external_agent_status
     }
 
 def update_agent(
@@ -187,20 +253,28 @@ def update_agent(
     agent: CallingAgentUpdate,
     training_files: Optional[List[UploadFile]] = None
 ):
-
     db_agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
+    
+    org = db.query(Organization).filter(
+        Organization.id == db_agent.organization_id
+    ).first()
 
     if not db_agent:
         raise ValueError("Agent not found")
     
     if not db_agent.external_agent_id:
-        raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
+        raise HTTPException(status_code=400, detail="Selected Agent not synced correctly")
+    
+    unique_agent_code = f"ORG{org.id}AG{uuid4().hex[:5]}".upper()
+    
+    if not db_agent.external_agent_name:
+        db_agent.external_agent_name = unique_agent_code
 
     # 🔹 Update Echoleads
     echoleads = EcholeadsClient()
     
     echo_payload = {
-        "name": agent.name if agent.name else db_agent.name,
+        "name": db_agent.external_agent_name,
         "agent_call_type":  "outgoing" if db_agent.type.lower() == "outbound" else "incoming",
         "language": agent.transcriber_language or db_agent.transcriber_language,
         "firstMessage": agent.greeting if agent.greeting else db_agent.greeting,
@@ -213,7 +287,6 @@ def update_agent(
         "sentiment_detection": "1" if agent.enable_sentiment else "0",
         "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
         "calendar_sync": agent.calendar_sync,
-        "prompt_timezone": agent.prompt_timezone or db_agent.prompt_timezone,
         "speaks_first":agent.who_speaks_first,
         "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
         "silence_timeout": str(agent.silence_timeout),
@@ -231,11 +304,22 @@ def update_agent(
         "transcriber_provider": agent.transcriber_provider,
         "transcriber_language": agent.transcriber_language,
         "transcriber_model": agent.transcriber_model,       
-        "agent_status": db_agent.status,
+        "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
     }
-    # 🔹 Call Echoleads update
+    
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
+    
+    #print(echo_payload)
+    # Call Echoleads update
+    echo_failed = False
     if db_agent.external_agent_id:
-        echoleads.update_agent(db_agent.external_agent_id, echo_payload)
+        try:
+            echoleads.update_agent(db_agent.external_agent_id, echo_payload)
+        except Exception as e:
+            print(f"EchoLeads API failed: {str(e)}")
+            echo_failed = True
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -268,20 +352,92 @@ def update_agent(
 
     db.commit()
     db.refresh(db_agent)
+    
+    if echo_failed:
+        message = "Agent updated successfully, but sync failed. Please reload the list to sync the agent."
+    else:
+        message = "Agent updated successfully"
 
     return {
-        "message": "Agent updated successfully",
+        "message": message,
         "agent_id": db_agent.id
     }
 
 # Read All Agents
 def read_agents(
     db: Session,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
     sort_by: str = "newest"
 ):
+    org = db.query(Organization).filter(
+        Organization.id == organization_id
+    ).first()
+    
+    if not org:
+        raise ValueError("Organization not found")
+    
+    total_org_agents = db.query(CallingAgent).filter(CallingAgent.organization_id == organization_id).count()
+    
+    ## SYNC ALL ORG AGENTS
+    echo_failed = False
+    echo_leads = EcholeadsClient()
+    try:
+        echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
+        
+        if echo_response and echo_response.get("data"):
+
+            echo_agents = echo_response["data"]
+
+            echo_map = {
+                agent.get("name"): agent
+                for agent in echo_agents if agent.get("name")
+            }
+
+            db_agents = db.query(CallingAgent).filter(
+                CallingAgent.organization_id == organization_id
+            ).all()
+
+            for db_agent in db_agents:
+
+                echo_agent = None
+
+                if db_agent.external_agent_id:
+                    echo_agent = next(
+                        (a for a in echo_agents if str(a.get("id")) == str(db_agent.external_agent_id)),
+                        None
+                    )
+
+                if not echo_agent and db_agent.external_agent_name:
+                    echo_agent = echo_map.get(db_agent.external_agent_name)
+
+                # Only update if echo_agent exists
+                if echo_agent:
+                    if db_agent.status == "paused":
+                        continue
+
+                    external_agent_status = echo_agent.get("agent_status")
+
+                    if external_agent_status:
+                        db_agent.status = (
+                            "testing"
+                            if external_agent_status == "draft"
+                            else external_agent_status
+                        )
+
+                    if not db_agent.external_agent_id:
+                        db_agent.external_agent_id = echo_agent.get("id")
+
+                    if not db_agent.external_agent_a_id:
+                        db_agent.external_agent_a_id = echo_agent.get("a_id")
+
+            db.commit()
+            
+    except Exception as e:
+        print(f"Sync failed: {str(e)}")
+    
     query = (
         db.query(
             CallingAgent,
@@ -305,7 +461,7 @@ def read_agents(
             CallCampaign,
             CallingAgent.id == CallCampaign.agent_id
         )
-        .filter(CallingAgent.is_deleted == False)
+        .filter(CallingAgent.is_deleted == False, CallingAgent.organization_id == organization_id)
         .group_by(CallingAgent.id)
     )
 
@@ -343,6 +499,10 @@ def read_agents(
         data["active_campaigns"] = active_campaigns
         data["completed_campaigns"] = completed_campaigns
         data["pending_campaigns"] = pending_campaigns
+        
+        if data.get("created_at"):
+            data["created_at"] = data["created_at"].replace(tzinfo=timezone.utc).isoformat()
+            
         items.append(data)
 
     return {
@@ -399,37 +559,71 @@ def test_call(
     if not agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
     
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == agent.organization_id
+    ).first()
+
+    # --- Count active test calls for this agent ---
+    active_calls_count = db.query(CallLog).filter(
+        CallLog.organization_id == agent.organization_id,
+        CallLog.status.in_(["queued", "ended", "completed"])
+    ).count()
+    
+    
+    print("Active Count :", active_calls_count)
+
+    # --- Restrict test calls based on max_calls ---
+    if limits and limits.max_calls and limits.max_calls > 0:
+        if active_calls_count >= limits.max_calls:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot initiate test call. Maximum allowed calls: {limits.max_calls}"
+            )
+    
     # Prepare API request
     echoleads = EcholeadsClient()
-    customer_name = data.name if data.name else "Customer"
+    
+    dynamic_values = []
+    if data.variables:
+        for key, value in data.variables.items():
+            dynamic_values.append({
+                "field": key,
+                "value": value
+            })
+                        
     payload = {
-    "a_id": agent.external_agent_a_id,
-    "phone": data.phone_no,
-    "from_number": agent.calling_no,
-    "firstMessage": agent.greeting.format(name=customer_name),
-    "dynamicFieldValues": [
-            {
-                "key": "customer_name",
-                "value": customer_name
-            }
-        ]
+        "a_id": agent.external_agent_a_id,
+        "phone": data.phone_no,
+        "from_number": data.calling_no,
+        "firstMessage": agent.greeting,
+        "dynamicFieldValues": dynamic_values
     }
 
-    api_response = echoleads.create_call(payload)
-
-    # Extract response values safely
+    echo_success = True
     external_call_id = None
-    call_status = None
-
-    if api_response and "data" in api_response:
-        external_call_id = api_response["data"].get("id")
-        call_status = api_response["data"].get("status")
+    call_status = "failed"
+    
+    try:
+        api_response = echoleads.create_call(payload)
+        
+        print("EchoLeads Test Call Response:", api_response)
+        
+        if api_response and "data" in api_response:
+            sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
+            
+            external_call_id = api_response["data"].get("id")
+            call_status = api_response["data"].get("status")
+        else:
+            echo_success = False
+    except Exception as e:
+        print(f"Sync failed: {str(e)}")
+        echo_success = False
+ 
 
     # Save test call log
     test_call = CallingAgentTestCall(
         agent_id=agent_id,
         phone_no=data.phone_no,
-        name=data.name,
         external_call_id=external_call_id,
         status=call_status
     )
@@ -439,13 +633,12 @@ def test_call(
     db.refresh(test_call)
 
     return {
-        "message": "Test call triggered",
+        "message": "Please wait while we connect your test call…" if echo_success else "Failed to initiate test call. Please try again.",
         "phone_no": data.phone_no,
-        "name": data.name,
         "external_call_id": external_call_id,
-        "call_status": call_status,
-        "provider_response": api_response
-    }
+        "status": call_status,
+        "success": echo_success
+    }       
     
 def publish_agent(
     db: Session,
@@ -460,22 +653,92 @@ def publish_agent(
     echoleads = EcholeadsClient()
 
     # Prepare minimal payload for Echoleads
-    echo_payload = {
-        "agent_status": "active"
+    echo_payload ={
+        "name": agent.external_agent_name,
+        "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",
+        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
+        "firstMessage": agent.greeting,
+        "prompt": agent.prompt,
+        "google_sheet_id": "",
+        "success_parameters": agent.success_parameters,
+        "data_extract": None,
+        "summary_capturing": agent.summary_prompt,
+        "summary":  "1" if agent.summary_prompt else "0",
+        "sentiment_detection": "1" if agent.enable_sentiment else "0",
+        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
+        "call_recording": "0",
+        "automated_follow_ups": "0",
+        "calendar_sync": agent.calendar_sync,
+        "temperature": "10",
+        "agent_status": "active",
+        "remaning_call_count": None,
+        "voice_id": agent.voice,
+        "speaks_first":agent.who_speaks_first,
+        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
+        "silence_timeout": str(agent.silence_timeout),
+        "talking_speed": str(agent.talking_speed),
+        "max_duration_seconds": str(agent.max_call_duration),
+        "voice_mail_detection_enabled": "0",
+        "voicemail_provider": "vapi",
+        "voicemail_beep_max_await_seconds": "0",
+        "voicemail_max_retries": "10",
+        "voicemail_start_at_seconds": "5",
+        "voicemail_frequency_seconds": "5",
+        "background_sound": "" if agent.enable_background_sound else "off",
+        "background_sound_url": agent.background_sound_url,
+        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
+        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
+        "analysis_plan": None,
+        "plan_id": 1,
+        "transaction_id": f"{agent.external_agent_a_id}",
+        "prompt_timezone": None,
+        "tool_ids": [],
+        "phone": None,
+        "transcriber": {
+            "provider": agent.transcriber_provider,
+            "language": agent.transcriber_language,
+            "model": agent.transcriber_model
+        },
+        "transcriber_provider": agent.transcriber_provider,
+        "transcriber_language": agent.transcriber_language,
+        "transcriber_model": agent.transcriber_model,       
+        "punctuation_boundaries": [],
+        "server_location": agent.server_location,
+        "speech_to_speech": False,
+        "is_pay_as_you_go": True,   
+        "is_connected_calls": False,
+        "call_forwarding_enabled": agent.enable_call_forwarding,
+        "call_forwarding_number": agent.call_forwarding_number,
+        "call_forwarding_action_desc": agent.call_forwarding_action_desc,
+        "call_forwarding_message": agent.call_forwarding_role,
     }
+    
+    if agent.type.lower() == "inbound":
+        echo_payload["inbound_phone"] = agent.inbound_phone_number
+        echo_payload["phone"] = agent.inbound_phone_number
+  
+    print(echo_payload)
 
     # Update Echoleads agent
+    echo_success = True
     if agent.external_agent_id:
-        echoleads.update_agent(agent.external_agent_id, echo_payload)
+        try:
+            echoleads.update_agent(agent.external_agent_id, echo_payload)
+            
+             # Update local DB
+            agent.status = "active"
 
-    # Update local DB
-    agent.status = "Active"
+            db.commit()
+            db.refresh(agent)
 
-    db.commit()
-    db.refresh(agent)
-
+        except Exception as e:
+            print(f"Sync failed: {str(e)}")
+            echo_success = False
+   
     return {
-        "message": "Agent published",
+        "status": agent.status, 
+        "success": echo_success,
+        "message": "Agent published successfully" if echo_success else "Publish failed. Upgrade account to proceed." ,
         "agent_id": agent.id
     }
     
@@ -485,14 +748,31 @@ def update_agent_status(
     agent_id: int,
     data: AgentStatusUpdate,
 ):
-
+    # Get the agent
     agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
-
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    agent.status = data.status
+    # If pausing, check for active campaigns
+    if data.status.lower() == "paused":
+        active_campaign_count = (
+            db.query(CallCampaign)
+            .filter(
+                CallCampaign.agent_id == agent_id,
+                CallCampaign.status.in_(["active", "running", "scheduled"]),
+                CallCampaign.is_deleted == False
+            )
+            .count()
+        )
 
+        if active_campaign_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot pause agent: {active_campaign_count} active campaign(s) running"
+            )
+
+    # Update status
+    agent.status = data.status
     db.commit()
     db.refresh(agent)
 
@@ -504,31 +784,29 @@ def update_agent_status(
     
 def delete_agent(db: Session, agent_id: int):
     agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
-    if not agent:
-        raise Exception("Agent not found")
 
-    # 3️⃣ Soft delete in Echoleads
-    try:
-        
-        echoleads = EcholeadsClient()
-        response = echoleads.delete_agent(agent.external_agent_id)
-        
-        if response.get("success"):
-            agent.is_deleted = True
-            db.commit()
-            db.refresh(agent)
-        else:
-            raise HTTPException(status_code=404, detail="Failed to delete the Agent")
-        
-    except Exception as e:
-        # Handle API failure: log or rollback DB if needed
-        raise HTTPException(status_code=404, detail="Failed to delete the Agent")
-   
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    echoleads = EcholeadsClient()
+    response = echoleads.delete_agent(agent.external_agent_id)
+
+    # ✅ Treat both success & not_found as success
+    if response.get("success") or response.get("not_found"):
+        agent.is_deleted = True
+        db.commit()
+        db.refresh(agent)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent deletion failed: {response.get('error')}"
+        )
+
     return {
         "message": "Agent deleted",
         "agent_id": agent.id,
         "status": agent.status
-    }
+    }   
     
     
 # Agent Lookup
@@ -540,7 +818,39 @@ def agent_lookup(
     query = db.query(
         CallingAgent.id,
         CallingAgent.name
-    ).filter(CallingAgent.organization_id == organization_id, CallingAgent.is_deleted == False)
+    ).filter(
+        CallingAgent.organization_id == organization_id, 
+        CallingAgent.is_deleted == False,
+        CallingAgent.status == "active"
+    )
+
+    if search:
+        query = query.filter(
+            CallingAgent.name.ilike(f"%{search}%")
+        )
+
+    agents = query.order_by(CallingAgent.name.asc()).all()
+
+    return [
+        {
+            "id": agent.id,
+            "name": agent.name
+        }
+        for agent in agents
+    ]
+    
+def all_agent_lookup(
+    db: Session, 
+    organization_id: int,
+    search: Optional[str] = None):
+
+    query = db.query(
+        CallingAgent.id,
+        CallingAgent.name
+    ).filter(
+        CallingAgent.organization_id == organization_id, 
+        CallingAgent.is_deleted == False
+    )
 
     if search:
         query = query.filter(

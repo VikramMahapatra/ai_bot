@@ -2,6 +2,7 @@ import React, { createContext, useState, useMemo, useEffect, useLayoutEffect } f
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { Box, CircularProgress } from '@mui/material';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -27,6 +28,9 @@ import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
+import ProductManagementPage from './pages/ProductManagementPage.tsx';
+import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalyticsReport.tsx';
+import ContactBookPage from './pages/ContactBookPage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -373,30 +377,45 @@ const ScrollToTop: React.FC = () => {
 };
 
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'ALL' }> = ({ 
-  children, 
-  requiredRole = 'ALL' 
+const ProtectedRoute: React.FC<{
+  children: React.ReactNode;
+  requiredRole?: 'ADMIN' | 'SUPERADMIN' | 'HANDOFF_OPERATOR' | 'ALL';
+}> = ({
+  children,
+  requiredRole = 'ALL'
 }) => {
-  const { isAuthenticated, userRole } = useAuth();
+    const { isAuthenticated, userRole, isAuthLoading } = useAuth();
 
-  if (!isAuthenticated) {
-    if (requiredRole === 'SUPERADMIN') {
-      return <Navigate to="/superadmin/login" replace />;
+    if (isAuthLoading) {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      );
     }
-    return <Navigate to="/login" replace />;
-  }
 
-  // If admin-only route, check role
-  if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
-    return <Navigate to={userRole === 'USER_HANDOFF' ? '/handoff' : '/chat'} replace />;
-  }
+    if (!isAuthenticated) {
+      if (requiredRole === 'SUPERADMIN') {
+        return <Navigate to="/superadmin/login" replace />;
+      }
+      return <Navigate to="/login" replace />;
+    }
 
-  if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
-    return <Navigate to="/login" replace />;
-  }
-  
-  return <>{children}</>;
-};
+    // If admin-only route, check role
+    if (requiredRole === 'ADMIN' && userRole !== 'ADMIN') {
+      return <Navigate to={userRole === 'USER_HANDOFF' ? '/handoff' : '/chat'} replace />;
+    }
+
+    if (requiredRole === 'SUPERADMIN' && userRole !== 'SUPERADMIN') {
+      return <Navigate to="/login" replace />;
+    }
+
+    if (requiredRole === 'HANDOFF_OPERATOR' && userRole !== 'USER_HANDOFF' && userRole !== 'ADMIN') {
+      return <Navigate to="/chat" replace />;
+    }
+
+    return <>{children}</>;
+  };
 
 function AppRoutes() {
   return (
@@ -434,6 +453,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminAnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/call-analytics"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminOrgCallAnalyticsReport />
           </ProtectedRoute>
         }
       />
@@ -570,6 +597,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/products"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ProductManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/contacts"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ContactBookPage />
           </ProtectedRoute>
         }
       />

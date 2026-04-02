@@ -16,6 +16,9 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import VideocamIcon from '@mui/icons-material/Videocam';
+import PhoneIcon from '@mui/icons-material/Phone';
+import CallEndIcon from '@mui/icons-material/CallEnd';
 import AdminLayout from '../components/Layout/AdminLayout';
 import { handoffService, HandoffMessageItem, HandoffSessionItem } from '../services/handoffService';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +29,19 @@ const statusColor = (status: string): 'default' | 'warning' | 'success' | 'error
   if (status === 'closed') return 'default';
   if (status === 'bot_active') return 'info';
   return 'default';
+};
+
+const callStatusColor = (status?: string): 'default' | 'warning' | 'success' | 'info' => {
+  if (status === 'requested') return 'warning';
+  if (status === 'active') return 'success';
+  if (status === 'ended') return 'default';
+  return 'info';
+};
+
+const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+  const safeRoom = encodeURIComponent(roomId);
+  const videoMuted = mode === 'audio' ? 'true' : 'false';
+  return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
 };
 
 const HandoffInboxPage: React.FC = () => {
@@ -40,6 +56,7 @@ const HandoffInboxPage: React.FC = () => {
   const [messageError, setMessageError] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [callBusy, setCallBusy] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const afterIdRef = useRef(0);
@@ -199,9 +216,84 @@ const HandoffInboxPage: React.FC = () => {
     }
   };
 
+  const handleStartCall = async () => {
+    if (!selectedChatId || callBusy) return;
+    setCallBusy(true);
+    try {
+      const updated = await handoffService.startCall(selectedChatId, selectedSession?.call_mode || 'video');
+      setItems((prev) => prev.map((row) => (row.chat_id === selectedChatId ? updated : row)));
+      await loadMessages(selectedChatId, false);
+    } catch {
+      setMessageError('Failed to start call for this handoff chat.');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const handleEndCall = async () => {
+    if (!selectedChatId || callBusy) return;
+    setCallBusy(true);
+    try {
+      const updated = await handoffService.endCall(selectedChatId);
+      setItems((prev) => prev.map((row) => (row.chat_id === selectedChatId ? updated : row)));
+    } catch {
+      setMessageError('Failed to end call for this chat.');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const handleJoinCall = () => {
+    if (!selectedSession?.call_room_id) return;
+    const mode = (selectedSession.call_mode || 'video') as 'video' | 'audio';
+    window.open(getMeetingUrl(selectedSession.call_room_id, mode), '_blank', 'noopener,noreferrer');
+  };
+
   const canReply = Boolean(
     selectedSession && selectedSession.status === 'assigned' && selectedSession.assigned_agent_id === userId
   );
+
+  const compactActionSx = {
+    textTransform: 'none',
+    fontWeight: 700,
+    borderRadius: 2,
+    minHeight: 34,
+    px: 1.6,
+    py: 0.45,
+    fontSize: '0.84rem',
+    lineHeight: 1.2,
+    boxShadow: 'none',
+    whiteSpace: 'nowrap',
+  } as const;
+
+  const primaryActionSx = {
+    ...compactActionSx,
+    background: 'linear-gradient(135deg, rgba(47,107,255,0.95) 0%, rgba(56,189,248,0.9) 100%)',
+    '&:hover': {
+      background: 'linear-gradient(135deg, rgba(37,99,235,0.98) 0%, rgba(14,165,233,0.95) 100%)',
+      boxShadow: '0 8px 18px rgba(47,107,255,0.24)',
+    },
+  } as const;
+
+  const outlinedActionSx = {
+    ...compactActionSx,
+    borderColor: 'rgba(47,107,255,0.35)',
+    color: 'primary.main',
+    bgcolor: 'rgba(255,255,255,0.88)',
+    '&:hover': {
+      borderColor: 'rgba(47,107,255,0.55)',
+      bgcolor: 'rgba(239,246,255,0.92)',
+    },
+  } as const;
+
+  const callPrimarySx = {
+    ...compactActionSx,
+    background: 'linear-gradient(135deg, rgba(14,165,233,0.95) 0%, rgba(56,189,248,0.92) 100%)',
+    '&:hover': {
+      background: 'linear-gradient(135deg, rgba(8,145,178,0.98) 0%, rgba(14,165,233,0.95) 100%)',
+      boxShadow: '0 8px 18px rgba(14,165,233,0.24)',
+    },
+  } as const;
 
   return (
     <AdminLayout>
@@ -218,12 +310,14 @@ const HandoffInboxPage: React.FC = () => {
             </Box>
             <Stack direction="row" spacing={1}>
               <Button
+                size="small"
                 variant={mineOnly ? 'contained' : 'outlined'}
                 onClick={() => setMineOnly((prev) => !prev)}
+                sx={mineOnly ? primaryActionSx : outlinedActionSx}
               >
                 {mineOnly ? 'Showing Mine Only' : 'Show Mine Only'}
               </Button>
-              <Button startIcon={<RefreshIcon />} variant="outlined" onClick={refreshRequests} disabled={loading}>
+              <Button size="small" startIcon={<RefreshIcon />} variant="outlined" onClick={refreshRequests} disabled={loading} sx={outlinedActionSx}>
                 Refresh
               </Button>
             </Stack>
@@ -265,6 +359,15 @@ const HandoffInboxPage: React.FC = () => {
                         <Typography sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{item.widget_id}</Typography>
                         <Chip size="small" color={statusColor(item.status)} label={item.status.replace(/_/g, ' ')} />
                       </Stack>
+                      {item.call_status && item.call_status !== 'none' ? (
+                        <Chip
+                          size="small"
+                          color={callStatusColor(item.call_status)}
+                          icon={item.call_mode === 'audio' ? <PhoneIcon /> : <VideocamIcon />}
+                          label={`Call ${item.call_status}`}
+                          variant="outlined"
+                        />
+                      ) : null}
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                         Session: {item.session_id}
                       </Typography>
@@ -289,27 +392,67 @@ const HandoffInboxPage: React.FC = () => {
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Typography sx={{ fontWeight: 700 }}>Chat {selectedSession.chat_id}</Typography>
                     <Chip size="small" color={statusColor(selectedSession.status)} label={selectedSession.status.replace(/_/g, ' ')} />
+                    <Chip
+                      size="small"
+                      color={callStatusColor(selectedSession.call_status)}
+                      icon={selectedSession.call_mode === 'audio' ? <PhoneIcon /> : <VideocamIcon />}
+                      label={`Call: ${selectedSession.call_status || 'none'}`}
+                      variant="outlined"
+                    />
                     {selectedSession.assigned_agent_id ? (
                       <Chip size="small" icon={<AssignmentTurnedInIcon />} label={`Assigned: ${selectedSession.assigned_agent_id}`} />
                     ) : null}
                   </Stack>
                   <Stack direction="row" spacing={1}>
                     {selectedSession.status === 'waiting_for_agent' ? (
-                      <Button variant="contained" startIcon={<CheckCircleOutlineIcon />} onClick={handleAccept}>
+                      <Button size="small" variant="contained" startIcon={<CheckCircleOutlineIcon />} onClick={handleAccept} sx={primaryActionSx}>
                         Accept
                       </Button>
                     ) : null}
                     {selectedSession.status !== 'closed' ? (
-                      <Button variant="outlined" startIcon={<SwapHorizIcon />} onClick={handleReturnToBot}>
+                      <Button size="small" variant="outlined" startIcon={<SwapHorizIcon />} onClick={handleReturnToBot} sx={outlinedActionSx}>
                         Return to Bot
                       </Button>
                     ) : null}
                     {selectedSession.status !== 'closed' ? (
-                      <Button variant="outlined" color="error" onClick={handleClose}>
+                      <Button size="small" variant="outlined" color="error" onClick={handleClose} sx={compactActionSx}>
                         Close
                       </Button>
                     ) : null}
                   </Stack>
+                </Stack>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<VideocamIcon />}
+                    onClick={handleStartCall}
+                    disabled={!canReply || callBusy || selectedSession.call_status === 'active'}
+                    sx={callPrimarySx}
+                  >
+                    {selectedSession.call_status === 'requested' ? 'Start Requested Call' : 'Start Call'}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleJoinCall}
+                    disabled={!selectedSession.call_room_id || selectedSession.call_status !== 'active'}
+                    sx={outlinedActionSx}
+                  >
+                    Join Call
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    startIcon={<CallEndIcon />}
+                    onClick={handleEndCall}
+                    disabled={!canReply || callBusy || selectedSession.call_status !== 'active'}
+                    sx={compactActionSx}
+                  >
+                    End Call
+                  </Button>
                 </Stack>
 
                 {messageError && <Alert severity="error" sx={{ mb: 1 }}>{messageError}</Alert>}
@@ -370,10 +513,12 @@ const HandoffInboxPage: React.FC = () => {
                     }}
                   />
                   <Button
+                    size="small"
                     variant="contained"
                     endIcon={<SendRoundedIcon />}
                     onClick={handleSend}
                     disabled={!canReply || !draft.trim() || sending}
+                    sx={primaryActionSx}
                   >
                     Send
                   </Button>

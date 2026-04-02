@@ -3,6 +3,7 @@ from sqlalchemy import func, and_
 from app.models import ConversationMetrics, Conversation, Lead, Plan
 from app.config import settings
 from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits, get_or_create_usage, get_or_create_limits
+from app.services.funnel_category_service import get_funnel_categories
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import logging
@@ -116,6 +117,7 @@ def get_session_conversations_report(
         Lead.session_id.label("session_id"),
         func.max(Lead.name).label("lead_name"),
         func.max(Lead.email).label("lead_email"),
+        func.max(Lead.funnel_stage).label("funnel_stage"),
     ).filter(
         Lead.organization_id == organization_id
     ).group_by(
@@ -139,6 +141,7 @@ def get_session_conversations_report(
         func.coalesce(metrics_subquery.c.has_lead, 0).label("has_lead"),
         leads_subquery.c.lead_name.label("lead_name"),
         leads_subquery.c.lead_email.label("lead_email"),
+        leads_subquery.c.funnel_stage.label("funnel_stage"),
     ).select_from(
         sessions_subquery
     ).outerjoin(
@@ -172,6 +175,9 @@ def get_session_conversations_report(
 
     rows = query.offset(skip).limit(limit).all()
 
+    funnel_categories = get_funnel_categories(db, organization_id, include_inactive=True)
+    funnel_key_to_name = {item.key: item.name for item in funnel_categories}
+
     metrics = []
     for row in rows:
         conversation_duration = 0.0
@@ -198,6 +204,7 @@ def get_session_conversations_report(
             "lead_name": row.lead_name,
             "lead_email": row.lead_email,
             "outcome": row.outcome,
+            "ai_funnel": funnel_key_to_name.get(row.funnel_stage, row.funnel_stage),
             "conversation_start": row.conversation_start,
             "conversation_end": row.conversation_end,
             "created_at": row.created_at,

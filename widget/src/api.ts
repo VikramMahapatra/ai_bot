@@ -16,6 +16,13 @@ interface HandoffSessionResponse {
   active: boolean;
   chat_id?: string | null;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -25,6 +32,13 @@ interface HandoffSessionResponse {
 interface HandoffMessagesResponse {
   chat_id: string;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -234,6 +248,61 @@ export class ChatAPI {
     url.searchParams.set('after_id', String(afterId));
 
     const response = await fetch(url.toString());
+    if (!response.ok) {
+      return null;
+    }
+    return response.json();
+  }
+
+  async requestVideoCall(sessionId: string, widgetId: string): Promise<HandoffSessionResponse | null> {
+    const response = await fetch(`${this.baseURL}/api/chat/handoff/request-video-call`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        widget_id: widgetId,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+    return response.json();
+  }
+
+  async setHandoffCallMode(sessionId: string, widgetId: string, mode: 'video' | 'audio'): Promise<HandoffSessionResponse | null> {
+    const response = await fetch(`${this.baseURL}/api/chat/handoff/call-mode`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        widget_id: widgetId,
+        mode,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+    return response.json();
+  }
+
+  async endHandoffCall(sessionId: string, widgetId: string): Promise<HandoffSessionResponse | null> {
+    const response = await fetch(`${this.baseURL}/api/chat/handoff/end-call`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        widget_id: widgetId,
+      }),
+    });
+
     if (!response.ok) {
       return null;
     }

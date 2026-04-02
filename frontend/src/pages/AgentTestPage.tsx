@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -19,8 +19,7 @@ import LanguageIcon from '@mui/icons-material/Language';
 import InsightsIcon from '@mui/icons-material/Insights';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import ChatBubbleRoundedIcon from '@mui/icons-material/ChatBubbleRounded';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { appEnv } from '../config/env';
 
@@ -40,6 +39,13 @@ interface HandoffSessionResponse {
   active: boolean;
   chat_id?: string | null;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -49,6 +55,13 @@ interface HandoffSessionResponse {
 interface HandoffMessageResponse {
   chat_id: string;
   status?: string | null;
+  assigned_agent_id?: number | null;
+  call_room_id?: string | null;
+  call_status?: 'none' | 'requested' | 'active' | 'ended' | string;
+  call_mode?: 'video' | 'audio' | string;
+  call_requested_at?: string | null;
+  call_started_at?: string | null;
+  call_ended_at?: string | null;
   wait_cycle?: number | null;
   waiting_expires_at?: string | null;
   waiting_timeout_notified?: boolean | null;
@@ -74,6 +87,10 @@ const BOT_ICON_GLYPHS: Record<string, string> = {
   'bot-spark': '✨',
   'bot-brain': '🧠',
   'bot-guide': '🛰️',
+  'bot-helper': '🧑‍🔧',
+  'bot-assistant': '🤝',
+  'bot-shield': '🛡️',
+  'bot-light': '💡',
 };
 
 const USER_ICON_GLYPHS: Record<string, string> = {
@@ -81,9 +98,13 @@ const USER_ICON_GLYPHS: Record<string, string> = {
   'user-smile': '🙂',
   'user-chat': '💬',
   'user-brief': '🧑‍💼',
+  'user-student': '🧑‍🎓',
+  'user-creative': '🎨',
+  'user-tech': '🧑‍💻',
+  'user-star': '🌟',
 };
 
-const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string } => {
+const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string; chatHeaderFontColor?: string } => {
   if (!leadFieldsRaw) return {};
   try {
     const parsed = JSON.parse(leadFieldsRaw);
@@ -93,6 +114,10 @@ const parseIconSelection = (leadFieldsRaw?: string): { botIcon?: string; userIco
     return {
       botIcon: typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined,
       userIcon: typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined,
+      chatHeaderFontColor:
+        typeof (parsed as any).chat_header_font_color === 'string'
+          ? (parsed as any).chat_header_font_color
+          : undefined,
     };
   } catch {
     return {};
@@ -148,7 +173,12 @@ const formatCountdownSeconds = (seconds: number): string => {
 };
 
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
+const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const HANDOFF_WAITING_MESSAGE =
+  'I am connecting you to a human expert. Please share any additional details and we will respond shortly.';
+const HANDOFF_LEAD_CAPTURE_MESSAGE =
+  'Before I transfer this handoff request to a live agent, please fill the quick contact form in chat so we can reach you if needed.';
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
   'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
 const createPublicSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -261,6 +291,7 @@ const AgentTestPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const testToken = (searchParams.get('token') || '').trim();
   const [isOpen, setIsOpen] = useState(false);
+  const [widgetLookDark, setWidgetLookDark] = useState(false);
   const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(null);
   const [accessError, setAccessError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -290,6 +321,11 @@ const AgentTestPage: React.FC = () => {
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffPollError, setHandoffPollError] = useState('');
   const [handoffAfterId, setHandoffAfterId] = useState(0);
+  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
+  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [callRoomId, setCallRoomId] = useState<string | null>(null);
+  const [callBusy, setCallBusy] = useState(false);
+  const [callError, setCallError] = useState('');
   const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
   const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
   const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
@@ -312,9 +348,10 @@ const AgentTestPage: React.FC = () => {
   const secondaryColor = widgetConfig?.secondary_color || '#2d8ef0';
   const assistantName = widgetConfig?.name?.trim() || 'AI Assistant';
   const welcomeText = (widgetConfig?.welcome_message || 'Hi! How can I help you today?').trim() || 'Hi! How can I help you today?';
-  const iconSelection = useMemo(() => parseIconSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
-  const botIconGlyph = BOT_ICON_GLYPHS[iconSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
-  const userIconGlyph = USER_ICON_GLYPHS[iconSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
+  const styleSelection = useMemo(() => parseStyleSelection(widgetConfig?.lead_fields), [widgetConfig?.lead_fields]);
+  const botIconGlyph = BOT_ICON_GLYPHS[styleSelection.botIcon || 'bot-robot'] || BOT_ICON_GLYPHS['bot-robot'];
+  const userIconGlyph = USER_ICON_GLYPHS[styleSelection.userIcon || 'user-person'] || USER_ICON_GLYPHS['user-person'];
+  const chatHeaderFontColor = (styleSelection.chatHeaderFontColor || '').trim() || '#f8fafc';
   const testTokenExpiryMs = useMemo(() => parseJwtExpiryMs(testToken), [testToken]);
   const testTokenRemainingMs = useMemo(
     () => (testTokenExpiryMs ? testTokenExpiryMs - nowMs : null),
@@ -360,6 +397,12 @@ const AgentTestPage: React.FC = () => {
     return Math.max(0, Math.min(100, Math.round(ratio * 100)));
   }, [handoffStatus, handoffRemainingSeconds, handoffWaitTimeoutSeconds]);
 
+  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+    const safeRoom = encodeURIComponent(roomId);
+    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
+  };
+
   const sessionStorageKey = useMemo(() => `public_agent_session_${widgetId || 'unknown'}`, [widgetId]);
 
   useEffect(() => {
@@ -395,11 +438,13 @@ const AgentTestPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages, showLeadForm, showAppointmentForm, sending]);
 
-  useEffect(() => {
-    const loadWidgetConfig = async () => {
+  const loadWidgetConfig = useCallback(
+    async (silent = false) => {
       if (!widgetId) return;
       if (!testToken) {
-        setAccessError('Missing test access token. Please request a new share link.');
+        if (!silent) {
+          setAccessError('Missing test access token. Please request a new share link.');
+        }
         return;
       }
 
@@ -408,6 +453,9 @@ const AgentTestPage: React.FC = () => {
           `${apiBaseUrl}/api/admin/widget/test/config/${encodeURIComponent(widgetId)}?token=${encodeURIComponent(testToken)}`
         );
         if (!response.ok) {
+          if (silent) {
+            return;
+          }
           if (response.status === 401) {
             setAccessError('This test link is invalid or has expired. Please request a new one.');
           } else if (response.status === 404) {
@@ -429,13 +477,28 @@ const AgentTestPage: React.FC = () => {
           return prev;
         });
       } catch {
-        setAccessError('Unable to validate this test link right now. Please try again later.');
-        // Keep defaults when config fetch fails.
+        if (!silent) {
+          setAccessError('Unable to validate this test link right now. Please try again later.');
+        }
+        // Keep existing style/config when refresh fails.
       }
-    };
+    },
+    [apiBaseUrl, testToken, widgetId]
+  );
 
-    loadWidgetConfig();
-  }, [apiBaseUrl, testToken, widgetId]);
+  useEffect(() => {
+    loadWidgetConfig(false);
+  }, [loadWidgetConfig]);
+
+  useEffect(() => {
+    if (!widgetId || !testToken || accessError) return;
+
+    const timer = window.setInterval(() => {
+      loadWidgetConfig(true);
+    }, 10000);
+
+    return () => window.clearInterval(timer);
+  }, [accessError, loadWidgetConfig, testToken, widgetId]);
 
   const startFreshSession = () => {
     const created = createPublicSessionId();
@@ -455,6 +518,11 @@ const AgentTestPage: React.FC = () => {
     setHandoffStatus(null);
     setHandoffPollError('');
     setHandoffAfterId(0);
+    setCallStatus('none');
+    setCallMode('video');
+    setCallRoomId(null);
+    setCallBusy(false);
+    setCallError('');
     handoffSeenMessageIdsRef.current.clear();
     handoffPromptedChatIdRef.current = null;
     lastHandoffStatusRef.current = null;
@@ -465,7 +533,7 @@ const AgentTestPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || sending) return;
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || sending || handoffOpen) return;
 
     const timeoutId = window.setTimeout(() => {
       setMessages((prev) => {
@@ -484,6 +552,11 @@ const AgentTestPage: React.FC = () => {
       setHandoffStatus(null);
       setHandoffPollError('');
       setHandoffAfterId(0);
+      setCallStatus('none');
+      setCallMode('video');
+      setCallRoomId(null);
+      setCallBusy(false);
+      setCallError('');
       handoffSeenMessageIdsRef.current.clear();
       handoffPromptedChatIdRef.current = null;
       lastHandoffStatusRef.current = null;
@@ -493,10 +566,10 @@ const AgentTestPage: React.FC = () => {
     }, CHAT_INACTIVITY_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, sending, lastActivityAtMs]);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, sending, handoffOpen, lastActivityAtMs]);
 
   useEffect(() => {
-    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged) return;
+    if (!isOpen || !canUseChat || sessionClosedByInactivity || !sessionEngaged || handoffOpen) return;
 
     setInactivityNowMs(Date.now());
     const timer = window.setInterval(() => {
@@ -504,7 +577,7 @@ const AgentTestPage: React.FC = () => {
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, lastActivityAtMs]);
+  }, [isOpen, canUseChat, sessionClosedByInactivity, sessionEngaged, handoffOpen, lastActivityAtMs]);
 
   const appendHandoffMessages = (items: HandoffMessageResponse['items'], includeBotMessages: boolean) => {
     const visibleMessages = items.filter((item) => {
@@ -546,6 +619,9 @@ const AgentTestPage: React.FC = () => {
       setHandoffChatId(data.chat_id);
       setHandoffStatus(nextStatus);
       setHandoffOpen(isActive);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
@@ -590,6 +666,9 @@ const AgentTestPage: React.FC = () => {
 
       setHandoffStatus(nextStatus);
       setHandoffOpen(isActive);
+      setCallStatus(data.call_status || 'none');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
       if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
@@ -664,6 +743,30 @@ const AgentTestPage: React.FC = () => {
     return { right: 16, bottom: 16 };
   }, [position]);
 
+  const getHeaderIconButtonSx = (highlight = false) => ({
+    color: chatHeaderFontColor,
+    minWidth: 30,
+    width: 30,
+    height: 30,
+    borderRadius: '10px',
+    border: highlight ? '1px solid rgba(255,255,255,0.95)' : '1px solid rgba(255,255,255,0.35)',
+    bgcolor: highlight ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.2)',
+    fontSize: '1.05rem',
+    fontWeight: 700,
+    boxShadow: highlight ? '0 0 0 2px rgba(255,255,255,0.22), 0 0 14px rgba(16,185,129,0.55)' : 'none',
+    transition: 'all 180ms ease',
+    '&:hover': {
+      bgcolor: highlight ? 'rgba(16,185,129,0.42)' : 'rgba(255,255,255,0.3)',
+      transform: 'translateY(-1px)',
+    },
+    '&.Mui-disabled': {
+      color: 'rgba(255,255,255,0.72)',
+      opacity: 0.62,
+      borderColor: 'rgba(255,255,255,0.28)',
+      bgcolor: 'rgba(255,255,255,0.12)',
+    },
+  });
+
   const sendMessage = async (
     overrideText?: string,
     options?: { silentUserMessage?: boolean; skipLeadCaptureCheck?: boolean; forceSessionId?: string }
@@ -707,77 +810,295 @@ const AgentTestPage: React.FC = () => {
     setSessionEngaged(true);
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
+    let assistantIndex = -1;
     if (!opts.silentUserMessage) {
       setMessages((prev) => [...prev, { role: 'user', content: text }]);
     }
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: activeSessionId,
-          widget_id: widgetId,
-        }),
-      });
+    setMessages((prev) => {
+      assistantIndex = prev.length;
+      return [...prev, { role: 'assistant', content: '' }];
+    });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response from chatbot');
-      }
+    const replaceAssistantMessage = (content: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content }
+            : msg
+        )
+      );
+    };
 
-      const data = (await response.json()) as ChatApiResponse;
-      const rawReply = typeof data?.response === 'string' ? data.response : 'I could not generate a response right now.';
-      const shouldOpenAppointmentForm = data?.ui_action === 'open_appointment_form';
-      const shouldOpenHandoff = data?.ui_action === 'open_human_handoff';
-      const shouldOpenLeadForm = data?.ui_action === 'open_lead_form';
-      const reply = shouldOpenAppointmentForm ? APPOINTMENT_FORM_PROMPT : rawReply;
-      if (reply.trim().length > 0) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setLastActivityAtMs(Date.now());
-      }
+    const appendAssistantToken = (delta: string) => {
+      setMessages((prev) =>
+        prev.map((msg, index) =>
+          index === assistantIndex
+            ? { ...msg, content: `${msg.content}${delta}` }
+            : msg
+        )
+      );
+    };
+
+    const removeAssistantPlaceholder = () => {
+      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+    };
+
+    const applyUiAction = (payload?: {
+      ui_action?: string;
+      handoff_chat_id?: string;
+      handoff_status?: string;
+    }) => {
+      const shouldOpenAppointmentForm = payload?.ui_action === 'open_appointment_form';
+      const shouldOpenHandoff = payload?.ui_action === 'open_human_handoff';
+      const shouldOpenLeadForm = payload?.ui_action === 'open_lead_form';
 
       if (shouldOpenAppointmentForm) {
+        replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
         openAppointmentDialog();
       }
 
       if (shouldOpenLeadForm) {
+        replaceAssistantMessage(HANDOFF_LEAD_CAPTURE_MESSAGE);
         setShowLeadForm(true);
         setPendingHandoffAfterLead(true);
       }
 
       if (shouldOpenHandoff) {
+        replaceAssistantMessage(HANDOFF_WAITING_MESSAGE);
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffOpen(true);
-        if (data?.handoff_chat_id) {
-          const isNewChat = data.handoff_chat_id !== handoffChatId;
-          setHandoffChatId(data.handoff_chat_id);
+        if (payload?.handoff_chat_id) {
+          const isNewChat = payload.handoff_chat_id !== handoffChatId;
+          setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
             setHandoffAfterId(0);
             handoffSeenMessageIdsRef.current.clear();
-            loadHandoffMessages(data.handoff_chat_id, true);
+            loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
-            loadHandoffMessages(data.handoff_chat_id, false);
+            loadHandoffMessages(payload.handoff_chat_id, false);
           }
         }
-        if (data?.handoff_status) {
-          setHandoffStatus(data.handoff_status);
+        if (payload?.handoff_status) {
+          setHandoffStatus(payload.handoff_status);
         }
         setAwaitingPostHandoffDecision(false);
       }
+    };
+
+    try {
+      let streamDonePayload: any = null;
+      let receivedToken = false;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
+
+        const streamResponse = await fetch(`${apiBaseUrl}/api/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!streamResponse.ok) {
+          throw new Error('Failed to stream chatbot response');
+        }
+
+        const reader = streamResponse.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data:')) continue;
+              const data = line.replace(/^data:\s?/, '');
+              if (!data) continue;
+
+              let payload: any;
+              try {
+                payload = JSON.parse(data);
+              } catch {
+                continue;
+              }
+
+              if (payload?.type === 'ready') {
+                window.clearTimeout(timeoutId);
+                continue;
+              }
+
+              if (payload?.type === 'token' && typeof payload?.text === 'string') {
+                if (!receivedToken) {
+                  receivedToken = true;
+                  window.clearTimeout(timeoutId);
+                }
+                appendAssistantToken(payload.text);
+              }
+
+              if (payload?.type === 'done') {
+                streamDonePayload = payload;
+              }
+            }
+          }
+        }
+
+        const trailing = buffer.trim();
+        if (trailing.startsWith('data:')) {
+          const data = trailing.replace(/^data:\s?/, '');
+          try {
+            const payload = JSON.parse(data);
+            if (payload?.type === 'token' && typeof payload?.text === 'string') {
+              receivedToken = true;
+              appendAssistantToken(payload.text);
+            }
+            if (payload?.type === 'done') {
+              streamDonePayload = payload;
+            }
+          } catch {
+            // Ignore malformed trailing event chunk.
+          }
+        }
+
+        window.clearTimeout(timeoutId);
+      } catch {
+        const response = await fetch(`${apiBaseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            session_id: activeSessionId,
+            widget_id: widgetId,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get response from chatbot');
+        }
+
+        const data = (await response.json()) as ChatApiResponse;
+        const hasHandoffMeta = Boolean(data?.handoff_chat_id || data?.handoff_status);
+        const rawReply = typeof data?.response === 'string' ? data.response.trim() : '';
+        const reply = data?.ui_action === 'open_appointment_form'
+          ? APPOINTMENT_FORM_PROMPT
+          : (rawReply || 'I could not generate a response right now.');
+
+        if (!rawReply && hasHandoffMeta && !data?.ui_action) {
+          removeAssistantPlaceholder();
+        } else {
+          replaceAssistantMessage(reply);
+        }
+        applyUiAction(data);
+      }
+
+      applyUiAction(streamDonePayload);
+
+      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
+      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+        removeAssistantPlaceholder();
+      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
+        replaceAssistantMessage('I could not generate a response right now.');
+      }
+
+      setLastActivityAtMs(Date.now());
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, the chatbot is temporarily unavailable. Please try again in a moment.',
-        },
-      ]);
+      replaceAssistantMessage('Sorry, the chatbot is temporarily unavailable. Please try again in a moment.');
       setLastActivityAtMs(Date.now());
     } finally {
       setSending(false);
     }
+  };
+
+  const requestVideoCall = async () => {
+    if (!canUseChat || !widgetId || !sessionId || callBusy) return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/request-video-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          widget_id: widgetId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.detail || 'Failed to request video call');
+      }
+
+      const data = (await response.json()) as HandoffSessionResponse;
+      setHandoffChatId(data.chat_id || null);
+      setHandoffStatus(data.status || null);
+      setHandoffOpen(data.status === 'waiting_for_agent' || data.status === 'assigned');
+      setCallStatus(data.call_status || 'requested');
+      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallRoomId(data.call_room_id || null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Video call request sent. A handoff user will join shortly.' },
+      ]);
+      if (data.chat_id) {
+        await loadHandoffMessages(data.chat_id, true);
+      }
+    } catch (err: any) {
+      setCallError(err?.message || 'Failed to request video call');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const endLiveCall = async () => {
+    if (!canUseChat || !widgetId || !sessionId || callBusy || callStatus === 'none') return;
+    setCallBusy(true);
+    setCallError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/chat/handoff/end-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          widget_id: widgetId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.detail || 'Failed to end call');
+      }
+
+      const data = (await response.json()) as HandoffSessionResponse;
+      setCallStatus(data.call_status || 'ended');
+      setCallMode((data.call_mode as 'video' | 'audio') || callMode);
+      setCallRoomId(data.call_room_id || callRoomId);
+    } catch (err: any) {
+      setCallError(err?.message || 'Failed to end call');
+    } finally {
+      setCallBusy(false);
+    }
+  };
+
+  const joinLiveCall = () => {
+    if (!callRoomId) return;
+    window.open(getMeetingUrl(callRoomId, callMode), '_blank', 'noopener,noreferrer');
   };
 
   const handleLeadSubmit = async () => {
@@ -802,6 +1123,7 @@ const AgentTestPage: React.FC = () => {
           email: leadForm.email.trim() || undefined,
           phone: leadForm.phone.trim() || undefined,
           company: leadForm.company.trim() || undefined,
+          source: 'chat',
         }),
       });
 
@@ -1169,19 +1491,36 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...launcherPositionSx,
-            borderRadius: '999px',
-            minWidth: 64,
-            height: 64,
-            fontSize: 28,
+            borderRadius: '15px',
+            minWidth: 56,
+            height: 56,
+            fontSize: 24,
             background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            boxShadow: '0 16px 30px rgba(2,132,199,0.35)',
+            boxShadow: '0 18px 36px rgba(15,23,42,0.32)',
+            border: '1px solid rgba(255,255,255,0.35)',
             '&:hover': {
-              opacity: 0.92,
+              transform: 'translateY(-1px)',
+              boxShadow: '0 22px 42px rgba(15,23,42,0.36)',
             },
             zIndex: 1200,
           }}
         >
-          💬
+          <Box sx={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ChatBubbleRoundedIcon sx={{ fontSize: 24, color: 'rgba(255,255,255,0.95)' }} />
+            <Typography
+              component="span"
+              sx={{
+                position: 'absolute',
+                fontSize: '0.6rem',
+                fontWeight: 800,
+                color: primaryColor,
+                lineHeight: 1,
+                mt: '1px',
+              }}
+            >
+              Z
+            </Typography>
+          </Box>
         </Button>
       )}
 
@@ -1191,48 +1530,128 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: 'fixed',
             ...panelPositionSx,
-            width: { xs: 'calc(100vw - 24px)', sm: 412 },
-            height: { xs: '72vh', sm: 620 },
+            width: { xs: 'calc(100vw - 32px)', sm: 360 },
+            height: { xs: '66vh', sm: 550 },
             borderRadius: 4,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1300,
-            border: '1px solid #cbd5e1',
-            boxShadow: '0 24px 52px rgba(15,23,42,0.24)',
+            border: widgetLookDark ? '1px solid rgba(148,163,184,0.22)' : '1px solid #cbd5e1',
+            boxShadow: widgetLookDark ? '0 24px 54px rgba(2,6,23,0.5)' : '0 28px 62px rgba(15,23,42,0.34)',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'inherit',
+            backgroundColor: widgetLookDark ? '#111827' : '#ffffff',
           }}
         >
           <Box sx={{
-            background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            color: '#fff',
-            p: 1.8,
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            color: chatHeaderFontColor,
+            px: 1.3,
+            py: 1,
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            alignItems: 'center',
+            borderBottom: '1px solid rgba(255,255,255,0.22)',
           }}>
             <Box>
-              <Typography sx={{ fontWeight: 800, lineHeight: 1.2 }}>{assistantName}</Typography>
-              <Typography sx={{ fontSize: '0.76rem', opacity: 0.9, mt: 0.3 }}>
-                Live assistant preview
+              <Typography sx={{ color: 'inherit', fontWeight: 800, lineHeight: 1.2, letterSpacing: '0.01em', fontSize: '0.92rem' }}>{assistantName}</Typography>
+              <Typography sx={{ color: 'inherit', fontSize: '0.62rem', opacity: 0.9, mt: 0.3, fontFamily: 'Consolas, Menlo, monospace' }}>
+                session: {sessionId ? sessionId.slice(-10) : 'n/a'}
               </Typography>
             </Box>
-            <Button size="small" sx={{ color: '#fff' }} onClick={() => setIsOpen(false)}>
-              Close
-            </Button>
-          </Box>
-
-          <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
-            <Button
-              variant="outlined"
-              startIcon={<CalendarMonthIcon />}
-              onClick={openAppointmentDialog}
-              disabled={!canUseChat || sending}
-              size="small"
-              fullWidth
-              sx={{ borderRadius: '10px' }}
-            >
-              Book Appointment
-            </Button>
+            <Stack direction="row" spacing={0.85}>
+              <Button
+                size="small"
+                onClick={requestVideoCall}
+                sx={getHeaderIconButtonSx(false)}
+                disabled={callBusy || sending || callStatus === 'requested' || callStatus === 'active'}
+                title="Request video call"
+              >
+                📹
+              </Button>
+              <Button
+                size="small"
+                onClick={joinLiveCall}
+                sx={getHeaderIconButtonSx(Boolean(callRoomId && callStatus === 'active'))}
+                disabled={!callRoomId || callStatus !== 'active'}
+                title="Join live call"
+              >
+                🔗
+              </Button>
+              <Button
+                size="small"
+                onClick={endLiveCall}
+                sx={getHeaderIconButtonSx(false)}
+                disabled={callBusy || callStatus !== 'active'}
+                title="End live call"
+              >
+                📵
+              </Button>
+              <Button
+                size="small"
+                onClick={startFreshSession}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title="New session"
+              >
+                ⟳
+              </Button>
+              <Button
+                size="small"
+                onClick={openAppointmentDialog}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title="Book appointment"
+              >
+                📅
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setWidgetLookDark((v) => !v)}
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.18)',
+                }}
+                title={widgetLookDark ? 'Light mode' : 'Dark mode'}
+              >
+                {widgetLookDark ? '☀' : '🌙'}
+              </Button>
+              <Button
+                size="small"
+                sx={{
+                  color: chatHeaderFontColor,
+                  minWidth: 28,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  bgcolor: 'rgba(255,255,255,0.12)',
+                }}
+                onClick={() => setIsOpen(false)}
+              >
+                ×
+              </Button>
+            </Stack>
           </Box>
 
           {handoffOpen && (
@@ -1289,6 +1708,12 @@ const AgentTestPage: React.FC = () => {
                   </Stack>
                 ) : null}
                 <Stack direction="row" spacing={0.8}>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Call: ${callStatus}${callStatus === 'active' ? ` (${callMode})` : ''}`}
+                    sx={{ fontWeight: 600 }}
+                  />
                   <Button
                     size="small"
                     variant="outlined"
@@ -1306,32 +1731,55 @@ const AgentTestPage: React.FC = () => {
                       {handoffPollError}
                     </Typography>
                   ) : null}
+                  {callError ? (
+                    <Typography sx={{ fontSize: '0.72rem', color: '#dc2626', alignSelf: 'center' }}>
+                      {callError}
+                    </Typography>
+                  ) : null}
                 </Stack>
               </Stack>
             </Box>
           )}
 
-          <Box ref={messagesContainerRef} sx={{ flex: 1, p: 1.5, overflowY: 'auto', bgcolor: '#f8fafc' }}>
-            <Stack spacing={1.2}>
+          <Box
+            ref={messagesContainerRef}
+            sx={{
+              flex: 1,
+              p: 1.45,
+              overflowY: 'auto',
+              bgcolor: widgetLookDark ? '#0f172a' : '#eef2f7',
+            }}
+          >
+            <Stack spacing={0.95}>
               {messages.map((message, index) => (
+
                 <Box
                   key={`${message.role}-${index}`}
                   sx={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '92%',
+                    maxWidth: '96%',
                     display: 'flex',
                     alignItems: 'flex-end',
-                    gap: 0.9,
+                    gap: 0.78,
                     flexDirection: message.role === 'user' ? 'row-reverse' : 'row',
                   }}
                 >
+                  {(() => {
+                    const isPendingAssistantMessage =
+                      message.role === 'assistant' &&
+                      sending &&
+                      index === messages.length - 1 &&
+                      !message.content.trim();
+
+                    return (
+                      <>
                   <Box
                     sx={{
                       width: 28,
                       height: 28,
                       borderRadius: '50%',
-                      border: '1px solid #d1d5db',
-                      bgcolor: '#fff',
+                      border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
+                      bgcolor: '#ffffff',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1343,18 +1791,31 @@ const AgentTestPage: React.FC = () => {
                   </Box>
                   <Box
                     sx={{
-                      px: 1.5,
-                      py: 1,
-                      borderRadius: 2,
-                      bgcolor: message.role === 'user' ? primaryColor : '#fff',
-                      color: message.role === 'user' ? '#fff' : '#0f172a',
-                      border: message.role === 'assistant' ? '1px solid #e2e8f0' : 'none',
+                      px: 1.45,
+                      py: 1.05,
+                      borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
+                      bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
+                      background: message.role === 'user'
+                        ? `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
+                        : undefined,
+                      color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
+                      border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
                       whiteSpace: 'pre-wrap',
-                      fontSize: '0.92rem',
+                      fontSize: { xs: '0.8rem', md: '0.86rem' },
+                      lineHeight: 1.45,
+                      boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
+                      minHeight: isPendingAssistantMessage ? 30 : undefined,
+                      minWidth: isPendingAssistantMessage ? 46 : undefined,
+                      display: isPendingAssistantMessage ? 'flex' : 'block',
+                      alignItems: isPendingAssistantMessage ? 'center' : undefined,
+                      justifyContent: isPendingAssistantMessage ? 'center' : undefined,
                     }}
                   >
-                    {message.content}
+                    {isPendingAssistantMessage ? <CircularProgress size={16} /> : message.content}
                   </Box>
+                      </>
+                    );
+                  })()}
                 </Box>
               ))}
               {showLeadForm && (
@@ -1595,33 +2056,13 @@ const AgentTestPage: React.FC = () => {
                   </Box>
                 </Box>
               )}
-              {sending && (
-                <Box sx={{ alignSelf: 'flex-start', px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 0.9 }}>
-                  <Box
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      border: '1px solid #d1d5db',
-                      bgcolor: '#fff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    {botIconGlyph}
-                  </Box>
-                  <CircularProgress size={18} />
-                </Box>
-              )}
               <div ref={messagesEndRef} />
             </Stack>
           </Box>
 
-          <Box sx={{ p: 1.5, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
-            <Stack spacing={0.8}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9 }}>
+          <Box sx={{ p: 1.35, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
+            <Stack spacing={0.7}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <TextField
                 value={input}
                 onChange={(e) => {
@@ -1637,8 +2078,13 @@ const AgentTestPage: React.FC = () => {
                 size="small"
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    borderRadius: '10px',
+                    borderRadius: '14px',
+                    bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
+                    '& fieldset': { borderColor: widgetLookDark ? '#334155' : '#cbd5e1' },
+                    '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
+                    '&.Mui-focused fieldset': { borderColor: primaryColor },
                   },
+                  '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1652,24 +2098,26 @@ const AgentTestPage: React.FC = () => {
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending || !canUseChat}
                 sx={{
-                  minWidth: 46,
-                  width: 46,
-                  height: 40,
-                  borderRadius: '10px',
-                  background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                  minWidth: 92,
+                  height: 48,
+                  borderRadius: '14px',
+                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                  boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
+                  fontWeight: 700,
+                  textTransform: 'none',
                 }}
               >
-                <SendRoundedIcon fontSize="small" />
+                Send
               </Button>
               </Box>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: widgetLookDark ? '#94a3b8' : '#64748b', fontWeight: 500, fontSize: '0.68rem' }}>
                 Press Enter to send. Appointment booking is available anytime.
               </Typography>
               {typeof inactivityRemainingSeconds === 'number' ? (
                 <Typography
                   variant="caption"
                   sx={{
-                    color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#64748b',
+                    color: inactivityRemainingSeconds <= 15 ? '#dc2626' : '#334155',
                     fontWeight: inactivityRemainingSeconds <= 15 ? 700 : 500,
                   }}
                 >
@@ -1677,6 +2125,19 @@ const AgentTestPage: React.FC = () => {
                 </Typography>
               ) : null}
             </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              py: 0.6,
+              textAlign: 'center',
+              fontSize: '0.72rem',
+              color: widgetLookDark ? '#94a3b8' : '#64748b',
+              borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #e2e8f0',
+              bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
+            }}
+          >
+            Powered by Zentrixel AI
           </Box>
         </Paper>
       )}

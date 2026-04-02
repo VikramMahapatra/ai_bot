@@ -7,18 +7,23 @@ import {
     CartesianGrid,
     ResponsiveContainer
 } from "recharts";
+import { IntentDistribution } from "../../../services/callService";
 
-const intentData = [
-    { intent: "Interested", value: 620 },
-    { intent: "Not Interested", value: 430 },
-    { intent: "Call Back Later", value: 300 },
-    { intent: "Wrong Number", value: 90 }
-];
+// const intentData = [
+//     { intent: "Interested", value: 620 },
+//     { intent: "Not Interested", value: 430 },
+//     { intent: "Call Back Later", value: 300 },
+//     { intent: "Wrong Number", value: 90 }
+// ];
 
-export default function IntentChart() {
+interface Props {
+    data: IntentDistribution[];
+}
+
+export default function IntentChart({ data }: Props) {
     return (
         <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={intentData}>
+            <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="intent" />
                 <YAxis />

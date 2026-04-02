@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str
     UVICORN_HOST: str
     UVICORN_PORT: int
+    PUBLIC_APP_URL: str
 
     # OpenAI Configuration
     OPENAPI_KEY2: str
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str
     USE_LOCAL_EMBEDDINGS: bool
     LOCAL_EMBEDDING_MODEL: str
+    OPENAI_CHAT_TIMEOUT_SECONDS: int = 18
+    OPENAI_STREAM_TIMEOUT_SECONDS: int = 25
+    OPENAI_TRANSLATION_TIMEOUT_SECONDS: int = 20
     OUTCOME_CLASSIFICATION_MODEL: str
     OUTCOME_DAEMON_HOUR_UTC: int
     OUTCOME_DAEMON_MINUTE_UTC: int
@@ -79,6 +83,17 @@ class Settings(BaseSettings):
     EMAIL_SENDER: str
     CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
     CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
+    CAMPAIGN_EMAIL_TRACKING_BASE_URL: str = "http://localhost:8000"
+    CAMPAIGN_EMAIL_WEBHOOK_SECRET: str = ""
+
+    # Twilio SMS defaults (used for bootstrap/testing)
+    TWILIO_SMS_DEFAULT_ACCOUNT_SID: str = ""
+    TWILIO_SMS_DEFAULT_AUTH_TOKEN: str = ""
+    TWILIO_SMS_DEFAULT_FROM_NUMBER: str = ""
+    TWILIO_SMS_DEFAULT_INBOUND_NUMBER: str = ""
+    TWILIO_SMS_DEFAULT_LOCATION_LABEL: str = ""
+    TWILIO_SMS_DEFAULT_VOICE_WEBHOOK_URL: str = ""
+    TWILIO_SMS_DEFAULT_MESSAGING_WEBHOOK_URL: str = ""
 
     # Frontend URLs used in notifications
     FRONTEND_DASHBOARD_LEADS_URL: str
@@ -86,6 +101,8 @@ class Settings(BaseSettings):
     # Echo Lead Keys
     ECHOL_API_BASE_URL: str
     ECHOL_API_KEY: str
+    
+    CAN_AUTO_SYNC_CAMPAIGN_LEAD: bool = False
     
     @property
     def cors_origins_list(self) -> List[str]:
