@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Identity, Index, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
+from sqlalchemy.orm import relationship
 
 
 class ContactList(Base):
@@ -12,6 +13,8 @@ class ContactList(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    contacts = relationship("Contact", back_populates="contact_list")
 
 
 class Contact(Base):
@@ -25,6 +28,8 @@ class Contact(Base):
     company = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True) 
+    
+    contact_list = relationship("ContactList", back_populates="contacts")
     
     __table_args__ = (
         Index("idx_contact_external_id", "external_contact_id"),

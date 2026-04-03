@@ -1,4 +1,5 @@
 import api from './api';
+import { ContactItem, ContactListItem } from './campaignService';
 
 export interface Contact {
     id?: number;
@@ -23,8 +24,8 @@ export interface CampaignContactFilters {
 }
 
 
-export interface CampaignContactListResponse {
-    items: Contact[];
+export interface AllContactListResponse {
+    items: ContactItem[];
     pagination: {
         total: number;
         skip: number;
@@ -143,7 +144,7 @@ export const callCampaignService = {
         return response.data;
     },
 
-    async allContacts(params: CampaignContactFilters = {}): Promise<CampaignContactListResponse> {
+    async allContacts(params: CampaignContactFilters = {}): Promise<AllContactListResponse> {
         const response = await api.get('/api/call-campaigns/contacts', { params });
         return response.data;
     },
@@ -174,8 +175,8 @@ export const callCampaignService = {
     },
 
 
-    async getContactLists(): Promise<ContactList[]> {
-        const response = await api.get<ContactList[]>('/api/call-campaigns/contact-lists');
+    async getContactLists(): Promise<ContactListItem[]> {
+        const response = await api.get<ContactListItem[]>('/api/call-campaigns/contact-lists');
         return response.data;
     },
 
