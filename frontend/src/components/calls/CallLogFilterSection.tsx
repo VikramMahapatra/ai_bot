@@ -129,10 +129,9 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                                 }
                             >
                                 <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="completed">Completed</MenuItem>
                                 <MenuItem value="ended">Ended</MenuItem>
-                                <MenuItem value="in_progress">In Progress</MenuItem>
-                                <MenuItem value="failed">Call Failed</MenuItem>
+                                <MenuItem value="queued">Queued</MenuItem>
+                                <MenuItem value="calling fail">Failed</MenuItem>
                                 <MenuItem value="scheduled">Scheduled</MenuItem>
                             </TextField>
                         </Grid>
@@ -152,11 +151,12 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                                 }
                             >
                                 <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="busy">Customer Busy</MenuItem>
-                                <MenuItem value="no_answer">No Answer</MenuItem>
-                                <MenuItem value="voicemail">Voicemail</MenuItem>
-                                <MenuItem value="customer_end">Customer Ended</MenuItem>
-                                <MenuItem value="assistant_end">Assistant Ended</MenuItem>
+                                <MenuItem value="customer-busy">Customer Busy</MenuItem>
+                                <MenuItem value="customer-did-not-answer">No Answer</MenuItem>
+                                <MenuItem value="silence-timed-out">Silence Time Out</MenuItem>
+                                <MenuItem value="exceeded-max-duration">Exceeded Max Duration</MenuItem>
+                                <MenuItem value="customer-ended-call">Customer Ended</MenuItem>
+                                <MenuItem value="assistant-ended-call">Assistant Ended</MenuItem>
                             </TextField>
                         </Grid>
 
@@ -197,8 +197,8 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                                 }
                             >
                                 <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="true">True</MenuItem>
-                                <MenuItem value="false">False</MenuItem>
+                                <MenuItem value="true">Yes</MenuItem>
+                                <MenuItem value="false">No</MenuItem>
                             </TextField>
                         </Grid>
 

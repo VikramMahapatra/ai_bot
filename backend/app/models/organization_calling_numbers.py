@@ -11,5 +11,6 @@ class OrganizationCallingNumber(Base):
     calling_number = Column(String, nullable=False)
     is_default = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    type = Column(String, nullable=False, default="outbound") # 'outbound' or 'inbound'
 
     organization = relationship("Organization")

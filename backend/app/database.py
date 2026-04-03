@@ -1,3 +1,6 @@
+from datetime import datetime, time
+import random
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -309,16 +312,36 @@ def init_db():
             except Exception:
                 pass
 
-            try:
-                conn.commit()
-            except Exception:
-                pass
+           
             
             try:
                 cols = conn.execute(text("PRAGMA table_info('calling_agents')")).fetchall()
                 col_names = {row[1] for row in cols}
                 if "external_agent_name" not in col_names:
                     conn.execute(text("ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT"))
+                if "inbound_phone_number" not in col_names:
+                    conn.execute(text("ALTER TABLE calling_agents ADD COLUMN inbound_phone_number TEXT"))
+                if "widget_id" not in col_names:
+                    # Add column
+                    conn.execute(
+                        text("ALTER TABLE calling_agents ADD COLUMN widget_id VARCHAR")
+                    )
+
+                    # Populate existing records
+                    rows = conn.execute(text("SELECT id FROM calling_agents")).fetchall()
+
+                    for row in rows:
+                        widget_id = f"widget_{int(datetime.now().timestamp()*1000)}_{random.randint(1000,9999)}"
+
+                        conn.execute(
+                            text("""
+                                UPDATE calling_agents 
+                                SET widget_id = :widget_id 
+                                WHERE id = :id
+                            """),
+                            {"widget_id": widget_id, "id": row.id}
+                        )
+
             except Exception:
                 pass
             
@@ -328,6 +351,7 @@ def init_db():
                 col_names = {row[1] for row in cols}
                 if "end_datetime" not in col_names:
                     conn.execute(text("ALTER TABLE campaign_schedules ADD COLUMN end_datetime DATETIME"))
+                
             except Exception:
                 pass
             
@@ -342,7 +366,8 @@ def init_db():
                     "lead_info": "TEXT",
                     "success_evaluation": "BOOLEAN DEFAULT 0",
                     "is_lead_qualified": "BOOLEAN DEFAULT 0",
-                    "external_call_a_id": "TEXT"
+                    "external_call_a_id": "TEXT",
+                    "call_session_id": "TEXT",
                 }
 
                 cols = conn.execute(text("PRAGMA table_info('call_logs')")).fetchall()
@@ -357,6 +382,19 @@ def init_db():
                     conn.execute(
                         text("UPDATE call_logs SET success_evaluation = 0 WHERE success_evaluation IS NULL")
                     )
+                if "call_session_id" not in col_names:
+                    rows = conn.execute(text("SELECT id FROM call_logs")).fetchall()
+                    for row in rows:
+                        session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
+                        
+                        conn.execute(
+                            text("""
+                                UPDATE call_logs 
+                                SET call_session_id = :session_id 
+                                WHERE id = :id
+                            """),
+                            {"session_id": session_id, "id": row.id}
+                        )
             except Exception as e:
                 pass
             
@@ -383,3 +421,20 @@ def init_db():
                     )
             except Exception as e:
                 print(str(e))
+                
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_calling_numbers')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "type" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_calling_numbers ADD COLUMN type TEXT"))
+                if "type" not in col_names:
+                    conn.execute(
+                        text("UPDATE organization_calling_numbers SET type = 'outbound' WHERE type IS NULL")
+                    )
+            except Exception:
+                pass
+
+            try:
+                conn.commit()
+            except Exception:
+                pass

@@ -38,16 +38,16 @@ export interface CampaignLogItem {
   email?: string;
   phone?: string;
   status:
-    | 'pending'
-    | 'sent'
-    | 'delivered'
-    | 'opened'
-    | 'read'
-    | 'clicked'
-    | 'bounced'
-    | 'complained'
-    | 'unsubscribed'
-    | 'failed';
+  | 'pending'
+  | 'sent'
+  | 'delivered'
+  | 'opened'
+  | 'read'
+  | 'clicked'
+  | 'bounced'
+  | 'complained'
+  | 'unsubscribed'
+  | 'failed';
   sent_at?: string;
   delivered_at?: string;
   opened_at?: string;
@@ -217,11 +217,11 @@ export interface ContactListResponse {
 
 export interface ContactItem {
   id: number;
-  name?: string;
-  email?: string;
-  phone?: string;
+  name: string;
+  email: string;
+  phone: string;
   company?: string;
-  contact_list_id: number;
+  contact_list_id: number | null;
   created_at: string;
 }
 

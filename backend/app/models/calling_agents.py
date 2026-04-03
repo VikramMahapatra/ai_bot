@@ -12,6 +12,7 @@ class CallingAgent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    widget_id = Column(String, unique=True, index=True)
     
     # Agent info
     name = Column(String, nullable=False)
@@ -38,6 +39,7 @@ class CallingAgent(Base):
     enable_call_summary = Column(Boolean, default=False)
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
+    inbound_phone_number = Column(String, nullable=True)
     
     gender = Column(String, nullable=False)
     accent = Column(String)

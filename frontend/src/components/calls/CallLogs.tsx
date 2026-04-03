@@ -265,11 +265,18 @@ export const CallLogsTab = () => {
     const loadFilters = async () => {
         const agentData = await callLogService.allAgentLookup();
         setAgents(agentData || []);
-
-        const campaignData = await callLogService.campaignLookup();
-        setCampaigns(campaignData || []);
+        loadCampaignList();
     }
 
+
+    const loadCampaignList = async (agentId?: number) => {
+        try {
+            const campaignData = await callLogService.campaignLookup(agentId);
+            setCampaigns(campaignData || []);
+        } catch (err) {
+            console.error("Failed to load campaigns", err);
+        }
+    };
 
 
     return (
@@ -406,7 +413,11 @@ export const CallLogsTab = () => {
                                 size="small"
                                 fullWidth
                                 value={agent}
-                                onChange={(e) => setAgent(e.target.value)}
+                                onChange={(e) => {
+                                    const selectedAgentId = e.target.value !== "All" ? Number(e.target.value) : undefined;
+                                    setAgent(e.target.value);
+                                    loadCampaignList(selectedAgentId);
+                                }}
                             >
                                 <MenuItem value="All">All Agents</MenuItem>
                                 {
@@ -452,7 +463,8 @@ export const CallLogsTab = () => {
                                 <MenuItem value="All">All</MenuItem>
                                 <MenuItem value="ended">Ended</MenuItem>
                                 <MenuItem value="queued">Queued</MenuItem>
-                                <MenuItem value="failed">Failed</MenuItem>
+                                <MenuItem value="calling fail">Failed</MenuItem>
+                                <MenuItem value="scheduled">Scheduled</MenuItem>
                             </TextField>
                         </Grid>
                         {/* Call End Reason */}
@@ -466,11 +478,12 @@ export const CallLogsTab = () => {
                                 onChange={(e) => setCallEndReason(e.target.value)}
                             >
                                 <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="busy">Customer Busy</MenuItem>
-                                <MenuItem value="no_answer">No Answer</MenuItem>
-                                <MenuItem value="voicemail">Voicemail</MenuItem>
-                                <MenuItem value="customer_end">Customer Ended</MenuItem>
-                                <MenuItem value="assistant_end">Assistant Ended</MenuItem>
+                                <MenuItem value="customer-busy">Customer Busy</MenuItem>
+                                <MenuItem value="customer-did-not-answer">No Answer</MenuItem>
+                                <MenuItem value="silence-timed-out">Silence Time Out</MenuItem>
+                                <MenuItem value="exceeded-max-duration">Exceeded Max Duration</MenuItem>
+                                <MenuItem value="customer-ended-call">Customer Ended</MenuItem>
+                                <MenuItem value="assistant-ended-call">Assistant Ended</MenuItem>
                             </TextField>
                         </Grid>
                         {/* Sentiment */}

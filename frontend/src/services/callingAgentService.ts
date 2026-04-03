@@ -8,6 +8,7 @@ export interface CallingAgent {
     name: string
     calling_no?: string
     status: 'pending' | 'testing' | 'active' | 'paused'
+    inbound_phone_number?: string
 
     server_location?: "IN" | "US"
 

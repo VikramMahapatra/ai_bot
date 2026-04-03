@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta, timezone
 import json
+import random
 from typing import Optional, Tuple, Union
 
 from sqlalchemy import Integer, case, cast, func, or_
@@ -45,7 +46,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(Lead, Lead.session_id == CallLog.external_call_a_id)  # for lead qualification status
+        .outerjoin(Lead, Lead.session_id == CallLog.call_session_id)  # for lead qualification status
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -158,7 +159,7 @@ def get_call_logs(
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid
-        lead_exists = db.query(Lead).filter(Lead.session_id == log.id).first()
+        lead_exists = db.query(Lead).filter(Lead.session_id == log.call_session_id).first()
         if log.is_lead_qualified:
             lead_qualified_status = "Synced" if lead_exists else "Pending"
         else:
@@ -409,9 +410,11 @@ def process_call(db, call, agent):
             
             save_transcripts(db, existing.id, call.get("transcript"))
         else:
+            call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
             call_log = CallLog(
                 external_call_id=call["id"],
                 external_call_a_id=call["call_id"],
+                call_session_id=call_session_id, 
                 organization_id=agent.organization_id,
                 agent_id=agent.id,
                 campaign_id=campaign.id if campaign else None,
@@ -522,8 +525,10 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
 
     # Prevent duplicate
     query = db.query(Lead).filter(
-        Lead.session_id == call_log.external_call_a_id,
-        Lead.organization_id == call_log.organization_id
+        Lead.organization_id == call_log.organization_id,
+        Lead.session_id == (
+            call_log.call_session_id or call_log.external_call_a_id 
+        )
     )
     
     existing = query.first()
@@ -531,8 +536,8 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
     if not existing:
         lead = Lead(
             source="voice",
-            session_id=call_log.external_call_a_id,
-            widget_id=agent.external_agent_a_id,
+            session_id=call_log.call_session_id,
+            widget_id=agent.widget_id,
             organization_id=agent.organization_id,
             product_id = str(campaign.product_id) if campaign.product_id else None,
             name=contact.name if contact else None,
@@ -619,8 +624,8 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
 
     lead = Lead(
         source="voice",
-        session_id=call.external_call_a_id,
-        widget_id=agent.external_agent_a_id,
+        session_id=call.call_session_id,
+        widget_id=agent.widget_id,
         organization_id=agent.organization_id,
         product_id = str(campaign.product_id) if campaign.product_id else None,
         name=contact.name if contact else None,
@@ -649,7 +654,8 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
 def create_conversation_from_transcripts(db, call_log, agent):
     # Skip if already exists
     exists = db.query(Conversation.id).filter(
-        Conversation.session_id == str(call_log.external_call_a_id)
+        Conversation.session_id == (call_log.call_session_id or call_log.external_call_a_id),
+        Conversation.organization_id == call_log.organization_id
     ).first()
     
     if exists:
@@ -671,8 +677,8 @@ def create_conversation_from_transcripts(db, call_log, agent):
         if role == "user":
             # Start new conversation row with user message
             current_message = Conversation(
-                session_id=str(call_log.external_call_a_id),
-                widget_id=str(agent.external_agent_a_id),
+                session_id=call_log.call_session_id,
+                widget_id=agent.widget_id,
                 organization_id=call_log.organization_id,
                 message=t.text,
                 response="",
@@ -688,8 +694,8 @@ def create_conversation_from_transcripts(db, call_log, agent):
             else:
                 # First message is assistant, create a new row
                 current_message = Conversation(
-                    session_id=str(call_log.external_call_a_id),
-                    widget_id=str(agent.external_agent_a_id),
+                    session_id=call_log.call_session_id,
+                    widget_id=agent.widget_id,
                     organization_id=call_log.organization_id,
                     message="",
                     response=t.text,

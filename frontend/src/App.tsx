@@ -29,6 +29,8 @@ import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
 import ProductManagementPage from './pages/ProductManagementPage.tsx';
+import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalyticsReport.tsx';
+import ContactBookPage from './pages/ContactBookPage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -455,6 +457,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/superadmin/call-analytics"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminOrgCallAnalyticsReport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin"
         element={
           <ProtectedRoute requiredRole="ADMIN">
@@ -595,6 +605,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="ADMIN">
             <ProductManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/contacts"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <ContactBookPage />
           </ProtectedRoute>
         }
       />

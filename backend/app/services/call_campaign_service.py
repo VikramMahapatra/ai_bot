@@ -4,13 +4,14 @@ import json
 import logging
 from typing import List, Optional
 from urllib import response
+from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import case, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
-from app.schemas.call_campaign import CampaignCreate, CampaignStatusUpdate, CampaignUpdate, ContactCreate
+from app.schemas.call_campaign import CampaignCreate, CampaignLookupParameters, CampaignStatusUpdate, CampaignUpdate, ContactCreate
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
@@ -325,6 +326,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     agent = db.query(CallingAgent).filter(
             CallingAgent.id == data.agent_id
         ).first()
+    
+    unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
 
     campaign = CallCampaign(
         organization_id=organization_id,
@@ -336,7 +339,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         agent_id=data.agent_id,
         product_id=data.product_id,
         status= "draft",
-        external_campaign_name= f"{org.name}-{data.name}"
+        external_campaign_name= unique_campaign_code
     )
 
     db.add(campaign)
@@ -414,7 +417,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         schedule_time = data.call_start_time
     
     payload = {
-        "campaign_name": f"{org.name}-{data.name}",
+        "campaign_name": unique_campaign_code,
         "agent_id": agent.external_agent_id,
         "from_number": data.calling_no,
         "send_option": send_option,
@@ -565,8 +568,13 @@ def update_campaign(
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
         
+    unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
+    if not campaign.external_campaign_name:
+        campaign.external_campaign_name = unique_campaign_code
+        
+        
     payload = {
-        "campaign_name": f"{org.name}-{campaign.name}",
+        "campaign_name": campaign.external_campaign_name,
         "agent_id": agent.external_agent_id if agent else None,
         "from_number": data.calling_no,
         "send_option": send_option,
@@ -859,6 +867,7 @@ def get_contacts_lookup(db: Session, organization_id: int):
             "email": row.email,
             "phone": row.phone,
             "company": row.company,
+            "contact_list_id": row.contact_list_id,
         }
         for row in rows
     ]
@@ -959,7 +968,7 @@ def update_campaign_status(
 def campaign_lookup(
     db: Session, 
     organization_id: int,
-    search: Optional[str] = None):
+    params: CampaignLookupParameters):
 
     query = db.query(
         CallCampaign.id,
@@ -969,10 +978,16 @@ def campaign_lookup(
         CallCampaign.is_deleted == False,
     )
 
-    if search:
+    if params.search:
         query = query.filter(
-            CallCampaign.name.ilike(f"%{search}%")
+            CallCampaign.name.ilike(f"%{params.search}%")
         )
+        
+    if params.agent_id:
+        query = query.filter(
+            CallCampaign.agent_id == params.agent_id
+        )
+        
 
     campaigns = query.order_by(CallCampaign.name.asc()).all()
 
