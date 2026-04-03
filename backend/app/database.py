@@ -383,3 +383,20 @@ def init_db():
                     )
             except Exception as e:
                 print(str(e))
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('credit_estimator_shares')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "company_name" not in col_names:
+                    conn.execute(text("ALTER TABLE credit_estimator_shares ADD COLUMN company_name TEXT DEFAULT 'Untitled Company'"))
+                if "input_json" not in col_names:
+                    conn.execute(text("ALTER TABLE credit_estimator_shares ADD COLUMN input_json TEXT DEFAULT '{}'"))
+                conn.execute(text("UPDATE credit_estimator_shares SET company_name = 'Untitled Company' WHERE company_name IS NULL OR TRIM(company_name) = ''"))
+                conn.execute(text("UPDATE credit_estimator_shares SET input_json = '{}' WHERE input_json IS NULL OR TRIM(input_json) = ''"))
+            except Exception:
+                pass
+
+            try:
+                conn.commit()
+            except Exception:
+                pass

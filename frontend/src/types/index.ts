@@ -384,6 +384,7 @@ export interface PriceMatrixEstimateLineInput {
 export interface PriceMatrixEstimateRequest {
   lines: PriceMatrixEstimateLineInput[];
   buffer_percent?: number;
+  discount_percent?: number;
 }
 
 export interface PriceMatrixEstimateBreakdownLine {
@@ -401,7 +402,60 @@ export interface PriceMatrixEstimateResponse {
   subtotal_credits: number;
   buffer_percent: number;
   buffer_credits: number;
+  discount_percent: number;
+  discount_credits: number;
+  final_recommended_credits: number;
+  final_recommended_credits_ceiling: number;
   recommended_credits: number;
   recommended_credits_ceiling: number;
   breakdown: PriceMatrixEstimateBreakdownLine[];
+}
+
+export interface CreditEstimatorShareCreateRequest extends PriceMatrixEstimateRequest {
+  company_name: string;
+  valid_for_hours?: number;
+}
+
+export interface CreditEstimatorShareExtendRequest {
+  extra_hours: number;
+}
+
+export interface CreditEstimatorShareResponse {
+  id: number;
+  company_name: string;
+  token: string;
+  share_path: string;
+  expires_at: string;
+  expires_in_hours: number;
+  estimate: PriceMatrixEstimateResponse;
+}
+
+export interface CreditEstimatorSharePublicResponse {
+  id: number;
+  company_name: string;
+  token: string;
+  estimate: PriceMatrixEstimateResponse;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface CreditEstimatorShareEmailRequest {
+  to_email: string;
+  subject: string;
+  body: string;
+}
+
+export interface CreditEstimatorResultListItem extends CreditEstimatorSharePublicResponse {
+  share_path: string;
+  is_active: boolean;
+  is_expired: boolean;
+  estimator_input: PriceMatrixEstimateRequest;
+}
+
+export interface CreditEstimatorShareUpdateRequest {
+  company_name?: string;
+  lines?: PriceMatrixEstimateLineInput[];
+  buffer_percent?: number;
+  discount_percent?: number;
+  valid_for_hours?: number;
 }
