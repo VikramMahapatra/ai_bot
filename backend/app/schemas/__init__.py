@@ -46,6 +46,11 @@ from app.schemas.superadmin import (
     PlanResponse,
     SubscriptionCreate,
     SubscriptionResponse,
+    PriceMatrixItemCreate,
+    PriceMatrixItemUpdate,
+    PriceMatrixItemResponse,
+    PriceMatrixEstimateRequest,
+    PriceMatrixEstimateResponse,
 )
 from app.schemas.funnel_category import (
     FunnelCategoryCreate,
@@ -93,6 +98,11 @@ __all__ = [
     "PlanResponse",
     "SubscriptionCreate",
     "SubscriptionResponse",
+    "PriceMatrixItemCreate",
+    "PriceMatrixItemUpdate",
+    "PriceMatrixItemResponse",
+    "PriceMatrixEstimateRequest",
+    "PriceMatrixEstimateResponse",
     "FunnelCategoryCreate",
     "FunnelCategoryUpdate",
     "FunnelCategoryResponse",

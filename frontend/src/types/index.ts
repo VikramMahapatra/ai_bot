@@ -346,3 +346,62 @@ export interface CallingNumber {
   is_default?: boolean;
   is_active?: boolean;
 }
+
+export interface PriceMatrixItem {
+  id: number;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  credits_per_unit?: number | null;
+  credit_formula?: string | null;
+  definition?: string | null;
+  overage_handling?: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface PriceMatrixItemPayload {
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  credits_per_unit?: number | null;
+  credit_formula?: string | null;
+  definition?: string | null;
+  overage_handling?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
+export interface PriceMatrixEstimateLineInput {
+  price_matrix_item_id: number;
+  quantity: number;
+}
+
+export interface PriceMatrixEstimateRequest {
+  lines: PriceMatrixEstimateLineInput[];
+  buffer_percent?: number;
+}
+
+export interface PriceMatrixEstimateBreakdownLine {
+  price_matrix_item_id: number;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  credits_per_unit: number;
+  quantity: number;
+  estimated_credits: number;
+}
+
+export interface PriceMatrixEstimateResponse {
+  subtotal_credits: number;
+  buffer_percent: number;
+  buffer_credits: number;
+  recommended_credits: number;
+  recommended_credits_ceiling: number;
+  breakdown: PriceMatrixEstimateBreakdownLine[];
+}

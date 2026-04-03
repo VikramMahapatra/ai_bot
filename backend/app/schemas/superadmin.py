@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -258,6 +258,75 @@ class CallingNumberResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PriceMatrixItemBase(BaseModel):
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: Optional[float] = None
+    credit_formula: Optional[str] = None
+    definition: Optional[str] = None
+    overage_handling: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class PriceMatrixItemCreate(PriceMatrixItemBase):
+    pass
+
+
+class PriceMatrixItemUpdate(BaseModel):
+    category: Optional[str] = None
+    module: Optional[str] = None
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: Optional[float] = None
+    credit_formula: Optional[str] = None
+    definition: Optional[str] = None
+    overage_handling: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class PriceMatrixItemResponse(PriceMatrixItemBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PriceMatrixEstimateLine(BaseModel):
+    price_matrix_item_id: int
+    quantity: float = Field(ge=0)
+
+
+class PriceMatrixEstimateRequest(BaseModel):
+    lines: List[PriceMatrixEstimateLine] = Field(default_factory=list)
+    buffer_percent: float = Field(default=15, ge=0, le=200)
+
+
+class PriceMatrixEstimateBreakdownLine(BaseModel):
+    price_matrix_item_id: int
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: float
+    quantity: float
+    estimated_credits: float
+
+
+class PriceMatrixEstimateResponse(BaseModel):
+    subtotal_credits: float
+    buffer_percent: float
+    buffer_credits: float
+    recommended_credits: float
+    recommended_credits_ceiling: int
+    breakdown: List[PriceMatrixEstimateBreakdownLine]
 
 
 SuperAdminOrganizationResponse.model_rebuild()

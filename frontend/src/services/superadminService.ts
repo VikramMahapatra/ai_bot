@@ -7,6 +7,10 @@ import {
   Plan,
   Subscription,
   CallingNumber,
+  PriceMatrixItem,
+  PriceMatrixItemPayload,
+  PriceMatrixEstimateRequest,
+  PriceMatrixEstimateResponse,
 } from '../types';
 
 export const superadminService = {
@@ -132,6 +136,33 @@ export const superadminService = {
 
   async deleteCallingNumber(callingNoId: number) {
     const response = await api.delete<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`);
+    return response.data;
+  },
+
+  async listPriceMatrix(activeOnly = false): Promise<PriceMatrixItem[]> {
+    const response = await api.get<PriceMatrixItem[]>('/api/superadmin/price-matrix', {
+      params: { active_only: activeOnly },
+    });
+    return response.data;
+  },
+
+  async createPriceMatrixItem(payload: PriceMatrixItemPayload): Promise<PriceMatrixItem> {
+    const response = await api.post<PriceMatrixItem>('/api/superadmin/price-matrix', payload);
+    return response.data;
+  },
+
+  async updatePriceMatrixItem(itemId: number, payload: Partial<PriceMatrixItemPayload>): Promise<PriceMatrixItem> {
+    const response = await api.put<PriceMatrixItem>(`/api/superadmin/price-matrix/item/${itemId}`, payload);
+    return response.data;
+  },
+
+  async deletePriceMatrixItem(itemId: number) {
+    const response = await api.delete<{ success: boolean; deleted_item_id: number }>(`/api/superadmin/price-matrix/item/${itemId}`);
+    return response.data;
+  },
+
+  async estimatePriceMatrix(payload: PriceMatrixEstimateRequest): Promise<PriceMatrixEstimateResponse> {
+    const response = await api.post<PriceMatrixEstimateResponse>('/api/superadmin/price-matrix/estimate', payload);
     return response.data;
   },
 

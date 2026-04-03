@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import math
 import re
 import secrets
 from app.database import get_db
@@ -13,6 +14,7 @@ from app.models import (
     OrganizationLimits,
     OrganizationSubscriptionUsage,
     Plan,
+    PriceMatrixItem,
 )
 from app.schemas.superadmin import (
     CallingNumberCreate,
@@ -31,6 +33,12 @@ from app.schemas.superadmin import (
     PlanResponse,
     SubscriptionCreate,
     SubscriptionResponse,
+    PriceMatrixItemCreate,
+    PriceMatrixItemUpdate,
+    PriceMatrixItemResponse,
+    PriceMatrixEstimateRequest,
+    PriceMatrixEstimateResponse,
+    PriceMatrixEstimateBreakdownLine,
 )
 from app.services.limits_service import (
     get_or_create_limits,
@@ -532,6 +540,139 @@ async def delete_plan(
     db.delete(plan)
     db.commit()
     return {"success": True, "deleted_plan_id": plan_id}
+
+
+@router.get("/price-matrix", response_model=List[PriceMatrixItemResponse])
+async def list_price_matrix_items(
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    query = db.query(PriceMatrixItem)
+    if active_only:
+        query = query.filter(PriceMatrixItem.is_active == True)
+
+    return query.order_by(
+        PriceMatrixItem.sort_order.asc(),
+        PriceMatrixItem.category.asc(),
+        PriceMatrixItem.module.asc(),
+        PriceMatrixItem.id.asc(),
+    ).all()
+
+
+@router.post("/price-matrix", response_model=PriceMatrixItemResponse, status_code=status.HTTP_201_CREATED)
+async def create_price_matrix_item(
+    payload: PriceMatrixItemCreate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = PriceMatrixItem(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put("/price-matrix/item/{item_id}", response_model=PriceMatrixItemResponse)
+async def update_price_matrix_item(
+    item_id: int,
+    payload: PriceMatrixItemUpdate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Price matrix item not found")
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if hasattr(item, key):
+            setattr(item, key, value)
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/price-matrix/item/{item_id}")
+async def delete_price_matrix_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Price matrix item not found")
+
+    db.delete(item)
+    db.commit()
+    return {"success": True, "deleted_item_id": item_id}
+
+
+@router.post("/price-matrix/estimate", response_model=PriceMatrixEstimateResponse)
+async def estimate_price_matrix_credits(
+    payload: PriceMatrixEstimateRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    if not payload.lines:
+        return PriceMatrixEstimateResponse(
+            subtotal_credits=0,
+            buffer_percent=payload.buffer_percent,
+            buffer_credits=0,
+            recommended_credits=0,
+            recommended_credits_ceiling=0,
+            breakdown=[],
+        )
+
+    requested_ids = {line.price_matrix_item_id for line in payload.lines}
+    items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(requested_ids)).all()
+    item_by_id = {item.id: item for item in items}
+
+    missing_ids = sorted(requested_ids - set(item_by_id.keys()))
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Price matrix item(s) not found: {', '.join(map(str, missing_ids))}",
+        )
+
+    breakdown: List[PriceMatrixEstimateBreakdownLine] = []
+    subtotal_credits = 0.0
+
+    for line in payload.lines:
+        item = item_by_id[line.price_matrix_item_id]
+        if item.credits_per_unit is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Item '{item.category} / {item.module} / {item.sub_module or '-'}' has no numeric credits_per_unit",
+            )
+
+        line_credits = float(item.credits_per_unit) * float(line.quantity)
+        subtotal_credits += line_credits
+
+        breakdown.append(
+            PriceMatrixEstimateBreakdownLine(
+                price_matrix_item_id=item.id,
+                category=item.category,
+                module=item.module,
+                sub_module=item.sub_module,
+                billing_unit=item.billing_unit,
+                credits_per_unit=float(item.credits_per_unit),
+                quantity=float(line.quantity),
+                estimated_credits=round(line_credits, 2),
+            )
+        )
+
+    buffer_credits = subtotal_credits * (payload.buffer_percent / 100)
+    recommended_credits = subtotal_credits + buffer_credits
+
+    return PriceMatrixEstimateResponse(
+        subtotal_credits=round(subtotal_credits, 2),
+        buffer_percent=payload.buffer_percent,
+        buffer_credits=round(buffer_credits, 2),
+        recommended_credits=round(recommended_credits, 2),
+        recommended_credits_ceiling=int(math.ceil(recommended_credits)),
+        breakdown=breakdown,
+    )
 
 
 @router.delete("/organizations/{org_id}")

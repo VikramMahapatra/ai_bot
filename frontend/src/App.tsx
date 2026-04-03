@@ -25,6 +25,7 @@ import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
 import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
+import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
@@ -435,6 +436,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminPlansPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/price-matrix"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminPriceMatrixPage />
           </ProtectedRoute>
         }
       />
