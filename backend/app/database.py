@@ -22,9 +22,12 @@ if database_url.startswith("sqlite:///"):
         connect_args={"check_same_thread": False}
     )
 else:
+    # Postgres
     engine = create_engine(
-        database_url,
-        connect_args={"check_same_thread": False} if database_url.startswith("sqlite:") else {}
+        database_url,  
+        pool_pre_ping=True,
+        pool_size=10,      # optional
+        max_overflow=20,   # optional
     )
 
 # Create SessionLocal class

@@ -4,6 +4,7 @@ import api from "./api";
 export interface CallAnalyticsFilters {
     start_date?: string;
     end_date?: string;
+    campaign_id?: number;
 }
 
 export interface LiveCall {
@@ -12,6 +13,16 @@ export interface LiveCall {
     duration: string;
 }
 
+export interface RecentCall {
+    name: string;
+    campaign: string;
+    duration: string;
+    status: "queued" | "live" | "ended";
+    phone?: string;
+    agent?: string;
+}
+
+
 export interface AnalyticsSummary {
     total_calls: number;
     successful_calls: number;
@@ -19,7 +30,7 @@ export interface AnalyticsSummary {
     conversion_rate: number;   // in percentage, e.g., 7.6
     total_duration: number;    // in minutes
     active_campaigns: number;
-    live_calls: LiveCall[];
+    recent_calls: RecentCall[];
 }
 
 export interface CallVolumeEntry {
@@ -48,7 +59,7 @@ export interface CallAnalytics {
         call_volume: CallVolumeEntry[];
         pickup_trend: PickupTrendEntry[];
         call_outcomes: CallOutcome[];
-        intent_distribution: IntentDistribution[];
+        lead_outcome_data: IntentDistribution[];
     };
 }
 

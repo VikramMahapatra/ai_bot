@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -7,7 +7,7 @@ from app.database import Base
 class Conversation(Base):
     __tablename__ = "conversations"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)

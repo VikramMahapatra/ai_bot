@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Identity, Index, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class ContactList(Base):
     __tablename__ = "contact_lists"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     list_name = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=True)
@@ -17,7 +17,7 @@ class ContactList(Base):
 class Contact(Base):
     __tablename__ = "contacts"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
     name = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
@@ -25,12 +25,16 @@ class Contact(Base):
     company = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True) 
+    
+    __table_args__ = (
+        Index("idx_contact_external_id", "external_contact_id"),
+    )
 
 
 class Campaign(Base):
     __tablename__ = "campaigns"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     campaign_name = Column(String, nullable=False, index=True)
     campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
@@ -48,7 +52,7 @@ class Campaign(Base):
 class CampaignLog(Base):
     __tablename__ = "campaign_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
     run_sequence = Column(Integer, nullable=False, default=1, index=True)
@@ -77,7 +81,7 @@ class CampaignLog(Base):
 class CampaignLeadRule(Base):
     __tablename__ = "campaign_lead_rules"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     rule_name = Column(String, nullable=False, default="Default Campaign to Lead Rule")
     is_active = Column(Integer, nullable=False, default=1, index=True)
@@ -96,7 +100,7 @@ class CampaignLeadRule(Base):
 class CampaignLeadConversion(Base):
     __tablename__ = "campaign_lead_conversions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
     campaign_log_id = Column(Integer, ForeignKey("campaign_logs.id"), nullable=False, index=True)

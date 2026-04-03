@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.models import (
@@ -106,7 +106,7 @@ def get_active_subscription(db: Session, organization_id: int) -> Optional[Organ
     if not sub:
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if sub.end_date < now:
         sub.status = "expired"
         sub.is_active = False
@@ -117,7 +117,7 @@ def get_active_subscription(db: Session, organization_id: int) -> Optional[Organ
 
 
 def get_subscription_days_left(sub: OrganizationSubscription) -> int:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     delta = sub.end_date - now
     return max(0, delta.days)
 

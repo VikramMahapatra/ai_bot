@@ -23,16 +23,17 @@ interface Props {
 
 export default function CallOutcomesChart({ data }: Props) {
     return (
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={250}>
             <PieChart>
                 <Pie
                     data={data}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
-                    cy="55%"          // 👈 move chart slightly down
-                    outerRadius={70}  // 👈 reduce size
-                    label
+                    cy="55%"
+                    outerRadius={90}
+                    labelLine={true}               // Draw line from pie to label
+                    label={({ name, value }) => `${name} ${(value).toFixed(0)} calls`}
                 >
                     {data.map((entry, index) => (
                         <Cell key={index} fill={COLORS[index]} />
@@ -40,7 +41,7 @@ export default function CallOutcomesChart({ data }: Props) {
                 </Pie>
 
                 <Tooltip />
-                <Legend verticalAlign="bottom" height={36} />
+                {/* <Legend verticalAlign="bottom" height={36} wrapperStyle={{ marginTop: 30 }} /> */}
             </PieChart>
         </ResponsiveContainer>
     );

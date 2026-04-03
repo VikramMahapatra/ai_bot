@@ -16,7 +16,7 @@ class Fulfillment(Base):
     status = Column(String)
     tracking_company = Column(String)
     tracking_number = Column(String)
-    shipped_at = Column(DateTime)
+    shipped_at = Column(DateTime(timezone=True))
     location_id = Column(BigInteger, nullable=True)
     notify_customer = Column(Boolean, default=False)
     raw_data = Column(JSONB)

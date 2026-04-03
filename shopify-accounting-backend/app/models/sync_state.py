@@ -11,6 +11,6 @@ class SyncState(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id = Column(UUID(as_uuid=True), ForeignKey("shops.id"), nullable=False)
     domain = Column(String, index=True)
-    last_sync_timestamp = Column(DateTime)
-    last_full_refresh = Column(DateTime)
+    last_sync_timestamp = Column(DateTime(timezone=True))
+    last_full_refresh = Column(DateTime(timezone=True))
     status = Column(String)

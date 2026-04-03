@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class HandoffSession(Base):
     __tablename__ = "handoff_sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     chat_id = Column(String, unique=True, index=True, nullable=False)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=False)

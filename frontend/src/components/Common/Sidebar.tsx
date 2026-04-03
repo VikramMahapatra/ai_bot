@@ -65,7 +65,7 @@ interface MenuItem {
 const allMenuItems: MenuItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin', requiredRole: 'ADMIN' },
   { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
-  { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
+  // { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
   { text: 'Calls', icon: <CallIcon />, path: '/calls', requiredRole: 'ALL' },
   { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN', featureKey: 'module_knowledge_enabled' },
   { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN', featureKey: 'module_leads_enabled' },

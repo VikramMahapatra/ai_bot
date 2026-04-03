@@ -96,6 +96,15 @@ def list_campaigns(
 
     db.commit()
 
+    contact_count_subq = (
+        db.query(
+            CampaignContact.campaign_id,
+            func.count(CampaignContact.id).label("contact_count")
+        )
+        .group_by(CampaignContact.campaign_id)
+        .subquery()
+    )
+
     base_query = (
         db.query(
             CallCampaign.id,
@@ -108,13 +117,18 @@ def list_campaigns(
             (Product.name + " (" + Product.code + ")").label("product_name"),
             CallCampaign.total_calls,
             CallCampaign.completed_calls,
-            func.count(CampaignContact.id).label("contact_count")
+            contact_count_subq.c.contact_count
         )
         .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(Product, Product.id == CallCampaign.product_id)
-        .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
-        .filter(CallCampaign.organization_id == organization_id, CallCampaign.is_deleted == False)
-        .group_by(CallCampaign.id)
+        .outerjoin(
+            contact_count_subq,
+            CallCampaign.id == contact_count_subq.c.campaign_id
+        )
+        .filter(
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False
+        )
     )
 
     # SEARCH FILTER
@@ -1178,7 +1192,14 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
 
     db.commit()
 
-    return external_contact_ids
+    seen = set()
+    unique_external_ids = []
+    for eid in external_contact_ids:
+        if eid not in seen:
+            seen.add(eid)
+            unique_external_ids.append(eid)
+
+    return unique_external_ids
 
 def normalize_phone(phone: str):
     if not phone:

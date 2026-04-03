@@ -386,7 +386,6 @@ def read_agents(
     echo_leads = EcholeadsClient()
     try:
         echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
-        
         if echo_response and echo_response.get("data"):
 
             echo_agents = echo_response["data"]
