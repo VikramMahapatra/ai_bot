@@ -3,6 +3,15 @@ from app.models.super_admin import SuperAdmin
 from app.models.organization_limits import OrganizationLimits
 from app.models.organization_usage import OrganizationUsage
 from app.models.plan import Plan
+from app.models.price_matrix_item import PriceMatrixItem
+from app.models.credit_estimator_share import CreditEstimatorShare
+from app.models.organization_credit_allocation import OrganizationCreditAllocation
+from app.models.organization_credit_profile import OrganizationCreditProfile
+from app.models.organization_credit_change_log import OrganizationCreditChangeLog
+from app.models.billing_invoice import BillingInvoice
+from app.models.billing_payment import BillingPayment
+from app.models.billing_invoice_item import BillingInvoiceItem
+from app.models.billing_bill import BillingBill
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_subscription_usage import OrganizationSubscriptionUsage
 from app.models.knowledge_source import KnowledgeSource, SourceType
@@ -36,6 +45,15 @@ __all__ = [
     "OrganizationLimits",
     "OrganizationUsage",
     "Plan",
+    "PriceMatrixItem",
+    "CreditEstimatorShare",
+    "OrganizationCreditAllocation",
+    "OrganizationCreditProfile",
+    "OrganizationCreditChangeLog",
+    "BillingInvoice",
+    "BillingPayment",
+    "BillingInvoiceItem",
+    "BillingBill",
     "OrganizationSubscription",
     "OrganizationSubscriptionUsage",
     "KnowledgeSource",

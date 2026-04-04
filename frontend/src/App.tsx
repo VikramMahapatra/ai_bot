@@ -25,12 +25,17 @@ import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
 import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
+import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
+import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
+import SuperAdminOrganizationCreditManagementPage from './pages/SuperAdminOrganizationCreditManagementPage';
+import SuperAdminBillingPage from './pages/SuperAdminBillingPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
 import ProductManagementPage from './pages/ProductManagementPage.tsx';
 import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalyticsReport.tsx';
 import ContactBookPage from './pages/ContactBookPage.tsx';
+import CreditEstimatorSharePage from './pages/CreditEstimatorSharePage';
 
 type ColorMode = 'light' | 'dark';
 
@@ -422,6 +427,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/agent-test/:widgetId" element={<AgentTestPage />} />
+      <Route path="/credit-estimator/share/:token" element={<CreditEstimatorSharePage />} />
       <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
       <Route path="/superadmin/bootstrap" element={<SuperAdminBootstrapPage />} />
       <Route
@@ -437,6 +443,38 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminPlansPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/price-matrix"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminPriceMatrixPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/credit-estimator"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminCreditEstimatorPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/organization-credits"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminOrganizationCreditManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/billing"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminBillingPage />
           </ProtectedRoute>
         }
       />

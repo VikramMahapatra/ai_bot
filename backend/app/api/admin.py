@@ -1,10 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.auth import require_admin, get_password_hash, create_access_token, verify_password, get_current_user
+from app.auth import (
+    require_admin,
+    get_password_hash,
+    create_access_token,
+    verify_password,
+    get_current_user,
+)
 from app.models import User, UserRole, Organization, Appointment, WidgetConfig
 from app.services.limits_service import get_or_create_limits, get_effective_limits
-from app.services.email_service import send_appointment_rescheduled_notification, send_widget_test_link_email
+from app.services.email_service import (
+    send_appointment_rescheduled_notification,
+    send_widget_test_link_email,
+)
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from pydantic import BaseModel, EmailStr
@@ -63,7 +72,9 @@ def _parse_iso_datetime(value: str) -> datetime:
     return datetime.fromisoformat(normalized)
 
 
-def _format_datetime_with_timezone(value: datetime, timezone_name: Optional[str]) -> tuple[str, str]:
+def _format_datetime_with_timezone(
+    value: datetime, timezone_name: Optional[str]
+) -> tuple[str, str]:
     dt_value = value
     if dt_value.tzinfo is None:
         dt_value = dt_value.replace(tzinfo=timezone.utc)
@@ -79,7 +90,9 @@ def _format_datetime_with_timezone(value: datetime, timezone_name: Optional[str]
     return local_dt.strftime("%d %b %Y, %I:%M %p"), tz_label
 
 
-def _create_widget_test_link_token(widget_id: str, start_at: datetime, expires_at: datetime) -> str:
+def _create_widget_test_link_token(
+    widget_id: str, start_at: datetime, expires_at: datetime
+) -> str:
     payload = {
         "scope": "widget_test_link",
         "widget_id": widget_id,
@@ -139,13 +152,18 @@ def _set_widget_test_window_start(config: WidgetConfig, start_at: datetime) -> N
 
 def _validate_widget_test_link_token(token: str, widget_id: str) -> None:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Test link has expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid test link")
 
-    if payload.get("scope") != "widget_test_link" or payload.get("widget_id") != widget_id:
+    if (
+        payload.get("scope") != "widget_test_link"
+        or payload.get("widget_id") != widget_id
+    ):
         raise HTTPException(status_code=401, detail="Invalid test link")
 
 
@@ -185,25 +203,37 @@ class WidgetTestLinkEmailRequest(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
-    request: LoginRequest,
-    db: Session = Depends(get_db)
-):
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Login with username, password, and organization"""
     # Find user in the specified organization
-    user = db.query(User).filter(
-        User.username == request.username,
-        User.organization_id == request.organization_id
-    ).first()
-    
-    if not user or not verify_password(request.password, user.hashed_password) or not user.is_active:
-        raise HTTPException(status_code=401, detail="Invalid credentials, organization, or user inactive")
-    
+    user = (
+        db.query(User)
+        .filter(
+            User.username == request.username,
+            User.organization_id == request.organization_id,
+        )
+        .first()
+    )
+
+    if (
+        not user
+        or not verify_password(request.password, user.hashed_password)
+        or not user.is_active
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials, organization, or user inactive",
+        )
+
     # Get organization name
-    org = db.query(Organization).filter(Organization.id == request.organization_id).first()
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == request.organization_id)
+        .first()
+    )
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     # Generate token with user_id
     access_token = create_access_token(data={"sub": user.id})
     return LoginResponse(
@@ -211,45 +241,46 @@ async def login(
         user_id=user.id,
         organization_id=user.organization_id,
         role=user.role.value,
-        organization_name=org.name
+        organization_name=org.name,
     )
 
 
-@router.get("/organizations/by-username/{username}", response_model=List[GetOrganizationsResponse])
-async def get_organizations_by_username(
-    username: str,
-    db: Session = Depends(get_db)
-):
+@router.get(
+    "/organizations/by-username/{username}",
+    response_model=List[GetOrganizationsResponse],
+)
+async def get_organizations_by_username(username: str, db: Session = Depends(get_db)):
     """Get all organizations where a user exists (for login organization dropdown)"""
     users = db.query(User).filter(User.username == username).all()
-    
+
     if not users:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Get unique organizations
     org_ids = set(user.organization_id for user in users)
     organizations = db.query(Organization).filter(Organization.id.in_(org_ids)).all()
-    
+
     return organizations
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(
-    request: RegisterRequest,
-    db: Session = Depends(get_db)
-):
+async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     """
     Register new organization with an admin user.
     This creates both the organization and the first admin user.
     """
     # Check if organization already exists
-    existing_org = db.query(Organization).filter(Organization.name == request.organization_name).first()
+    existing_org = (
+        db.query(Organization)
+        .filter(Organization.name == request.organization_name)
+        .first()
+    )
     if existing_org:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Organization already exists"
+            detail="Organization already exists",
         )
-    
+
     # Create organization
     org_name = (request.organization_name or "").strip()
     org = Organization(
@@ -263,7 +294,7 @@ async def register(
 
     # Initialize default limits
     get_or_create_limits(db, org.id)
-    
+
     # Create admin user for the organization
     admin_user = User(
         username=request.username,
@@ -271,24 +302,22 @@ async def register(
         hashed_password=get_password_hash(request.password),
         role=UserRole.ADMIN,
         organization_id=org.id,
-        is_active=True
+        is_active=True,
     )
     db.add(admin_user)
     db.commit()
     db.refresh(admin_user)
-    
+
     return {
         "message": "Organization and admin user created successfully",
         "organization_id": org.id,
         "username": admin_user.username,
-        "role": admin_user.role.value
+        "role": admin_user.role.value,
     }
 
 
 @router.get("/me")
-async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
-):
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user info"""
     return {
         "id": current_user.id,
@@ -296,14 +325,13 @@ async def get_current_user_info(
         "email": current_user.email,
         "role": current_user.role.value,
         "organization_id": current_user.organization_id,
-        "is_active": current_user.is_active
+        "is_active": current_user.is_active,
     }
 
 
 @router.get("/features")
 async def get_feature_flags(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Get effective feature flags for current user's organization"""
     limits = get_effective_limits(db, current_user.organization_id)
@@ -319,7 +347,9 @@ async def get_feature_flags(
         "module_knowledge_enabled": limits.get("module_knowledge_enabled", False),
         "module_leads_enabled": limits.get("module_leads_enabled", False),
         "module_analytics_enabled": limits.get("module_analytics_enabled", False),
-        "module_advanced_analytics_enabled": limits.get("module_advanced_analytics_enabled", False),
+        "module_advanced_analytics_enabled": limits.get(
+            "module_advanced_analytics_enabled", False
+        ),
         "module_reports_enabled": limits.get("module_reports_enabled", False),
         "module_campaigns_enabled": limits.get("module_campaigns_enabled", False),
         "module_appointments_enabled": limits.get("module_appointments_enabled", False),
@@ -329,13 +359,10 @@ async def get_feature_flags(
 
 
 @router.get("/widget/config/{widget_id}")
-async def get_widget_config(
-    widget_id: str,
-    db: Session = Depends(get_db)
-):
+async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
     """Get widget configuration (public endpoint)"""
     from app.models import WidgetConfig
-    
+
     config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
@@ -343,7 +370,7 @@ async def get_widget_config(
     if _ensure_widget_escalation_contacts(config):
         db.commit()
         db.refresh(config)
-    
+
     return config
 
 
@@ -352,16 +379,22 @@ async def generate_widget_test_link(
     widget_id: str,
     extra_hours: int = Query(0, ge=0, le=168),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Generate an expiring test-link token for a widget in the current organization."""
-    config = db.query(WidgetConfig).filter(
-        WidgetConfig.widget_id == widget_id,
-        WidgetConfig.organization_id == current_user.organization_id
-    ).first()
+    config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == widget_id,
+            WidgetConfig.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     if not config:
-        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
+        raise HTTPException(
+            status_code=404, detail="Widget config not found or unauthorized"
+        )
 
     if extra_hours > 0:
         # +24 action resets the window anchor to now, then applies default 24h expiry.
@@ -374,7 +407,9 @@ async def generate_widget_test_link(
         start_at = _resolve_widget_test_window_start(config)
 
     expires_at = start_at + timedelta(hours=settings.TEST_LINK_EXPIRY_HOURS)
-    token = _create_widget_test_link_token(widget_id, start_at=start_at, expires_at=expires_at)
+    token = _create_widget_test_link_token(
+        widget_id, start_at=start_at, expires_at=expires_at
+    )
 
     return {
         "widget_id": widget_id,
@@ -387,9 +422,7 @@ async def generate_widget_test_link(
 
 @router.get("/widget/test/config/{widget_id}")
 async def get_widget_test_config(
-    widget_id: str,
-    token: str = Query(..., min_length=1),
-    db: Session = Depends(get_db)
+    widget_id: str, token: str = Query(..., min_length=1), db: Session = Depends(get_db)
 ):
     """Get widget config for public test pages using a signed expiring token."""
     _validate_widget_test_link_token(token, widget_id)
@@ -416,12 +449,18 @@ async def send_widget_test_link_via_email(
     if not widget_id:
         raise HTTPException(status_code=400, detail="widget_id is required")
 
-    config = db.query(WidgetConfig).filter(
-        WidgetConfig.widget_id == widget_id,
-        WidgetConfig.organization_id == current_user.organization_id,
-    ).first()
+    config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == widget_id,
+            WidgetConfig.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not config:
-        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
+        raise HTTPException(
+            status_code=404, detail="Widget config not found or unauthorized"
+        )
 
     body = (payload.body or "").strip()
     subject = (payload.subject or "").strip() or "Welcome from Zentrixel"
@@ -434,7 +473,9 @@ async def send_widget_test_link_via_email(
         message_body=body,
     )
     if not success:
-        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+        raise HTTPException(
+            status_code=400, detail=error_message or "Failed to send email"
+        )
 
     return {"message": "Test link email sent successfully"}
 
@@ -443,14 +484,14 @@ async def send_widget_test_link_via_email(
 async def create_widget_config(
     config_data: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Create widget configuration for the current user"""
     from app.models import WidgetConfig
-    
+
     # Generate widget ID if not provided
     widget_id = config_data.get("widget_id", str(uuid.uuid4()))
-    
+
     config = WidgetConfig(
         user_id=current_user.id,
         organization_id=current_user.organization_id,
@@ -464,13 +505,17 @@ async def create_widget_config(
         position=config_data.get("position", "bottom-right"),
         lead_capture_enabled=config_data.get("lead_capture_enabled", True),
         lead_fields=config_data.get("lead_fields"),
-        escalation_contact_level_1=config_data.get("escalation_contact_level_1", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1),
-        escalation_contact_level_2=config_data.get("escalation_contact_level_2", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2),
+        escalation_contact_level_1=config_data.get(
+            "escalation_contact_level_1", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        ),
+        escalation_contact_level_2=config_data.get(
+            "escalation_contact_level_2", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        ),
     )
     db.add(config)
     db.commit()
     db.refresh(config)
-    
+
     return config
 
 
@@ -479,44 +524,65 @@ async def update_widget_config(
     widget_id: str,
     config_data: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Update widget configuration (only for user's own widgets)"""
     from app.models import WidgetConfig
-    
-    config = db.query(WidgetConfig).filter(
-        WidgetConfig.widget_id == widget_id,
-        WidgetConfig.user_id == current_user.id,
-        WidgetConfig.organization_id == current_user.organization_id
-    ).first()
-    
+
+    config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == widget_id,
+            WidgetConfig.user_id == current_user.id,
+            WidgetConfig.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+
     if not config:
-        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
-    
+        raise HTTPException(
+            status_code=404, detail="Widget config not found or unauthorized"
+        )
+
     # Define fields that should not be updated
-    readonly_fields = {'id', 'user_id', 'organization_id', 'created_at', 'updated_at', 'widget_id'}
-    
+    readonly_fields = {
+        "id",
+        "user_id",
+        "organization_id",
+        "created_at",
+        "updated_at",
+        "widget_id",
+    }
+
     # Update only allowed fields
     for key, value in config_data.items():
         if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
 
     _ensure_widget_escalation_contacts(config)
-    
+
     db.commit()
     db.refresh(config)
-    
+
     return config
 
 
-@router.post('/outcomes/process')
+@router.post("/outcomes/process")
 async def run_outcome_processing_now(
     payload: Optional[dict] = Body(None),
     current_user: User = Depends(require_admin),
 ):
     """Run outcome processing on-demand for admins in their organization context."""
-    batch_size = int(payload.get('batch_size')) if payload and payload.get('batch_size') else settings.OUTCOME_DAEMON_BATCH_SIZE
-    max_batches = int(payload.get('max_batches')) if payload and payload.get('max_batches') else settings.OUTCOME_DAEMON_MAX_BATCHES
+    batch_size = (
+        int(payload.get("batch_size"))
+        if payload and payload.get("batch_size")
+        else settings.OUTCOME_DAEMON_BATCH_SIZE
+    )
+    max_batches = (
+        int(payload.get("max_batches"))
+        if payload and payload.get("max_batches")
+        else settings.OUTCOME_DAEMON_MAX_BATCHES
+    )
 
     processed, failed = run_outcome_processing_batches(
         batch_size=batch_size,
@@ -528,15 +594,16 @@ async def run_outcome_processing_now(
 
 @router.get("/widgets")
 async def list_widgets(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    db: Session = Depends(get_db), current_user: User = Depends(require_admin)
 ):
     """List all widgets for the current organization"""
     from app.models import WidgetConfig
-    
-    configs = db.query(WidgetConfig).filter(
-        WidgetConfig.organization_id == current_user.organization_id
-    ).all()
+
+    configs = (
+        db.query(WidgetConfig)
+        .filter(WidgetConfig.organization_id == current_user.organization_id)
+        .all()
+    )
 
     changed = False
     for config in configs:
@@ -544,7 +611,7 @@ async def list_widgets(
             changed = True
     if changed:
         db.commit()
-    
+
     return configs
 
 
@@ -555,8 +622,11 @@ async def list_appointments(
     upcoming_only: bool = False,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """List appointments for the current organization."""
     query = db.query(Appointment).filter(
@@ -575,7 +645,9 @@ async def list_appointments(
             start_dt = datetime.fromisoformat(start_date)
             query = query.filter(Appointment.appointment_at >= start_dt)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid start_date format. Use ISO format")
+            raise HTTPException(
+                status_code=400, detail="Invalid start_date format. Use ISO format"
+            )
 
     if end_date:
         try:
@@ -584,15 +656,23 @@ async def list_appointments(
                 end_dt = end_dt + timedelta(days=1)
             query = query.filter(Appointment.appointment_at <= end_dt)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid end_date format. Use ISO format")
+            raise HTTPException(
+                status_code=400, detail="Invalid end_date format. Use ISO format"
+            )
 
-    appointments = query.order_by(Appointment.appointment_at.asc()).all()
+    # appointments = query.order_by(Appointment.appointment_at.asc()).all()
+
+    total = query.count()
+
+    appointments = (
+        query.order_by(Appointment.appointment_at.asc()).offset(skip).limit(limit).all()
+    )
 
     widget_map = {
         row.widget_id: row.name
-        for row in db.query(WidgetConfig).filter(
-            WidgetConfig.organization_id == current_user.organization_id
-        ).all()
+        for row in db.query(WidgetConfig)
+        .filter(WidgetConfig.organization_id == current_user.organization_id)
+        .all()
     }
 
     return {
@@ -612,7 +692,8 @@ async def list_appointments(
                 "created_at": item.created_at,
             }
             for item in appointments
-        ]
+        ],
+        "pagination": {"total": total, "skip": skip, "limit": limit},
     }
 
 
@@ -627,12 +708,19 @@ async def update_appointment_status(
     allowed = {"booked", "completed", "cancelled", "no_show"}
     new_status = str(payload.get("status", "")).strip().lower()
     if new_status not in allowed:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed values: {', '.join(sorted(allowed))}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Allowed values: {', '.join(sorted(allowed))}",
+        )
 
-    appointment = db.query(Appointment).filter(
-        Appointment.id == appointment_id,
-        Appointment.organization_id == current_user.organization_id,
-    ).first()
+    appointment = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appointment_id,
+            Appointment.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -644,7 +732,7 @@ async def update_appointment_status(
     return {
         "id": appointment.id,
         "status": appointment.status,
-        "message": "Appointment status updated"
+        "message": "Appointment status updated",
     }
 
 
@@ -663,24 +751,36 @@ async def reschedule_appointment(
     try:
         new_appointment_at = _parse_iso_datetime(str(raw_appointment_at))
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid appointment_at format. Use ISO format")
+        raise HTTPException(
+            status_code=400, detail="Invalid appointment_at format. Use ISO format"
+        )
 
     now = datetime.now(timezone.utc) if new_appointment_at.tzinfo else datetime.utcnow()
     if new_appointment_at <= now:
-        raise HTTPException(status_code=400, detail="Rescheduled appointment time must be in the future")
+        raise HTTPException(
+            status_code=400, detail="Rescheduled appointment time must be in the future"
+        )
 
-    appointment = db.query(Appointment).filter(
-        Appointment.id == appointment_id,
-        Appointment.organization_id == current_user.organization_id,
-    ).first()
+    appointment = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appointment_id,
+            Appointment.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    widget_config = db.query(WidgetConfig).filter(
-        WidgetConfig.widget_id == appointment.widget_id,
-        WidgetConfig.organization_id == current_user.organization_id,
-    ).first()
+    widget_config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == appointment.widget_id,
+            WidgetConfig.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     old_appointment_at = appointment.appointment_at
     old_timezone = appointment.timezone
@@ -696,7 +796,11 @@ async def reschedule_appointment(
     appointment.appointment_at = new_appointment_at
     appointment.status = "booked"
 
-    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == current_user.organization_id)
+        .first()
+    )
     org_default_meet_link = (getattr(org, "default_meet_link", None) or "").strip()
     meeting_link = (
         str(payload.get("meeting_link") or "").strip()
@@ -707,8 +811,12 @@ async def reschedule_appointment(
     db.commit()
     db.refresh(appointment)
 
-    old_time_label, old_tz_label = _format_datetime_with_timezone(old_appointment_at, old_timezone or appointment.timezone)
-    new_time_label, tz_label = _format_datetime_with_timezone(appointment.appointment_at, appointment.timezone)
+    old_time_label, old_tz_label = _format_datetime_with_timezone(
+        old_appointment_at, old_timezone or appointment.timezone
+    )
+    new_time_label, tz_label = _format_datetime_with_timezone(
+        appointment.appointment_at, appointment.timezone
+    )
 
     escalation_emails = _extract_emails(
         widget_config.escalation_contact_level_1 if widget_config else None,
@@ -745,7 +853,13 @@ async def reschedule_appointment(
         "meeting_link": meeting_link,
         "notification": {
             "sent": notification_ok,
-            "recipient_count": len({(email or '').strip().lower() for email in recipients if (email or '').strip()}),
+            "recipient_count": len(
+                {
+                    (email or "").strip().lower()
+                    for email in recipients
+                    if (email or "").strip()
+                }
+            ),
             "errors": notification_errors,
         },
         "message": response_message,
@@ -760,20 +874,26 @@ async def reschedule_appointment(
 async def delete_widget_config(
     widget_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Delete widget configuration"""
     from app.models import WidgetConfig
-    
-    config = db.query(WidgetConfig).filter(
-        WidgetConfig.widget_id == widget_id,
-        WidgetConfig.organization_id == current_user.organization_id
-    ).first()
-    
+
+    config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == widget_id,
+            WidgetConfig.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+
     if not config:
-        raise HTTPException(status_code=404, detail="Widget config not found or unauthorized")
-    
+        raise HTTPException(
+            status_code=404, detail="Widget config not found or unauthorized"
+        )
+
     db.delete(config)
     db.commit()
-    
+
     return {"message": "Widget deleted successfully"}

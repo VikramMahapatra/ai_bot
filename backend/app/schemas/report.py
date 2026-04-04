@@ -110,3 +110,41 @@ class LeadReportResponse(BaseModel):
     leads_by_date: dict  # {"date": count}
     leads_with_email: int
     conversion_rate: float  # (leads / total_conversations) * 100
+
+
+class VoiceCampaignReportRow(BaseModel):
+    agent_name: str
+    customer_name: Optional[str]
+    email: Optional[str]
+    company: Optional[str]
+    organization_name: str
+    campaign_name: str
+    campaign_source: str
+    funnel_stage: Optional[str]
+    lead_outcome: Optional[str]
+    created_at: Optional[datetime]
+    product_name: Optional[str]
+
+
+class VoiceCampaignReportSummary(BaseModel):
+    total_calls: int
+    successful_attempts: int
+    sum_call_duration_seconds: int
+    sum_call_duration_minutes: float
+    sum_call_duration_label: str
+    campaign_duration_seconds: int
+    campaign_duration_minutes: float
+    campaign_duration_label: str
+
+
+class VoiceCampaignReportResponse(BaseModel):
+    total: int
+    summary: VoiceCampaignReportSummary
+    items: List[VoiceCampaignReportRow]
+
+
+class VoiceCampaignFilterOptionsResponse(BaseModel):
+    agent_names: List[str]
+    campaign_names: List[str]
+    lead_outcomes: List[str]
+    default_campaign_name: Optional[str] = None
