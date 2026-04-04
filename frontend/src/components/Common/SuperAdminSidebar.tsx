@@ -23,6 +23,8 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const drawerWidth = 274;
 
@@ -42,6 +44,8 @@ const menuItems: MenuItem[] = [
   { text: 'Plans', icon: <LocalOfferIcon />, path: '/superadmin/plans' },
   { text: 'Price Matrix', icon: <TableChartIcon />, path: '/superadmin/price-matrix' },
   { text: 'Credit Estimator', icon: <CalculateIcon />, path: '/superadmin/credit-estimator' },
+  { text: 'Org Credits', icon: <AccountBalanceWalletIcon />, path: '/superadmin/organization-credits' },
+  { text: 'Billing', icon: <ReceiptLongIcon />, path: '/superadmin/billing' },
   { text: 'Organizations', icon: <BusinessIcon />, path: '/superadmin/organizations' },
   { text: 'Analytics', icon: <InsightsIcon />, path: '/superadmin/analytics' },
 ];

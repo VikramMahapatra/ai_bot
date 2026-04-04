@@ -27,6 +27,8 @@ import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
+import SuperAdminOrganizationCreditManagementPage from './pages/SuperAdminOrganizationCreditManagementPage';
+import SuperAdminBillingPage from './pages/SuperAdminBillingPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
@@ -455,6 +457,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminCreditEstimatorPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/organization-credits"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminOrganizationCreditManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/billing"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminBillingPage />
           </ProtectedRoute>
         }
       />

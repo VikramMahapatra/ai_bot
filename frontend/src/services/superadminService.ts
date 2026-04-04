@@ -18,6 +18,21 @@ import {
   CreditEstimatorShareEmailRequest,
   CreditEstimatorResultListItem,
   CreditEstimatorShareUpdateRequest,
+  OrganizationCreditAllocation,
+  OrganizationCreditAllocationCreateRequest,
+  OrganizationCreditAllocationSummary,
+  OrganizationCreditAllocationUpdateRequest,
+  OrganizationCreditProfile,
+  OrganizationCreditProfileUpdateRequest,
+  OrganizationCreditChangeLog,
+  BillingInvoice,
+  BillingInvoiceDetail,
+  BillingInvoiceMarkPaidRequest,
+  BillingInvoiceMarkPaidResponse,
+  BillingPayment,
+  BillingPaymentCreateRequest,
+  BillingInvoiceBackfillResponse,
+  BillingBill,
 } from '../types';
 
 export const superadminService = {
@@ -217,6 +232,103 @@ export const superadminService = {
 
   async sendCreditEstimatorResultEmail(resultId: number, payload: CreditEstimatorShareEmailRequest) {
     const response = await api.post<{ message: string }>(`/api/superadmin/credit-estimator/results/${resultId}/email`, payload);
+    return response.data;
+  },
+
+  async deleteCreditEstimatorResult(resultId: number) {
+    const response = await api.delete<{ success: boolean; deleted_result_id: number }>(`/api/superadmin/credit-estimator/results/${resultId}`);
+    return response.data;
+  },
+
+  async listOrganizationCreditAllocations(params?: { organization_id?: number; search?: string; active_only?: boolean }): Promise<OrganizationCreditAllocation[]> {
+    const response = await api.get<OrganizationCreditAllocation[]>('/api/superadmin/organization-credit-allocations', { params });
+    return response.data;
+  },
+
+  async summarizeOrganizationCreditAllocations(): Promise<OrganizationCreditAllocationSummary[]> {
+    const response = await api.get<OrganizationCreditAllocationSummary[]>('/api/superadmin/organization-credit-allocations/summary');
+    return response.data;
+  },
+
+  async getOrganizationCreditProfile(organizationId: number): Promise<OrganizationCreditProfile> {
+    const response = await api.get<OrganizationCreditProfile>(`/api/superadmin/organization-credit-allocations/profile/${organizationId}`);
+    return response.data;
+  },
+
+  async updateOrganizationCreditProfile(organizationId: number, payload: OrganizationCreditProfileUpdateRequest): Promise<OrganizationCreditProfile> {
+    const response = await api.put<OrganizationCreditProfile>(`/api/superadmin/organization-credit-allocations/profile/${organizationId}`, payload);
+    return response.data;
+  },
+
+  async createOrganizationCreditAllocations(payload: OrganizationCreditAllocationCreateRequest): Promise<OrganizationCreditAllocation[]> {
+    const response = await api.post<OrganizationCreditAllocation[]>('/api/superadmin/organization-credit-allocations', payload);
+    return response.data;
+  },
+
+  async updateOrganizationCreditAllocation(allocationId: number, payload: OrganizationCreditAllocationUpdateRequest): Promise<OrganizationCreditAllocation> {
+    const response = await api.put<OrganizationCreditAllocation>(`/api/superadmin/organization-credit-allocations/${allocationId}`, payload);
+    return response.data;
+  },
+
+  async deleteOrganizationCreditAllocation(allocationId: number) {
+    const response = await api.delete<{ success: boolean; deleted_allocation_id: number }>(`/api/superadmin/organization-credit-allocations/${allocationId}`);
+    return response.data;
+  },
+
+  async listOrganizationCreditChanges(params?: { organization_id?: number; change_type?: string; limit?: number }): Promise<OrganizationCreditChangeLog[]> {
+    const response = await api.get<OrganizationCreditChangeLog[]>('/api/superadmin/organization-credit-allocations/changes', { params });
+    return response.data;
+  },
+
+  async listBillingInvoices(params?: { organization_id?: number; status_filter?: string }): Promise<BillingInvoice[]> {
+    const response = await api.get<BillingInvoice[]>('/api/superadmin/billing/invoices', { params });
+    return response.data;
+  },
+
+  async getBillingInvoiceDetail(invoiceId: number): Promise<BillingInvoiceDetail> {
+    const response = await api.get<BillingInvoiceDetail>(`/api/superadmin/billing/invoices/${invoiceId}`);
+    return response.data;
+  },
+
+  async markBillingInvoicePaid(invoiceId: number, payload: BillingInvoiceMarkPaidRequest): Promise<BillingInvoiceMarkPaidResponse> {
+    const response = await api.post<BillingInvoiceMarkPaidResponse>(`/api/superadmin/billing/invoices/${invoiceId}/mark-paid`, payload);
+    return response.data;
+  },
+
+  async exportBillingInvoice(invoiceId: number) {
+    const response = await api.get(`/api/superadmin/billing/invoices/${invoiceId}/export`);
+    return response.data;
+  },
+
+  async listBillingPayments(params?: { organization_id?: number; invoice_id?: number; status_filter?: string }): Promise<BillingPayment[]> {
+    const response = await api.get<BillingPayment[]>('/api/superadmin/billing/payments', { params });
+    return response.data;
+  },
+
+  async createBillingPayment(payload: BillingPaymentCreateRequest): Promise<BillingPayment> {
+    const response = await api.post<BillingPayment>('/api/superadmin/billing/payments', payload);
+    return response.data;
+  },
+
+  async backfillBillingInvoices(force = false): Promise<BillingInvoiceBackfillResponse> {
+    const response = await api.post<BillingInvoiceBackfillResponse>('/api/superadmin/billing/invoices/backfill-existing', null, {
+      params: { force },
+    });
+    return response.data;
+  },
+
+  async listBillingBills(params?: { organization_id?: number; invoice_id?: number }): Promise<BillingBill[]> {
+    const response = await api.get<BillingBill[]>('/api/superadmin/billing/bills', { params });
+    return response.data;
+  },
+
+  async getBillingBill(billId: number): Promise<BillingBill> {
+    const response = await api.get<BillingBill>(`/api/superadmin/billing/bills/${billId}`);
+    return response.data;
+  },
+
+  async exportBillingBill(billId: number) {
+    const response = await api.get(`/api/superadmin/billing/bills/${billId}/export`);
     return response.data;
   },
 
