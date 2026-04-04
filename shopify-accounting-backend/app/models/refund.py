@@ -13,7 +13,7 @@ class Refund(Base):
     total_amount = Column(Numeric)
     currency = Column(String(10), nullable=True)        # new
     refund_reason = Column(String(255), nullable=True)  # new
-    processed_at = Column(DateTime, nullable=True)      # optional, for your system
-    created_at = Column(DateTime)                       # Shopify created_at
+    processed_at = Column(DateTime(timezone=True), nullable=True)      # optional, for your system
+    created_at = Column(DateTime(timezone=True), server_default=func.now())                       # Shopify created_at
     raw_data = Column(JSONB)
 

@@ -26,11 +26,18 @@ interface Props {
 }
 
 export default function CallVolumeChart({ data }: Props) {
+
+    const formatHour = (hour: number) => {
+        const period = hour >= 12 ? "PM" : "AM";
+        const formatted = hour % 12 || 12;
+        return `${formatted} ${period}`;
+    };
+
     return (
         <ResponsiveContainer width="100%" height={220}>
             <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" />
+                <XAxis dataKey="hour" tickFormatter={formatHour} />
                 <YAxis />
                 <Tooltip />
                 <Line

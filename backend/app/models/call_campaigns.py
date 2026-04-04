@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, Float, ForeignKey, Identity, Index, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -7,7 +7,7 @@ from app.database import Base
 class CallCampaign(Base):
     __tablename__ = "call_campaigns"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
@@ -17,7 +17,7 @@ class CallCampaign(Base):
     status = Column(String, default="Draft")
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     total_calls = Column(Integer, default=0)        
     completed_calls = Column(Integer, default=0)    
@@ -49,4 +49,10 @@ class CallCampaign(Base):
         "CampaignAIRecommendation",
         back_populates="campaign",
         cascade="all, delete-orphan"
+    )
+    
+    __table_args__ = (
+        Index("idx_callcampaign_agent_id", "agent_id"),
+        Index("idx_callcampaign_status", "status"),
+        Index("idx_callcampaign_agent_status", "agent_id", "status"),  # BEST ONE
     )

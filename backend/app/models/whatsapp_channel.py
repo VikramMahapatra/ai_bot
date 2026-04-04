@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Identity, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class WhatsAppChannel(Base):
     __tablename__ = "whatsapp_channels"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
     widget_id = Column(String, nullable=False, index=True)
     phone_number_id = Column(String, nullable=False, unique=True, index=True)

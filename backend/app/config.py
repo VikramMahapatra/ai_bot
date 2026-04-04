@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     TOKEN_COST_COMPLETION_PER_1K: float
     
     # Database Configuration
-    DATABASE_URL: str
     CHROMA_PERSIST_DIR: str
     UPLOAD_DIR: str
     EXPORT_DIR: str
@@ -104,6 +103,13 @@ class Settings(BaseSettings):
     
     CAN_AUTO_SYNC_CAMPAIGN_LEAD: bool = False
     
+    DB_USER: str 
+    DB_PASS: str
+    DB_HOST: str 
+    DB_PORT: str 
+    DB_SSLMODE: str 
+    DB_NAME: str 
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
@@ -119,6 +125,15 @@ class Settings(BaseSettings):
     @property
     def handoff_no_answer_patterns_list(self) -> List[str]:
         return [item.strip().lower() for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|") if item.strip()]
+    
+    
+    @property
+    def DATABASE_URL(self) -> str:
+        """Generate full Postgres URL dynamically"""
+        base_url = f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        if self.DB_SSLMODE:
+            base_url += f"?sslmode={self.DB_SSLMODE}"
+        return base_url
 
     model_config = SettingsConfigDict(
         env_file=(str(BASE_DIR / ".env.example"), str(BASE_DIR / ".env")),
@@ -128,3 +143,17 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def build_db_url(db_name: str) -> str:
+    base_url = (
+        f"postgresql+psycopg2://"
+        f"{settings.DB_USER}:{settings.DB_PASS}"
+        f"@{settings.DB_HOST}:{settings.DB_PORT}/{db_name}"
+    )
+
+    # append ssl only if provided
+    if settings.DB_SSLMODE:
+        base_url += f"?sslmode={settings.DB_SSLMODE}"
+
+    return base_url

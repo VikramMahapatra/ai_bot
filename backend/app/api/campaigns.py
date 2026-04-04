@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Query, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 import pandas as pd
 
@@ -1281,6 +1281,18 @@ async def upload_contacts_manual(
 
     for index, item in enumerate(payload.contacts):
         try:
+            existing = db.query(Contact).filter(
+                Contact.contact_list_id == contact_list_id,
+                or_(
+                    Contact.phone == item.phone,
+                    Contact.email == item.email
+                )
+            ).first()
+
+            if existing:
+                errors.append({"row": index + 1, "error": f"Contact with phone {item.phone} or email {item.email} already exists in this list"})
+                continue
+            
             name, email, phone, company = _validate_contact_payload(item.name, item.email, item.phone, item.company)
             contact = Contact(
                 contact_list_id=contact_list.id,

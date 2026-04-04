@@ -41,13 +41,11 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import { ConfirmDialog } from '../Common/ConfirmDialog';
+import ContactsIcon from "@mui/icons-material/Contacts";
+import PhoneIcon from "@mui/icons-material/Phone";
+import EmailIcon from "@mui/icons-material/Email";
 
 type ContactForm = Omit<ContactItem, 'id' | 'created_at'>;
-
-type PendingDelete =
-    | { kind: 'list'; id: number; name: string }
-    | { kind: 'contact'; id: number; name: string };
 
 interface CampaignContactsProps {
     tab: number;
@@ -57,9 +55,9 @@ interface CampaignContactsProps {
 const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
     const theme = useTheme();
     const [contacts, setContacts] = useState<ContactItem[]>([]);
-    const [campaignContactTotal, setCampaignContactTotal] = useState(0);
-    const [campaignContactPage, setCampaignContactPage] = useState(0);
-    const [campaignContactRowsPerPage, setCampaignContactRowsPerPage] = useState(10);
+    const [contactTotal, setContactTotal] = useState(0);
+    const [contactPage, setContactPage] = useState(0);
+    const [contactRowsPerPage, setContactRowsPerPage] = useState(10);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
     const [selectedListId, setSelectedListId] = useState<number | ''>('');
@@ -82,13 +80,16 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
     const [manualContacts, setManualContacts] = useState<Array<{ name?: string; email?: string; phone?: string; company?: string }>>([]);
     const [csvFile, setCsvFile] = useState<File | null>(null);
 
-
+    const [allContacts, setAllContacts] = useState<ContactItem[]>([]);
+    const [contactListLookupItems, setContactListsLookupItems] = useState<ContactListItem[]>([]);
+    const [allContactTotal, setAllContactTotal] = useState(0);
+    const [allContactPage, setAllContactPage] = useState(0);
+    const [allContactRowsPerPage, setAllContactRowsPerPage] = useState(10);
+    const [allContactSearch, setAllContactSearch] = useState("");
     const [openForm, setOpenForm] = useState(false);
     const [editContact, setEditContact] = useState<ContactItem | null>(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
-    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
     const [errors, setErrors] = useState<any>({});
     const [form, setForm] = useState<ContactForm>({
         name: "",
@@ -125,11 +126,13 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
 
     useEffect(() => {
         loadContactLists();
+        loadAllContacts();
+        loadContactListLookup();
     }, []);
 
     /* ---------------------------
     Search Filter
----------------------------- */
+    ---------------------------- */
 
     useEffect(() => {
         const run = async () => {
@@ -140,7 +143,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
             }
         };
         run();
-    }, [search, campaignContactPage, campaignContactRowsPerPage]);
+    }, [search, contactPage, contactRowsPerPage]);
 
     const validate = () => {
 
@@ -170,7 +173,6 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
 
         return Object.keys(newErrors).length === 0;
     };
-
 
     /* ---------------------------
         Open Add Form
@@ -211,47 +213,21 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
 
 
 
-    const handleConfirmDelete = async () => {
-        if (!pendingDelete) return;
-
-        setDeleteSubmitting(true);
-        setError('');
-        setSuccess('');
+    const handleDeleteContact = async (id: number) => {
+        if (!selectedListId) return;
+        setLoading(true);
         try {
-            if (pendingDelete.kind === 'list') {
-                await campaignService.deleteContactList(pendingDelete.id);
-                if (selectedListId === pendingDelete.id) {
-                    setSelectedListId('');
-                    setContacts([]);
-                }
-                if (uploadListId === pendingDelete.id) {
-                    setUploadListId('');
-                }
-                if (createContactListId === pendingDelete.id) {
-                    setCreateContactListId('');
-                }
-                showSuccess('Contact list deleted');
-                await loadContactLists();
-            } else {
-                if (!selectedListId) {
-                    showError('No list selected');
-                    return;
-                }
-                await campaignService.deleteContact(pendingDelete.id);
-                showSuccess('Contact deleted');
-                await loadContacts(Number(selectedListId));
-                await loadContactLists();
-            }
-            setPendingDelete(null);
+            await campaignService.deleteContact(id);
+            showSuccess('Contact deleted');
+            await loadContacts(Number(selectedListId));
+            await loadContactLists();
         } catch (err: any) {
-            const detail = err?.response?.data?.detail;
-            const fallback =
-                pendingDelete.kind === 'list' ? 'Failed to delete contact list' : 'Failed to delete contact';
-            showError(typeof detail === 'string' ? detail : fallback);
+            showError(err?.response?.data?.detail || 'Failed to delete contact');
         } finally {
-            setDeleteSubmitting(false);
+            setLoading(false);
         }
     };
+
 
     /* ---------------------------
         Save Contact
@@ -259,6 +235,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
 
     const saveContact = async () => {
         if (!validate()) return;
+        setLoading(true);
         try {
             if (editContact) {
                 await callCampaignService.updateContact(form, editContact.id);
@@ -267,9 +244,17 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                 await callCampaignService.createContact(form);
             }
             setOpenForm(false);
-            loadContacts(selectedListId as number);
-        } catch {
-            console.log("Something went wrong!")
+
+            if (tab === 0) {
+                loadContacts(selectedListId as number);
+            }
+            else {
+                loadAllContacts();
+            }
+        } catch (err: any) {
+            showError(err?.response?.data?.detail || err?.detail || "Failed to save the data");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -299,49 +284,29 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
         if (!contactListId) return;
         const data = await campaignService.listContacts(contactListId, {
             search: search || undefined,
-            skip: campaignContactPage * campaignContactRowsPerPage,
-            limit: campaignContactRowsPerPage,
+            skip: contactPage * contactRowsPerPage,
+            limit: contactRowsPerPage,
         });
         setContacts(data.items || []);
-        setCampaignContactTotal(data.pagination?.total || 0);
+        setContactTotal(data.pagination?.total || 0);
     };
 
-    const sectionPanelSx = {
-        borderRadius: '18px',
-        border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
-        background: `linear-gradient(150deg, ${alpha(theme.palette.common.white, 0.7)} 0%, ${alpha(
-            theme.palette.background.paper,
-            0.82
-        )} 68%, ${alpha('#dce8f8', 0.78)} 100%)`,
-        boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.14)}`,
-        backdropFilter: 'blur(10px)',
-        position: 'relative',
-        overflow: 'hidden',
-        '&::before': {
-            content: '""',
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background:
-                'linear-gradient(138deg, rgba(255,255,255,0.22) 8%, transparent 24%), linear-gradient(28deg, transparent 56%, rgba(78,137,213,0.14) 57%, transparent 80%)',
-        },
-        '& > *': {
-            position: 'relative',
-            zIndex: 1,
-        },
-    } as const;
 
-    const compactInputSx = {
-        '& .MuiInputBase-root': {
-            minHeight: 40,
-        },
-    } as const;
+    const loadAllContacts = async () => {
+        const data = await callCampaignService.allContacts({
+            search: allContactSearch || undefined,
+            skip: allContactPage * allContactRowsPerPage,
+            limit: allContactRowsPerPage,
+        });
+        console.log("contacts data", data)
+        setAllContacts(data.items || []);
+        setAllContactTotal(data.pagination?.total || 0);
+    };
 
-    const compactButtonSx = {
-        '& .MuiButton-root': {
-            minHeight: 40,
-        },
-    } as const;
+    const loadContactListLookup = async () => {
+        const data = await callCampaignService.getContactLists();
+        setContactListsLookupItems(data || []);
+    };
 
     const handleCreateList = async () => {
         if (!newListName.trim()) {
@@ -366,9 +331,34 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
         }
     };
 
+    const handleDeleteList = async (id: number) => {
+        if (!window.confirm('Delete this contact list?')) return;
+
+        setLoading(true);
+        try {
+            await campaignService.deleteContactList(id);
+            if (selectedListId === id) {
+                setSelectedListId('');
+                setContacts([]);
+            }
+            if (uploadListId === id) {
+                setUploadListId('');
+            }
+            if (createContactListId === id) {
+                setCreateContactListId('');
+            }
+            showSuccess('Contact list deleted');
+            await loadContactLists();
+        } catch (err: any) {
+            showError(err?.response?.data?.detail || 'Failed to delete contact list');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleSelectListForContacts = async (id: number) => {
         setSelectedListId(id);
-        setCampaignContactPage(0);
+        setContactPage(0);
         setSearch('');
         setLoading(true);
         try {
@@ -458,6 +448,43 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
         return '-';
     };
 
+    const sectionPanelSx = {
+        borderRadius: '18px',
+        border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+        background: `linear-gradient(150deg, ${alpha(theme.palette.common.white, 0.7)} 0%, ${alpha(
+            theme.palette.background.paper,
+            0.82
+        )} 68%, ${alpha('#dce8f8', 0.78)} 100%)`,
+        boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.14)}`,
+        backdropFilter: 'blur(10px)',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background:
+                'linear-gradient(138deg, rgba(255,255,255,0.22) 8%, transparent 24%), linear-gradient(28deg, transparent 56%, rgba(78,137,213,0.14) 57%, transparent 80%)',
+        },
+        '& > *': {
+            position: 'relative',
+            zIndex: 1,
+        },
+    } as const;
+
+    const compactInputSx = {
+        '& .MuiInputBase-root': {
+            minHeight: 40,
+        },
+    } as const;
+
+    const compactButtonSx = {
+        '& .MuiButton-root': {
+            minHeight: 40,
+        },
+    } as const;
+
     return (
         <>
             {(success || error) && (
@@ -489,7 +516,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                     aria-label="close"
                                     color="inherit"
                                     size="small"
-                                    onClick={() => setError("")} // clears the error
+                                    onClick={() => setSuccess("")} // clears the success message
                                 >
                                     <CloseIcon fontSize="inherit" />
                                 </IconButton>
@@ -510,6 +537,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                 >
                     <Tab label="Contact Lists" icon={<ListAltIcon />} iconPosition="start" />
                     <Tab label="Upload Contacts" icon={<UploadFileIcon />} iconPosition="start" />
+                    <Tab label="Contacts" icon={<ContactsIcon />} iconPosition="start" />
                 </Tabs>
             </Paper>
             {tab === 0 && (
@@ -591,14 +619,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                                         <Button size="small" startIcon={<ListAltIcon />} onClick={() => handleSelectListForContacts(list.id)}>
                                                             View Contacts
                                                         </Button>
-                                                        <Button
-                                                            size="small"
-                                                            color="error"
-                                                            startIcon={<DeleteIcon />}
-                                                            onClick={() =>
-                                                                setPendingDelete({ kind: 'list', id: list.id, name: list.list_name })
-                                                            }
-                                                        >
+                                                        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteList(list.id)}>
                                                             Delete
                                                         </Button>
                                                     </Stack>
@@ -676,18 +697,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                                         <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => handleEdit(contact)}>
                                                             Edit
                                                         </Button>
-                                                        <Button
-                                                            size="small"
-                                                            color="error"
-                                                            startIcon={<DeleteIcon />}
-                                                            onClick={() =>
-                                                                setPendingDelete({
-                                                                    kind: 'contact',
-                                                                    id: contact.id,
-                                                                    name: contact.name?.trim() || contact.email || contact.phone || 'this contact',
-                                                                })
-                                                            }
-                                                        >
+                                                        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteContact(contact.id)}>
                                                             Delete
                                                         </Button>
                                                     </TableCell>
@@ -703,13 +713,13 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                             </TableContainer>
                             <TablePagination
                                 component="div"
-                                count={campaignContactTotal}
-                                page={campaignContactPage}
-                                onPageChange={(_, value) => setCampaignContactPage(value)}
-                                rowsPerPage={campaignContactRowsPerPage}
+                                count={contactTotal}
+                                page={contactPage}
+                                onPageChange={(_, value) => setContactPage(value)}
+                                rowsPerPage={contactRowsPerPage}
                                 onRowsPerPageChange={(event) => {
-                                    setCampaignContactRowsPerPage(parseInt(event.target.value, 10));
-                                    setCampaignContactPage(0);
+                                    setContactRowsPerPage(parseInt(event.target.value, 10));
+                                    setContactPage(0);
                                 }}
                                 rowsPerPageOptions={[10, 25, 50]}
                             />
@@ -830,6 +840,258 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                     </Paper>
                 </Stack>
             )}
+            {tab === 2 && (
+                <Box>
+                    {/* FILTERS */}
+
+                    <Grid container spacing={2} mb={2} alignItems="center">
+
+                        <Grid item xs={12} md={6}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Search Contacts"
+                                value={search}
+                                onChange={(e) => setAllContactSearch(e.target.value)}
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <SearchIcon />
+                                        </InputAdornment>
+                                    )
+                                }}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} md={6} textAlign="right">
+
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAdd}
+                            >
+                                Add Contact
+                            </Button>
+
+                        </Grid>
+
+                    </Grid>
+
+                    {/* CONTACT TABLE */}
+
+                    <Paper>
+                        <Table>
+
+                            <TableHead>
+
+                                <TableRow>
+                                    <TableCell>Contact List</TableCell>
+                                    <TableCell>Name</TableCell>
+                                    <TableCell>Company</TableCell>
+                                    <TableCell width={120}>Actions</TableCell>
+                                </TableRow>
+
+                            </TableHead>
+
+                            <TableBody>
+                                {allContacts.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={4} sx={{ py: 8 }}>
+                                            <Box
+                                                display="flex"
+                                                flexDirection="column"
+                                                alignItems="center"
+                                                justifyContent="center"
+                                                textAlign="center"
+                                                gap={1}
+                                            >
+                                                <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+
+                                                <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
+                                                    No contacts found
+                                                </Typography>
+
+                                                <Typography variant="body2" sx={{ color: "text.disabled" }}>
+                                                    Try adjusting your search or add a new contact
+                                                </Typography>
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+
+                                ) : (
+                                    allContacts.map((contact) => (
+
+                                        <TableRow key={contact.id} hover>
+                                            {/* Contact List */}
+                                            <TableCell>{contact.contact_list_name}</TableCell>
+
+                                            {/* Name + Phone + Email */}
+                                            <TableCell>
+                                                <Typography fontWeight={600}>{contact.name}</Typography>
+                                                <Box display="flex" alignItems="center" gap={1}>
+                                                    <PhoneIcon fontSize="small" color="action" />
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        {contact.phone || "N/A"}
+                                                    </Typography>
+                                                </Box>
+                                                <Box display="flex" alignItems="center" gap={1}>
+                                                    <EmailIcon fontSize="small" color="action" />
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        {contact.email || "N/A"}
+                                                    </Typography>
+                                                </Box>
+                                            </TableCell>
+
+                                            {/* Company */}
+                                            <TableCell>{contact.company || "N/A"}</TableCell>
+
+                                            {/* Actions */}
+                                            <TableCell>
+                                                <Box display="flex" gap={1}>
+                                                    <Button
+                                                        size="small"
+                                                        color="primary"
+                                                        startIcon={<EditIcon />}
+                                                        onClick={() => handleEdit(contact)}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        color="error"
+                                                        startIcon={<DeleteIcon />}
+                                                        onClick={() => handleDeleteContact(contact.id)}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </Box>
+                                            </TableCell>
+                                        </TableRow>
+
+                                    )))}
+                            </TableBody>
+                        </Table>
+                        <TablePagination
+                            component="div"
+                            count={allContactTotal}
+                            page={allContactPage}
+                            onPageChange={(_, value) => setAllContactPage(value)}
+                            rowsPerPage={allContactRowsPerPage}
+                            onRowsPerPageChange={(event) => {
+                                setAllContactRowsPerPage(parseInt(event.target.value, 10));
+                                setAllContactPage(0);
+                            }}
+                            rowsPerPageOptions={[10, 25, 50]}
+                        />
+                    </Paper >
+
+                    {/* ADD / EDIT FORM */}
+
+                    <Dialog
+                        open={openForm}
+                        onClose={() => setOpenForm(false)}
+                        maxWidth="sm"
+                        fullWidth
+                    >
+
+                        <DialogTitle>
+                            {editContact ? "Edit Contact" : "Add Contact"}
+                        </DialogTitle>
+
+                        <DialogContent>
+
+                            <Box
+                                display="flex"
+                                flexDirection="column"
+                                gap={2}
+                                mt={1}
+                            >
+                                <TextField
+                                    select
+                                    required
+                                    label="Contact List"
+                                    name="name"
+                                    value={form.contact_list_id}
+                                    onChange={(e) =>
+                                        setForm({ ...form, contact_list_id: Number(e.target.value) })
+                                    }
+                                    error={!!errors.contact_list_id}
+                                    helperText={errors.contact_list_id}
+                                >
+                                    {contactListLookupItems.map((list) => (
+                                        <MenuItem key={list.id} value={list.id}>
+                                            {list.list_name}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+
+                                <TextField
+                                    required
+                                    label="Name"
+                                    value={form.name}
+                                    onChange={(e) =>
+                                        setForm({ ...form, name: e.target.value })
+                                    }
+                                    error={!!errors.name}
+                                    helperText={errors.name}
+                                />
+
+                                <TextField
+                                    required
+                                    label="Email"
+                                    value={form.email}
+                                    onChange={(e) =>
+                                        setForm({ ...form, email: e.target.value })
+                                    }
+                                    error={!!errors.email}
+                                    helperText={errors.email}
+                                />
+
+                                <TextField
+                                    required
+                                    label="Phone"
+                                    value={form.phone}
+                                    onChange={(e) =>
+                                        setForm({ ...form, phone: e.target.value })
+                                    }
+                                    error={!!errors.phone}
+                                    helperText={errors.phone}
+                                />
+
+                                <TextField
+                                    label="Company"
+                                    value={form.company}
+                                    onChange={(e) =>
+                                        setForm({ ...form, company: e.target.value })
+                                    }
+                                    error={!!errors.company}
+                                    helperText={errors.company}
+                                />
+
+                            </Box>
+
+                        </DialogContent>
+
+                        <DialogActions>
+
+                            <Button onClick={() => setOpenForm(false)}>
+                                Cancel
+                            </Button>
+
+                            <Button
+                                variant="contained"
+                                onClick={saveContact}
+                            >
+                                Save
+                            </Button>
+
+                        </DialogActions>
+
+                    </Dialog >
+
+
+                </Box >
+            )}
             <Box>
                 <Dialog
                     open={openForm}
@@ -932,24 +1194,6 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                     </DialogActions>
 
                 </Dialog>
-
-                <ConfirmDialog
-                    open={Boolean(pendingDelete)}
-                    title={pendingDelete?.kind === 'contact' ? 'Delete contact?' : 'Delete contact list?'}
-                    description={
-                        pendingDelete
-                            ? pendingDelete.kind === 'list'
-                                ? `This will permanently remove the list "${pendingDelete.name}" and all contacts in it. This action cannot be undone.`
-                                : `This will permanently remove "${pendingDelete.name}" from this list. This action cannot be undone.`
-                            : undefined
-                    }
-                    confirmLabel="Delete"
-                    cancelLabel="Cancel"
-                    confirmColor="error"
-                    loading={deleteSubmitting}
-                    onCancel={() => !deleteSubmitting && setPendingDelete(null)}
-                    onConfirm={handleConfirmDelete}
-                />
             </Box>
         </>
 

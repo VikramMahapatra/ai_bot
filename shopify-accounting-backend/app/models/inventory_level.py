@@ -13,5 +13,5 @@ class InventoryLevel(Base):
     inventory_item_id = Column(BigInteger, index=True)
     location_id = Column(BigInteger)
     available = Column(Integer)
-    updated_at = Column(DateTime)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     raw_data = Column(JSONB)

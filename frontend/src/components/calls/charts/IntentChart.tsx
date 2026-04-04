@@ -5,7 +5,8 @@ import {
     YAxis,
     Tooltip,
     CartesianGrid,
-    ResponsiveContainer
+    ResponsiveContainer,
+    Cell
 } from "recharts";
 import { IntentDistribution } from "../../../services/callService";
 
@@ -21,6 +22,16 @@ interface Props {
 }
 
 export default function IntentChart({ data }: Props) {
+
+    const LEAD_OUTCOME_COLORS: Record<string, string> = {
+        negative: "#E53935",      // Red
+        neutral: "#FFB300",       // Amber
+        positive: "#43A047",      // Green
+        satisfactory: "#1E88E5",  // Blue
+        unresolved: "#8E24AA",    // Purple
+        pending: "#757575"        // Gray
+    };
+
     return (
         <ResponsiveContainer width="100%" height={200}>
             <BarChart data={data}>
@@ -28,7 +39,14 @@ export default function IntentChart({ data }: Props) {
                 <XAxis dataKey="intent" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="value" fill="#1976d2" />
+                <Bar dataKey="value">
+                    {data.map((entry, index) => (
+                        <Cell
+                            key={`cell-${index}`}
+                            fill={LEAD_OUTCOME_COLORS[entry.intent.toLowerCase()] || "#CCCCCC"}
+                        />
+                    ))}
+                </Bar>
             </BarChart>
         </ResponsiveContainer>
     );

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, Boolean, DateTime
+from sqlalchemy import Column, ForeignKey, Identity, Integer, String, Text, Boolean, DateTime
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class Product(Base):
     __tablename__ = "products"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(
         Integer,
         ForeignKey("organizations.id"),

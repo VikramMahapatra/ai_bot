@@ -28,6 +28,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -139,6 +140,8 @@ const LeadManager: React.FC = () => {
   const [leadSearch, setLeadSearch] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
+  const [leadsPage, setLeadsPage] = useState(0);
+  const [leadsRowsPerPage, setLeadsRowsPerPage] = useState(10);
 
   const panelSx = {
     borderRadius: "18px",
@@ -224,6 +227,25 @@ const LeadManager: React.FC = () => {
   ]);
 
   const totalLeads = displayLeads.length;
+  const leadsTotal = totalLeads;
+
+  useEffect(() => {
+    const maxPage = Math.max(
+      0,
+      Math.ceil(displayLeads.length / leadsRowsPerPage) - 1,
+    );
+    setLeadsPage((p) => (p > maxPage ? maxPage : p));
+  }, [displayLeads.length, leadsRowsPerPage]);
+
+  const paginatedDisplayLeads = useMemo(
+    () =>
+      displayLeads.slice(
+        leadsPage * leadsRowsPerPage,
+        leadsPage * leadsRowsPerPage + leadsRowsPerPage,
+      ),
+    [displayLeads, leadsPage, leadsRowsPerPage],
+  );
+
   const contactableLeads = useMemo(
     () =>
       displayLeads.filter((lead) => Boolean(lead.email || lead.phone)).length,
@@ -565,13 +587,18 @@ const LeadManager: React.FC = () => {
       setLeads((prev) =>
         prev.map((lead) => (lead.id === updated.id ? updated : lead)),
       );
+
       setSelectedLead(updated);
       setMoveOpen(false);
       setDetailsOpen(true);
       setSuccess(
         `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
       );
+      setSuccess(
+        `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
+      );
     } catch {
+      setError("Failed to move lead to funnel stage");
       setError("Failed to move lead to funnel stage");
     } finally {
       setMoving(false);
@@ -582,6 +609,9 @@ const LeadManager: React.FC = () => {
     selectedWidgetId === "all"
       ? null
       : widgets.find((widget) => widget.widget_id === selectedWidgetId);
+  selectedWidgetId === "all"
+    ? null
+    : widgets.find((widget) => widget.widget_id === selectedWidgetId);
   const selectedProduct =
     selectedProductId === "all"
       ? null
@@ -603,6 +633,20 @@ const LeadManager: React.FC = () => {
       },
     },
   } as const;
+
+  const filterChipSx = (active: boolean, tint: string) => ({
+    height: 23,
+    borderRadius: "7px",
+    fontSize: "0.68rem",
+    fontWeight: 700,
+    color: active ? tint : alpha(tint, 0.86),
+    borderColor: active ? alpha(tint, 0.5) : alpha(tint, 0.35),
+    backgroundColor: active ? alpha(tint, 0.2) : alpha(tint, 0.08),
+    "& .MuiChip-label": { px: 0.9 },
+    "&:hover": {
+      backgroundColor: active ? alpha(tint, 0.24) : alpha(tint, 0.12),
+    },
+  });
 
   const filterPanel = (
     <Paper sx={{ ...panelSx, p: { xs: 1.6, md: 1.8 }, mb: 2.8 }}>
@@ -1266,7 +1310,7 @@ const LeadManager: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {displayLeads.map((lead) => (
+              {paginatedDisplayLeads.map((lead) => (
                 <TableRow
                   key={lead.id}
                   hover
@@ -1329,6 +1373,18 @@ const LeadManager: React.FC = () => {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={leadsTotal}
+            page={leadsPage}
+            onPageChange={(_, value) => setLeadsPage(value)}
+            rowsPerPage={leadsRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setLeadsRowsPerPage(parseInt(event.target.value, 10));
+              setLeadsPage(0);
+            }}
+            rowsPerPageOptions={[10, 25, 50]}
+          />
         </TableContainer>
       </Paper>
 

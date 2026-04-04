@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class WidgetConfig(Base):
     __tablename__ = "widget_configs"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     widget_id = Column(String, unique=True, index=True, nullable=False)

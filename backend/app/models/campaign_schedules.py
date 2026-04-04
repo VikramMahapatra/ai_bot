@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, ForeignKey, Identity, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -7,12 +7,12 @@ from app.database import Base
 class CampaignSchedule(Base):
     __tablename__ = "campaign_schedules"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
 
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
-    start_datetime = Column(DateTime)
-    end_datetime = Column(DateTime)
+    start_datetime = Column(DateTime(timezone=True))
+    end_datetime = Column(DateTime(timezone=True))
     timezone = Column(String)
 
     call_start_time = Column(String)

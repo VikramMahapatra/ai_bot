@@ -222,6 +222,7 @@ export interface ContactItem {
   phone: string;
   company?: string;
   contact_list_id: number | null;
+  contact_list_name?: string;
   created_at: string;
 }
 
