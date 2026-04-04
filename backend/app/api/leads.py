@@ -188,6 +188,7 @@ async def list_leads(
     source: Optional[str] = None,
     funnel_stage: Optional[str] = None,
     product_id: Optional[str] = None,
+    campaign_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
