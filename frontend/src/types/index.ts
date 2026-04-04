@@ -461,6 +461,420 @@ export interface CreditEstimatorShareUpdateRequest {
   valid_for_hours?: number;
 }
 
+export interface OrganizationCreditAllocationLineInput {
+  price_matrix_item_id: number;
+  quantity?: number;
+  credits_per_unit?: number;
+  allocated_credits?: number;
+}
+
+export interface OrganizationCreditProfileInput {
+  total_price?: number;
+  buffer_percent?: number;
+  discount_percent?: number;
+  payment_status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+}
+
+export interface OrganizationCreditAllocationCreateRequest {
+  organization_id: number;
+  profile?: OrganizationCreditProfileInput;
+  lines: OrganizationCreditAllocationLineInput[];
+}
+
+export interface OrganizationCreditAllocationUpdateRequest {
+  quantity?: number;
+  credits_per_unit?: number;
+  allocated_credits?: number;
+  is_active?: boolean;
+}
+
+export interface OrganizationCreditAllocation {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  price_matrix_item_id: number;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  quantity?: number | null;
+  credits_per_unit?: number | null;
+  allocated_credits: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface OrganizationCreditProfile {
+  organization_id: number;
+  organization_name: string;
+  total_price: number;
+  buffer_percent: number;
+  discount_percent: number;
+  payment_status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface OrganizationCreditProfileUpdateRequest {
+  total_price?: number;
+  buffer_percent?: number;
+  discount_percent?: number;
+  payment_status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+}
+
+export interface OrganizationCreditAllocationSummary {
+  organization_id: number;
+  organization_name: string;
+  total_allocated_credits: number;
+  total_price: number;
+  buffer_percent: number;
+  discount_percent: number;
+  payment_status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+  row_count: number;
+}
+
+export interface OrganizationCreditChangeLog {
+  id: number;
+  organization_id: number;
+  price_matrix_item_id?: number | null;
+  change_type: string;
+  previous_json?: string | null;
+  new_json?: string | null;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface BillingInvoice {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_number: string;
+  issue_date: string;
+  due_date?: string | null;
+  billing_start_date?: string | null;
+  billing_end_date?: string | null;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface BillingInvoiceItem {
+  id: number;
+  invoice_id: number;
+  organization_id: number;
+  price_matrix_item_id?: number | null;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  quantity?: number | null;
+  credits_per_unit?: number | null;
+  allocated_credits: number;
+  created_at: string;
+}
+
+export interface BillingPayment {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_id?: number | null;
+  invoice_number?: string | null;
+  amount: number;
+  payment_date: string;
+  method: string;
+  reference?: string | null;
+  status: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface BillingBill {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_id: number;
+  invoice_number: string;
+  payment_id?: number | null;
+  bill_number: string;
+  issued_date: string;
+  amount: number;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface BillingInvoiceDetail extends BillingInvoice {
+  items: BillingInvoiceItem[];
+  bills: BillingBill[];
+}
+
+export interface BillingInvoiceMarkPaidRequest {
+  payment_date?: string | null;
+  method?: string;
+  reference?: string | null;
+  notes?: string | null;
+  amount_paid?: number | null;
+}
+
+export interface BillingInvoiceMarkPaidResponse {
+  invoice: BillingInvoice;
+  payment: BillingPayment;
+  bill: BillingBill;
+  partial_invoice?: BillingInvoice | null;
+  credit_note?: number | null;
+  credit_applied?: number | null;
+}
+
+export interface BillingPaymentCreateRequest {
+  organization_id: number;
+  invoice_id?: number | null;
+  amount: number;
+  payment_date?: string | null;
+  method?: string;
+  reference?: string | null;
+  status?: string;
+  notes?: string | null;
+}
+
+export interface BillingInvoiceBackfillResponse {
+  success: boolean;
+  force: boolean;
+  total_organizations_checked: number;
+  invoices_created_count: number;
+  invoices_created_for_org_ids: number[];
+  skipped_count: number;
+  skipped_org_ids: number[];
+  skipped_due_to_existing_invoice_org_ids: number[];
+}
+
+export interface OrganizationCreditAllocationLineInput {
+  price_matrix_item_id: number;
+  quantity?: number;
+  credits_per_unit?: number;
+  allocated_credits?: number;
+}
+
+export interface OrganizationCreditProfileInput {
+  total_price?: number;
+  buffer_percent?: number;
+  discount_percent?: number;
+  payment_status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+}
+
+export interface OrganizationCreditAllocationCreateRequest {
+  organization_id: number;
+  profile?: OrganizationCreditProfileInput;
+  lines: OrganizationCreditAllocationLineInput[];
+}
+
+export interface OrganizationCreditAllocationUpdateRequest {
+  quantity?: number;
+  credits_per_unit?: number;
+  allocated_credits?: number;
+  is_active?: boolean;
+}
+
+export interface OrganizationCreditAllocation {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  price_matrix_item_id: number;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  quantity?: number | null;
+  credits_per_unit?: number | null;
+  allocated_credits: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface OrganizationCreditProfile {
+  organization_id: number;
+  organization_name: string;
+  total_price: number;
+  buffer_percent: number;
+  discount_percent: number;
+  payment_status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface OrganizationCreditProfileUpdateRequest {
+  total_price?: number;
+  buffer_percent?: number;
+  discount_percent?: number;
+  payment_status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+}
+
+export interface OrganizationCreditAllocationSummary {
+  organization_id: number;
+  organization_name: string;
+  total_allocated_credits: number;
+  total_price: number;
+  buffer_percent: number;
+  discount_percent: number;
+  payment_status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  expiry_days?: number | null;
+  notes?: string | null;
+  row_count: number;
+}
+
+export interface OrganizationCreditChangeLog {
+  id: number;
+  organization_id: number;
+  price_matrix_item_id?: number | null;
+  change_type: string;
+  previous_json?: string | null;
+  new_json?: string | null;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface BillingInvoice {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_number: string;
+  issue_date: string;
+  due_date?: string | null;
+  billing_start_date?: string | null;
+  billing_end_date?: string | null;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface BillingInvoiceItem {
+  id: number;
+  invoice_id: number;
+  organization_id: number;
+  price_matrix_item_id?: number | null;
+  category: string;
+  module: string;
+  sub_module?: string | null;
+  billing_unit?: string | null;
+  quantity?: number | null;
+  credits_per_unit?: number | null;
+  allocated_credits: number;
+  created_at: string;
+}
+
+export interface BillingPayment {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_id?: number | null;
+  invoice_number?: string | null;
+  amount: number;
+  payment_date: string;
+  method: string;
+  reference?: string | null;
+  status: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface BillingBill {
+  id: number;
+  organization_id: number;
+  organization_name: string;
+  invoice_id: number;
+  invoice_number: string;
+  payment_id?: number | null;
+  bill_number: string;
+  issued_date: string;
+  amount: number;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface BillingInvoiceDetail extends BillingInvoice {
+  items: BillingInvoiceItem[];
+  bills: BillingBill[];
+}
+
+export interface BillingInvoiceMarkPaidRequest {
+  payment_date?: string | null;
+  method?: string;
+  reference?: string | null;
+  notes?: string | null;
+  amount_paid?: number | null;
+}
+
+export interface BillingInvoiceMarkPaidResponse {
+  invoice: BillingInvoice;
+  payment: BillingPayment;
+  bill: BillingBill;
+  partial_invoice?: BillingInvoice | null;
+  credit_note?: number | null;
+  credit_applied?: number | null;
+}
+
+export interface BillingPaymentCreateRequest {
+  organization_id: number;
+  invoice_id?: number | null;
+  amount: number;
+  payment_date?: string | null;
+  method?: string;
+  reference?: string | null;
+  status?: string;
+  notes?: string | null;
+}
+
+export interface BillingInvoiceBackfillResponse {
+  success: boolean;
+  force: boolean;
+  total_organizations_checked: number;
+  invoices_created_count: number;
+  invoices_created_for_org_ids: number[];
+  skipped_count: number;
+  skipped_org_ids: number[];
+  skipped_due_to_existing_invoice_org_ids: number[];
+}
+
 export interface PriceMatrixItem {
   id: number;
   category: string;

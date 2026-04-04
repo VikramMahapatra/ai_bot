@@ -390,4 +390,200 @@ class CreditEstimatorShareEmailRequest(BaseModel):
     body: str
 
 
+class OrganizationCreditAllocationLine(BaseModel):
+    price_matrix_item_id: int
+    quantity: Optional[float] = Field(default=None, ge=0)
+    credits_per_unit: Optional[float] = Field(default=None, ge=0)
+    allocated_credits: Optional[float] = Field(default=None, ge=0)
+
+
+class OrganizationCreditProfileInput(BaseModel):
+    total_price: Optional[float] = Field(default=None, ge=0)
+    buffer_percent: Optional[float] = Field(default=None, ge=0, le=500)
+    discount_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    payment_status: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    expiry_days: Optional[int] = Field(default=None, ge=0)
+    notes: Optional[str] = None
+
+
+class OrganizationCreditAllocationCreateRequest(BaseModel):
+    organization_id: int
+    profile: Optional[OrganizationCreditProfileInput] = None
+    lines: List[OrganizationCreditAllocationLine] = Field(default_factory=list)
+
+
+class OrganizationCreditAllocationUpdateRequest(BaseModel):
+    quantity: Optional[float] = Field(default=None, ge=0)
+    credits_per_unit: Optional[float] = Field(default=None, ge=0)
+    allocated_credits: Optional[float] = Field(default=None, ge=0)
+    is_active: Optional[bool] = None
+
+
+class OrganizationCreditAllocationResponse(BaseModel):
+    id: int
+    organization_id: int
+    organization_name: str
+    price_matrix_item_id: int
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    quantity: Optional[float] = None
+    credits_per_unit: Optional[float] = None
+    allocated_credits: float
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class OrganizationCreditProfileUpdateRequest(BaseModel):
+    total_price: Optional[float] = Field(default=None, ge=0)
+    buffer_percent: Optional[float] = Field(default=None, ge=0, le=500)
+    discount_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    payment_status: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    expiry_days: Optional[int] = Field(default=None, ge=0)
+    notes: Optional[str] = None
+
+
+class OrganizationCreditProfileResponse(BaseModel):
+    organization_id: int
+    organization_name: str
+    total_price: float
+    buffer_percent: float
+    discount_percent: float
+    payment_status: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    expiry_days: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class OrganizationCreditAllocationSummaryResponse(BaseModel):
+    organization_id: int
+    organization_name: str
+    total_allocated_credits: float
+    total_price: float
+    buffer_percent: float
+    discount_percent: float
+    payment_status: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    expiry_days: Optional[int] = None
+    notes: Optional[str] = None
+    row_count: int
+
+
+class OrganizationCreditChangeLogResponse(BaseModel):
+    id: int
+    organization_id: int
+    price_matrix_item_id: Optional[int] = None
+    change_type: str
+    previous_json: Optional[str] = None
+    new_json: Optional[str] = None
+    description: Optional[str] = None
+    created_at: datetime
+
+
+class BillingInvoiceResponse(BaseModel):
+    id: int
+    organization_id: int
+    organization_name: str
+    invoice_number: str
+    issue_date: datetime
+    due_date: Optional[datetime] = None
+    billing_start_date: Optional[datetime] = None
+    billing_end_date: Optional[datetime] = None
+    amount: float
+    paid_amount: float
+    status: str
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BillingPaymentCreateRequest(BaseModel):
+    organization_id: int
+    invoice_id: Optional[int] = None
+    amount: float = Field(ge=0)
+    payment_date: Optional[datetime] = None
+    method: str = "bank_transfer"
+    reference: Optional[str] = None
+    status: str = "completed"
+    notes: Optional[str] = None
+
+
+class BillingPaymentResponse(BaseModel):
+    id: int
+    organization_id: int
+    organization_name: str
+    invoice_id: Optional[int] = None
+    invoice_number: Optional[str] = None
+    amount: float
+    payment_date: datetime
+    method: str
+    reference: Optional[str] = None
+    status: str
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class BillingInvoiceItemResponse(BaseModel):
+    id: int
+    invoice_id: int
+    organization_id: int
+    price_matrix_item_id: Optional[int] = None
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    quantity: Optional[float] = None
+    credits_per_unit: Optional[float] = None
+    allocated_credits: float
+    created_at: datetime
+
+
+class BillingBillResponse(BaseModel):
+    id: int
+    organization_id: int
+    organization_name: str
+    invoice_id: int
+    invoice_number: str
+    payment_id: Optional[int] = None
+    bill_number: str
+    issued_date: datetime
+    amount: float
+    payment_method: Optional[str] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class BillingInvoiceDetailResponse(BillingInvoiceResponse):
+    items: List[BillingInvoiceItemResponse] = Field(default_factory=list)
+    bills: List[BillingBillResponse] = Field(default_factory=list)
+
+
+class BillingInvoiceMarkPaidRequest(BaseModel):
+    payment_date: Optional[datetime] = None
+    method: str = "bank_transfer"
+    reference: Optional[str] = None
+    notes: Optional[str] = None
+    amount_paid: Optional[float] = Field(default=None, ge=0)
+
+
+class BillingInvoiceMarkPaidResponse(BaseModel):
+    invoice: BillingInvoiceResponse
+    payment: BillingPaymentResponse
+    bill: BillingBillResponse
+    partial_invoice: Optional[BillingInvoiceResponse] = None
+    credit_note: Optional[float] = None
+    credit_applied: Optional[float] = None
+
+
 SuperAdminOrganizationResponse.model_rebuild()

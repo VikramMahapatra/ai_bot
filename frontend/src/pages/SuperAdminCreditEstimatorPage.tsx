@@ -63,6 +63,7 @@ const SuperAdminCreditEstimatorPage: React.FC = () => {
   const [isEstimating, setIsEstimating] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [extendingResultId, setExtendingResultId] = useState<number | null>(null);
+  const [deletingResultId, setDeletingResultId] = useState<number | null>(null);
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -259,6 +260,36 @@ const SuperAdminCreditEstimatorPage: React.FC = () => {
       setErrorMessage(error?.response?.data?.detail || 'Failed to extend validity');
     } finally {
       setExtendingResultId(null);
+    }
+  };
+
+  const handleDeleteResult = async (row: CreditEstimatorResultListItem) => {
+    const confirmed = window.confirm(
+      `Delete estimate #${row.id} for "${row.company_name}"?\n\nThis will remove it from saved results and expire its share link immediately.`
+    );
+    if (!confirmed) return;
+
+    resetMessages();
+    try {
+      setDeletingResultId(row.id);
+      await superadminService.deleteCreditEstimatorResult(row.id);
+      await loadResults();
+      if (viewResult?.id === row.id) {
+        setViewResult(null);
+        setViewDialogOpen(false);
+      }
+      if (emailTargetResult?.id === row.id) {
+        setEmailTargetResult(null);
+        setEmailDialogOpen(false);
+      }
+      if (editingResultId === row.id) {
+        resetEditor();
+      }
+      setSuccessMessage('Saved estimate deleted and associated link expired.');
+    } catch (error: any) {
+      setErrorMessage(error?.response?.data?.detail || 'Failed to delete saved estimate');
+    } finally {
+      setDeletingResultId(null);
     }
   };
 
@@ -484,32 +515,61 @@ const SuperAdminCreditEstimatorPage: React.FC = () => {
           </Stack>
 
           {estimateResult && (
-            <Grid container spacing={1.4}>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">Subtotal</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.subtotal_credits}</Typography>
+            <Stack spacing={1.4}>
+              <Grid container spacing={1.4}>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">Subtotal</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.subtotal_credits}</Typography>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">Buffer</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.buffer_credits}</Typography>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">After Buffer</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.recommended_credits}</Typography>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">Discount</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.discount_credits}</Typography>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">Final</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.final_recommended_credits}</Typography>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Typography variant="caption" color="text.secondary">Final Rounded</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>{estimateResult.final_recommended_credits_ceiling}</Typography>
+                </Grid>
               </Grid>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">Buffer</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.buffer_credits}</Typography>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">After Buffer</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.recommended_credits}</Typography>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">Discount</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.discount_credits}</Typography>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">Final</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{estimateResult.final_recommended_credits}</Typography>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Typography variant="caption" color="text.secondary">Final Rounded</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>{estimateResult.final_recommended_credits_ceiling}</Typography>
-              </Grid>
-            </Grid>
+
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Category</TableCell>
+                      <TableCell>Module</TableCell>
+                      <TableCell>Sub-Module</TableCell>
+                      <TableCell>Credits/Unit</TableCell>
+                      <TableCell>Quantity</TableCell>
+                      <TableCell>Estimated Credits</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {estimateResult.breakdown.map((line, index) => (
+                      <TableRow key={`${line.price_matrix_item_id}-${index}`}>
+                        <TableCell>{line.category}</TableCell>
+                        <TableCell>{line.module}</TableCell>
+                        <TableCell>{line.sub_module || '-'}</TableCell>
+                        <TableCell>{line.credits_per_unit}</TableCell>
+                        <TableCell>{line.quantity}</TableCell>
+                        <TableCell>{line.estimated_credits}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Stack>
           )}
         </CardContent>
       </Card>
@@ -590,6 +650,15 @@ const SuperAdminCreditEstimatorPage: React.FC = () => {
                       </IconButton>
                       <IconButton size="small" color="secondary" title="Send Email" onClick={() => openEmailDialog(row)}>
                         <EmailIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        title="Delete"
+                        onClick={() => handleDeleteResult(row)}
+                        disabled={deletingResultId === row.id}
+                      >
+                        <DeleteIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
                   </TableRow>

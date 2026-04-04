@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Avatar,
@@ -27,51 +27,54 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
-import { SelectChangeEvent } from '@mui/material/Select';
-import { alpha, useTheme } from '@mui/material/styles';
-import DownloadIcon from '@mui/icons-material/Download';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import MoveDownIcon from '@mui/icons-material/MoveDown';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddIcon from '@mui/icons-material/Add';
-import PersonIcon from '@mui/icons-material/Person';
-import EmailIcon from '@mui/icons-material/Email';
-import PhoneIcon from '@mui/icons-material/Phone';
-import BusinessIcon from '@mui/icons-material/Business';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import GroupIcon from '@mui/icons-material/Group';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import { leadService } from '../../services/leadService';
-import { dashboardService } from '../../services/dashboardService';
-import { funnelCategoryService } from '../../services/funnelCategoryService';
-import { Product, productService } from '../../services/productService';
-import { FunnelCategory, FunnelCategoryPayload, Lead } from '../../types';
+} from "@mui/material";
+import { SelectChangeEvent } from "@mui/material/Select";
+import { alpha, useTheme } from "@mui/material/styles";
+import DownloadIcon from "@mui/icons-material/Download";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import MoveDownIcon from "@mui/icons-material/MoveDown";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
+import PersonIcon from "@mui/icons-material/Person";
+import EmailIcon from "@mui/icons-material/Email";
+import PhoneIcon from "@mui/icons-material/Phone";
+import BusinessIcon from "@mui/icons-material/Business";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import GroupIcon from "@mui/icons-material/Group";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import { leadService } from "../../services/leadService";
+import { dashboardService } from "../../services/dashboardService";
+import { funnelCategoryService } from "../../services/funnelCategoryService";
+import { Product, productService } from "../../services/productService";
+import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
 
-const LEAD_SOURCES = ['chat', 'voice', 'email', 'sms', 'whatsapp'] as const;
+const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
 const titleCase = (value: string) =>
   value
-    .split('_')
+    .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+    .join(" ");
 
-const sourceLabel = (source?: string) => titleCase((source || 'chat').toLowerCase());
+const sourceLabel = (source?: string) =>
+  titleCase((source || "chat").toLowerCase());
 
 const stageLabel = (stage?: string | null) => {
-  if (!stage || !stage.trim()) return 'Unassigned';
+  if (!stage || !stage.trim()) return "Unassigned";
   return titleCase(stage.toLowerCase());
 };
 
-const toStageKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '_');
+const toStageKey = (value: string) =>
+  value.trim().toLowerCase().replace(/\s+/g, "_");
 
 const normalizeHexColor = (value?: string) => {
-  const fallback = '#4e89d5';
+  const fallback = "#4e89d5";
   if (!value) return fallback;
   const trimmed = value.trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
@@ -80,69 +83,92 @@ const normalizeHexColor = (value?: string) => {
 const LeadManager: React.FC = () => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>([]);
+  const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>(
+    [],
+  );
   const [products, setProducts] = useState<Product[]>([]);
-  const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>([]);
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string>('all');
-  const [selectedProductId, setSelectedProductId] = useState<string>('all');
-  const [selectedSource, setSelectedSource] = useState<string>('all');
-  const [selectedFunnelStage, setSelectedFunnelStage] = useState<string>('all');
+  const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
+    [],
+  );
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string>("all");
+  const [selectedProductId, setSelectedProductId] = useState<string>("all");
+  const [selectedSource, setSelectedSource] = useState<string>("all");
+  const [selectedFunnelStage, setSelectedFunnelStage] = useState<string>("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const [moveStage, setMoveStage] = useState<string>('');
+  const [moveStage, setMoveStage] = useState<string>("");
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<FunnelCategory | null>(null);
+  const [editingCategory, setEditingCategory] = useState<FunnelCategory | null>(
+    null,
+  );
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryForm, setCategoryForm] = useState<FunnelCategoryPayload>({
-    name: '',
-    key: '',
-    color: '#4e89d5',
+    name: "",
+    key: "",
+    color: "#4e89d5",
     position: 0,
     is_active: true,
   });
   const [loading, setLoading] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [leadsTotal, setLeadsTotal] = useState(0);
+  const [leadsPage, setLeadsPage] = useState(0);
+  const [leadsRowsPerPage, setLeadsRowsPerPage] = useState(10);
 
   const panelSx = {
-    borderRadius: '18px',
+    borderRadius: "18px",
     border: `1px solid ${alpha(theme.palette.common.white, 0.64)}`,
     background: `linear-gradient(145deg, ${alpha(theme.palette.common.white, 0.76)} 0%, ${alpha(
       theme.palette.background.paper,
-      0.82
-    )} 62%, ${alpha('#dce8f8', 0.82)} 100%)`,
+      0.82,
+    )} 62%, ${alpha("#dce8f8", 0.82)} 100%)`,
     boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.14)}`,
-    backdropFilter: 'blur(10px)',
-    position: 'relative',
-    overflow: 'hidden',
-    '&::before': {
+    backdropFilter: "blur(10px)",
+    position: "relative",
+    overflow: "hidden",
+    "&::before": {
       content: '""',
-      position: 'absolute',
+      position: "absolute",
       inset: 0,
-      pointerEvents: 'none',
+      pointerEvents: "none",
       background:
-        'linear-gradient(138deg, rgba(255,255,255,0.2) 6%, transparent 26%), linear-gradient(26deg, transparent 58%, rgba(78,137,213,0.12) 59%, transparent 80%)',
+        "linear-gradient(138deg, rgba(255,255,255,0.2) 6%, transparent 26%), linear-gradient(26deg, transparent 58%, rgba(78,137,213,0.12) 59%, transparent 80%)",
     },
-    '& > *': {
-      position: 'relative',
+    "& > *": {
+      position: "relative",
       zIndex: 1,
     },
   } as const;
 
   const totalLeads = leads.length;
-  const contactableLeads = useMemo(() => leads.filter((lead) => Boolean(lead.email || lead.phone)).length, [leads]);
-  const companyLeads = useMemo(() => leads.filter((lead) => Boolean(lead.company)).length, [leads]);
+  const contactableLeads = useMemo(
+    () => leads.filter((lead) => Boolean(lead.email || lead.phone)).length,
+    [leads],
+  );
+  const companyLeads = useMemo(
+    () => leads.filter((lead) => Boolean(lead.company)).length,
+    [leads],
+  );
   const weekLeads = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return leads.filter((lead) => new Date(lead.created_at).getTime() >= weekAgo).length;
+    return leads.filter(
+      (lead) => new Date(lead.created_at).getTime() >= weekAgo,
+    ).length;
   }, [leads]);
-  const conversionRate = totalLeads ? Math.round((contactableLeads / totalLeads) * 100) : 0;
+  const conversionRate = totalLeads
+    ? Math.round((contactableLeads / totalLeads) * 100)
+    : 0;
 
   const activeFunnelCategories = useMemo(
-    () => funnelCategories.filter((item) => item.is_active).sort((a, b) => a.position - b.position),
-    [funnelCategories]
+    () =>
+      funnelCategories
+        .filter((item) => item.is_active)
+        .sort((a, b) => a.position - b.position),
+    [funnelCategories],
   );
 
   const stageNameByKey = useMemo(() => {
@@ -152,43 +178,43 @@ const LeadManager: React.FC = () => {
   }, [funnelCategories]);
 
   const displayStageLabel = (stage?: string | null) => {
-    if (!stage || !stage.trim()) return 'Unassigned';
+    if (!stage || !stage.trim()) return "Unassigned";
     return stageNameByKey.get(stage) || stageLabel(stage);
   };
 
   const kpis = useMemo(
     () => [
       {
-        label: 'Total Leads',
+        label: "Total Leads",
         value: totalLeads.toLocaleString(),
-        hint: 'All captured lead records',
+        hint: "All captured lead records",
         icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha('#9fcbf6', 0.64)} 0%, ${alpha('#deedff', 0.76)} 100%)`,
+        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
         wave: theme.palette.secondary.main,
       },
       {
-        label: 'Total Conversion',
+        label: "Total Conversion",
         value: `${conversionRate}%`,
         hint: `${contactableLeads.toLocaleString()} leads with contact info`,
         icon: <TrendingUpIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha('#a9d2fb', 0.64)} 0%, ${alpha('#e3f0ff', 0.78)} 100%)`,
-        wave: '#468ed4',
+        gradient: `linear-gradient(130deg, ${alpha("#a9d2fb", 0.64)} 0%, ${alpha("#e3f0ff", 0.78)} 100%)`,
+        wave: "#468ed4",
       },
       {
-        label: 'Leads This Week',
+        label: "Leads This Week",
         value: weekLeads.toLocaleString(),
-        hint: 'New leads in last 7 days',
+        hint: "New leads in last 7 days",
         icon: <CalendarMonthIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha('#9cc3f3', 0.64)} 0%, ${alpha('#dce9ff', 0.76)} 100%)`,
+        gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
         wave: theme.palette.primary.main,
       },
       {
-        label: 'Companies Captured',
+        label: "Companies Captured",
         value: companyLeads.toLocaleString(),
-        hint: 'Leads that include company',
+        hint: "Leads that include company",
         icon: <BusinessIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha('#a1c8f4', 0.64)} 0%, ${alpha('#dceaff', 0.76)} 100%)`,
-        wave: '#4b84ce',
+        gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
+        wave: "#4b84ce",
       },
     ],
     [
@@ -200,16 +226,21 @@ const LeadManager: React.FC = () => {
       theme.palette.secondary.main,
       totalLeads,
       weekLeads,
-    ]
+    ],
   );
 
   const loadWidgets = async () => {
     try {
       const data = await dashboardService.getWidgets();
       const widgetItems = data?.widgets || [];
-      setWidgets(widgetItems.map((widget: any) => ({ widget_id: widget.widget_id, name: widget.name })));
+      setWidgets(
+        widgetItems.map((widget: any) => ({
+          widget_id: widget.widget_id,
+          name: widget.name,
+        })),
+      );
     } catch {
-      setError('Failed to load widgets');
+      setError("Failed to load widgets");
     }
   };
 
@@ -218,7 +249,7 @@ const LeadManager: React.FC = () => {
       const data = await funnelCategoryService.list(true);
       setFunnelCategories(data);
     } catch {
-      setError('Failed to load funnel categories');
+      setError("Failed to load funnel categories");
     }
   };
 
@@ -227,18 +258,31 @@ const LeadManager: React.FC = () => {
       const data = await productService.productLookup();
       setProducts(data || []);
     } catch {
-      setError('Failed to load products');
+      setError("Failed to load products");
     }
   };
 
-  const loadLeads = async (widgetId?: string, source?: string, funnelStage?: string, productId?: string) => {
+  const loadLeads = async (
+    widgetId?: string,
+    source?: string,
+    funnelStage?: string,
+    productId?: string,
+  ) => {
     try {
       setLoading(true);
-      setError('');
-      const data = await leadService.listLeads(0, 100, widgetId, source, funnelStage, productId);
-      setLeads(data);
+      setError("");
+      const data = await leadService.listLeads(
+        leadsPage * leadsRowsPerPage,
+        leadsRowsPerPage,
+        widgetId,
+        source,
+        funnelStage,
+        productId,
+      );
+      setLeads(data.items);
+      setLeadsTotal(data.pagination?.total || 0);
     } catch {
-      setError('Failed to load leads');
+      setError("Failed to load leads");
     } finally {
       setLoading(false);
     }
@@ -251,26 +295,35 @@ const LeadManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const widgetId = selectedWidgetId === 'all' ? undefined : selectedWidgetId;
-    const productId = selectedProductId === 'all' ? undefined : selectedProductId;
-    const source = selectedSource === 'all' ? undefined : selectedSource;
-    const funnelStage = selectedFunnelStage === 'all' ? undefined : selectedFunnelStage;
+    const widgetId = selectedWidgetId === "all" ? undefined : selectedWidgetId;
+    const productId =
+      selectedProductId === "all" ? undefined : selectedProductId;
+    const source = selectedSource === "all" ? undefined : selectedSource;
+    const funnelStage =
+      selectedFunnelStage === "all" ? undefined : selectedFunnelStage;
     loadLeads(widgetId, source, funnelStage, productId);
-  }, [selectedWidgetId, selectedProductId, selectedSource, selectedFunnelStage]);
+  }, [
+    selectedWidgetId,
+    selectedProductId,
+    selectedSource,
+    selectedFunnelStage,
+  ]);
 
   const handleExport = async () => {
     try {
-      const widgetId = selectedWidgetId === 'all' ? undefined : selectedWidgetId;
-      const productId = selectedProductId === 'all' ? undefined : selectedProductId;
+      const widgetId =
+        selectedWidgetId === "all" ? undefined : selectedWidgetId;
+      const productId =
+        selectedProductId === "all" ? undefined : selectedProductId;
       const blob = await leadService.exportLeads(widgetId, productId);
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = 'leads.csv';
+      link.download = "leads.csv";
       link.click();
       window.URL.revokeObjectURL(url);
     } catch {
-      setError('Failed to export leads');
+      setError("Failed to export leads");
     }
   };
 
@@ -280,14 +333,20 @@ const LeadManager: React.FC = () => {
   };
 
   const openMoveDialog = (lead: Lead) => {
-    setMoveStage(lead.funnel_stage || '');
+    setMoveStage(lead.funnel_stage || "");
     setSelectedLead(lead);
     setMoveOpen(true);
   };
 
   const openCreateCategoryDialog = () => {
     setEditingCategory(null);
-    setCategoryForm({ name: '', key: '', color: '#4e89d5', position: funnelCategories.length + 1, is_active: true });
+    setCategoryForm({
+      name: "",
+      key: "",
+      color: "#4e89d5",
+      position: funnelCategories.length + 1,
+      is_active: true,
+    });
     setCategoryDialogOpen(true);
   };
 
@@ -305,7 +364,7 @@ const LeadManager: React.FC = () => {
 
   const handleSaveCategory = async () => {
     if (!categoryForm.name.trim()) {
-      setError('Category name is required.');
+      setError("Category name is required.");
       return;
     }
 
@@ -319,20 +378,22 @@ const LeadManager: React.FC = () => {
 
     try {
       setCategorySaving(true);
-      setError('');
-      setSuccess('');
+      setError("");
+      setSuccess("");
       if (editingCategory) {
         await funnelCategoryService.update(editingCategory.id, payload);
-        setSuccess('Funnel category updated.');
+        setSuccess("Funnel category updated.");
       } else {
         await funnelCategoryService.create(payload);
-        setSuccess('Funnel category created.');
+        setSuccess("Funnel category created.");
       }
       setCategoryDialogOpen(false);
       await loadFunnelCategories();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Failed to save funnel category');
+      setError(
+        typeof detail === "string" ? detail : "Failed to save funnel category",
+      );
     } finally {
       setCategorySaving(false);
     }
@@ -340,75 +401,90 @@ const LeadManager: React.FC = () => {
 
   const handleDeleteCategory = async (category: FunnelCategory) => {
     try {
-      setError('');
-      setSuccess('');
+      setError("");
+      setSuccess("");
       await funnelCategoryService.remove(category.id);
-      setSuccess('Funnel category deleted.');
+      setSuccess("Funnel category deleted.");
       await loadFunnelCategories();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Failed to delete funnel category');
+      setError(
+        typeof detail === "string"
+          ? detail
+          : "Failed to delete funnel category",
+      );
     }
   };
 
   const handleMoveLead = async () => {
     if (!selectedLead) return;
     if (!moveStage) {
-      setError('Please select a funnel stage before confirming.');
+      setError("Please select a funnel stage before confirming.");
       return;
     }
 
     try {
       setMoving(true);
-      setError('');
-      setSuccess('');
-      const updated = await leadService.moveLeadToFunnel(selectedLead.id, moveStage);
-      setLeads((prev) => prev.map((lead) => (lead.id === updated.id ? updated : lead)));
+      setError("");
+      setSuccess("");
+      const updated = await leadService.moveLeadToFunnel(
+        selectedLead.id,
+        moveStage,
+      );
+      setLeads((prev) =>
+        prev.map((lead) => (lead.id === updated.id ? updated : lead)),
+      );
       setSelectedLead(updated);
       setMoveOpen(false);
       setDetailsOpen(true);
-      setSuccess(`Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`);
+      setSuccess(
+        `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
+      );
     } catch {
-      setError('Failed to move lead to funnel stage');
+      setError("Failed to move lead to funnel stage");
     } finally {
       setMoving(false);
     }
   };
 
   const selectedWidget =
-    selectedWidgetId === 'all' ? null : widgets.find((widget) => widget.widget_id === selectedWidgetId);
+    selectedWidgetId === "all"
+      ? null
+      : widgets.find((widget) => widget.widget_id === selectedWidgetId);
   const selectedProduct =
-    selectedProductId === 'all' ? null : products.find((product) => String(product.id) === selectedProductId);
+    selectedProductId === "all"
+      ? null
+      : products.find((product) => String(product.id) === selectedProductId);
   const sourceTintByKey: Record<string, string> = {
-    all: '#4f46e5',
-    chat: '#3b82f6',
-    voice: '#06b6d4',
-    email: '#10b981',
-    sms: '#f59e0b',
-    whatsapp: '#22c55e',
+    all: "#4f46e5",
+    chat: "#3b82f6",
+    voice: "#06b6d4",
+    email: "#10b981",
+    sms: "#f59e0b",
+    whatsapp: "#22c55e",
   };
 
   const compactSelectSx = {
-    width: '100%',
+    width: "100%",
     minWidth: 0,
-    '& .MuiInputBase-root': {
-      borderRadius: '9px',
+    "& .MuiInputBase-root": {
+      borderRadius: "9px",
       minHeight: 38,
       height: 38,
-      fontSize: '0.8rem',
+      fontSize: "0.8rem",
     },
-    '& .MuiSelect-select': {
+    "& .MuiSelect-select": {
       py: 0.75,
       px: 1.1,
       pr: 4,
-      display: 'flex',
-      alignItems: 'center',
-      fontSize: '0.8rem',
+      display: "flex",
+      alignItems: "center",
+      fontSize: "0.8rem",
       fontWeight: 500,
       lineHeight: 1.2,
     },
-    '& .MuiSelect-icon': {
-      fontSize: '1rem',
+    "& .MuiSelect-icon": {
+      fontSize: "1rem",
     },
   } as const;
 
@@ -416,10 +492,10 @@ const LeadManager: React.FC = () => {
     PaperProps: {
       sx: {
         mt: 0.4,
-        borderRadius: '10px',
-        '& .MuiMenuItem-root': {
+        borderRadius: "10px",
+        "& .MuiMenuItem-root": {
           minHeight: 34,
-          fontSize: '0.8rem',
+          fontSize: "0.8rem",
         },
       },
     },
@@ -427,14 +503,14 @@ const LeadManager: React.FC = () => {
 
   const filterChipSx = (active: boolean, tint: string) => ({
     height: 23,
-    borderRadius: '7px',
-    fontSize: '0.68rem',
+    borderRadius: "7px",
+    fontSize: "0.68rem",
     fontWeight: 700,
     color: active ? tint : alpha(tint, 0.86),
     borderColor: active ? alpha(tint, 0.5) : alpha(tint, 0.35),
     backgroundColor: active ? alpha(tint, 0.2) : alpha(tint, 0.08),
-    '& .MuiChip-label': { px: 0.9 },
-    '&:hover': {
+    "& .MuiChip-label": { px: 0.9 },
+    "&:hover": {
       backgroundColor: active ? alpha(tint, 0.24) : alpha(tint, 0.12),
     },
   });
@@ -443,41 +519,64 @@ const LeadManager: React.FC = () => {
     <Paper sx={{ ...panelSx, p: { xs: 1.6, md: 1.8 }, mb: 2.8 }}>
       <Box
         sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', lg: 'center' },
-          flexDirection: { xs: 'column', lg: 'row' },
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: { xs: "flex-start", lg: "center" },
+          flexDirection: { xs: "column", lg: "row" },
           gap: 1.4,
         }}
       >
         <Box sx={{ maxWidth: { lg: 520 } }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.01em', mb: 0.25, fontSize: '1.2rem' }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 800,
+              letterSpacing: "-0.01em",
+              mb: 0.25,
+              fontSize: "1.2rem",
+            }}
+          >
             Lead Overview
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.93rem' }}>
-            Review lead quality, source channels, funnel stage, and export data for your sales workflow.
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ fontSize: "0.93rem" }}
+          >
+            Review lead quality, source channels, funnel stage, and export data
+            for your sales workflow.
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.9 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 0.9 }}
+          >
             {selectedWidget
-              ? `Filtered by widget: ${selectedWidget.name}${selectedProduct ? `, product: ${selectedProduct.name}` : ''}`
-              : 'Showing leads from all widgets'}
+              ? `Filtered by widget: ${selectedWidget.name}${selectedProduct ? `, product: ${selectedProduct.name}` : ""}`
+              : "Showing leads from all widgets"}
           </Typography>
         </Box>
 
         <Box
           sx={{
-            width: { xs: '100%', lg: 'min(100%, 900px)' },
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr)) auto' },
+            width: { xs: "100%", lg: "min(100%, 900px)" },
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, minmax(0, 1fr))",
+              lg: "repeat(4, minmax(0, 1fr)) auto",
+            },
             gap: 0.8,
-            alignItems: 'center',
-            '& > *': { minWidth: 0 },
+            alignItems: "center",
+            "& > *": { minWidth: 0 },
           }}
         >
           <FormControl size="small" sx={compactSelectSx}>
             <Select
               value={selectedWidgetId}
-              onChange={(event: SelectChangeEvent<string>) => setSelectedWidgetId(event.target.value)}
+              onChange={(event: SelectChangeEvent<string>) =>
+                setSelectedWidgetId(event.target.value)
+              }
               MenuProps={compactMenuProps}
             >
               <MenuItem value="all">All Widgets</MenuItem>
@@ -492,7 +591,9 @@ const LeadManager: React.FC = () => {
           <FormControl size="small" sx={compactSelectSx}>
             <Select
               value={selectedProductId}
-              onChange={(event: SelectChangeEvent<string>) => setSelectedProductId(event.target.value)}
+              onChange={(event: SelectChangeEvent<string>) =>
+                setSelectedProductId(event.target.value)
+              }
               MenuProps={compactMenuProps}
             >
               <MenuItem value="all">All Products</MenuItem>
@@ -507,7 +608,9 @@ const LeadManager: React.FC = () => {
           <FormControl size="small" sx={compactSelectSx}>
             <Select
               value={selectedSource}
-              onChange={(event: SelectChangeEvent<string>) => setSelectedSource(event.target.value)}
+              onChange={(event: SelectChangeEvent<string>) =>
+                setSelectedSource(event.target.value)
+              }
               MenuProps={compactMenuProps}
             >
               <MenuItem value="all">All Sources</MenuItem>
@@ -522,7 +625,9 @@ const LeadManager: React.FC = () => {
           <FormControl size="small" sx={compactSelectSx}>
             <Select
               value={selectedFunnelStage}
-              onChange={(event: SelectChangeEvent<string>) => setSelectedFunnelStage(event.target.value)}
+              onChange={(event: SelectChangeEvent<string>) =>
+                setSelectedFunnelStage(event.target.value)
+              }
               MenuProps={compactMenuProps}
             >
               <MenuItem value="all">All Funnel Stages</MenuItem>
@@ -543,17 +648,17 @@ const LeadManager: React.FC = () => {
             sx={{
               minHeight: 38,
               px: 1.4,
-              borderRadius: '9px',
-              fontSize: '0.88rem',
+              borderRadius: "9px",
+              fontSize: "0.88rem",
               fontWeight: 700,
-              whiteSpace: 'nowrap',
+              whiteSpace: "nowrap",
               boxShadow: `0 6px 14px ${alpha(theme.palette.primary.dark, 0.18)}`,
               background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(
                 theme.palette.primary.dark,
-                0.92
+                0.92,
               )} 100%)`,
-              width: { xs: '100%', lg: 'auto' },
-              '&:hover': {
+              width: { xs: "100%", lg: "auto" },
+              "&:hover": {
                 boxShadow: `0 10px 18px ${alpha(theme.palette.primary.dark, 0.24)}`,
               },
             }}
@@ -574,7 +679,7 @@ const LeadManager: React.FC = () => {
           severity="error"
           sx={{
             mb: 2.2,
-            borderRadius: '14px',
+            borderRadius: "14px",
             border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
             boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
           }}
@@ -588,7 +693,7 @@ const LeadManager: React.FC = () => {
           severity="success"
           sx={{
             mb: 2.2,
-            borderRadius: '14px',
+            borderRadius: "14px",
             border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
             boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}`,
           }}
@@ -598,16 +703,32 @@ const LeadManager: React.FC = () => {
       )}
 
       <Paper sx={{ ...panelSx, p: 2.4, mb: 2.6 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.3 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 1.3,
+          }}
+        >
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Funnel Category Master
           </Typography>
-          <Button startIcon={<AddIcon />} variant="outlined" onClick={openCreateCategoryDialog}>
+          <Button
+            startIcon={<AddIcon />}
+            variant="outlined"
+            onClick={openCreateCategoryDialog}
+          >
             Add Category
           </Button>
         </Box>
 
-        <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+        <TableContainer
+          sx={{
+            borderRadius: "12px",
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+          }}
+        >
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -623,22 +744,42 @@ const LeadManager: React.FC = () => {
               {funnelCategories.map((category) => (
                 <TableRow key={category.id} hover>
                   <TableCell>{category.name}</TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace' }}>{category.key}</TableCell>
+                  <TableCell sx={{ fontFamily: "monospace" }}>
+                    {category.key}
+                  </TableCell>
                   <TableCell>{category.position}</TableCell>
                   <TableCell>
-                    <Chip label={category.color} size="small" sx={{ bgcolor: alpha(category.color, 0.15), color: category.color }} />
+                    <Chip
+                      label={category.color}
+                      size="small"
+                      sx={{
+                        bgcolor: alpha(category.color, 0.15),
+                        color: category.color,
+                      }}
+                    />
                   </TableCell>
                   <TableCell>
-                    <Chip label={category.is_active ? 'Active' : 'Inactive'} size="small" color={category.is_active ? 'success' : 'default'} />
+                    <Chip
+                      label={category.is_active ? "Active" : "Inactive"}
+                      size="small"
+                      color={category.is_active ? "success" : "default"}
+                    />
                   </TableCell>
                   <TableCell>
                     <Tooltip title="Edit">
-                      <IconButton size="small" onClick={() => openEditCategoryDialog(category)}>
+                      <IconButton
+                        size="small"
+                        onClick={() => openEditCategoryDialog(category)}
+                      >
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete">
-                      <IconButton size="small" color="error" onClick={() => handleDeleteCategory(category)}>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteCategory(category)}
+                      >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -647,7 +788,9 @@ const LeadManager: React.FC = () => {
               ))}
               {funnelCategories.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">No funnel categories found.</TableCell>
+                  <TableCell colSpan={6} align="center">
+                    No funnel categories found.
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -665,73 +808,112 @@ const LeadManager: React.FC = () => {
                 elevation={0}
                 sx={{
                   ...panelSx,
-                  background: `linear-gradient(150deg, ${alpha('#f3f8ff', 0.74)} 0%, ${alpha(
+                  background: `linear-gradient(150deg, ${alpha("#f3f8ff", 0.74)} 0%, ${alpha(
                     theme.palette.background.paper,
-                    0.86
-                  )} 64%, ${alpha('#d7e5f8', 0.84)} 100%)`,
+                    0.86,
+                  )} 64%, ${alpha("#d7e5f8", 0.84)} 100%)`,
                   border: `1px solid ${alpha(theme.palette.common.white, 0.66)}`,
                 }}
               >
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mb: 2,
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
                       <Avatar
                         sx={{
                           mr: 1.5,
                           width: 44,
                           height: 44,
-                          color: 'primary.dark',
-                          background: `linear-gradient(130deg, ${alpha('#d6e7ff', 0.9)} 0%, ${alpha('#b9d6fb', 0.96)} 100%)`,
+                          color: "primary.dark",
+                          background: `linear-gradient(130deg, ${alpha("#d6e7ff", 0.9)} 0%, ${alpha("#b9d6fb", 0.96)} 100%)`,
                           border: `1px solid ${alpha(theme.palette.common.white, 0.76)}`,
                         }}
                       >
                         <PersonIcon />
                       </Avatar>
                       <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        {lead.name || 'Anonymous'}
+                        {lead.name || "Anonymous"}
                       </Typography>
                     </Box>
                     <Chip
                       size="small"
-                      label={lead.company ? 'Business' : 'Individual'}
-                      color={lead.company ? 'primary' : 'default'}
-                      variant={lead.company ? 'filled' : 'outlined'}
+                      label={lead.company ? "Business" : "Individual"}
+                      color={lead.company ? "primary" : "default"}
+                      variant={lead.company ? "filled" : "outlined"}
                     />
                   </Box>
 
-                  <Stack direction="row" spacing={1} sx={{ mb: 1.2, flexWrap: 'wrap' }}>
-                    <Chip size="small" label={sourceLabel(lead.source)} variant="outlined" />
-                    <Chip size="small" label={displayStageLabel(lead.funnel_stage)} color="primary" variant="outlined" />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ mb: 1.2, flexWrap: "wrap" }}
+                  >
+                    <Chip
+                      size="small"
+                      label={sourceLabel(lead.source)}
+                      variant="outlined"
+                    />
+                    <Chip
+                      size="small"
+                      label={displayStageLabel(lead.funnel_stage)}
+                      color="primary"
+                      variant="outlined"
+                    />
                   </Stack>
 
                   <Stack spacing={1}>
                     {lead.email && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1.2 }}
+                      >
                         <EmailIcon fontSize="small" color="action" />
-                        <Typography variant="body2" sx={{ color: 'text.primary' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "text.primary" }}
+                        >
                           {lead.email}
                         </Typography>
                       </Box>
                     )}
                     {lead.phone && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1.2 }}
+                      >
                         <PhoneIcon fontSize="small" color="action" />
-                        <Typography variant="body2" sx={{ color: 'text.primary' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "text.primary" }}
+                        >
                           {lead.phone}
                         </Typography>
                       </Box>
                     )}
                     {lead.company && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1.2 }}
+                      >
                         <BusinessIcon fontSize="small" color="action" />
-                        <Typography variant="body2" sx={{ color: 'text.primary' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "text.primary" }}
+                        >
                           {lead.company}
                         </Typography>
                       </Box>
                     )}
                   </Stack>
 
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1.6, display: 'block' }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1.6, display: "block" }}
+                  >
                     Captured: {new Date(lead.created_at).toLocaleString()}
                   </Typography>
                 </CardContent>
@@ -748,32 +930,41 @@ const LeadManager: React.FC = () => {
               elevation={0}
               sx={{
                 p: 2,
-                borderRadius: '18px',
+                borderRadius: "18px",
                 background: kpi.gradient,
                 minHeight: 142,
                 border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
                 boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                position: 'relative',
-                overflow: 'hidden',
+                position: "relative",
+                overflow: "hidden",
               }}
             >
               <Box
                 sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  position: 'relative',
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  position: "relative",
                   zIndex: 1,
                 }}
               >
                 <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ fontWeight: 700, color: "text.primary" }}
+                  >
                     {kpi.label}
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.35, color: 'text.primary' }}>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 800, mt: 0.35, color: "text.primary" }}
+                  >
                     {kpi.value}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.2 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "text.secondary", mt: 0.2 }}
+                  >
                     {kpi.hint}
                   </Typography>
                 </Box>
@@ -782,9 +973,9 @@ const LeadManager: React.FC = () => {
                     width: 44,
                     height: 44,
                     borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     bgcolor: alpha(theme.palette.primary.main, 0.14),
                     border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
                   }}
@@ -798,7 +989,15 @@ const LeadManager: React.FC = () => {
       </Grid>
 
       <Paper sx={{ ...panelSx, p: 2.4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.1, gap: 1.4 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            mb: 1.1,
+            gap: 1.4,
+          }}
+        >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               All Leads
@@ -806,24 +1005,33 @@ const LeadManager: React.FC = () => {
             <Stack spacing={0.75} sx={{ mt: 0.8 }}>
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '110px minmax(0, 1fr)' },
-                  alignItems: 'start',
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "110px minmax(0, 1fr)",
+                  },
+                  alignItems: "start",
                   columnGap: 0.8,
                   rowGap: 0.4,
                 }}
               >
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pt: 0.35 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ fontWeight: 700, color: "text.secondary", pt: 0.35 }}
+                >
                   Source Type
                 </Typography>
-                <Stack direction="row" spacing={0.55} sx={{ flexWrap: 'wrap' }}>
+                <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
                   <Chip
                     label="All"
                     size="small"
                     clickable
                     variant="outlined"
-                    onClick={() => setSelectedSource('all')}
-                    sx={filterChipSx(selectedSource === 'all', sourceTintByKey.all)}
+                    onClick={() => setSelectedSource("all")}
+                    sx={filterChipSx(
+                      selectedSource === "all",
+                      sourceTintByKey.all,
+                    )}
                   />
                   {LEAD_SOURCES.map((source) => (
                     <Chip
@@ -833,34 +1041,47 @@ const LeadManager: React.FC = () => {
                       clickable
                       variant="outlined"
                       onClick={() => setSelectedSource(source)}
-                      sx={filterChipSx(selectedSource === source, sourceTintByKey[source])}
+                      sx={filterChipSx(
+                        selectedSource === source,
+                        sourceTintByKey[source],
+                      )}
                     />
                   ))}
                 </Stack>
               </Box>
 
-              <Box sx={{ borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}` }} />
+              <Box
+                sx={{
+                  borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+                }}
+              />
 
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '110px minmax(0, 1fr)' },
-                  alignItems: 'start',
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "110px minmax(0, 1fr)",
+                  },
+                  alignItems: "start",
                   columnGap: 0.8,
                   rowGap: 0.4,
                 }}
               >
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pt: 0.35 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ fontWeight: 700, color: "text.secondary", pt: 0.35 }}
+                >
                   Funnel Stage
                 </Typography>
-                <Stack direction="row" spacing={0.55} sx={{ flexWrap: 'wrap' }}>
+                <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
                   <Chip
                     label="All"
                     size="small"
                     clickable
                     variant="outlined"
-                    onClick={() => setSelectedFunnelStage('all')}
-                    sx={filterChipSx(selectedFunnelStage === 'all', '#7c3aed')}
+                    onClick={() => setSelectedFunnelStage("all")}
+                    sx={filterChipSx(selectedFunnelStage === "all", "#7c3aed")}
                   />
                   {activeFunnelCategories.map((stage) => (
                     <Chip
@@ -870,7 +1091,10 @@ const LeadManager: React.FC = () => {
                       clickable
                       variant="outlined"
                       onClick={() => setSelectedFunnelStage(stage.key)}
-                      sx={filterChipSx(selectedFunnelStage === stage.key, normalizeHexColor(stage.color))}
+                      sx={filterChipSx(
+                        selectedFunnelStage === stage.key,
+                        normalizeHexColor(stage.color),
+                      )}
                     />
                   ))}
                 </Stack>
@@ -886,12 +1110,17 @@ const LeadManager: React.FC = () => {
           />
         </Box>
 
-        <TableContainer sx={{ borderRadius: '12px', border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+        <TableContainer
+          sx={{
+            borderRadius: "12px",
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+          }}
+        >
           <Table>
             <TableHead>
               <TableRow
                 sx={{
-                  background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)`,
+                  background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
                 }}
               >
                 <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
@@ -904,7 +1133,10 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>
                   <Tooltip title="Actions">
-                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                    <Box
+                      component="span"
+                      sx={{ display: "inline-flex", alignItems: "center" }}
+                    >
                       <VisibilityIcon fontSize="small" />
                     </Box>
                   </Tooltip>
@@ -917,29 +1149,44 @@ const LeadManager: React.FC = () => {
                   key={lead.id}
                   hover
                   sx={{
-                    '&:last-child td': { borderBottom: 0 },
-                    '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) },
+                    "&:last-child td": { borderBottom: 0 },
+                    "&:hover": {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                    },
                   }}
                 >
-                  <TableCell>{lead.name || '-'}</TableCell>
-                  <TableCell>{lead.email || '-'}</TableCell>
-                  <TableCell>{lead.phone || '-'}</TableCell>
-                  <TableCell>{lead.company || '-'}</TableCell>
-                  <TableCell>{lead.product_name || '-'}</TableCell>
+                  <TableCell>{lead.name || "-"}</TableCell>
+                  <TableCell>{lead.email || "-"}</TableCell>
+                  <TableCell>{lead.phone || "-"}</TableCell>
+                  <TableCell>{lead.company || "-"}</TableCell>
+                  <TableCell>{lead.product_name || "-"}</TableCell>
                   <TableCell>
-                    <Chip label={sourceLabel(lead.source)} size="small" variant="outlined" />
+                    <Chip
+                      label={sourceLabel(lead.source)}
+                      size="small"
+                      variant="outlined"
+                    />
                   </TableCell>
                   <TableCell>
-                    <Chip label={displayStageLabel(lead.funnel_stage)} size="small" color="primary" variant="outlined" />
+                    <Chip
+                      label={displayStageLabel(lead.funnel_stage)}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
                   </TableCell>
-                  <TableCell>{new Date(lead.created_at).toLocaleString()}</TableCell>
+                  <TableCell>
+                    {new Date(lead.created_at).toLocaleString()}
+                  </TableCell>
                   <TableCell>
                     <Tooltip title="View lead actions">
                       <IconButton
                         size="small"
                         color="primary"
                         onClick={() => openDetails(lead)}
-                        sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}` }}
+                        sx={{
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                        }}
                       >
                         <VisibilityIcon fontSize="small" />
                       </IconButton>
@@ -950,43 +1197,88 @@ const LeadManager: React.FC = () => {
               {leads.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">No leads found for the selected filters.</Typography>
+                    <Typography color="text.secondary">
+                      No leads found for the selected filters.
+                    </Typography>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={leadsTotal}
+            page={leadsPage}
+            onPageChange={(_, value) => setLeadsPage(value)}
+            rowsPerPage={leadsRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setLeadsRowsPerPage(parseInt(event.target.value, 10));
+              setLeadsPage(0);
+            }}
+            rowsPerPageOptions={[10, 25, 50]}
+          />
         </TableContainer>
       </Paper>
 
-      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Lead Details</DialogTitle>
         <DialogContent dividers>
           {selectedLead && (
             <Stack spacing={1.5}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.14), color: 'primary.dark' }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Avatar
+                  sx={{
+                    bgcolor: alpha(theme.palette.primary.main, 0.14),
+                    color: "primary.dark",
+                  }}
+                >
                   <PersonIcon />
                 </Avatar>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    {selectedLead.name || 'Anonymous'}
+                    {selectedLead.name || "Anonymous"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Created: {new Date(selectedLead.created_at).toLocaleString()}
+                    Created:{" "}
+                    {new Date(selectedLead.created_at).toLocaleString()}
                   </Typography>
                 </Box>
               </Box>
 
-              <Typography variant="body2"><strong>Email:</strong> {selectedLead.email || '-'}</Typography>
-              <Typography variant="body2"><strong>Phone:</strong> {selectedLead.phone || '-'}</Typography>
-              <Typography variant="body2"><strong>Company:</strong> {selectedLead.company || '-'}</Typography>
-              <Typography variant="body2"><strong>Product Name:</strong> {selectedLead.product_name || ''}</Typography>
-              <Typography variant="body2"><strong>Source:</strong> {sourceLabel(selectedLead.source)}</Typography>
-              <Typography variant="body2"><strong>Funnel Stage:</strong> {displayStageLabel(selectedLead.funnel_stage)}</Typography>
-              <Typography variant="body2"><strong>Session ID:</strong> {selectedLead.session_id || '-'}</Typography>
-              <Typography variant="body2"><strong>Widget ID:</strong> {selectedLead.widget_id || '-'}</Typography>
-              <Typography variant="body2"><strong>Lead outcome:</strong> {selectedLead.lead_outcome || '-'}</Typography>
+              <Typography variant="body2">
+                <strong>Email:</strong> {selectedLead.email || "-"}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Phone:</strong> {selectedLead.phone || "-"}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Company:</strong> {selectedLead.company || "-"}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Product Name:</strong> {selectedLead.product_name || ""}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Source:</strong> {sourceLabel(selectedLead.source)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Funnel Stage:</strong>{" "}
+                {displayStageLabel(selectedLead.funnel_stage)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Session ID:</strong> {selectedLead.session_id || "-"}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Widget ID:</strong> {selectedLead.widget_id || "-"}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Lead outcome:</strong>{" "}
+                {selectedLead.lead_outcome || "-"}
+              </Typography>
             </Stack>
           )}
         </DialogContent>
@@ -1006,28 +1298,42 @@ const LeadManager: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={moveOpen} onClose={() => setMoveOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={moveOpen}
+        onClose={() => setMoveOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Move to Sales Funnel</DialogTitle>
         <DialogContent dividers>
           {selectedLead && (
             <Stack spacing={2}>
               <Paper variant="outlined" sx={{ p: 1.5 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  {selectedLead.name || 'Anonymous'}
+                  {selectedLead.name || "Anonymous"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {selectedLead.phone || selectedLead.email || '-'}
+                  {selectedLead.phone || selectedLead.email || "-"}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 1 }}>
-                  Lead outcome: {selectedLead.lead_outcome || '-'}
+                  Lead outcome: {selectedLead.lead_outcome || "-"}
                 </Typography>
               </Paper>
 
               <FormControl fullWidth size="small">
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mb: 0.5 }}
+                >
                   Select Funnel Stage
                 </Typography>
-                <Select value={moveStage} onChange={(event: SelectChangeEvent<string>) => setMoveStage(event.target.value)}>
+                <Select
+                  value={moveStage}
+                  onChange={(event: SelectChangeEvent<string>) =>
+                    setMoveStage(event.target.value)
+                  }
+                >
                   <MenuItem value="">
                     <em>Select a stage...</em>
                   </MenuItem>
@@ -1047,21 +1353,37 @@ const LeadManager: React.FC = () => {
             variant="contained"
             onClick={handleMoveLead}
             disabled={moving || !moveStage}
-            startIcon={moving ? <CircularProgress size={16} color="inherit" /> : undefined}
+            startIcon={
+              moving ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
           >
-            {moving ? 'Saving...' : 'Confirm & Move'}
+            {moving ? "Saving..." : "Confirm & Move"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingCategory ? 'Update Funnel Category' : 'Add Funnel Category'}</DialogTitle>
+      <Dialog
+        open={categoryDialogOpen}
+        onClose={() => setCategoryDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {editingCategory ? "Update Funnel Category" : "Add Funnel Category"}
+        </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ pt: 0.5 }}>
             <TextField
               label="Category Name"
               value={categoryForm.name}
-              onChange={(event) => setCategoryForm((prev) => ({ ...prev, name: event.target.value }))}
+              onChange={(event) =>
+                setCategoryForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
               fullWidth
               size="small"
             />
@@ -1069,7 +1391,12 @@ const LeadManager: React.FC = () => {
               label="Stage Key"
               helperText="Used internally, lowercase with underscores"
               value={categoryForm.key}
-              onChange={(event) => setCategoryForm((prev) => ({ ...prev, key: toStageKey(event.target.value) }))}
+              onChange={(event) =>
+                setCategoryForm((prev) => ({
+                  ...prev,
+                  key: toStageKey(event.target.value),
+                }))
+              }
               fullWidth
               size="small"
             />
@@ -1100,14 +1427,19 @@ const LeadManager: React.FC = () => {
                 size="small"
                 sx={{ width: 88 }}
                 inputProps={{
-                  'aria-label': 'Pick category color',
+                  "aria-label": "Pick category color",
                 }}
               />
               <TextField
                 label="Position"
                 type="number"
                 value={categoryForm.position}
-                onChange={(event) => setCategoryForm((prev) => ({ ...prev, position: Number(event.target.value || 0) }))}
+                onChange={(event) =>
+                  setCategoryForm((prev) => ({
+                    ...prev,
+                    position: Number(event.target.value || 0),
+                  }))
+                }
                 size="small"
                 sx={{ width: 140 }}
               />
@@ -1116,7 +1448,12 @@ const LeadManager: React.FC = () => {
               control={
                 <Switch
                   checked={categoryForm.is_active}
-                  onChange={(event) => setCategoryForm((prev) => ({ ...prev, is_active: event.target.checked }))}
+                  onChange={(event) =>
+                    setCategoryForm((prev) => ({
+                      ...prev,
+                      is_active: event.target.checked,
+                    }))
+                  }
                 />
               }
               label="Active"
@@ -1129,9 +1466,17 @@ const LeadManager: React.FC = () => {
             variant="contained"
             onClick={handleSaveCategory}
             disabled={categorySaving}
-            startIcon={categorySaving ? <CircularProgress size={16} color="inherit" /> : undefined}
+            startIcon={
+              categorySaving ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
           >
-            {categorySaving ? 'Saving...' : editingCategory ? 'Update' : 'Create'}
+            {categorySaving
+              ? "Saving..."
+              : editingCategory
+                ? "Update"
+                : "Create"}
           </Button>
         </DialogActions>
       </Dialog>
