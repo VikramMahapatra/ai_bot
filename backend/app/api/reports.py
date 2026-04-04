@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from app.database import get_db
 from app.auth import get_current_user
 from app.models import User, ConversationMetrics
@@ -11,6 +11,8 @@ from app.schemas.report import (
     DetailedReportResponse,
     TokenUsageReport,
     LeadReportResponse,
+    VoiceCampaignFilterOptionsResponse,
+    VoiceCampaignReportResponse,
 )
 from app.services.report_service import (
     get_conversation_metrics_query,
@@ -18,6 +20,8 @@ from app.services.report_service import (
     get_report_summary,
     get_token_usage_report,
     get_leads_report,
+    get_voice_campaign_filter_options,
+    get_voice_campaign_report,
     get_daily_conversation_stats,
 )
 import logging
@@ -142,6 +146,44 @@ async def get_leads_report_endpoint(
         current_user.organization_id,
         start_dt,
         end_dt,
+    )
+    return report
+
+
+@router.get("/voice-campaign/filters", response_model=VoiceCampaignFilterOptionsResponse)
+async def get_voice_campaign_filter_options_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_voice_campaign_filter_options(db, current_user.organization_id)
+
+
+@router.get("/voice-campaign", response_model=VoiceCampaignReportResponse)
+async def get_voice_campaign_report_endpoint(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    agent_name: Optional[str] = Query(None),
+    campaign_name: Optional[str] = Query(None),
+    lead_outcomes: Optional[List[str]] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get voice campaign report for leads matched to calling agents and call campaigns."""
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+    report = get_voice_campaign_report(
+        db=db,
+        organization_id=current_user.organization_id,
+        agent_name=agent_name,
+        campaign_name=campaign_name,
+        lead_outcomes=lead_outcomes,
+        start_date=start_dt,
+        end_date=end_dt,
+        skip=skip,
+        limit=limit,
     )
     return report
 

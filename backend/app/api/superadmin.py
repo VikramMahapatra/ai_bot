@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import math
+import json
+from datetime import datetime, timedelta, timezone
 import re
 import secrets
 from app.database import get_db
@@ -13,6 +16,8 @@ from app.models import (
     OrganizationLimits,
     OrganizationSubscriptionUsage,
     Plan,
+    PriceMatrixItem,
+    CreditEstimatorShare,
 )
 from app.schemas.superadmin import (
     CallingNumberCreate,
@@ -31,6 +36,19 @@ from app.schemas.superadmin import (
     PlanResponse,
     SubscriptionCreate,
     SubscriptionResponse,
+    PriceMatrixItemCreate,
+    PriceMatrixItemUpdate,
+    PriceMatrixItemResponse,
+    PriceMatrixEstimateRequest,
+    PriceMatrixEstimateResponse,
+    PriceMatrixEstimateBreakdownLine,
+    CreditEstimatorShareCreateRequest,
+    CreditEstimatorShareExtendRequest,
+    CreditEstimatorShareUpdateRequest,
+    CreditEstimatorShareCreateResponse,
+    CreditEstimatorShareListItemResponse,
+    CreditEstimatorSharePublicResponse,
+    CreditEstimatorShareEmailRequest,
 )
 from app.services.limits_service import (
     get_or_create_limits,
@@ -42,6 +60,7 @@ from app.services.limits_service import (
 from sqlalchemy import func, or_, text
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
+from app.services.email_service import send_widget_test_link_email
 import logging
 from sqlalchemy.exc import IntegrityError
 
@@ -133,6 +152,165 @@ def _table_exists(db: Session, table_name: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _to_utc(dt_value: datetime) -> datetime:
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=timezone.utc)
+    return dt_value.astimezone(timezone.utc)
+
+
+def _calculate_price_matrix_estimate(
+    db: Session,
+    payload: PriceMatrixEstimateRequest,
+) -> PriceMatrixEstimateResponse:
+    if not payload.lines:
+        return PriceMatrixEstimateResponse(
+            subtotal_credits=0,
+            buffer_percent=payload.buffer_percent,
+            buffer_credits=0,
+            discount_percent=payload.discount_percent,
+            discount_credits=0,
+            final_recommended_credits=0,
+            final_recommended_credits_ceiling=0,
+            recommended_credits=0,
+            recommended_credits_ceiling=0,
+            breakdown=[],
+        )
+
+    requested_ids = {line.price_matrix_item_id for line in payload.lines}
+    items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(requested_ids)).all()
+    item_by_id = {item.id: item for item in items}
+
+    missing_ids = sorted(requested_ids - set(item_by_id.keys()))
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Price matrix item(s) not found: {', '.join(map(str, missing_ids))}",
+        )
+
+    breakdown: List[PriceMatrixEstimateBreakdownLine] = []
+    subtotal_credits = 0.0
+
+    for line in payload.lines:
+        item = item_by_id[line.price_matrix_item_id]
+        if item.credits_per_unit is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Item '{item.category} / {item.module} / {item.sub_module or '-'}' has no numeric credits_per_unit",
+            )
+
+        line_credits = float(item.credits_per_unit) * float(line.quantity)
+        subtotal_credits += line_credits
+
+        breakdown.append(
+            PriceMatrixEstimateBreakdownLine(
+                price_matrix_item_id=item.id,
+                category=item.category,
+                module=item.module,
+                sub_module=item.sub_module,
+                billing_unit=item.billing_unit,
+                credits_per_unit=float(item.credits_per_unit),
+                quantity=float(line.quantity),
+                estimated_credits=round(line_credits, 2),
+            )
+        )
+
+    buffer_credits = subtotal_credits * (payload.buffer_percent / 100)
+    recommended_credits = subtotal_credits + buffer_credits
+    discount_credits = recommended_credits * (payload.discount_percent / 100)
+    final_recommended_credits = max(0.0, recommended_credits - discount_credits)
+
+    return PriceMatrixEstimateResponse(
+        subtotal_credits=round(subtotal_credits, 2),
+        buffer_percent=payload.buffer_percent,
+        buffer_credits=round(buffer_credits, 2),
+        discount_percent=payload.discount_percent,
+        discount_credits=round(discount_credits, 2),
+        final_recommended_credits=round(final_recommended_credits, 2),
+        final_recommended_credits_ceiling=int(math.ceil(final_recommended_credits)),
+        recommended_credits=round(recommended_credits, 2),
+        recommended_credits_ceiling=int(math.ceil(recommended_credits)),
+        breakdown=breakdown,
+    )
+
+
+def _build_credit_estimate_share_path(token: str) -> str:
+    return f"/credit-estimator/share/{token}"
+
+
+def _load_credit_estimate_share(
+    db: Session,
+    token: str,
+    enforce_active: bool = True,
+    enforce_not_expired: bool = True,
+) -> CreditEstimatorShare:
+    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.token == token).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared estimate not found")
+
+    if enforce_active and not share.is_active:
+        raise HTTPException(status_code=404, detail="Shared estimate not found")
+
+    if enforce_not_expired:
+        now = datetime.now(timezone.utc)
+        expires_at = _to_utc(share.expires_at)
+        if expires_at <= now:
+            raise HTTPException(status_code=401, detail="Shared estimate link has expired")
+
+    return share
+
+
+def _parse_estimate_payload(raw_value: Optional[str]) -> PriceMatrixEstimateResponse:
+    try:
+        estimate_payload = json.loads(raw_value or "{}")
+    except Exception:
+        estimate_payload = {}
+    return PriceMatrixEstimateResponse.model_validate(estimate_payload)
+
+
+def _parse_input_payload(raw_value: Optional[str]) -> PriceMatrixEstimateRequest:
+    try:
+        input_payload = json.loads(raw_value or "{}")
+    except Exception:
+        input_payload = {}
+    return PriceMatrixEstimateRequest.model_validate(input_payload)
+
+
+def _build_credit_share_create_response(
+    share: CreditEstimatorShare,
+    estimate: PriceMatrixEstimateResponse,
+    expires_in_hours: int,
+) -> CreditEstimatorShareCreateResponse:
+    return CreditEstimatorShareCreateResponse(
+        id=share.id,
+        company_name=share.company_name,
+        token=share.token,
+        share_path=_build_credit_estimate_share_path(share.token),
+        expires_at=_to_utc(share.expires_at),
+        expires_in_hours=expires_in_hours,
+        estimate=estimate,
+    )
+
+
+def _build_credit_share_list_item_response(share: CreditEstimatorShare) -> CreditEstimatorShareListItemResponse:
+    created_at = _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+    expires_at = _to_utc(share.expires_at)
+    estimate = _parse_estimate_payload(share.estimate_json)
+    estimator_input = _parse_input_payload(share.input_json)
+    is_expired = expires_at <= datetime.now(timezone.utc)
+    return CreditEstimatorShareListItemResponse(
+        id=share.id,
+        company_name=share.company_name,
+        token=share.token,
+        share_path=_build_credit_estimate_share_path(share.token),
+        expires_at=expires_at,
+        created_at=created_at,
+        is_active=bool(share.is_active),
+        is_expired=is_expired,
+        estimator_input=estimator_input,
+        estimate=estimate,
+    )
 
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)
@@ -535,6 +713,315 @@ async def delete_plan(
     db.delete(plan)
     db.commit()
     return {"success": True, "deleted_plan_id": plan_id}
+
+
+@router.get("/price-matrix", response_model=List[PriceMatrixItemResponse])
+async def list_price_matrix_items(
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    query = db.query(PriceMatrixItem)
+    if active_only:
+        query = query.filter(PriceMatrixItem.is_active == True)
+
+    return query.order_by(
+        PriceMatrixItem.sort_order.asc(),
+        PriceMatrixItem.category.asc(),
+        PriceMatrixItem.module.asc(),
+        PriceMatrixItem.id.asc(),
+    ).all()
+
+
+@router.post("/price-matrix", response_model=PriceMatrixItemResponse, status_code=status.HTTP_201_CREATED)
+async def create_price_matrix_item(
+    payload: PriceMatrixItemCreate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = PriceMatrixItem(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put("/price-matrix/item/{item_id}", response_model=PriceMatrixItemResponse)
+async def update_price_matrix_item(
+    item_id: int,
+    payload: PriceMatrixItemUpdate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Price matrix item not found")
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if hasattr(item, key):
+            setattr(item, key, value)
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/price-matrix/item/{item_id}")
+async def delete_price_matrix_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Price matrix item not found")
+
+    db.delete(item)
+    db.commit()
+    return {"success": True, "deleted_item_id": item_id}
+
+
+@router.post("/price-matrix/estimate", response_model=PriceMatrixEstimateResponse)
+async def estimate_price_matrix_credits(
+    payload: PriceMatrixEstimateRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    return _calculate_price_matrix_estimate(db, payload)
+
+
+@router.post("/credit-estimator/share", response_model=CreditEstimatorShareCreateResponse)
+async def create_credit_estimator_share(
+    payload: CreditEstimatorShareCreateRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    estimate = _calculate_price_matrix_estimate(
+        db,
+        PriceMatrixEstimateRequest(
+            lines=payload.lines,
+            buffer_percent=payload.buffer_percent,
+            discount_percent=payload.discount_percent,
+        ),
+    )
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=payload.valid_for_hours)
+    token = secrets.token_urlsafe(32)
+
+    share = CreditEstimatorShare(
+        token=token,
+        company_name=payload.company_name.strip(),
+        created_by_superadmin_id=superadmin.id,
+        input_json=json.dumps(
+            {
+                "lines": [line.model_dump() for line in payload.lines],
+                "buffer_percent": payload.buffer_percent,
+                "discount_percent": payload.discount_percent,
+            }
+        ),
+        estimate_json=json.dumps(estimate.model_dump()),
+        expires_at=expires_at,
+        is_active=True,
+    )
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+
+    return _build_credit_share_create_response(share, estimate, payload.valid_for_hours)
+
+
+@router.get("/credit-estimator/results", response_model=List[CreditEstimatorShareListItemResponse])
+async def list_credit_estimator_results(
+    company_name: Optional[str] = None,
+    status_filter: str = "all",
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    query = db.query(CreditEstimatorShare).order_by(CreditEstimatorShare.created_at.desc(), CreditEstimatorShare.id.desc())
+
+    if company_name and company_name.strip():
+        query = query.filter(CreditEstimatorShare.company_name.ilike(f"%{company_name.strip()}%"))
+
+    rows = query.all()
+    now = datetime.now(timezone.utc)
+
+    if status_filter == "active":
+        rows = [row for row in rows if _to_utc(row.expires_at) > now and row.is_active]
+    elif status_filter == "expired":
+        rows = [row for row in rows if _to_utc(row.expires_at) <= now or not row.is_active]
+
+    return [_build_credit_share_list_item_response(row) for row in rows]
+
+
+@router.get("/credit-estimator/results/{result_id}", response_model=CreditEstimatorShareListItemResponse)
+async def get_credit_estimator_result(
+    result_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Credit estimator result not found")
+
+    return _build_credit_share_list_item_response(share)
+
+
+@router.put("/credit-estimator/results/{result_id}", response_model=CreditEstimatorShareCreateResponse)
+async def update_credit_estimator_result(
+    result_id: int,
+    payload: CreditEstimatorShareUpdateRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Credit estimator result not found")
+
+    existing_input = _parse_input_payload(share.input_json)
+    next_lines = payload.lines if payload.lines is not None else existing_input.lines
+    next_buffer = payload.buffer_percent if payload.buffer_percent is not None else existing_input.buffer_percent
+    next_discount = payload.discount_percent if payload.discount_percent is not None else existing_input.discount_percent
+    next_company = payload.company_name.strip() if payload.company_name is not None else share.company_name
+
+    recompute_payload = PriceMatrixEstimateRequest(
+        lines=next_lines,
+        buffer_percent=next_buffer,
+        discount_percent=next_discount,
+    )
+    estimate = _calculate_price_matrix_estimate(db, recompute_payload)
+
+    share.company_name = next_company
+    share.input_json = json.dumps(
+        {
+            "lines": [line.model_dump() for line in recompute_payload.lines],
+            "buffer_percent": recompute_payload.buffer_percent,
+            "discount_percent": recompute_payload.discount_percent,
+        }
+    )
+    share.estimate_json = json.dumps(estimate.model_dump())
+    if payload.valid_for_hours is not None:
+        share.expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.valid_for_hours)
+        expires_in_hours = payload.valid_for_hours
+    else:
+        expires_in_hours = max(1, int((_to_utc(share.expires_at) - datetime.now(timezone.utc)).total_seconds() // 3600))
+
+    db.commit()
+    db.refresh(share)
+    return _build_credit_share_create_response(share, estimate, expires_in_hours)
+
+
+@router.post("/credit-estimator/share/{token}/extend", response_model=CreditEstimatorShareCreateResponse)
+async def extend_credit_estimator_share(
+    token: str,
+    payload: CreditEstimatorShareExtendRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    share = _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=False)
+    now = datetime.now(timezone.utc)
+    current_expiry = _to_utc(share.expires_at)
+    baseline = current_expiry if current_expiry > now else now
+    share.expires_at = baseline + timedelta(hours=payload.extra_hours)
+    db.commit()
+    db.refresh(share)
+
+    estimate = _parse_estimate_payload(share.estimate_json)
+    return _build_credit_share_create_response(share, estimate, payload.extra_hours)
+
+
+@router.post("/credit-estimator/results/{result_id}/extend", response_model=CreditEstimatorShareCreateResponse)
+async def extend_credit_estimator_result(
+    result_id: int,
+    payload: CreditEstimatorShareExtendRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Credit estimator result not found")
+
+    now = datetime.now(timezone.utc)
+    current_expiry = _to_utc(share.expires_at)
+    baseline = current_expiry if current_expiry > now else now
+    share.expires_at = baseline + timedelta(hours=payload.extra_hours)
+    db.commit()
+    db.refresh(share)
+    estimate = _parse_estimate_payload(share.estimate_json)
+    return _build_credit_share_create_response(share, estimate, payload.extra_hours)
+
+
+@router.get("/credit-estimator/share/{token}", response_model=CreditEstimatorSharePublicResponse)
+async def get_shared_credit_estimator_result(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    share = _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=True)
+    estimate = _parse_estimate_payload(share.estimate_json)
+    created_at = _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+    return CreditEstimatorSharePublicResponse(
+        id=share.id,
+        company_name=share.company_name,
+        token=share.token,
+        estimate=estimate,
+        created_at=created_at,
+        expires_at=_to_utc(share.expires_at),
+    )
+
+
+@router.post("/credit-estimator/share/{token}/email")
+async def send_credit_estimator_share_via_email(
+    token: str,
+    payload: CreditEstimatorShareEmailRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=True)
+    body = (payload.body or "").strip()
+    subject = (payload.subject or "").strip() or "Credit Estimate from Zentrixel"
+    if not body:
+        raise HTTPException(status_code=400, detail="Email body cannot be empty")
+
+    success, error_message = send_widget_test_link_email(
+        recipient_email=str(payload.to_email),
+        subject=subject,
+        message_body=body,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+
+    return {"message": "Credit estimate share email sent successfully"}
+
+
+@router.post("/credit-estimator/results/{result_id}/email")
+async def send_credit_estimator_result_via_email(
+    result_id: int,
+    payload: CreditEstimatorShareEmailRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Credit estimator result not found")
+
+    now = datetime.now(timezone.utc)
+    if _to_utc(share.expires_at) <= now:
+        raise HTTPException(status_code=401, detail="Shared estimate link has expired")
+
+    body = (payload.body or "").strip()
+    subject = (payload.subject or "").strip() or "Credit Estimate from Zentrixel"
+    if not body:
+        raise HTTPException(status_code=400, detail="Email body cannot be empty")
+
+    success, error_message = send_widget_test_link_email(
+        recipient_email=str(payload.to_email),
+        subject=subject,
+        message_body=body,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+
+    return {"message": "Credit estimate share email sent successfully"}
 
 
 @router.delete("/organizations/{org_id}")

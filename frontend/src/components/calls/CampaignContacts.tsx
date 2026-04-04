@@ -516,7 +516,7 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                     aria-label="close"
                                     color="inherit"
                                     size="small"
-                                    onClick={() => setError("")} // clears the error
+                                    onClick={() => setSuccess("")} // clears the success message
                                 >
                                     <CloseIcon fontSize="inherit" />
                                 </IconButton>

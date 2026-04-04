@@ -100,4 +100,14 @@ export const organizationService = {
   async deleteUser(userId: number): Promise<void> {
     await api.delete(`/api/organizations/users/${userId}`);
   },
+
+  async getOrgSettings() {
+    const res = await api.get("/api/organization-settings");
+    return res.data;
+  },
+
+  async updateOrgSettings(data: any) {
+    const res = await api.put("/api/organization-settings", data);
+    return res.data;
+  },
 };

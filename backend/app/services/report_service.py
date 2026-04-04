@@ -1,6 +1,11 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import String, cast, func
 from app.models import ConversationMetrics, Conversation, Lead, Plan
+from app.models.call_campaigns import CallCampaign
+from app.models.calling_agents import CallingAgent
+from app.models.call_logs import CallLog
+from app.models.products import Product
+from app.models.user import Organization
 from app.config import settings
 from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits, get_or_create_usage, get_or_create_limits
 from app.services.funnel_category_service import get_funnel_categories
@@ -9,6 +14,14 @@ from typing import Optional, Dict, List
 import logging
 
 logger = logging.getLogger(__name__)
+
+VOICE_LEAD_OUTCOME_OPTIONS = [
+    "positive",
+    "satisfactory",
+    "neutral",
+    "negative",
+    "unresolved",
+]
 
 
 def get_conversation_metrics_query(
@@ -414,6 +427,238 @@ def get_leads_report(
         "leads_by_date": leads_by_date,
         "leads_with_email": leads_with_email,
         "conversion_rate": round(conversion_rate, 2),
+    }
+
+
+def _format_duration_label(total_seconds: int) -> str:
+    total_seconds = max(int(total_seconds or 0), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes > 0:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
+def _find_latest_campaign(
+    db: Session,
+    organization_id: int,
+    campaign_name: Optional[str] = None,
+):
+    query = db.query(CallCampaign).filter(
+        CallCampaign.organization_id == organization_id,
+        CallCampaign.is_deleted == False,
+    )
+    if campaign_name:
+        query = query.filter(CallCampaign.name == campaign_name)
+
+    return query.order_by(
+        CallCampaign.created_at.desc(),
+        CallCampaign.id.desc(),
+    ).first()
+
+
+def get_voice_campaign_filter_options(db: Session, organization_id: int):
+    agent_names = [
+        row[0]
+        for row in db.query(CallingAgent.name)
+        .filter(
+            CallingAgent.organization_id == organization_id,
+            CallingAgent.is_deleted == False,
+            CallingAgent.name.isnot(None),
+        )
+        .distinct()
+        .order_by(CallingAgent.name.asc())
+        .all()
+        if row[0]
+    ]
+
+    campaign_name_rows = (
+        db.query(
+            CallCampaign.name.label("name"),
+            func.max(CallCampaign.created_at).label("latest_created_at"),
+        )
+        .filter(
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False,
+            CallCampaign.name.isnot(None),
+        )
+        .group_by(CallCampaign.name)
+        .order_by(func.max(CallCampaign.created_at).desc(), CallCampaign.name.asc())
+        .all()
+    )
+    campaign_names = [row.name for row in campaign_name_rows if row.name]
+
+    latest_campaign = _find_latest_campaign(db, organization_id)
+
+    return {
+        "agent_names": agent_names,
+        "campaign_names": campaign_names,
+        "lead_outcomes": VOICE_LEAD_OUTCOME_OPTIONS,
+        "default_campaign_name": latest_campaign.name if latest_campaign else None,
+    }
+
+
+def get_voice_campaign_report(
+    db: Session,
+    organization_id: int,
+    agent_name: Optional[str] = None,
+    campaign_name: Optional[str] = None,
+    lead_outcomes: Optional[List[str]] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """
+    Voice campaign report based on:
+      Lead -> CallingAgent (widget_id = external_agent_a_id)
+      Lead -> Organization
+      CallingAgent -> CallCampaign (organization-level join)
+      Lead -> Product (optional)
+    """
+    selected_campaign = _find_latest_campaign(
+        db,
+        organization_id,
+        campaign_name=campaign_name,
+    )
+
+    if not selected_campaign:
+        return {
+            "total": 0,
+            "summary": {
+                "total_calls": 0,
+                "successful_attempts": 0,
+                "sum_call_duration_seconds": 0,
+                "sum_call_duration_minutes": 0.0,
+                "sum_call_duration_label": "0s",
+                "campaign_duration_seconds": 0,
+                "campaign_duration_minutes": 0.0,
+                "campaign_duration_label": "0s",
+            },
+            "items": [],
+        }
+
+    normalized_outcomes: List[str] = []
+    if lead_outcomes:
+        normalized_outcomes = [
+            outcome.strip().lower()
+            for outcome in lead_outcomes
+            if outcome and outcome.strip()
+        ]
+
+    query = db.query(
+        CallingAgent.name.label("agent_name"),
+        Lead.name.label("customer_name"),
+        Lead.email.label("email"),
+        Lead.company.label("company"),
+        Organization.name.label("organization_name"),
+        CallCampaign.name.label("campaign_name"),
+        Lead.source.label("campaign_source"),
+        Lead.funnel_stage.label("funnel_stage"),
+        Lead.lead_outcome.label("lead_outcome"),
+        Lead.created_at.label("created_at"),
+        Product.name.label("product_name"),
+    ).join(
+        CallingAgent,
+        Lead.widget_id == CallingAgent.external_agent_a_id,
+    ).join(
+        Organization,
+        Lead.organization_id == Organization.id,
+    ).join(
+        CallCampaign,
+        CallCampaign.organization_id == CallingAgent.organization_id,
+    ).outerjoin(
+        Product,
+        Lead.product_id == cast(Product.id, String),
+    ).filter(
+        Lead.organization_id == organization_id,
+        CallingAgent.organization_id == organization_id,
+        CallCampaign.organization_id == organization_id,
+        CallCampaign.id == selected_campaign.id,
+    )
+
+    if agent_name:
+        query = query.filter(CallingAgent.name == agent_name)
+
+    if normalized_outcomes:
+        query = query.filter(func.lower(func.coalesce(Lead.lead_outcome, "")).in_(normalized_outcomes))
+
+    if start_date:
+        query = query.filter(Lead.created_at >= start_date)
+
+    if end_date:
+        query = query.filter(Lead.created_at <= end_date)
+
+    successful_attempts = query.filter(Lead.lead_outcome.isnot(None)).count()
+
+    range_row = query.with_entities(
+        func.min(Lead.created_at).label("min_created_at"),
+        func.max(Lead.created_at).label("max_created_at"),
+    ).first()
+
+    campaign_duration_seconds = 0
+    if range_row and range_row.min_created_at and range_row.max_created_at:
+        campaign_duration_seconds = max(
+            int((range_row.max_created_at - range_row.min_created_at).total_seconds()),
+            0,
+        )
+
+    total = query.count()
+    rows = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
+
+    sum_call_duration_query = db.query(
+        func.coalesce(func.sum(CallLog.duration), 0)
+    ).filter(
+        CallLog.organization_id == organization_id,
+        CallLog.campaign_id == selected_campaign.id,
+    )
+
+    if agent_name:
+        sum_call_duration_query = sum_call_duration_query.join(
+            CallingAgent,
+            CallingAgent.id == CallLog.agent_id,
+        ).filter(
+            CallingAgent.name == agent_name,
+        )
+
+    if start_date:
+        sum_call_duration_query = sum_call_duration_query.filter(func.coalesce(CallLog.start_time, CallLog.created_at) >= start_date)
+
+    if end_date:
+        sum_call_duration_query = sum_call_duration_query.filter(func.coalesce(CallLog.start_time, CallLog.created_at) <= end_date)
+
+    sum_call_duration_seconds = int(sum_call_duration_query.scalar() or 0)
+
+    return {
+        "total": total,
+        "summary": {
+            "total_calls": total,
+            "successful_attempts": successful_attempts,
+            "sum_call_duration_seconds": sum_call_duration_seconds,
+            "sum_call_duration_minutes": round(sum_call_duration_seconds / 60, 2),
+            "sum_call_duration_label": _format_duration_label(sum_call_duration_seconds),
+            "campaign_duration_seconds": campaign_duration_seconds,
+            "campaign_duration_minutes": round(campaign_duration_seconds / 60, 2),
+            "campaign_duration_label": _format_duration_label(campaign_duration_seconds),
+        },
+        "items": [
+            {
+                "agent_name": row.agent_name,
+                "customer_name": row.customer_name,
+                "email": row.email,
+                "company": row.company,
+                "organization_name": row.organization_name,
+                "campaign_name": row.campaign_name,
+                "campaign_source": row.campaign_source,
+                "funnel_stage": row.funnel_stage,
+                "lead_outcome": row.lead_outcome,
+                "created_at": row.created_at,
+                "product_name": row.product_name,
+            }
+            for row in rows
+        ],
     }
 
 
