@@ -56,6 +56,7 @@ import KeyboardDoubleArrowDownIcon from '@mui/icons-material/KeyboardDoubleArrow
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import AdminLayout from '../components/Layout/AdminLayout';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import {
   campaignService,
   CampaignItem,
@@ -234,6 +235,8 @@ const CampaignManagementPage: React.FC = () => {
   const [contactListPage, setContactListPage] = useState(0);
   const [contactListRowsPerPage, setContactListRowsPerPage] = useState(10);
   const [contactListTotal, setContactListTotal] = useState(0);
+  const [contactListToDelete, setContactListToDelete] = useState<ContactListItem | null>(null);
+  const [contactListDeleteSubmitting, setContactListDeleteSubmitting] = useState(false);
 
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
@@ -646,12 +649,14 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
-  const handleDeleteList = async (id: number) => {
-    if (!window.confirm('Delete this contact list?')) return;
+  const handleConfirmDeleteContactList = async () => {
+    if (!contactListToDelete?.id) return;
 
-    setLoading(true);
+    setContactListDeleteSubmitting(true);
     try {
+      const id = contactListToDelete.id;
       await campaignService.deleteContactList(id);
+      setContactListToDelete(null);
       if (selectedListId === id) {
         setSelectedListId('');
         setContacts([]);
@@ -667,7 +672,7 @@ const CampaignManagementPage: React.FC = () => {
     } catch (err: any) {
       showError(err?.response?.data?.detail || 'Failed to delete contact list');
     } finally {
-      setLoading(false);
+      setContactListDeleteSubmitting(false);
     }
   };
 
@@ -2310,7 +2315,12 @@ const CampaignManagementPage: React.FC = () => {
                               <Button size="small" startIcon={<ListAltIcon />} onClick={() => handleSelectListForContacts(list.id)}>
                                 View Contacts
                               </Button>
-                              <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteList(list.id)}>
+                              <Button
+                                size="small"
+                                color="error"
+                                startIcon={<DeleteIcon />}
+                                onClick={() => setContactListToDelete(list)}
+                              >
                                 Delete
                               </Button>
                             </Stack>
@@ -3386,6 +3396,22 @@ const CampaignManagementPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <ConfirmDialog
+          open={Boolean(contactListToDelete)}
+          title="Delete contact list?"
+          description={
+            contactListToDelete
+              ? `This will permanently remove the list "${contactListToDelete.list_name}" and all contacts in it. This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmColor="error"
+          loading={contactListDeleteSubmitting}
+          onCancel={() => !contactListDeleteSubmitting && setContactListToDelete(null)}
+          onConfirm={handleConfirmDeleteContactList}
+        />
       </Stack>
       </Box>
     </AdminLayout>

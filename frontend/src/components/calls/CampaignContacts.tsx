@@ -41,8 +41,13 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import { ConfirmDialog } from '../Common/ConfirmDialog';
 
 type ContactForm = Omit<ContactItem, 'id' | 'created_at'>;
+
+type PendingDelete =
+    | { kind: 'list'; id: number; name: string }
+    | { kind: 'contact'; id: number; name: string };
 
 interface CampaignContactsProps {
     tab: number;
@@ -82,6 +87,8 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
     const [editContact, setEditContact] = useState<ContactItem | null>(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
     const [errors, setErrors] = useState<any>({});
     const [form, setForm] = useState<ContactForm>({
         name: "",
@@ -204,21 +211,47 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
 
 
 
-    const handleDeleteContact = async (id: number) => {
-        if (!selectedListId) return;
-        setLoading(true);
+    const handleConfirmDelete = async () => {
+        if (!pendingDelete) return;
+
+        setDeleteSubmitting(true);
+        setError('');
+        setSuccess('');
         try {
-            await campaignService.deleteContact(id);
-            showSuccess('Contact deleted');
-            await loadContacts(Number(selectedListId));
-            await loadContactLists();
+            if (pendingDelete.kind === 'list') {
+                await campaignService.deleteContactList(pendingDelete.id);
+                if (selectedListId === pendingDelete.id) {
+                    setSelectedListId('');
+                    setContacts([]);
+                }
+                if (uploadListId === pendingDelete.id) {
+                    setUploadListId('');
+                }
+                if (createContactListId === pendingDelete.id) {
+                    setCreateContactListId('');
+                }
+                showSuccess('Contact list deleted');
+                await loadContactLists();
+            } else {
+                if (!selectedListId) {
+                    showError('No list selected');
+                    return;
+                }
+                await campaignService.deleteContact(pendingDelete.id);
+                showSuccess('Contact deleted');
+                await loadContacts(Number(selectedListId));
+                await loadContactLists();
+            }
+            setPendingDelete(null);
         } catch (err: any) {
-            showError(err?.response?.data?.detail || 'Failed to delete contact');
+            const detail = err?.response?.data?.detail;
+            const fallback =
+                pendingDelete.kind === 'list' ? 'Failed to delete contact list' : 'Failed to delete contact';
+            showError(typeof detail === 'string' ? detail : fallback);
         } finally {
-            setLoading(false);
+            setDeleteSubmitting(false);
         }
     };
-
 
     /* ---------------------------
         Save Contact
@@ -328,31 +361,6 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
             await loadContactLists();
         } catch (err: any) {
             showError(err?.response?.data?.detail || 'Failed to create contact list');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDeleteList = async (id: number) => {
-        if (!window.confirm('Delete this contact list?')) return;
-
-        setLoading(true);
-        try {
-            await campaignService.deleteContactList(id);
-            if (selectedListId === id) {
-                setSelectedListId('');
-                setContacts([]);
-            }
-            if (uploadListId === id) {
-                setUploadListId('');
-            }
-            if (createContactListId === id) {
-                setCreateContactListId('');
-            }
-            showSuccess('Contact list deleted');
-            await loadContactLists();
-        } catch (err: any) {
-            showError(err?.response?.data?.detail || 'Failed to delete contact list');
         } finally {
             setLoading(false);
         }
@@ -583,7 +591,14 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                                         <Button size="small" startIcon={<ListAltIcon />} onClick={() => handleSelectListForContacts(list.id)}>
                                                             View Contacts
                                                         </Button>
-                                                        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteList(list.id)}>
+                                                        <Button
+                                                            size="small"
+                                                            color="error"
+                                                            startIcon={<DeleteIcon />}
+                                                            onClick={() =>
+                                                                setPendingDelete({ kind: 'list', id: list.id, name: list.list_name })
+                                                            }
+                                                        >
                                                             Delete
                                                         </Button>
                                                     </Stack>
@@ -661,7 +676,18 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                                                         <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => handleEdit(contact)}>
                                                             Edit
                                                         </Button>
-                                                        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteContact(contact.id)}>
+                                                        <Button
+                                                            size="small"
+                                                            color="error"
+                                                            startIcon={<DeleteIcon />}
+                                                            onClick={() =>
+                                                                setPendingDelete({
+                                                                    kind: 'contact',
+                                                                    id: contact.id,
+                                                                    name: contact.name?.trim() || contact.email || contact.phone || 'this contact',
+                                                                })
+                                                            }
+                                                        >
                                                             Delete
                                                         </Button>
                                                     </TableCell>
@@ -906,6 +932,24 @@ const CampaignContacts = ({ tab, setTab }: CampaignContactsProps) => {
                     </DialogActions>
 
                 </Dialog>
+
+                <ConfirmDialog
+                    open={Boolean(pendingDelete)}
+                    title={pendingDelete?.kind === 'contact' ? 'Delete contact?' : 'Delete contact list?'}
+                    description={
+                        pendingDelete
+                            ? pendingDelete.kind === 'list'
+                                ? `This will permanently remove the list "${pendingDelete.name}" and all contacts in it. This action cannot be undone.`
+                                : `This will permanently remove "${pendingDelete.name}" from this list. This action cannot be undone.`
+                            : undefined
+                    }
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    confirmColor="error"
+                    loading={deleteSubmitting}
+                    onCancel={() => !deleteSubmitting && setPendingDelete(null)}
+                    onConfirm={handleConfirmDelete}
+                />
             </Box>
         </>
 

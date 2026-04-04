@@ -1,49 +1,57 @@
-import api from './api';
+import api from "./api";
 
 export const dashboardService = {
   async getStats() {
-    const response = await api.get('/api/admin/dashboard/stats');
+    const response = await api.get("/api/admin/dashboard/stats");
     return response.data;
   },
 
   async getDailyConversations(days: number = 7) {
-    const response = await api.get(`/api/admin/dashboard/conversations/daily?days=${days}`);
+    const response = await api.get(
+      `/api/admin/dashboard/conversations/daily?days=${days}`,
+    );
     return response.data;
   },
 
   async getRecentLeads(limit: number = 10) {
-    const response = await api.get(`/api/admin/dashboard/leads/recent?limit=${limit}`);
+    const response = await api.get(
+      `/api/admin/dashboard/leads/recent?limit=${limit}`,
+    );
     return response.data;
   },
 
   async getWidgets() {
-    // Use organization endpoint instead of admin endpoint for regular users
-    const response = await api.get('/api/organizations/me/widgets');
+    // Use organization endpoint instead of admin endpoint for regular users//add source parameter
+    const response = await api.get("/api/organizations/me/widgets");
     return response.data;
   },
 
   async getKnowledgeSources() {
-    const response = await api.get('/api/admin/dashboard/knowledge-sources');
+    const response = await api.get("/api/admin/dashboard/knowledge-sources");
     return response.data;
   },
 
   async getLeadsBySource() {
-    const response = await api.get('/api/admin/dashboard/leads/by-source');
+    const response = await api.get("/api/admin/dashboard/leads/by-source");
     return response.data;
   },
 
   async getLeadsFunnel() {
-    const response = await api.get('/api/admin/dashboard/leads/funnel');
+    const response = await api.get("/api/admin/dashboard/leads/funnel");
     return response.data;
   },
 
   async getTopSessions(limit: number = 10) {
-    const response = await api.get(`/api/admin/dashboard/top-sessions?limit=${limit}`);
+    const response = await api.get(
+      `/api/admin/dashboard/top-sessions?limit=${limit}`,
+    );
     return response.data;
   },
 
   async getConversationTrend(days: number = 30) {
-    const response = await api.get(`/api/admin/dashboard/conversation-trend?days=${days}`);
+    const response = await api.get(
+      `/api/admin/dashboard/conversation-trend?days=${days}`,
+    );
     return response.data;
   },
 };

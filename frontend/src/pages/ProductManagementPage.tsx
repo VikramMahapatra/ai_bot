@@ -28,6 +28,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -63,6 +64,8 @@ const ProductManagementPage: React.FC = () => {
     });
 
     const [productError, setProductError] = useState<string | null>(null);
+    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
     useEffect(() => {
         fetchProducts();
@@ -149,11 +152,15 @@ const ProductManagementPage: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!window.confirm("Delete this product?")) return;
+    const handleConfirmDeleteProduct = async () => {
+        if (!productToDelete?.id) return;
 
-        await productService.deleteUser(id);
-        fetchProducts();
+        setDeleteSubmitting(true);
+        setError(null);
+        await productService.deleteUser(productToDelete.id);
+        setProductToDelete(null);
+        await fetchProducts();
+        setDeleteSubmitting(false);
     };
 
     const validateForm = () => {
@@ -329,9 +336,7 @@ const ProductManagementPage: React.FC = () => {
                                                         <Tooltip title="Delete">
                                                             <IconButton
                                                                 color="error"
-                                                                onClick={() =>
-                                                                    handleDelete(product.id)
-                                                                }
+                                                                onClick={() => setProductToDelete(product)}
                                                             >
                                                                 <DeleteIcon />
                                                             </IconButton>
@@ -445,6 +450,22 @@ const ProductManagementPage: React.FC = () => {
                         </Button>
                     </DialogActions>
                 </Dialog>
+
+                <ConfirmDialog
+                    open={Boolean(productToDelete)}
+                    title="Delete product?"
+                    description={
+                        productToDelete
+                            ? `This will permanently remove "${productToDelete.name}" (${productToDelete.code}). This action cannot be undone.`
+                            : undefined
+                    }
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    confirmColor="error"
+                    loading={deleteSubmitting}
+                    onCancel={() => !deleteSubmitting && setProductToDelete(null)}
+                    onConfirm={handleConfirmDeleteProduct}
+                />
             </Box>
         </AdminLayout>
     );

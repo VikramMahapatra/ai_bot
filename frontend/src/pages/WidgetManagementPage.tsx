@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/Layout/AdminLayout';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import api from '../services/api';
 import { buildPublicUrl } from '../config/env';
 
@@ -131,6 +132,8 @@ const WidgetManagementPage: React.FC = () => {
   const [emailShareSubject, setEmailShareSubject] = useState('');
   const [emailShareBody, setEmailShareBody] = useState('');
   const [emailShareSending, setEmailShareSending] = useState(false);
+  const [widgetToDelete, setWidgetToDelete] = useState<WidgetConfig | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfigSummary>({ configured: false });
   const [formData, setFormData] = useState<WidgetConfig>({
@@ -215,16 +218,21 @@ const WidgetManagementPage: React.FC = () => {
     setEmailShareSending(false);
   };
 
-  const handleDelete = async (widgetId: string) => {
-    if (!window.confirm('Are you sure you want to delete this widget?')) return;
+  const handleConfirmDeleteWidget = async () => {
+    const widgetId = widgetToDelete?.widget_id?.trim();
+    if (!widgetId) return;
 
+    setDeleteSubmitting(true);
     try {
       await api.delete(`/api/admin/widget/config/${widgetId}`);
       setSuccess('Widget deleted successfully');
       setError('');
-      fetchWidgets();
+      setWidgetToDelete(null);
+      await fetchWidgets();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to delete widget');
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -858,7 +866,7 @@ const WidgetManagementPage: React.FC = () => {
                             <IconButton
                               size="small"
                               title="Delete"
-                              onClick={() => handleDelete(widgetId)}
+                              onClick={() => setWidgetToDelete(widget)}
                               disabled={!widgetId}
                               color="error"
                               sx={{ p: 0.45 }}
@@ -1231,6 +1239,22 @@ const WidgetManagementPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(widgetToDelete)}
+        title="Delete agent?"
+        description={
+          widgetToDelete
+            ? `This will permanently remove "${widgetToDelete.name}" and its configuration. This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setWidgetToDelete(null)}
+        onConfirm={handleConfirmDeleteWidget}
+      />
     </Box>
     </AdminLayout>
   );
