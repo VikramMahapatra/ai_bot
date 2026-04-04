@@ -816,3 +816,244 @@ def init_db():
                 conn.commit()
             except Exception:
                 pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_credit_allocations')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "price" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_allocations ADD COLUMN price FLOAT DEFAULT 0"))
+                if "payment_status" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_allocations ADD COLUMN payment_status TEXT DEFAULT 'pending'"))
+                if "start_date" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_allocations ADD COLUMN start_date DATETIME"))
+                if "end_date" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_allocations ADD COLUMN end_date DATETIME"))
+                if "expiry_days" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_allocations ADD COLUMN expiry_days INTEGER"))
+                conn.execute(text("UPDATE organization_credit_allocations SET price = 0 WHERE price IS NULL"))
+                conn.execute(text("UPDATE organization_credit_allocations SET payment_status = 'pending' WHERE payment_status IS NULL OR TRIM(payment_status) = ''"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS organization_credit_profiles (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL UNIQUE,
+                        total_price FLOAT DEFAULT 0,
+                        buffer_percent FLOAT DEFAULT 0,
+                        discount_percent FLOAT DEFAULT 0,
+                        payment_status TEXT DEFAULT 'pending',
+                        start_date DATETIME,
+                        end_date DATETIME,
+                        expiry_days INTEGER,
+                        notes TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME,
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_organization_credit_profiles_organization_id ON organization_credit_profiles (organization_id)"))
+            except Exception:
+                pass
+
+            try:
+                cols = conn.execute(text("PRAGMA table_info('organization_credit_profiles')")).fetchall()
+                col_names = {row[1] for row in cols}
+                if "buffer_percent" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_profiles ADD COLUMN buffer_percent FLOAT DEFAULT 0"))
+                if "discount_percent" not in col_names:
+                    conn.execute(text("ALTER TABLE organization_credit_profiles ADD COLUMN discount_percent FLOAT DEFAULT 0"))
+                conn.execute(text("UPDATE organization_credit_profiles SET buffer_percent = 0 WHERE buffer_percent IS NULL"))
+                conn.execute(text("UPDATE organization_credit_profiles SET discount_percent = 0 WHERE discount_percent IS NULL"))
+            except Exception:
+                pass
+
+            try:
+                profile_count = conn.execute(text("SELECT COUNT(1) FROM organization_credit_profiles")).scalar() or 0
+                if int(profile_count) == 0:
+                    legacy_rows = conn.execute(text("""
+                        SELECT
+                            organization_id,
+                            SUM(COALESCE(price, 0)) AS total_price,
+                            MIN(start_date) AS start_date,
+                            MAX(end_date) AS end_date,
+                            MAX(expiry_days) AS expiry_days,
+                            MAX(notes) AS notes,
+                            SUM(CASE WHEN LOWER(COALESCE(payment_status, '')) = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+                            SUM(CASE WHEN LOWER(COALESCE(payment_status, '')) = 'paid' THEN 1 ELSE 0 END) AS paid_count,
+                            COUNT(1) AS row_count
+                        FROM organization_credit_allocations
+                        WHERE is_active = 1
+                        GROUP BY organization_id
+                    """)).fetchall()
+
+                    for row in legacy_rows:
+                        row_count = int(row[8] or 0)
+                        paid_count = int(row[7] or 0)
+                        failed_count = int(row[6] or 0)
+                        payment_status = "pending"
+                        if row_count > 0 and paid_count == row_count:
+                            payment_status = "paid"
+                        elif failed_count > 0:
+                            payment_status = "failed"
+                        elif paid_count > 0:
+                            payment_status = "partial"
+
+                        conn.execute(
+                            text("""
+                                INSERT INTO organization_credit_profiles (
+                                    organization_id,
+                                    total_price,
+                                    payment_status,
+                                    start_date,
+                                    end_date,
+                                    expiry_days,
+                                    notes
+                                ) VALUES (
+                                    :organization_id,
+                                    :total_price,
+                                    :payment_status,
+                                    :start_date,
+                                    :end_date,
+                                    :expiry_days,
+                                    :notes
+                                )
+                            """),
+                            {
+                                "organization_id": row[0],
+                                "total_price": float(row[1] or 0),
+                                "payment_status": payment_status,
+                                "start_date": row[2],
+                                "end_date": row[3],
+                                "expiry_days": row[4],
+                                "notes": row[5],
+                            },
+                        )
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS organization_credit_change_logs (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        price_matrix_item_id INTEGER,
+                        change_type TEXT NOT NULL,
+                        previous_json TEXT,
+                        new_json TEXT,
+                        description TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id),
+                        FOREIGN KEY(price_matrix_item_id) REFERENCES price_matrix_items (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_organization_credit_change_logs_organization_id ON organization_credit_change_logs (organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_organization_credit_change_logs_price_matrix_item_id ON organization_credit_change_logs (price_matrix_item_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_organization_credit_change_logs_change_type ON organization_credit_change_logs (change_type)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS billing_invoices (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        invoice_number TEXT NOT NULL UNIQUE,
+                        issue_date DATETIME NOT NULL,
+                        due_date DATETIME,
+                        billing_start_date DATETIME,
+                        billing_end_date DATETIME,
+                        amount FLOAT DEFAULT 0,
+                        paid_amount FLOAT DEFAULT 0,
+                        status TEXT DEFAULT 'pending',
+                        notes TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME,
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoices_organization_id ON billing_invoices (organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoices_invoice_number ON billing_invoices (invoice_number)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoices_status ON billing_invoices (status)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS billing_payments (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        invoice_id INTEGER,
+                        amount FLOAT DEFAULT 0,
+                        payment_date DATETIME NOT NULL,
+                        method TEXT DEFAULT 'bank_transfer',
+                        reference TEXT,
+                        status TEXT DEFAULT 'completed',
+                        notes TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id),
+                        FOREIGN KEY(invoice_id) REFERENCES billing_invoices (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_payments_organization_id ON billing_payments (organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_payments_invoice_id ON billing_payments (invoice_id)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS billing_invoice_items (
+                        id INTEGER PRIMARY KEY,
+                        invoice_id INTEGER NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        price_matrix_item_id INTEGER,
+                        category TEXT DEFAULT '',
+                        module TEXT DEFAULT '',
+                        sub_module TEXT,
+                        billing_unit TEXT,
+                        quantity FLOAT,
+                        credits_per_unit FLOAT,
+                        allocated_credits FLOAT DEFAULT 0,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(invoice_id) REFERENCES billing_invoices (id),
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id),
+                        FOREIGN KEY(price_matrix_item_id) REFERENCES price_matrix_items (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoice_items_invoice_id ON billing_invoice_items (invoice_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoice_items_organization_id ON billing_invoice_items (organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_invoice_items_price_matrix_item_id ON billing_invoice_items (price_matrix_item_id)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS billing_bills (
+                        id INTEGER PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        invoice_id INTEGER NOT NULL UNIQUE,
+                        payment_id INTEGER,
+                        bill_number TEXT NOT NULL UNIQUE,
+                        issued_date DATETIME NOT NULL,
+                        amount FLOAT DEFAULT 0,
+                        payment_method TEXT,
+                        payment_reference TEXT,
+                        notes TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(organization_id) REFERENCES organizations (id),
+                        FOREIGN KEY(invoice_id) REFERENCES billing_invoices (id),
+                        FOREIGN KEY(payment_id) REFERENCES billing_payments (id)
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_bills_organization_id ON billing_bills (organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_bills_invoice_id ON billing_bills (invoice_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_bills_payment_id ON billing_bills (payment_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_bills_bill_number ON billing_bills (bill_number)"))
+            except Exception:
+                pass
+
+            try:
+                conn.commit()
+            except Exception:
+                pass
