@@ -9,6 +9,17 @@ import {
   CallingNumber,
   OrganizationReport,
   OrganizationReportResponse,
+  PriceMatrixItem,
+  PriceMatrixItemPayload,
+  PriceMatrixEstimateRequest,
+  PriceMatrixEstimateResponse,
+  CreditEstimatorShareCreateRequest,
+  CreditEstimatorShareExtendRequest,
+  CreditEstimatorShareResponse,
+  CreditEstimatorSharePublicResponse,
+  CreditEstimatorShareEmailRequest,
+  CreditEstimatorResultListItem,
+  CreditEstimatorShareUpdateRequest,
 } from '../types';
 
 export const superadminService = {
@@ -140,6 +151,82 @@ export const superadminService = {
   async getOrganizationReport(params: { search?: string; skip?: number; limit?: number } = {}): Promise<OrganizationReportResponse> {
     const response = await api.get<OrganizationReportResponse>(`/api/superadmin/org/organization-calling-report`, { params });
     return response.data;
-  }
+  },
+  
+  async listPriceMatrix(activeOnly = false): Promise<PriceMatrixItem[]> {
+    const response = await api.get<PriceMatrixItem[]>('/api/superadmin/price-matrix', {
+      params: { active_only: activeOnly },
+    });
+    return response.data;
+  },
+
+  async createPriceMatrixItem(payload: PriceMatrixItemPayload): Promise<PriceMatrixItem> {
+    const response = await api.post<PriceMatrixItem>('/api/superadmin/price-matrix', payload);
+    return response.data;
+  },
+
+  async updatePriceMatrixItem(itemId: number, payload: Partial<PriceMatrixItemPayload>): Promise<PriceMatrixItem> {
+    const response = await api.put<PriceMatrixItem>(`/api/superadmin/price-matrix/item/${itemId}`, payload);
+    return response.data;
+  },
+
+  async deletePriceMatrixItem(itemId: number) {
+    const response = await api.delete<{ success: boolean; deleted_item_id: number }>(`/api/superadmin/price-matrix/item/${itemId}`);
+    return response.data;
+  },
+
+  async estimatePriceMatrix(payload: PriceMatrixEstimateRequest): Promise<PriceMatrixEstimateResponse> {
+    const response = await api.post<PriceMatrixEstimateResponse>('/api/superadmin/price-matrix/estimate', payload);
+    return response.data;
+  },
+
+  async createCreditEstimatorShare(payload: CreditEstimatorShareCreateRequest): Promise<CreditEstimatorShareResponse> {
+    const response = await api.post<CreditEstimatorShareResponse>('/api/superadmin/credit-estimator/share', payload);
+    return response.data;
+  },
+
+  async listCreditEstimatorResults(params?: { company_name?: string; status_filter?: 'all' | 'active' | 'expired' }): Promise<CreditEstimatorResultListItem[]> {
+    const response = await api.get<CreditEstimatorResultListItem[]>('/api/superadmin/credit-estimator/results', {
+      params,
+    });
+    return response.data;
+  },
+
+  async getCreditEstimatorResult(resultId: number): Promise<CreditEstimatorResultListItem> {
+    const response = await api.get<CreditEstimatorResultListItem>(`/api/superadmin/credit-estimator/results/${resultId}`);
+    return response.data;
+  },
+
+  async updateCreditEstimatorResult(resultId: number, payload: CreditEstimatorShareUpdateRequest): Promise<CreditEstimatorShareResponse> {
+    const response = await api.put<CreditEstimatorShareResponse>(`/api/superadmin/credit-estimator/results/${resultId}`, payload);
+    return response.data;
+  },
+
+  async extendCreditEstimatorShare(token: string, payload: CreditEstimatorShareExtendRequest): Promise<CreditEstimatorShareResponse> {
+    const response = await api.post<CreditEstimatorShareResponse>(`/api/superadmin/credit-estimator/share/${encodeURIComponent(token)}/extend`, payload);
+    return response.data;
+  },
+
+  async extendCreditEstimatorResult(resultId: number, payload: CreditEstimatorShareExtendRequest): Promise<CreditEstimatorShareResponse> {
+    const response = await api.post<CreditEstimatorShareResponse>(`/api/superadmin/credit-estimator/results/${resultId}/extend`, payload);
+    return response.data;
+  },
+
+  async getCreditEstimatorSharePublic(token: string): Promise<CreditEstimatorSharePublicResponse> {
+    const response = await api.get<CreditEstimatorSharePublicResponse>(`/api/superadmin/credit-estimator/share/${encodeURIComponent(token)}`);
+    return response.data;
+  },
+
+  async sendCreditEstimatorShareEmail(token: string, payload: CreditEstimatorShareEmailRequest) {
+    const response = await api.post<{ message: string }>(`/api/superadmin/credit-estimator/share/${encodeURIComponent(token)}/email`, payload);
+    return response.data;
+  },
+
+  async sendCreditEstimatorResultEmail(resultId: number, payload: CreditEstimatorShareEmailRequest) {
+    const response = await api.post<{ message: string }>(`/api/superadmin/credit-estimator/results/${resultId}/email`, payload);
+    return response.data;
+  },
+
+
 
 };

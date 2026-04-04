@@ -3,6 +3,8 @@ from app.models.super_admin import SuperAdmin
 from app.models.organization_limits import OrganizationLimits
 from app.models.organization_usage import OrganizationUsage
 from app.models.plan import Plan
+from app.models.price_matrix_item import PriceMatrixItem
+from app.models.credit_estimator_share import CreditEstimatorShare
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_subscription_usage import OrganizationSubscriptionUsage
 from app.models.knowledge_source import KnowledgeSource, SourceType
@@ -36,6 +38,8 @@ __all__ = [
     "OrganizationLimits",
     "OrganizationUsage",
     "Plan",
+    "PriceMatrixItem",
+    "CreditEstimatorShare",
     "OrganizationSubscription",
     "OrganizationSubscriptionUsage",
     "KnowledgeSource",

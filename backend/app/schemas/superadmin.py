@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -259,6 +259,135 @@ class CallingNumberResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PriceMatrixItemBase(BaseModel):
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: Optional[float] = None
+    credit_formula: Optional[str] = None
+    definition: Optional[str] = None
+    overage_handling: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class PriceMatrixItemCreate(PriceMatrixItemBase):
+    pass
+
+
+class PriceMatrixItemUpdate(BaseModel):
+    category: Optional[str] = None
+    module: Optional[str] = None
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: Optional[float] = None
+    credit_formula: Optional[str] = None
+    definition: Optional[str] = None
+    overage_handling: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class PriceMatrixItemResponse(PriceMatrixItemBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PriceMatrixEstimateLine(BaseModel):
+    price_matrix_item_id: int
+    quantity: float = Field(ge=0)
+
+
+class PriceMatrixEstimateRequest(BaseModel):
+    lines: List[PriceMatrixEstimateLine] = Field(default_factory=list)
+    buffer_percent: float = Field(default=15, ge=0, le=200)
+    discount_percent: float = Field(default=0, ge=0, le=100)
+
+
+class PriceMatrixEstimateBreakdownLine(BaseModel):
+    price_matrix_item_id: int
+    category: str
+    module: str
+    sub_module: Optional[str] = None
+    billing_unit: Optional[str] = None
+    credits_per_unit: float
+    quantity: float
+    estimated_credits: float
+
+
+class PriceMatrixEstimateResponse(BaseModel):
+    subtotal_credits: float
+    buffer_percent: float
+    buffer_credits: float
+    discount_percent: float
+    discount_credits: float
+    final_recommended_credits: float
+    final_recommended_credits_ceiling: int
+    recommended_credits: float
+    recommended_credits_ceiling: int
+    breakdown: List[PriceMatrixEstimateBreakdownLine]
+
+
+class CreditEstimatorShareCreateRequest(PriceMatrixEstimateRequest):
+    company_name: str = Field(min_length=1, max_length=255)
+    valid_for_hours: int = Field(default=8, ge=1, le=168)
+
+
+class CreditEstimatorShareExtendRequest(BaseModel):
+    extra_hours: int = Field(default=8, ge=1, le=168)
+
+
+class CreditEstimatorShareUpdateRequest(BaseModel):
+    company_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    lines: Optional[List[PriceMatrixEstimateLine]] = None
+    buffer_percent: Optional[float] = Field(default=None, ge=0, le=200)
+    discount_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    valid_for_hours: Optional[int] = Field(default=None, ge=1, le=168)
+
+
+class CreditEstimatorShareCreateResponse(BaseModel):
+    id: int
+    company_name: str
+    token: str
+    share_path: str
+    expires_at: datetime
+    expires_in_hours: int
+    estimate: PriceMatrixEstimateResponse
+
+
+class CreditEstimatorShareListItemResponse(BaseModel):
+    id: int
+    company_name: str
+    token: str
+    share_path: str
+    expires_at: datetime
+    created_at: datetime
+    is_active: bool
+    is_expired: bool
+    estimator_input: PriceMatrixEstimateRequest
+    estimate: PriceMatrixEstimateResponse
+
+
+class CreditEstimatorSharePublicResponse(BaseModel):
+    id: int
+    company_name: str
+    token: str
+    estimate: PriceMatrixEstimateResponse
+    created_at: datetime
+    expires_at: datetime
+
+
+class CreditEstimatorShareEmailRequest(BaseModel):
+    to_email: EmailStr
+    subject: str
+    body: str
 
 
 SuperAdminOrganizationResponse.model_rebuild()

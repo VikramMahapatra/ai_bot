@@ -1,6 +1,16 @@
 import api from './api';
 import { Lead, LeadCreate } from '../types';
 
+
+export interface LeadListResponse {
+  items: Lead[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
+}
+
 export const leadService = {
   async createLead(lead: LeadCreate): Promise<Lead> {
     const response = await api.post<Lead>('/api/admin/leads', lead);
@@ -9,12 +19,12 @@ export const leadService = {
 
   async listLeads(
     skip: number = 0,
-    limit: number = 100,
+    limit: number = 10,
     widgetId?: string,
     source?: string,
     funnelStage?: string,
     productId?: string
-  ): Promise<Lead[]> {
+  ): Promise<LeadListResponse> {
     const params = new URLSearchParams({
       skip: String(skip),
       limit: String(limit),
@@ -23,7 +33,7 @@ export const leadService = {
     if (source) params.append('source', source);
     if (funnelStage) params.append('funnel_stage', funnelStage);
     if (productId) params.append('product_id', productId);
-    const response = await api.get<Lead[]>(`/api/admin/leads?${params.toString()}`);
+    const response = await api.get(`/api/admin/leads?${params.toString()}`);
     return response.data;
   },
 
