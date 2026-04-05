@@ -92,6 +92,8 @@ from app.models.organization_calling_numbers import OrganizationCallingNumber
 from app.models.call_campaigns import CallCampaign
 from app.models.call_logs import CallLog
 from app.models.calling_agents import CallingAgent
+from app.api.organization_setting import get_settings
+from app.models.organization_settings import OrganizationSettings
 
 logger = logging.getLogger(__name__)
 
@@ -2388,6 +2390,7 @@ async def send_credit_estimator_share_via_email(
     payload: CreditEstimatorShareEmailRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=True)
     body = (payload.body or "").strip()
@@ -2399,6 +2402,7 @@ async def send_credit_estimator_share_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
+        settings=settings
     )
     if not success:
         raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
@@ -2412,6 +2416,7 @@ async def send_credit_estimator_result_via_email(
     payload: CreditEstimatorShareEmailRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
     if not share:
@@ -2430,6 +2435,7 @@ async def send_credit_estimator_result_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
+        settings=settings
     )
     if not success:
         raise HTTPException(status_code=400, detail=error_message or "Failed to send email")

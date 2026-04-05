@@ -110,4 +110,9 @@ export const organizationService = {
     const res = await api.put("/api/organization-settings", data);
     return res.data;
   },
+
+  async getOrgCredits() {
+    const res = await api.get("/api/organizations/credits/summary");
+    return res.data;
+  },
 };

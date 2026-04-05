@@ -7,7 +7,7 @@ from io import BytesIO
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Query, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File, Header, Query, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -38,6 +38,7 @@ from app.services.campaign_to_lead_rule_engine import (
 )
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 from app.services.limits_service import get_effective_limits
+from app.services.organization_setting_service import get_org_settings
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -457,6 +458,7 @@ def _send_campaign_message(
     contact_index: int,
     tracking_token: Optional[str] = None,
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
+    db: Session = None
 ) -> tuple[bool, Optional[str], Optional[str]]:
     """Send campaign message for the selected channel.
 
@@ -468,6 +470,9 @@ def _send_campaign_message(
             template_blob=campaign.message_template,
             contact_index=contact_index,
         )
+        
+        org_settings = get_org_settings(db, campaign.organization_id)
+        
         return send_campaign_email(
             recipient_email=contact.email or "",
             recipient_name=contact.name or "",
@@ -476,6 +481,7 @@ def _send_campaign_message(
             subject=subject,
             tracking_token=tracking_token,
             tracking_base_url=_get_tracking_base_url(),
+            settings=org_settings
         )
 
     if campaign.campaign_type == "whatsapp":
@@ -547,6 +553,7 @@ def _execute_campaign_now(
             contact_index=for_index,
             tracking_token=tracking_token,
             twilio_sms_config=twilio_sms_config,
+            db=db
         )
 
         log.provider_message_id = provider_message_id
@@ -1319,6 +1326,7 @@ async def upload_contacts_manual(
 async def upload_contacts_csv(
     contact_list_id: int,
     file: UploadFile = File(...),
+    country_code: str = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -1369,13 +1377,19 @@ async def upload_contacts_csv(
     created = 0
     errors = []
     added_contacts = []
+    updated_contacts = []
 
     for index, row in enumerate(rows_iter, start=2):
         try:
+            phone = format_phone_number(
+                row.get("phone"),
+                country_code
+            )
+            
             name, email, phone, company = _validate_contact_payload(
                 row.get("name"),
                 row.get("email"),
-                row.get("phone"),
+                phone,
                 row.get("company"),
             )
 
@@ -1388,7 +1402,7 @@ async def upload_contacts_csv(
                     Contact.phone == phone
                 ).first()
 
-            elif email:
+            if not existing and email:
                 existing = db.query(Contact).filter(
                     Contact.contact_list_id == contact_list.id,
                     Contact.email == email
@@ -1401,7 +1415,7 @@ async def upload_contacts_csv(
                 existing.phone = phone or existing.phone
                 existing.company = company or existing.company
 
-                added_contacts.append({
+                updated_contacts.append({
                     "id": existing.id,
                     "label": f"{existing.name} ({existing.phone})",
                     "name": existing.name,
@@ -1438,9 +1452,9 @@ async def upload_contacts_csv(
 
     return {
         "created": len(added_contacts),
+        "updated": len(updated_contacts),
         "failed": len(errors),
-        "errors": errors,
-        "contacts": added_contacts
+        "errors": errors
     }
 
 
@@ -1870,3 +1884,53 @@ async def get_campaign_logs(
             "limit": limit,
         },
     }
+
+import phonenumbers
+from typing import Optional
+
+
+def format_phone_number(
+    phone_raw: Optional[str],
+    country_code: Optional[str] = None
+) -> Optional[str]:
+    """
+    Format phone number to E.164 format using country code.
+    
+    Handles:
+    - +91XXXXXXXXXX
+    - 91XXXXXXXXXX
+    - XXXXXXXXXX (with country)
+    - International formats
+    
+    Returns:
+        Formatted phone (+XXXXXXXXXXXX) or None
+    """
+
+    if not phone_raw:
+        return None
+
+    phone_raw = str(phone_raw).strip()
+
+    try:
+        # If already has + prefix
+        if phone_raw.startswith("+"):
+            parsed = phonenumbers.parse(phone_raw, None)
+        else:
+            parsed = phonenumbers.parse(
+                phone_raw,
+                country_code.upper() if country_code else None
+            )
+
+        # Validate number
+        if not phonenumbers.is_valid_number(parsed):
+            raise ValueError("Invalid phone number")
+
+        # Format to E.164
+        return phonenumbers.format_number(
+            parsed,
+            phonenumbers.PhoneNumberFormat.E164
+        )
+
+    except Exception:
+        print(f"Failed to parse phone number: {phone_raw} with country code: {country_code}")
+        raise ValueError(f"Invalid phone number: {phone_raw}")

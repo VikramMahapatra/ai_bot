@@ -27,6 +27,9 @@ import re
 import json
 import secrets
 
+from app.models.organization_settings import OrganizationSettings
+from app.api.organization_setting import get_settings
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -40,13 +43,13 @@ def _build_org_domain(name: str) -> str:
     return f"{base}-{secrets.token_hex(3)}"
 
 
-def _ensure_widget_escalation_contacts(config) -> bool:
+def _ensure_widget_escalation_contacts(config, org_settings) -> bool:
     changed = False
     if not getattr(config, "escalation_contact_level_1", None):
-        config.escalation_contact_level_1 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        config.escalation_contact_level_1 = org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
         changed = True
     if not getattr(config, "escalation_contact_level_2", None):
-        config.escalation_contact_level_2 = settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        config.escalation_contact_level_2 = org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
         changed = True
     return changed
 
@@ -359,7 +362,11 @@ async def get_feature_flags(
 
 
 @router.get("/widget/config/{widget_id}")
-async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
+async def get_widget_config(
+    widget_id: str, 
+    db: Session = Depends(get_db), 
+    settings: OrganizationSettings = Depends(get_settings)
+):
     """Get widget configuration (public endpoint)"""
     from app.models import WidgetConfig
 
@@ -367,7 +374,7 @@ async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
 
-    if _ensure_widget_escalation_contacts(config):
+    if _ensure_widget_escalation_contacts(config, settings):
         db.commit()
         db.refresh(config)
 
@@ -422,7 +429,10 @@ async def generate_widget_test_link(
 
 @router.get("/widget/test/config/{widget_id}")
 async def get_widget_test_config(
-    widget_id: str, token: str = Query(..., min_length=1), db: Session = Depends(get_db)
+    widget_id: str, 
+    token: str = Query(..., min_length=1), 
+    db: Session = Depends(get_db),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Get widget config for public test pages using a signed expiring token."""
     _validate_widget_test_link_token(token, widget_id)
@@ -431,7 +441,7 @@ async def get_widget_test_config(
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
 
-    if _ensure_widget_escalation_contacts(config):
+    if _ensure_widget_escalation_contacts(config, settings):
         db.commit()
         db.refresh(config)
 
@@ -443,6 +453,7 @@ async def send_widget_test_link_via_email(
     payload: WidgetTestLinkEmailRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Send a widget test-link email via configured SMTP service."""
     widget_id = (payload.widget_id or "").strip()
@@ -471,6 +482,7 @@ async def send_widget_test_link_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
+        settings=settings
     )
     if not success:
         raise HTTPException(
@@ -525,6 +537,7 @@ async def update_widget_config(
     config_data: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Update widget configuration (only for user's own widgets)"""
     from app.models import WidgetConfig
@@ -559,7 +572,7 @@ async def update_widget_config(
         if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
 
-    _ensure_widget_escalation_contacts(config)
+    _ensure_widget_escalation_contacts(config, settings)
 
     db.commit()
     db.refresh(config)
@@ -594,7 +607,9 @@ async def run_outcome_processing_now(
 
 @router.get("/widgets")
 async def list_widgets(
-    db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_admin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """List all widgets for the current organization"""
     from app.models import WidgetConfig
@@ -607,7 +622,7 @@ async def list_widgets(
 
     changed = False
     for config in configs:
-        if _ensure_widget_escalation_contacts(config):
+        if _ensure_widget_escalation_contacts(config, settings):
             changed = True
     if changed:
         db.commit()
@@ -742,6 +757,7 @@ async def reschedule_appointment(
     payload: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Reschedule an appointment and notify participant + escalation contacts."""
     raw_appointment_at = payload.get("appointment_at")
@@ -839,6 +855,7 @@ async def reschedule_appointment(
         meeting_link=meeting_link,
         widget_name=(widget_config.name if widget_config else appointment.widget_id),
         notes=appointment.notes,
+        settings=settings
     )
 
     response_message = "Appointment rescheduled successfully"
