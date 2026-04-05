@@ -37,33 +37,34 @@ import {
 import { SelectChangeEvent } from "@mui/material/Select";
 import { alpha, useTheme } from "@mui/material/styles";
 import DownloadIcon from "@mui/icons-material/Download";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SearchIcon from "@mui/icons-material/Search";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import MoveDownIcon from "@mui/icons-material/MoveDown";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import GroupIcon from "@mui/icons-material/Group";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import SearchIcon from "@mui/icons-material/Search";
 import { leadService } from "../../services/leadService";
 import { dashboardService } from "../../services/dashboardService";
 import { funnelCategoryService } from "../../services/funnelCategoryService";
 import { Product, productService } from "../../services/productService";
 import {
-  campaignService,
   type CampaignItem,
   type CampaignType,
 } from "../../services/campaignService";
+import {
+  organizationService,
+  type OrganizationWidget,
+} from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
-import { ConfirmDialog } from "../Common/ConfirmDialog";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
-
-const CAMPAIGN_TYPES: readonly CampaignType[] = ["email", "whatsapp", "sms"];
 
 const titleCase = (value: string) =>
   value
@@ -95,9 +96,7 @@ const normalizeHexColor = (value?: string) => {
 const LeadManager: React.FC = () => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>(
-    [],
-  );
+  const [widgets, setWidgets] = useState<OrganizationWidget[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
     [],
@@ -106,11 +105,6 @@ const LeadManager: React.FC = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>("all");
   const [selectedSource, setSelectedSource] = useState<string>("all");
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string>("all");
-  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
-  const [selectedCampaignType, setSelectedCampaignType] = useState<
-    "all" | CampaignType
-  >("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -131,17 +125,18 @@ const LeadManager: React.FC = () => {
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [categoryToDelete, setCategoryToDelete] =
-    useState<FunnelCategory | null>(null);
-  const [categoryDeleteSubmitting, setCategoryDeleteSubmitting] =
-    useState(false);
-  const [funnelMasterOpen, setFunnelMasterOpen] = useState(false);
-  const [leadFiltersExpanded, setLeadFiltersExpanded] = useState(true);
-  const [leadSearch, setLeadSearch] = useState("");
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
+
+  const [leadsTotal, setLeadsTotal] = useState(0);
   const [leadsPage, setLeadsPage] = useState(0);
   const [leadsRowsPerPage, setLeadsRowsPerPage] = useState(10);
+  const [funnelMasterOpen, setFunnelMasterOpen] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [leadSearch, setLeadSearch] = useState("");
+  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
+  const [selectedCampaignType] = useState<"all" | CampaignType>("all");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   const panelSx = {
     borderRadius: "18px",
@@ -168,99 +163,21 @@ const LeadManager: React.FC = () => {
     },
   } as const;
 
-  const displayLeads = useMemo(() => {
-    const startMs = filterStartDate
-      ? new Date(`${filterStartDate}T00:00:00`).getTime()
-      : null;
-    const endMs = filterEndDate
-      ? new Date(`${filterEndDate}T23:59:59.999`).getTime()
-      : null;
-    const q = leadSearch.trim().toLowerCase();
-    const campaignLabel =
-      selectedCampaignId !== "all"
-        ? (campaigns
-            .find((c) => String(c.id) === selectedCampaignId)
-            ?.campaign_name?.toLowerCase() ?? "")
-        : "";
-
-    return leads.filter((lead) => {
-      if (q) {
-        const widgetName =
-          widgets
-            .find((w) => w.widget_id === lead.widget_id)
-            ?.name?.toLowerCase() ?? "";
-        const haystack = [
-          lead.name,
-          lead.email,
-          lead.phone,
-          lead.company,
-          lead.widget_id,
-          lead.product_name,
-          lead.session_id,
-          widgetName,
-          campaignLabel,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-
-      const t = new Date(lead.created_at).getTime();
-      if (startMs !== null && !Number.isNaN(startMs) && t < startMs) {
-        return false;
-      }
-      if (endMs !== null && !Number.isNaN(endMs) && t > endMs) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [
-    leads,
-    leadSearch,
-    filterStartDate,
-    filterEndDate,
-    campaigns,
-    selectedCampaignId,
-    widgets,
-  ]);
-
-  const totalLeads = displayLeads.length;
-  const leadsTotal = totalLeads;
-
-  useEffect(() => {
-    const maxPage = Math.max(
-      0,
-      Math.ceil(displayLeads.length / leadsRowsPerPage) - 1,
-    );
-    setLeadsPage((p) => (p > maxPage ? maxPage : p));
-  }, [displayLeads.length, leadsRowsPerPage]);
-
-  const paginatedDisplayLeads = useMemo(
-    () =>
-      displayLeads.slice(
-        leadsPage * leadsRowsPerPage,
-        leadsPage * leadsRowsPerPage + leadsRowsPerPage,
-      ),
-    [displayLeads, leadsPage, leadsRowsPerPage],
-  );
-
+  const totalLeads = leads.length;
   const contactableLeads = useMemo(
-    () =>
-      displayLeads.filter((lead) => Boolean(lead.email || lead.phone)).length,
-    [displayLeads],
+    () => leads.filter((lead) => Boolean(lead.email || lead.phone)).length,
+    [leads],
   );
   const companyLeads = useMemo(
-    () => displayLeads.filter((lead) => Boolean(lead.company)).length,
-    [displayLeads],
+    () => leads.filter((lead) => Boolean(lead.company)).length,
+    [leads],
   );
   const weekLeads = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return displayLeads.filter(
+    return leads.filter(
       (lead) => new Date(lead.created_at).getTime() >= weekAgo,
     ).length;
-  }, [displayLeads]);
+  }, [leads]);
   const conversionRate = totalLeads
     ? Math.round((contactableLeads / totalLeads) * 100)
     : 0;
@@ -272,6 +189,14 @@ const LeadManager: React.FC = () => {
         .sort((a, b) => a.position - b.position),
     [funnelCategories],
   );
+
+  const visibleWidgets = useMemo(() => {
+    if (selectedSource === "all") return widgets;
+    return widgets.filter((w) => {
+      const ws = (w.source || "").toLowerCase().trim();
+      return ws === selectedSource.toLowerCase();
+    });
+  }, [widgets, selectedSource]);
 
   const stageNameByKey = useMemo(() => {
     const map = new Map<string, string>();
@@ -331,6 +256,64 @@ const LeadManager: React.FC = () => {
     ],
   );
 
+  const displayLeads = useMemo(() => {
+    const startMs = filterStartDate
+      ? new Date(`${filterStartDate}T00:00:00`).getTime()
+      : null;
+    const endMs = filterEndDate
+      ? new Date(`${filterEndDate}T23:59:59.999`).getTime()
+      : null;
+    const q = leadSearch.trim().toLowerCase();
+    const campaignLabel =
+      selectedCampaignId !== "all"
+        ? (campaigns
+            .find((c) => String(c.id) === selectedCampaignId)
+            ?.campaign_name?.toLowerCase() ?? "")
+        : "";
+
+    return leads.filter((lead) => {
+      if (q) {
+        const widgetName =
+          widgets
+            .find((w) => w.widget_id === lead.widget_id)
+            ?.name?.toLowerCase() ?? "";
+        const haystack = [
+          lead.name,
+          lead.email,
+          lead.phone,
+          lead.company,
+          lead.widget_id,
+          lead.product_name,
+          lead.session_id,
+          widgetName,
+          campaignLabel,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
+      const t = new Date(lead.created_at).getTime();
+      if (startMs !== null && !Number.isNaN(startMs) && t < startMs) {
+        return false;
+      }
+      if (endMs !== null && !Number.isNaN(endMs) && t > endMs) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    leads,
+    leadSearch,
+    filterStartDate,
+    filterEndDate,
+    campaigns,
+    selectedCampaignId,
+    widgets,
+  ]);
+
   const loadWidgets = async () => {
     try {
       const data = await dashboardService.getWidgets();
@@ -339,6 +322,8 @@ const LeadManager: React.FC = () => {
         widgetItems.map((widget: any) => ({
           widget_id: widget.widget_id,
           name: widget.name,
+          source: widget.source ?? undefined,
+          created_at: widget.created_at,
         })),
       );
     } catch {
@@ -364,18 +349,6 @@ const LeadManager: React.FC = () => {
     }
   };
 
-  const loadCampaigns = async () => {
-    try {
-      const data = await campaignService.listCampaigns({
-        skip: 0,
-        limit: 500,
-      });
-      setCampaigns(data.items || []);
-    } catch {
-      setCampaigns([]);
-    }
-  };
-
   const loadLeads = async (
     widgetId?: string,
     source?: string,
@@ -388,8 +361,8 @@ const LeadManager: React.FC = () => {
       setLoading(true);
       setError("");
       const data = await leadService.listLeads(
-        0,
-        100,
+        leadsPage * leadsRowsPerPage,
+        leadsRowsPerPage,
         widgetId,
         source,
         funnelStage,
@@ -397,7 +370,8 @@ const LeadManager: React.FC = () => {
         campaignId,
         campaignType,
       );
-      setLeads(data);
+      setLeads(data.items);
+      setLeadsTotal(data.pagination?.total || 0);
     } catch {
       setError("Failed to load leads");
     } finally {
@@ -409,8 +383,45 @@ const LeadManager: React.FC = () => {
     loadWidgets();
     loadProducts();
     loadFunnelCategories();
-    loadCampaigns();
   }, []);
+
+  useEffect(() => {
+    if (selectedWidgetId === "all") return;
+    const ok = visibleWidgets.some((w) => w.widget_id === selectedWidgetId);
+    if (!ok) setSelectedWidgetId("all");
+  }, [visibleWidgets, selectedWidgetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sourceParam =
+          selectedSource === "all" ? undefined : selectedSource;
+        const widgetIdParam =
+          selectedWidgetId === "all" ? undefined : selectedWidgetId;
+        const items = await organizationService.listMeCampaigns({
+          source: sourceParam,
+          widget_id: widgetIdParam,
+          skip: 0,
+          limit: 500,
+        });
+        if (cancelled) return;
+        setCampaigns(items);
+        setSelectedCampaignId((prev) => {
+          if (prev === "all") return prev;
+          return items.some((c) => String(c.id) === prev) ? prev : "all";
+        });
+      } catch {
+        if (!cancelled) {
+          setCampaigns([]);
+          setSelectedCampaignId("all");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSource, selectedWidgetId]);
 
   useEffect(() => {
     const widgetId = selectedWidgetId === "all" ? undefined : selectedWidgetId;
@@ -438,6 +449,8 @@ const LeadManager: React.FC = () => {
     selectedFunnelStage,
     selectedCampaignId,
     selectedCampaignType,
+    leadsPage,
+    leadsRowsPerPage,
   ]);
 
   const handleExport = async () => {
@@ -466,13 +479,6 @@ const LeadManager: React.FC = () => {
       setError("Failed to export leads");
     }
   };
-
-  // Used when the row "Filters" button is shown again.
-  // const resetLeadBarFilters = () => {
-  //   setLeadSearch("");
-  //   setFilterStartDate("");
-  //   setFilterEndDate("");
-  // };
 
   const openDetails = (lead: Lead) => {
     setSelectedLead(lead);
@@ -546,15 +552,11 @@ const LeadManager: React.FC = () => {
     }
   };
 
-  const handleConfirmDeleteCategory = async () => {
-    if (!categoryToDelete?.id) return;
-
-    setCategoryDeleteSubmitting(true);
-    setError("");
-    setSuccess("");
+  const handleDeleteCategory = async (category: FunnelCategory) => {
     try {
-      await funnelCategoryService.remove(categoryToDelete.id);
-      setCategoryToDelete(null);
+      setError("");
+      setSuccess("");
+      await funnelCategoryService.remove(category.id);
       setSuccess("Funnel category deleted.");
       await loadFunnelCategories();
     } catch (err: any) {
@@ -564,8 +566,6 @@ const LeadManager: React.FC = () => {
           ? detail
           : "Failed to delete funnel category",
       );
-    } finally {
-      setCategoryDeleteSubmitting(false);
     }
   };
 
@@ -587,18 +587,13 @@ const LeadManager: React.FC = () => {
       setLeads((prev) =>
         prev.map((lead) => (lead.id === updated.id ? updated : lead)),
       );
-
       setSelectedLead(updated);
       setMoveOpen(false);
       setDetailsOpen(true);
       setSuccess(
         `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
       );
-      setSuccess(
-        `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
-      );
     } catch {
-      setError("Failed to move lead to funnel stage");
       setError("Failed to move lead to funnel stage");
     } finally {
       setMoving(false);
@@ -609,9 +604,6 @@ const LeadManager: React.FC = () => {
     selectedWidgetId === "all"
       ? null
       : widgets.find((widget) => widget.widget_id === selectedWidgetId);
-  selectedWidgetId === "all"
-    ? null
-    : widgets.find((widget) => widget.widget_id === selectedWidgetId);
   const selectedProduct =
     selectedProductId === "all"
       ? null
@@ -620,6 +612,14 @@ const LeadManager: React.FC = () => {
     selectedCampaignId === "all"
       ? null
       : campaigns.find((c) => String(c.id) === selectedCampaignId);
+  const sourceTintByKey: Record<string, string> = {
+    all: "#4f46e5",
+    chat: "#3b82f6",
+    voice: "#06b6d4",
+    email: "#10b981",
+    sms: "#f59e0b",
+    whatsapp: "#22c55e",
+  };
 
   const compactMenuProps = {
     PaperProps: {
@@ -648,58 +648,8 @@ const LeadManager: React.FC = () => {
     },
   });
 
-  const filterPanel = (
-    <Paper sx={{ ...panelSx, p: { xs: 1.6, md: 1.8 }, mb: 2.8 }}>
-      <Box sx={{ maxWidth: 720 }}>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 800,
-            letterSpacing: "-0.01em",
-            mb: 0.25,
-            fontSize: "1.2rem",
-          }}
-        >
-          Lead Overview
-        </Typography>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ fontSize: "0.93rem" }}
-        >
-          Review lead quality, source channels, funnel stage, and export data
-          for your sales workflow. Use{" "}
-          <Box component="span" sx={{ fontWeight: 700 }}>
-            Filter leads
-          </Box>{" "}
-          below for all dropdown filters.
-        </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 0.9 }}
-        >
-          {[
-            selectedWidget && `widget: ${selectedWidget.name}`,
-            selectedProduct && `product: ${selectedProduct.name}`,
-            selectedSource !== "all" &&
-              `source: ${sourceLabel(selectedSource)}`,
-            selectedFunnelStage !== "all" &&
-              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
-            selectedCampaign &&
-              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
-            selectedCampaignType !== "all" &&
-              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "Showing leads from all widgets"}
-        </Typography>
-      </Box>
-    </Paper>
-  );
-
   const gradientBarButtonSx = {
-    minHeight: 44,
+    minHeight: 46,
     px: 2.5,
     borderRadius: "12px",
     fontWeight: 700,
@@ -724,278 +674,314 @@ const LeadManager: React.FC = () => {
     },
   };
 
-  const barFieldSx = {
-    "& .MuiOutlinedInput-root": { borderRadius: "10px" },
+  const filtersToggleClosedSx = {
+    minHeight: 46,
+    px: 2.5,
+    borderRadius: "12px",
+    fontWeight: 700,
+    fontSize: "0.875rem",
+    textTransform: "none" as const,
+    backgroundColor: alpha(theme.palette.common.white, 0.96),
+    color: theme.palette.text.primary,
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+    boxShadow: "none",
+    "&:hover": {
+      backgroundColor: theme.palette.common.white,
+      borderColor: alpha(theme.palette.primary.main, 0.4),
+      boxShadow: "none",
+    },
+  };
+
+  const filterSheetSx = {
+    borderRadius: "14px",
+    border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+    background: `linear-gradient(165deg, ${alpha("#eef5fc", 0.98)} 0%, ${alpha("#e2ecf8", 0.92)} 48%, ${alpha("#d8e6f5", 0.9)} 100%)`,
+    p: { xs: 1.75, sm: 2, md: 2.25 },
+    boxShadow: `inset 0 1px 0 ${alpha("#fff", 0.7)}`,
   } as const;
 
-  const dropdownFiltersInsetSx = {
-    borderRadius: "12px",
-    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-    backgroundColor: alpha("#dce8f8", 0.52),
-    p: { xs: 1.25, sm: 1.5 },
+  const filterControlSx = {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: "10px",
+      backgroundColor: alpha(theme.palette.common.white, 0.96),
+      fontSize: "0.875rem",
+    },
+    "& .MuiOutlinedInput-input": {
+      py: 1,
+    },
+    "& .MuiOutlinedInput-notchedOutline": {
+      borderColor: alpha(theme.palette.primary.main, 0.22),
+    },
+    "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+      borderColor: alpha(theme.palette.primary.main, 0.4),
+    },
+    "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+      borderColor: theme.palette.primary.main,
+      borderWidth: 1,
+    },
+    "& .MuiInputLabel-root": {
+      fontSize: "0.8125rem",
+      fontWeight: 600,
+      color: alpha(theme.palette.text.secondary, 0.95),
+    },
   } as const;
+
+  const filterSearchFieldSx = {
+    ...filterControlSx,
+    "& .MuiOutlinedInput-root": {
+      ...filterControlSx["& .MuiOutlinedInput-root"],
+      minHeight: 44,
+    },
+    "& .MuiOutlinedInput-input": {
+      py: 1.1,
+      fontSize: "0.875rem",
+    },
+  } as const;
+
+  const leadOverviewPanel = (
+    <Paper sx={{ ...panelSx, p: { xs: 1.6, md: 1.8 }, mb: 2.8 }}>
+      <Box sx={{ maxWidth: 800 }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 800,
+            letterSpacing: "-0.01em",
+            mb: 0.25,
+            fontSize: "1.2rem",
+          }}
+        >
+          Lead Overview
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontSize: "0.93rem" }}
+        >
+          Review lead quality, source channels, funnel stage, and export data
+          for your sales workflow.
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 0.9 }}
+        >
+          {[
+            selectedWidget &&
+              `widget: ${selectedWidget.name}${
+                selectedWidget.source
+                  ? ` (${sourceLabel(selectedWidget.source)})`
+                  : ""
+              }`,
+            selectedProduct && `product: ${selectedProduct.name}`,
+            selectedSource !== "all" &&
+              `source: ${sourceLabel(selectedSource)}`,
+            selectedFunnelStage !== "all" &&
+              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
+            selectedCampaign &&
+              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
+            selectedCampaignType !== "all" &&
+              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Showing leads from all widgets and campaigns"}
+        </Typography>
+      </Box>
+    </Paper>
+  );
 
   const advancedLeadsFilterPanel = (
-    <Paper
-      elevation={0}
-      sx={{
-        ...panelSx,
-        p: 2,
-        mb: 2.8,
-        overflow: "hidden",
-        boxShadow: `0 8px 28px ${alpha(theme.palette.primary.dark, 0.12)}`,
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 1.5,
-          flexWrap: "wrap",
-        }}
-      >
-        <Box
-          role="button"
-          tabIndex={0}
-          aria-expanded={leadFiltersExpanded}
-          onClick={() => setLeadFiltersExpanded((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setLeadFiltersExpanded((v) => !v);
-            }
-          }}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            cursor: "pointer",
-            userSelect: "none",
-            flex: 1,
-            minWidth: 0,
-            outline: "none",
-            "&:focus-visible": {
-              boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.35)}`,
-              borderRadius: 1,
-            },
-          }}
-        >
-          <ExpandMoreIcon
-            sx={{
-              color: "text.secondary",
-              transform: leadFiltersExpanded
-                ? "rotate(180deg)"
-                : "rotate(0deg)",
-              transition: theme.transitions.create("transform", {
-                duration: theme.transitions.duration.shortest,
-              }),
+    <Box sx={{ ...filterSheetSx, mb: 2.8 }}>
+      <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+        <Grid item xs={12} md={5}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search by phone, campaign, widget..."
+            value={leadSearch}
+            onChange={(e) => setLeadSearch(e.target.value)}
+            sx={filterSearchFieldSx}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: "action.active", fontSize: 22 }} />
+                </InputAdornment>
+              ),
             }}
           />
-          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            Filter leads
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<DownloadIcon />}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleExport();
-          }}
-          disabled={leads.length === 0}
-          sx={gradientBarButtonSx}
-        >
-          Export to CSV
-        </Button>
-      </Box>
+        </Grid>
+        <Grid item xs={6} sm={6} md={2}>
+          <TextField
+            fullWidth
+            size="small"
+            type="date"
+            label="Start Date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={filterControlSx}
+          />
+        </Grid>
+        <Grid item xs={6} sm={6} md={2}>
+          <TextField
+            fullWidth
+            size="small"
+            type="date"
+            label="End Date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={filterControlSx}
+          />
+        </Grid>
+        <Grid item xs={6} sm={6} md={1.5}>
+          <Button
+            fullWidth
+            variant={advancedFiltersOpen ? "contained" : "outlined"}
+            startIcon={<FilterListIcon />}
+            onClick={() => setAdvancedFiltersOpen((open) => !open)}
+            aria-expanded={advancedFiltersOpen}
+            sx={
+              advancedFiltersOpen ? gradientBarButtonSx : filtersToggleClosedSx
+            }
+          >
+            {advancedFiltersOpen ? "Filters" : "Filters"}
+          </Button>
+        </Grid>
+        <Grid item xs={6} sm={6} md={1.5}>
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={handleExport}
+            disabled={leads.length === 0}
+            sx={gradientBarButtonSx}
+          >
+            Export to CSV
+          </Button>
+        </Grid>
+      </Grid>
 
-      <Collapse in={leadFiltersExpanded} timeout="auto">
-        <Stack spacing={2} sx={{ mt: 2 }}>
-          <Grid container spacing={1.5} alignItems="center">
-            <Grid item xs={12} md={5}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Search by phone, campaign, widget..."
-                value={leadSearch}
-                onChange={(e) => setLeadSearch(e.target.value)}
-                sx={barFieldSx}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={6} sm={6} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                type="date"
-                label="Start Date"
-                value={filterStartDate}
-                onChange={(e) => setFilterStartDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={barFieldSx}
-              />
-            </Grid>
-            <Grid item xs={6} sm={6} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                type="date"
-                label="End Date"
-                value={filterEndDate}
-                onChange={(e) => setFilterEndDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={barFieldSx}
-              />
-            </Grid>
-            {/* <Grid item xs={6} sm={6} md={1.5}>
-              <Button
-                fullWidth
-                variant="contained"
-                startIcon={<FilterListIcon />}
-                onClick={resetLeadBarFilters}
-                sx={gradientBarButtonSx}
+      <Collapse in={advancedFiltersOpen}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small" sx={filterControlSx}>
+              <InputLabel id="lead-filter-source-label">Source</InputLabel>
+              <Select
+                labelId="lead-filter-source-label"
+                label="Source"
+                value={selectedSource}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setSelectedSource(e.target.value)
+                }
+                MenuProps={compactMenuProps}
               >
-                Filters
-              </Button>
-            </Grid>
-            <Grid item xs={6} sm={6} md={1.5}>
-              <Button
-                fullWidth
-                variant="contained"
-                startIcon={<DownloadIcon />}
-                onClick={handleExport}
-                disabled={leads.length === 0}
-                sx={gradientBarButtonSx}
-              >
-                Export to CSV
-              </Button>
-            </Grid> */}
+                <MenuItem value="all">All Sources</MenuItem>
+                {LEAD_SOURCES.map((source) => (
+                  <MenuItem key={source} value={source}>
+                    {sourceLabel(source)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
-
-          <Box sx={dropdownFiltersInsetSx}>
-            <Grid container spacing={1.5}>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={barFieldSx}>
-                  <InputLabel id="lead-bar-widget-label">Widget</InputLabel>
-                  <Select
-                    labelId="lead-bar-widget-label"
-                    label="Widget"
-                    value={selectedWidgetId}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      setSelectedWidgetId(e.target.value)
-                    }
-                    MenuProps={compactMenuProps}
-                  >
-                    <MenuItem value="all">All Widgets</MenuItem>
-                    {widgets.map((widget) => (
-                      <MenuItem key={widget.widget_id} value={widget.widget_id}>
-                        {widget.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={barFieldSx}>
-                  <InputLabel id="lead-bar-campaign-label">Campaign</InputLabel>
-                  <Select
-                    labelId="lead-bar-campaign-label"
-                    label="Campaign"
-                    value={selectedCampaignId}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      setSelectedCampaignId(e.target.value)
-                    }
-                    MenuProps={compactMenuProps}
-                  >
-                    <MenuItem value="all">All Campaigns</MenuItem>
-                    {campaigns.map((campaign) => (
-                      <MenuItem key={campaign.id} value={String(campaign.id)}>
-                        {campaign.campaign_name} (
-                        {campaignTypeLabel(campaign.campaign_type)})
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={barFieldSx}>
-                  <InputLabel id="lead-filter-product-label">
-                    Product
-                  </InputLabel>
-                  <Select
-                    labelId="lead-filter-product-label"
-                    label="Product"
-                    value={selectedProductId}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      setSelectedProductId(e.target.value)
-                    }
-                    MenuProps={compactMenuProps}
-                  >
-                    <MenuItem value="all">All Products</MenuItem>
-                    {products.map((product) => (
-                      <MenuItem key={product.id} value={String(product.id)}>
-                        {product.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={barFieldSx}>
-                  <InputLabel id="lead-filter-source-label">Source</InputLabel>
-                  <Select
-                    labelId="lead-filter-source-label"
-                    label="Source"
-                    value={selectedSource}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      setSelectedSource(e.target.value)
-                    }
-                    MenuProps={compactMenuProps}
-                  >
-                    <MenuItem value="all">All Sources</MenuItem>
-                    {LEAD_SOURCES.map((source) => (
-                      <MenuItem key={source} value={source}>
-                        {sourceLabel(source)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={barFieldSx}>
-                  <InputLabel id="lead-filter-funnel-label">
-                    Funnel Stage
-                  </InputLabel>
-                  <Select
-                    labelId="lead-filter-funnel-label"
-                    label="Funnel Stage"
-                    value={selectedFunnelStage}
-                    onChange={(e: SelectChangeEvent<string>) =>
-                      setSelectedFunnelStage(e.target.value)
-                    }
-                    MenuProps={compactMenuProps}
-                  >
-                    <MenuItem value="all">All Funnel Stages</MenuItem>
-                    {activeFunnelCategories.map((stage) => (
-                      <MenuItem key={stage.key} value={stage.key}>
-                        {stage.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </Box>
-        </Stack>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small" sx={filterControlSx}>
+              <InputLabel id="lead-filter-widget-label">Widget</InputLabel>
+              <Select
+                labelId="lead-filter-widget-label"
+                label="Widget"
+                value={selectedWidgetId}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setSelectedWidgetId(e.target.value)
+                }
+                MenuProps={compactMenuProps}
+              >
+                <MenuItem value="all">All Widgets</MenuItem>
+                {visibleWidgets.map((widget) => (
+                  <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                    {widget.name}
+                    {widget.source ? ` (${sourceLabel(widget.source)})` : ""}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl fullWidth size="small" sx={filterControlSx}>
+              <InputLabel id="lead-filter-campaign-label">Campaign</InputLabel>
+              <Select
+                labelId="lead-filter-campaign-label"
+                label="Campaign"
+                value={selectedCampaignId}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setSelectedCampaignId(e.target.value)
+                }
+                MenuProps={compactMenuProps}
+              >
+                <MenuItem value="all">All Campaigns</MenuItem>
+                {campaigns.map((campaign) => (
+                  <MenuItem key={campaign.id} value={String(campaign.id)}>
+                    {campaign.campaign_name} (
+                    {campaignTypeLabel(campaign.campaign_type)})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl fullWidth size="small" sx={filterControlSx}>
+              <InputLabel id="lead-filter-product-label">Product</InputLabel>
+              <Select
+                labelId="lead-filter-product-label"
+                label="Product"
+                value={selectedProductId}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setSelectedProductId(e.target.value)
+                }
+                MenuProps={compactMenuProps}
+              >
+                <MenuItem value="all">All Products</MenuItem>
+                {products.map((product) => (
+                  <MenuItem key={product.id} value={String(product.id)}>
+                    {product.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={12} md={4}>
+            <FormControl fullWidth size="small" sx={filterControlSx}>
+              <InputLabel id="lead-filter-funnel-label">
+                Funnel Stage
+              </InputLabel>
+              <Select
+                labelId="lead-filter-funnel-label"
+                label="Funnel Stage"
+                value={selectedFunnelStage}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setSelectedFunnelStage(e.target.value)
+                }
+                MenuProps={compactMenuProps}
+              >
+                <MenuItem value="all">All Funnel Stages</MenuItem>
+                {activeFunnelCategories.map((stage) => (
+                  <MenuItem key={stage.key} value={stage.key}>
+                    {stage.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
       </Collapse>
-    </Paper>
+    </Box>
+  );
+
+  const filterPanel = (
+    <>
+      {leadOverviewPanel}
+      {advancedLeadsFilterPanel}
+    </>
   );
 
   return (
@@ -1030,35 +1016,43 @@ const LeadManager: React.FC = () => {
         </Alert>
       )}
 
-      <Paper sx={{ ...panelSx, p: 2.4, mb: 2.6, overflow: "hidden" }}>
+      <Paper sx={{ ...panelSx, p: 2.4, mb: 2.6 }}>
         <Box
-          role="button"
-          aria-expanded={funnelMasterOpen}
-          aria-controls="funnel-category-master-panel"
-          tabIndex={0}
-          onClick={() => setFunnelMasterOpen((open) => !open)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setFunnelMasterOpen((open) => !open);
-            }
-          }}
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 1.5,
-            cursor: "pointer",
-            userSelect: "none",
             mb: funnelMasterOpen ? 1.3 : 0,
-            borderRadius: 1,
-            outline: "none",
-            "&:focus-visible": {
-              boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.35)}`,
-            },
           }}
         >
-          <Stack direction="row" alignItems="center" spacing={0.75}>
+          <Box
+            role="button"
+            tabIndex={0}
+            aria-expanded={funnelMasterOpen}
+            aria-controls="funnel-category-master-panel"
+            onClick={() => setFunnelMasterOpen((open) => !open)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setFunnelMasterOpen((open) => !open);
+              }
+            }}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.75,
+              cursor: "pointer",
+              userSelect: "none",
+              flex: 1,
+              minWidth: 0,
+              outline: "none",
+              "&:focus-visible": {
+                boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.35)}`,
+                borderRadius: 1,
+              },
+            }}
+          >
             <ExpandMoreIcon
               sx={{
                 color: "text.secondary",
@@ -1067,30 +1061,24 @@ const LeadManager: React.FC = () => {
                   duration: theme.transitions.duration.shortest,
                 }),
               }}
-              aria-hidden
             />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Funnel Category Master
             </Typography>
-          </Stack>
+          </Box>
           <Button
             startIcon={<AddIcon />}
             variant="outlined"
-            onClick={(e) => {
-              e.stopPropagation();
-              openCreateCategoryDialog();
-            }}
+            onClick={openCreateCategoryDialog}
+            sx={{ flexShrink: 0 }}
           >
             Add Category
           </Button>
         </Box>
 
-        <Collapse
-          id="funnel-category-master-panel"
-          in={funnelMasterOpen}
-          timeout="auto"
-        >
+        <Collapse in={funnelMasterOpen} timeout="auto">
           <TableContainer
+            id="funnel-category-master-panel"
             sx={{
               borderRadius: "12px",
               border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
@@ -1136,10 +1124,7 @@ const LeadManager: React.FC = () => {
                       <Tooltip title="Edit">
                         <IconButton
                           size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditCategoryDialog(category);
-                          }}
+                          onClick={() => openEditCategoryDialog(category)}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -1148,10 +1133,7 @@ const LeadManager: React.FC = () => {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCategoryToDelete(category);
-                          }}
+                          onClick={() => handleDeleteCategory(category)}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -1173,8 +1155,6 @@ const LeadManager: React.FC = () => {
       </Paper>
 
       {filterPanel}
-
-      {advancedLeadsFilterPanel}
 
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
         {kpis.map((kpi) => (
@@ -1255,17 +1235,104 @@ const LeadManager: React.FC = () => {
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               All Leads
             </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mt: 0.5, maxWidth: 520 }}
-            >
-              Adjust filters in{" "}
-              <Box component="span" sx={{ fontWeight: 700 }}>
-                Filter leads
-              </Box>{" "}
-              above; the table reflects your selections.
-            </Typography>
+            <Stack spacing={0.75} sx={{ mt: 0.8 }}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "110px minmax(0, 1fr)",
+                  },
+                  alignItems: "start",
+                  columnGap: 0.8,
+                  rowGap: 0.4,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{ fontWeight: 700, color: "text.secondary", pt: 0.35 }}
+                >
+                  Source Type
+                </Typography>
+                <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
+                  <Chip
+                    label="All"
+                    size="small"
+                    clickable
+                    variant="outlined"
+                    onClick={() => setSelectedSource("all")}
+                    sx={filterChipSx(
+                      selectedSource === "all",
+                      sourceTintByKey.all,
+                    )}
+                  />
+                  {LEAD_SOURCES.map((source) => (
+                    <Chip
+                      key={source}
+                      label={sourceLabel(source)}
+                      size="small"
+                      clickable
+                      variant="outlined"
+                      onClick={() => setSelectedSource(source)}
+                      sx={filterChipSx(
+                        selectedSource === source,
+                        sourceTintByKey[source],
+                      )}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+                }}
+              />
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "110px minmax(0, 1fr)",
+                  },
+                  alignItems: "start",
+                  columnGap: 0.8,
+                  rowGap: 0.4,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{ fontWeight: 700, color: "text.secondary", pt: 0.35 }}
+                >
+                  Funnel Stage
+                </Typography>
+                <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
+                  <Chip
+                    label="All"
+                    size="small"
+                    clickable
+                    variant="outlined"
+                    onClick={() => setSelectedFunnelStage("all")}
+                    sx={filterChipSx(selectedFunnelStage === "all", "#7c3aed")}
+                  />
+                  {activeFunnelCategories.map((stage) => (
+                    <Chip
+                      key={stage.key}
+                      label={stage.name}
+                      size="small"
+                      clickable
+                      variant="outlined"
+                      onClick={() => setSelectedFunnelStage(stage.key)}
+                      sx={filterChipSx(
+                        selectedFunnelStage === stage.key,
+                        normalizeHexColor(stage.color),
+                      )}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            </Stack>
           </Box>
           <Chip
             label={`${displayLeads.length.toLocaleString()} records`}
@@ -1310,7 +1377,7 @@ const LeadManager: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {paginatedDisplayLeads.map((lead) => (
+              {displayLeads.map((lead) => (
                 <TableRow
                   key={lead.id}
                   hover
@@ -1366,7 +1433,7 @@ const LeadManager: React.FC = () => {
                     <Typography color="text.secondary">
                       {leads.length === 0
                         ? "No leads found for the selected filters."
-                        : "No leads match the current search and filters."}
+                        : "No leads match your search or date range on this page."}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -1648,22 +1715,6 @@ const LeadManager: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <ConfirmDialog
-        open={Boolean(categoryToDelete)}
-        title="Delete funnel category?"
-        description={
-          categoryToDelete
-            ? `This will permanently remove "${categoryToDelete.name}". This action cannot be undone.`
-            : undefined
-        }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        confirmColor="error"
-        loading={categoryDeleteSubmitting}
-        onCancel={() => !categoryDeleteSubmitting && setCategoryToDelete(null)}
-        onConfirm={handleConfirmDeleteCategory}
-      />
     </Box>
   );
 };

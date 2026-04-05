@@ -25,7 +25,7 @@ export const leadService = {
     productId?: string,
     campaignId?: string,
     campaignType?: string,
-  ): Promise<Lead[]> {
+  ): Promise<LeadListResponse> {
     const params = new URLSearchParams({
       skip: String(skip),
       limit: String(limit),
@@ -36,7 +36,7 @@ export const leadService = {
     if (productId) params.append("product_id", productId);
     if (campaignId) params.append("campaign_id", campaignId);
     if (campaignType) params.append("campaign_type", campaignType);
-    const response = await api.get<Lead[]>(
+    const response = await api.get<LeadListResponse>(
       `/api/admin/leads?${params.toString()}`,
     );
     return response.data;

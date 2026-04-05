@@ -20,9 +20,10 @@ export const dashboardService = {
     return response.data;
   },
 
-  async getWidgets() {
-    // Use organization endpoint instead of admin endpoint for regular users//add source parameter
-    const response = await api.get("/api/organizations/me/widgets");
+  async getWidgets(params?: { source?: string }) {
+    const response = await api.get("/api/organizations/me/widgets", {
+      params,
+    });
     return response.data;
   },
 
