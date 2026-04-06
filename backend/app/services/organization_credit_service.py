@@ -89,7 +89,7 @@ def validate_credits(
     feature_code: str,
     required_credits: float
 ):
-    # 1️⃣ Check credit profile
+    # Check credit profile
     profile = db.query(OrganizationCreditProfile).filter(
         OrganizationCreditProfile.organization_id == organization_id
     ).first()
@@ -100,7 +100,7 @@ def validate_credits(
     if profile.end_date and profile.end_date < datetime.now(timezone.utc):
         return False, "Credits expired"
 
-    # 2️⃣ Resolve PriceMatrixItem
+    # Resolve PriceMatrixItem
     item = db.query(PriceMatrixItem).filter(
         PriceMatrixItem.feature_code == feature_code,
         PriceMatrixItem.is_active == True
@@ -109,27 +109,26 @@ def validate_credits(
     if not item:
         return False, "Invalid feature"
 
-    # 3️⃣ Get allocation
+    # Get allocation
     allocation = db.query(OrganizationCreditAllocation).filter(
         OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.price_matrix_item_id == item.id,
         OrganizationCreditAllocation.is_active == True
     ).first()
 
     if not allocation:
         return False, "No credit allocation found"
 
-    # 4️⃣ Get used credits
+    # Get used credits
     used = db.query(
         func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
     ).filter(
         OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.price_matrix_item_id == item.id
+        OrganizationCreditUsage.status == "consumed"
     ).scalar()
 
     remaining = allocation.allocated_credits - used
 
-    # 5️⃣ Validate remaining
+    # Validate remaining
     if remaining < required_credits:
         return False, "Insufficient credits"
 
@@ -143,24 +142,7 @@ def deduct_credits(
     reference_type: str | None = None,
     reference_id: int | None = None
 ):
-    """
-    Deduct credits for an organization based on module/sub_module and quantity.
-
-    Args:
-        db: SQLAlchemy session
-        organization_id: org id
-        module: module name
-        sub_module: sub-module name or None
-        quantity: number of units to deduct
-        reference_type: optional string describing usage
-        reference_id: optional reference id
-
-    Returns:
-        True if deduction successful
-
-    Raises:
-        Exception if insufficient credits or invalid module
-    """
+  
     # 1️⃣ Resolve PriceMatrixItem
     item = db.query(PriceMatrixItem).filter(
         PriceMatrixItem.feature_code == feature_code,
@@ -181,7 +163,7 @@ def deduct_credits(
         raise Exception("No credit allocation found")
 
     # 3️⃣ Compute credits required
-    credits_required = quantity * allocation.credits_per_unit
+    credits_required = quantity * item.credits_per_unit
 
     # 4️⃣ Validate remaining credits
     valid, remaining = validate_credits(
@@ -224,13 +206,7 @@ def reserve_credits(
         PriceMatrixItem.is_active == True
     ).first()
 
-    allocation = db.query(OrganizationCreditAllocation).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.price_matrix_item_id == item.id,
-        OrganizationCreditAllocation.is_active == True
-    ).first()
-
-    credits_required = quantity * allocation.credits_per_unit
+    credits_required = quantity * item.credits_per_unit
 
     valid, _ = validate_credits(
         db,
