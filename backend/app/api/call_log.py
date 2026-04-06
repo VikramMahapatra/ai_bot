@@ -2,7 +2,7 @@ from datetime import date, datetime
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from app.database import get_db
 from sqlalchemy.orm import Session
 from app.schemas.call_log import CallLogCreate, CallLogRequest, MoveToFunnelRequest
@@ -25,11 +25,12 @@ def create_call_log(data: CallLogCreate, db: Session = Depends(get_db)):
 
 @router.get("/all")
 def get_call_logs(
+    background_tasks: BackgroundTasks,
     params: CallLogRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return service.get_call_logs(db, current_user.organization_id, params)
+    return service.get_call_logs(background_tasks, db, current_user.organization_id, params)
 
 
 @router.post("/sync-call-logs")

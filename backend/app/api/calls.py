@@ -1,7 +1,9 @@
+from collections import Counter
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.auth import get_current_user
 from app.models.user import User
@@ -18,6 +20,8 @@ from app.models.calling_agents import CallingAgent
 from app.models.widget_config import WidgetConfig
 from app.models.organization_calling_numbers import OrganizationCallingNumber
 from app.models.campaign import Contact
+from app.schemas.calling_agent import CallingNumberRequest
+from app.models.lead import Lead
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +33,21 @@ router = APIRouter(
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+ENDED_REASON_GROUP: dict[str, str] = {
+    "customer-busy": "Failed",
+    "customer-did-not-answer": "No Answer",
+    "silence-timed-out": "No Answer",
+    "exceeded-max-duration": "Failed",
+    "customer-ended-call": "Completed",
+    "assistant-ended-call": "Completed"
+};
+
+
 @router.get("/analytics")
 def call_analytics(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    campaign_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -46,6 +61,9 @@ def call_analytics(
         CallCampaign.organization_id == org_id,
         CallCampaign.is_deleted == False
     ).all()
+    
+    if campaign_id:
+        campaigns = [c for c in campaigns if c.id == campaign_id]   
     
     if not campaigns:
         return {
@@ -97,30 +115,45 @@ def call_analytics(
     if end_date:
         call_query = call_query.filter(CallLog.start_time <= end_date)
     
-    # Live calls
-    now = datetime.utcnow()
-    live_call_logs  = call_query.filter(
-        CallLog.start_time <= now,
-        CallLog.end_time >= now,
-        CallLog.organization_id == org_id
-    ).all()
-    
-    live_calls = []
-    for log in live_call_logs:
-        # Agent or contact name (adjust depending on your data)
+    # Recent calls
+    # Define how far back you consider "recent"
+    now = datetime.now(timezone.utc)
+    recent_window = now - timedelta(minutes=30)  # last 30 minutes
+
+    recent_call_logs = (
+        call_query
+        .filter(
+            CallLog.organization_id == org_id,
+            CallLog.start_time >= recent_window
+        )
+        .order_by(CallLog.start_time.desc())
+        .all()
+    )
+
+    recent_calls = []
+    for log in recent_call_logs:
         contact_name = getattr(log.contact, "name", "N/A") if log.contact_id else "N/A"
         campaign_name = getattr(log.campaign, "name", "N/A") if log.campaign_id else "N/A"
-        
-        # Calculate duration so far in MM:SS
-        duration_sec = (now - log.start_time).total_seconds()
+        phone = getattr(log.contact, "phone", None) if log.contact_id else None
+        agent_name = getattr(log.agent, "name", None) if hasattr(log, "agent") else None
+
+        # Duration: if ended, show total; if ongoing, show duration so far
+        end_time = log.end_time or now
+        duration_sec = (end_time - log.start_time).total_seconds()
         minutes = int(duration_sec // 60)
         seconds = int(duration_sec % 60)
         duration_str = f"{minutes:02d}:{seconds:02d}"
-        
-        live_calls.append({
+
+        # Map status to allowed values
+        status = log.status.lower() if log.status in ["queued", "live", "ended"] else "ended"
+
+        recent_calls.append({
             "name": contact_name,
             "campaign": campaign_name,
-            "duration": duration_str
+            "duration": duration_str,
+            "status": status,
+            "phone": phone,
+            "agent": agent_name
         })
     
     # --- Charts ---
@@ -135,7 +168,15 @@ def call_analytics(
         .order_by("hour")
         .all()
     )
-    call_volume = [{"hour": int(r.hour), "calls": r.calls} for r in call_volume_data]
+    start_hour = 9
+    end_hour = 21  # inclusive
+
+    hour_map = {int(r.hour): r.calls for r in call_volume_data}
+
+    call_volume = [
+        {"hour": hour, "calls": hour_map.get(hour, 0)}
+        for hour in range(start_hour, end_hour + 1)
+    ]
     
     # Pickup Trend
     
@@ -153,56 +194,55 @@ def call_analytics(
 
     # Transform into desired format: { day: "Mon", rate: 52 }
     pickup_trend = []
-    for row in pickup_trend_data:
-        weekday_num = int(row.weekday)
-        # SQLAlchemy's extract("dow") returns 0=Sunday, 1=Monday, ...
-        day_name = WEEKDAYS[(weekday_num + 6) % 7]  # Shift so 0=Mon, 6=Sun
-        total = row.total or 0
-        completed = row.ended or 0
+    weekday_map = {int(row.weekday): row for row in pickup_trend_data}
+    for i, day_name in enumerate(WEEKDAYS):  # i = 0..6
+        # Original SQL dow: 0=Sun → shift
+        sql_dow = (i + 1) % 7  # Mon=1, Tue=2, ..., Sun=0
+        row = weekday_map.get(sql_dow)
+
+        total = row.total if row else 0
+        completed = row.ended if row else 0
         rate = round((completed / total) * 100, 2) if total else 0
+
         pickup_trend.append({
             "day": day_name,
             "rate": rate
         })
         
     # Call Outcomes
-    outcomes_data = (
-        db.query(
-            CallLog.status,
-            func.count(CallLog.id)
-        )
-        .filter(CallLog.campaign_id.in_(campaign_ids))
-        .group_by(CallLog.status)
-        .all()
-    )
+    # Fetch all call logs for the selected campaign
+    call_logs = db.query(CallLog.ended_reason).filter(
+        CallLog.campaign_id.in_(campaign_ids)
+    ).all()
 
-    # Transform to array of { name, value }
-    call_outcomes = [
-        {"name": r[0], "value": r[1]}
-        for r in outcomes_data
+    # Map to user-friendly status
+    mapped_status = [
+        ENDED_REASON_GROUP.get(r.ended_reason, "Other") for r in call_logs
     ]
+
+    # Count occurrences
+    status_counts = Counter(mapped_status)
+
+    # Transform for frontend
+    call_status_data = [{"name": k, "value": v} for k, v in status_counts.items()]
     
-    # Intent Distribution
-    intent_mapping = {
-        "true": "Successful",
-        "false": "Not Successful"
-    }
-
-    intent_distribution = []
-
-    success_dist_data = (
+    lead_outcome_distribution = (
         db.query(
-            CallLog.success_evaluation,
-            func.count(CallLog.id)
+            Lead.lead_outcome.label("outcome"),
+            func.count(CallLog.id).label("value")
         )
+        .join(CallLog, CallLog.call_session_id == Lead.session_id)
         .filter(CallLog.campaign_id.in_(campaign_ids))
-        .group_by(CallLog.success_evaluation)
+        .group_by(Lead.lead_outcome)
         .all()
     )
-
-    intent_distribution = [
-        {"intent": "Successful" if r[0] == "true" else "Not Successful", "value": r[1]}
-        for r in success_dist_data
+    
+    lead_outcome_data = [
+        {
+            "intent": r.outcome or "Pending",
+            "value": r.value
+        }
+        for r in lead_outcome_distribution
     ]
     
     # --- Return ---
@@ -214,13 +254,13 @@ def call_analytics(
             "conversion_rate": conversion_rate,
             "total_duration": total_duration,
             "active_campaigns": active_campaigns,
-            "live_calls": live_calls
+            "recent_calls": recent_calls
         },
         "charts": {
             "call_volume": call_volume,
             "pickup_trend": pickup_trend,
-            "call_outcomes": call_outcomes,
-            "intent_distribution": intent_distribution
+            "call_outcomes": call_status_data,
+            "lead_outcome_data": lead_outcome_data
         }
     }
     
@@ -252,7 +292,7 @@ def sync_bookings(
         # Avoid duplicate insert
         existing = (
             db.query(Appointment)
-            .filter(Appointment.session_id == call_log.external_call_a_id)
+            .filter(Appointment.session_id == call_log.call_session_id)
             .first()
         )
 
@@ -262,6 +302,10 @@ def sync_bookings(
         contact = db.query(Contact).filter(
             Contact.id == call_log.contact_id   
         ).first() if call_log and call_log.contact_id else None
+        
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == call_log.agent_id
+        ).first() if call_log and call_log.agent_id else None
         
         campaign = db.query(CallCampaign).filter(
             CallCampaign.id == call_log.campaign_id   
@@ -276,8 +320,8 @@ def sync_bookings(
 
         appointment = Appointment(
             organization_id=call_log.organization_id,
-            session_id=call_log.external_call_a_id,
-            widget_id = call_log.agent_id,
+            session_id=call_log.call_session_id,
+            widget_id = agent.widget_id if agent else None,
             name=contact.name if contact else "Unknown",
             phone=phone,
             appointment_at=parser.parse(booking.get("start_date")),
@@ -299,10 +343,12 @@ def sync_bookings(
 
 @router.get("/org/calling-numbers")
 def get_calling_numbers(
+    params: CallingNumberRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     return db.query(OrganizationCallingNumber).filter(
         OrganizationCallingNumber.organization_id == current_user.organization_id,
-        OrganizationCallingNumber.is_active == True
+        OrganizationCallingNumber.is_active == True,
+        OrganizationCallingNumber.type == params.type
     ).all()

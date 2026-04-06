@@ -8,6 +8,23 @@ import {
   CrawlJobStatus,
 } from '../types';
 
+export interface SourceListResponse {
+  items: KnowledgeSource[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
+}
+
+export interface KnowledgeSourceFilters {
+  widgetId: string,
+   // pagination
+  search?: String;
+  skip?: number;
+  limit?: number;
+}
+
 export const knowledgeService = {
   async previewWebsiteLinks(request: WebCrawlPreviewRequest): Promise<WebCrawlPreviewResponse> {
     const response = await api.post<WebCrawlPreviewResponse>('/api/admin/knowledge/crawl/preview', request);
@@ -49,9 +66,9 @@ export const knowledgeService = {
     return response.data;
   },
 
-  async listSources(widgetId: string): Promise<KnowledgeSource[]> {
-    const response = await api.get<KnowledgeSource[]>('/api/admin/knowledge/sources', {
-      params: { widget_id: widgetId },
+  async listSources(filters?: KnowledgeSourceFilters): Promise<SourceListResponse> {
+    const response = await api.get('/api/admin/knowledge/sources', {
+      params: filters,
     });
     return response.data;
   },

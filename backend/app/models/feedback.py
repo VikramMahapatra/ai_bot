@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Identity, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -7,7 +7,7 @@ from app.database import Base
 class MessageFeedback(Base):
     __tablename__ = "message_feedback"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
     session_id = Column(String, nullable=False, index=True)  # Widget session
     message_index = Column(Integer, nullable=False)  # Position in conversation

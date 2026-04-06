@@ -10,7 +10,10 @@ import {
     LinearProgress,
     Stack,
     IconButton,
-    Alert
+    Alert,
+    Paper,
+    MenuItem,
+    Button
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import CallIcon from "@mui/icons-material/Call";
@@ -26,11 +29,15 @@ import CallOutcomesChart from "./charts/CallOutcomesChart";
 import IntentChart from "./charts/IntentChart";
 import LiveCalls from "./charts/LiveCalls";
 import { CallAnalytics, CallAnalyticsFilters, callService } from "../../services/callService";
+import { callCampaignService } from "../../services/callCampaignService";
+import { callLogService, FilterLookupResponse } from "../../services/callLogService";
 
 const CampaignAnalytics = () => {
     const theme = useTheme();
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [campaignId, setCampaignId] = useState<string>("all");
+    const [campaigns, setCampaigns] = useState<FilterLookupResponse[]>([]);
     const [analytics, setAnalytics] = useState<CallAnalytics>({
         summary: {
             total_calls: 0,
@@ -39,13 +46,13 @@ const CampaignAnalytics = () => {
             conversion_rate: 0,
             total_duration: 0,
             active_campaigns: 0,
-            live_calls: []
+            recent_calls: []
         },
         charts: {
             call_volume: [],
             pickup_trend: [],
             call_outcomes: [],
-            intent_distribution: []
+            lead_outcome_data: []
         }
     });
 
@@ -63,14 +70,34 @@ const CampaignAnalytics = () => {
     const [endDate, setEndDate] = useState<string>(end);
 
     useEffect(() => {
-        loadAnalytics()
+        validateDates();
     }, [fromDate, endDate]);
+
+    useEffect(() => {
+        loadCampaignList();
+    }, []);
+
+    const validateDates = () => {
+        if (!fromDate || !endDate) {
+            setError("Both start and end dates are required");
+            return;
+        }
+
+        if (new Date(fromDate) > new Date(endDate)) {
+            setError("Start date cannot be greater than End date");
+            return;
+        }
+
+        setError("");
+        loadAnalytics();
+    };
 
     const loadAnalytics = async () => {
         setLoading(true);
         const filters: CallAnalyticsFilters = {};
         if (fromDate) filters.start_date = fromDate;
         if (endDate) filters.end_date = endDate;
+        if (campaignId && campaignId !== "all") filters.campaign_id = parseInt(campaignId);
 
         try {
             const response = await callService.callAnalytics(filters);
@@ -85,45 +112,129 @@ const CampaignAnalytics = () => {
         }
     }
 
+    const loadCampaignList = async () => {
+        try {
+            const campaignData = await callLogService.campaignLookup();
+            setCampaigns(campaignData || []);
+        } catch (err) {
+            console.error("Failed to load campaigns", err);
+        }
+    };
+
     const { summary, charts } = analytics;
 
     const callVolumeData = charts?.call_volume || [];
     const pickupTrendData = charts?.pickup_trend || [];
     const callOutcomesData = charts?.call_outcomes || [];
-    const intentData = charts?.intent_distribution || [];
+    const intentData = charts?.lead_outcome_data || [];
 
     const showError = (message: string) => {
         setError(message);
     };
 
+    const resetFilters = () => {
+        setCampaignId("all");
+        setFromDate(start);
+        setEndDate(end);
+
+        setTimeout(() => {
+            loadAnalytics();
+        }, 0);
+    };
+
     return (
         <Box>
             {/* HEADER */}
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Typography variant="h5" fontWeight={700}>
-                    Analytics
-                </Typography>
+            <Box mb={3}>
+                <Paper
+                    sx={{
+                        p: 3,
+                        borderRadius: 3,
+                        backgroundColor: "background.paper"
+                    }}
+                >
+                    {/* Filter Header */}
+                    <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        mb={2}
+                    >
+                        <Typography variant="h6" fontWeight={600}>
+                            Filters
+                        </Typography>
 
-                <Box display="flex" gap={2}>
-                    <TextField
-                        label="From"
-                        type="date"
-                        size="small"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                    />
-                    <TextField
-                        label="To"
-                        type="date"
-                        size="small"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                    />
-                </Box>
+                        <Button
+                            size="small"
+                            color="error"
+                            onClick={resetFilters}
+                        >
+                            Reset
+                        </Button>
+                    </Box>
+
+                    {/* Filters */}
+                    <Box
+                        display="grid"
+                        gridTemplateColumns={{
+                            xs: "1fr",
+                            sm: "1fr 1fr",
+                            md: "1.5fr 1fr 1fr auto"
+                        }}
+                        gap={2}
+                    >
+
+                        {/* Campaign Filter */}
+                        <TextField
+                            select
+                            size="small"
+                            label="Campaign"
+                            value={campaignId}
+                            onChange={(e) => setCampaignId(e.target.value)}
+                            fullWidth
+                        >
+                            <MenuItem value="all">All Campaigns</MenuItem>
+                            {campaigns.map((campaign) => (
+                                <MenuItem key={campaign.id} value={campaign.id}>
+                                    {campaign.name}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+
+                        {/* From Date */}
+                        <TextField
+                            label="From Date"
+                            type="date"
+                            size="small"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            fullWidth
+                        />
+
+                        {/* To Date */}
+                        <TextField
+                            label="To Date"
+                            type="date"
+                            size="small"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            fullWidth
+                        />
+
+                        {/* Apply Button */}
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={loadAnalytics}
+                        >
+                            Apply
+                        </Button>
+
+                    </Box>
+                </Paper>
             </Box>
-
             {loading && (
                 <Box mb={3}>
                     <LinearProgress sx={{ borderRadius: 1.2 }} />
@@ -259,13 +370,12 @@ const CampaignAnalytics = () => {
                     </Card>
                 </Grid>
 
-                {/* LIVE CALLS */}
                 <Grid item xs={12} md={3}>
                     <Card sx={{ height: 320 }}>
                         <CardContent>
-                            <Typography fontWeight={600}>Live Calls</Typography>
+                            <Typography fontWeight={600}>Recent Calls</Typography>
                             <Box mt={2}>
-                                <LiveCalls liveCalls={summary.live_calls || 0} />
+                                <LiveCalls recentCalls={summary.recent_calls || []} />
                             </Box>
                         </CardContent>
                     </Card>
@@ -284,28 +394,29 @@ const CampaignAnalytics = () => {
                         </CardContent>
                     </Card>
                 </Grid>
-
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={8}>
                     <Card sx={{ height: 280 }}>
                         <CardContent>
-                            <Typography fontWeight={600}>Call Outcomes</Typography>
-                            <Box height={200}>
-                                <CallOutcomesChart data={callOutcomesData} />
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                    <Card sx={{ height: 280 }}>
-                        <CardContent>
-                            <Typography fontWeight={600}>Intent Distribution</Typography>
+                            <Typography fontWeight={600}>Sentiment Outcomes</Typography>
                             <Box height={200}>
                                 <IntentChart data={intentData} />
                             </Box>
                         </CardContent>
                     </Card>
                 </Grid>
+            </Grid>
+            <Grid container spacing={3} mt={1}>
+                <Grid item xs={12} md={6}>
+                    <Card sx={{ height: 350 }}>  {/* increase card height */}
+                        <CardContent>
+                            <Typography fontWeight={600}>Call Outcomes</Typography>
+                            <Box height={250}>  {/* increase chart container */}
+                                <CallOutcomesChart data={callOutcomesData} />
+                            </Box>
+                        </CardContent>
+                    </Card>
+                </Grid>
+
             </Grid>
         </Box>
     );

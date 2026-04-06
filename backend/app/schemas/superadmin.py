@@ -240,6 +240,7 @@ class SubscriptionResponse(BaseModel):
 
 class CallingNumberBase(BaseModel):
     calling_number: str
+    type: str = "outbound"  # 'outbound' or 'inbound'
     is_default: Optional[bool] = False
     is_active: Optional[bool] = True
     

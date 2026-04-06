@@ -17,12 +17,12 @@ import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from '@mui/material/styles';
 
 import CampaignInfo from "./CampaignInfo";
-import Contacts from "./Contacts";
 import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
 import CampaignDetails from "./CampaignDetails";
 import moment from "moment-timezone";
+import CampaignContacts from "./CampaignContacts";
 
 
 const steps = [
@@ -345,7 +345,7 @@ const CampaignBuilder = () => {
 
             case 1:
                 return (
-                    <Contacts
+                    <CampaignContacts
                         form={campaignForm}
                         setForm={setCampaignForm}
                         campaignContacts={campaignContacts}
@@ -460,7 +460,7 @@ const CampaignBuilder = () => {
                         {activeStep == 2 &&
                             <Grid item xs={6} textAlign="right">
                                 <Button variant="contained" onClick={handleSave} sx={{ ml: 1 }} disabled={loading}>
-                                    {mode === "edit" ? "Update" : "Add"}
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
                                 </Button>
                             </Grid>
                         }
@@ -500,7 +500,7 @@ const CampaignBuilder = () => {
                                     onClick={handleSave}
                                     disabled={loading}
                                 >
-                                    {mode === "edit" ? "Update" : "Add"}
+                                    {mode === "edit" ? "Update Campaign" : "Add Campaign"}
                                 </Button>
                             </Box>
                         </Grid>

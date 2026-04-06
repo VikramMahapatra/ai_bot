@@ -1,7 +1,10 @@
 from datetime import date, datetime, time, timedelta, timezone
 import json
+import random
 from typing import Optional, Tuple, Union
 
+from fastapi import BackgroundTasks
+from psycopg2 import IntegrityError
 from sqlalchemy import Integer, case, cast, func, or_
 
 from app.models.call_logs import CallLog, CallTranscript
@@ -24,15 +27,22 @@ LEAD_QUALITY_RANGES = {
 }
 
 def get_call_logs(
+    background_tasks: BackgroundTasks,
     db: Session,
     organization_id: int,
     params: CallLogRequest
 ):
     ### SYNC WITH ECHOLEADS
-    try:
-        sync_call_logs(db, organization_id, params.campaign_id, params.from_date, params.end_date, params.agent_id)
-    except Exception as e:
-        print(f"Sync failed: {str(e)}")
+   
+    background_tasks.add_task(
+        sync_call_logs,
+        db,
+        organization_id,
+        params.campaign_id, 
+        params.from_date, 
+        params.end_date, 
+        params.agent_id
+    )
 
     query = (
         db.query(
@@ -45,7 +55,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(Lead, Lead.session_id == CallLog.external_call_a_id)  # for lead qualification status
+        .outerjoin(Lead, Lead.session_id == CallLog.call_session_id)  # for lead qualification status
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -158,7 +168,7 @@ def get_call_logs(
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid
-        lead_exists = db.query(Lead).filter(Lead.session_id == log.id).first()
+        lead_exists = db.query(Lead).filter(Lead.session_id == log.call_session_id).first()
         if log.is_lead_qualified:
             lead_qualified_status = "Synced" if lead_exists else "Pending"
         else:
@@ -254,78 +264,21 @@ def sync_call_logs(
     client = EcholeadsClient()
     total_calls = 0
     
-    if agent_id:
-        print("Syncing WITH agent_id (direct agent mode)")
-
-        agent = db.query(CallingAgent).filter(
-            CallingAgent.id == agent_id,
-            CallingAgent.organization_id == organization_id
-        ).first()
-
-        if not agent:
-            print("Agent not found")
-            return
-
-        from_date, to_date = get_default_dates(from_date, to_date)
-
-        response = client.fetch_calls(
-            agent_id=agent.external_agent_id,
-            from_date=from_date.isoformat(),
-            to_date=to_date.isoformat()
-        )
-
-        calls = response.get("calls", [])
-
-        for call in calls:
-            process_call(db, call, agent)
-            
-    elif campaign_id or (from_date and to_date):
-        
-        if campaign_id:
-            print("Syncing WITH campaign_id (campaign wise mode)")
-            campaign = db.query(CallCampaign).filter(
-                CallCampaign.id == campaign_id
-            ).first()
-            
-            response = []
-            if campaign.external_campaign_id:
-                response = client.fetch_campaign_calls(campaign.external_campaign_id)
-        else:
-            print("Syncing WITH dates (date range wise mode)")
-            from_date, to_date = get_default_dates(from_date, to_date)
-            response = client.fetch_calls(
-                agent_id=None,  # 👈 ignore
-                from_date=from_date.isoformat(),
-                to_date=to_date.isoformat()
-            )
-
-        calls = response.get("calls", [])
-
-        for call in calls:
-            total_calls += 1            
-            call_start = parse_datetime(call.get("created_at"))
-            if not call_start:
-                continue
+    try:
+        if agent_id:
+            print("Syncing WITH agent_id (direct agent mode)")
 
             agent = db.query(CallingAgent).filter(
-                CallingAgent.external_agent_a_id == call.get("a_id"),
+                CallingAgent.id == agent_id,
                 CallingAgent.organization_id == organization_id
             ).first()
 
             if not agent:
-                continue
-            process_call(db, call, agent)
-    else:
-        print("Syncing WITH agent_id (agent-wise mode)")
-        from_date, to_date = get_default_dates(from_date, to_date)
+                print("Agent not found")
+                return
 
-        agents = db.query(CallingAgent).filter(
-            CallingAgent.external_agent_id.isnot(None),
-            CallingAgent.is_deleted == False,
-            CallingAgent.organization_id == organization_id
-        ).all()
+            from_date, to_date = get_default_dates(from_date, to_date)
 
-        for agent in agents:
             response = client.fetch_calls(
                 agent_id=agent.external_agent_id,
                 from_date=from_date.isoformat(),
@@ -333,10 +286,73 @@ def sync_call_logs(
             )
 
             calls = response.get("calls", [])
-            for call in calls:   
+
+            for call in calls:
                 process_call(db, call, agent)
                 
-    db.commit()
+        elif campaign_id or (from_date and to_date):
+            
+            if campaign_id:
+                print("Syncing WITH campaign_id (campaign wise mode)")
+                campaign = db.query(CallCampaign).filter(
+                    CallCampaign.id == campaign_id
+                ).first()
+                
+                response = []
+                if campaign.external_campaign_id:
+                    response = client.fetch_campaign_calls(campaign.external_campaign_id)
+            else:
+                print("Syncing WITH dates (date range wise mode)")
+                from_date, to_date = get_default_dates(from_date, to_date)
+                response = client.fetch_calls(
+                    agent_id=None,  # 👈 ignore
+                    from_date=from_date.isoformat(),
+                    to_date=to_date.isoformat()
+                )
+
+            calls = response.get("calls", [])
+
+            for call in calls:
+                total_calls += 1            
+                call_start = parse_datetime(call.get("created_at"))
+                if not call_start:
+                    continue
+
+                agent = db.query(CallingAgent).filter(
+                    CallingAgent.external_agent_a_id == call.get("a_id"),
+                    CallingAgent.organization_id == organization_id
+                ).first()
+
+                if not agent:
+                    continue
+                process_call(db, call, agent)
+        else:
+            print("Syncing WITH agent_id (agent-wise mode)")
+            from_date, to_date = get_default_dates(from_date, to_date)
+
+            agents = db.query(CallingAgent).filter(
+                CallingAgent.external_agent_id.isnot(None),
+                CallingAgent.is_deleted == False,
+                CallingAgent.organization_id == organization_id
+            ).all()
+
+            for agent in agents:
+                response = client.fetch_calls(
+                    agent_id=agent.external_agent_id,
+                    from_date=from_date.isoformat(),
+                    to_date=to_date.isoformat()
+                )
+
+                calls = response.get("calls", [])
+                for call in calls:   
+                    process_call(db, call, agent)
+                    
+        db.commit()
+    
+    except Exception as e:
+        db.rollback()
+        print(f"Sync failed: {str(e)}")
+    
     
 def process_call(db, call, agent):
     call_start = parse_datetime(call.get("created_at"))
@@ -409,9 +425,11 @@ def process_call(db, call, agent):
             
             save_transcripts(db, existing.id, call.get("transcript"))
         else:
+            call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
             call_log = CallLog(
                 external_call_id=call["id"],
                 external_call_a_id=call["call_id"],
+                call_session_id=call_session_id, 
                 organization_id=agent.organization_id,
                 agent_id=agent.id,
                 campaign_id=campaign.id if campaign else None,
@@ -437,48 +455,42 @@ def process_call(db, call, agent):
                 created_at = parse_datetime(call.get("created_at")),
             )
 
-            db.add(call_log)
-            db.flush()
+            try:
+                db.add(call_log)
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                call_log = db.query(CallLog).filter(
+                    CallLog.external_call_id == call["id"]
+                ).first()
             
             save_transcripts(db, call_log.id, call.get("transcript"))
     else: 
         # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
-        call_log = existing
-        
-        campaign = db.query(CallCampaign).filter(
-                CallCampaign.id == existing.campaign_id
-        ).first()  
-        
-        contact = db.query(Contact).filter(
-                Contact.id == existing.contact_id
-        ).first() 
-        
-        transcript_exists = db.query(CallTranscript.id).filter(
-            CallTranscript.call_log_id == existing.id
-        ).first()
-
-        if not transcript_exists:
-            save_transcripts(db, existing.id, call.get("transcript"))    
+        call_log = existing  
 
     # Only create lead for Campaign calls, not for test calls.
     if campaign:
-        lead = create_lead_from_call(db, call_log.id, call, agent, campaign, contact)
+        
+        contact = db.query(Contact).filter(
+                Contact.id == call_log.contact_id
+        ).first() 
+        
+        lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
 
         if lead:
             # Mark call_log as lead qualified
             call_log.is_lead_qualified = True
             
         db.flush()
-
     
     test_call = db.query(CallingAgentTestCall).filter(
-        CallingAgentTestCall.external_call_id ==call["id"]
+        CallingAgentTestCall.external_call_id == str(call["id"])
     ).first()
 
     if test_call:
         test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
-        db.commit()
-
+    
 def save_transcripts(db: Session, call_log_id: int, transcript):
 
     if not transcript:
@@ -513,17 +525,14 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
         
     db.flush()
         
-def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
-    # Skip test calls
-    if not campaign:
-        return None
-    
-    call_log = db.query(CallLog).filter(CallLog.id == call_log_id).first()
+def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
     # Prevent duplicate
     query = db.query(Lead).filter(
-        Lead.session_id == call_log.external_call_a_id,
-        Lead.organization_id == call_log.organization_id
+        Lead.organization_id == call_log.organization_id,
+        Lead.session_id == (
+            call_log.call_session_id
+        )
     )
     
     existing = query.first()
@@ -531,8 +540,8 @@ def create_lead_from_call(db, call_log_id, call, agent, campaign, contact):
     if not existing:
         lead = Lead(
             source="voice",
-            session_id=call_log.external_call_a_id,
-            widget_id=agent.external_agent_a_id,
+            session_id=call_log.call_session_id,
+            widget_id=agent.widget_id,
             organization_id=agent.organization_id,
             product_id = str(campaign.product_id) if campaign.product_id else None,
             name=contact.name if contact else None,
@@ -619,8 +628,8 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
 
     lead = Lead(
         source="voice",
-        session_id=call.external_call_a_id,
-        widget_id=agent.external_agent_a_id,
+        session_id=call.call_session_id,
+        widget_id=agent.widget_id,
         organization_id=agent.organization_id,
         product_id = str(campaign.product_id) if campaign.product_id else None,
         name=contact.name if contact else None,
@@ -649,7 +658,8 @@ def create_manual_lead(db : Session, organization_id :int, call_log_id : int, pa
 def create_conversation_from_transcripts(db, call_log, agent):
     # Skip if already exists
     exists = db.query(Conversation.id).filter(
-        Conversation.session_id == str(call_log.external_call_a_id)
+        Conversation.session_id == (call_log.call_session_id),
+        Conversation.organization_id == call_log.organization_id
     ).first()
     
     if exists:
@@ -671,8 +681,8 @@ def create_conversation_from_transcripts(db, call_log, agent):
         if role == "user":
             # Start new conversation row with user message
             current_message = Conversation(
-                session_id=str(call_log.external_call_a_id),
-                widget_id=str(agent.external_agent_a_id),
+                session_id=call_log.call_session_id,
+                widget_id=agent.widget_id,
                 organization_id=call_log.organization_id,
                 message=t.text,
                 response="",
@@ -688,8 +698,8 @@ def create_conversation_from_transcripts(db, call_log, agent):
             else:
                 # First message is assistant, create a new row
                 current_message = Conversation(
-                    session_id=str(call_log.external_call_a_id),
-                    widget_id=str(agent.external_agent_a_id),
+                    session_id=call_log.call_session_id,
+                    widget_id=agent.widget_id,
                     organization_id=call_log.organization_id,
                     message="",
                     response=t.text,

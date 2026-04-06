@@ -1,439 +1,430 @@
 import { useEffect, useState } from "react";
 import { alpha, useTheme } from '@mui/material/styles';
+import { ButtonGroup, IconButton, Menu } from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
 import {
-    Box,
-    Paper,
     Grid,
+    Button,
     Table,
     TableHead,
     TableRow,
     TableCell,
     TableBody,
-    TextField,
-    Button,
-    IconButton,
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
-    InputAdornment,
-    MenuItem,
-    TablePagination,
     Typography,
+    Box,
+    TextField,
+    Autocomplete,
+    MenuItem,
+    Alert,
     Stack,
-    Alert
+    FormControl,
+    InputLabel,
+    Select
 } from "@mui/material";
-
-import SearchIcon from "@mui/icons-material/Search";
-import EditIcon from "@mui/icons-material/Edit";
-import AddIcon from "@mui/icons-material/Add";
 import { callCampaignService, Contact, ContactList } from "../../services/callCampaignService";
+import { campaignService } from "../../services/campaignService";
+import React from "react";
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import GroupIcon from '@mui/icons-material/Group';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+
+interface CampaignContactsProps {
+    form: any;
+    setForm: any;
+    campaignContacts: Contact[];
+    setCampaignContacts: React.Dispatch<React.SetStateAction<Contact[]>>;
+    nextStep: () => void;
+    prevStep: () => void;
+}
 
 
+const CampaignContacts = ({ form, setForm, campaignContacts, setCampaignContacts, nextStep, prevStep }: CampaignContactsProps) => {
 
-const CampaignContacts = () => {
-    const theme = useTheme();
-    const [contacts, setContacts] = useState<Contact[]>([]);
+    const [openAdd, setOpenAdd] = useState(false);
+    const [mode, setMode] = useState<"crm" | "csv" | null>(null);
     const [contactLists, setContactLists] = useState<ContactList[]>([]);
-    const [campaignContactTotal, setCampaignContactTotal] = useState(0);
-    const [campaignContactPage, setCampaignContactPage] = useState(0);
-    const [campaignContactRowsPerPage, setCampaignContactRowsPerPage] = useState(10);
-
-    const [search, setSearch] = useState("");
-
-    const [openForm, setOpenForm] = useState(false);
-    const [editContact, setEditContact] = useState<Contact | null>(null);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [crmContacts, setCrmContacts] = useState<Contact[]>([]);
+    const [csvFile, setCsvFile] = useState<File | null>(null);
+    const [uploadListId, setUploadListId] = useState<number | ''>('');
     const [errors, setErrors] = useState<any>({});
-    const [form, setForm] = useState({
-        name: "",
-        email: "",
-        phone: "",
-        company: "",
-        contact_list_id: ""
-    });
+    const [contactError, setContactError] = useState("");
+    const [success, setSuccess] = useState('');
+    const [loading, setLoading] = useState(false);
+    const theme = useTheme();
+    const [dialogContacts, setDialogContacts] = useState<Contact[]>([]);
+    const [uploadResult, setUploadResult] = React.useState<any>(null);
+    const [anchorEl, setAnchorEl] = useState(null)
+    const [openContactList, setOpenContactList] = useState(false)
+    const [selectedContactLists, setSelectedContactLists] = useState<number[]>([])
 
-    const showError = (message: string) => {
-        setSuccess('');
-        setError(message);
+    const handleMenuOpen = (event: any) => {
+        setAnchorEl(event.currentTarget)
+    }
+
+    const handleMenuClose = () => {
+        setAnchorEl(null)
+    }
+
+    const handleAddContacts = () => {
+        const existingIds = new Set(campaignContacts.map(c => c.id));
+
+        const combined = [
+            ...dialogContacts,
+            ...(uploadResult?.contacts || [])
+        ];
+
+        const uniqueNew: Contact[] = [];
+        const seen = new Set();
+
+        for (const c of combined) {
+            if (!c?.id) continue;
+
+            // skip if already in campaign OR already added in this batch
+            if (existingIds.has(c.id) || seen.has(c.id)) continue;
+
+            seen.add(c.id);
+            uniqueNew.push(c);
+        }
+
+        if (uniqueNew.length === 0) {
+            setOpenAdd(false);
+            return;
+        }
+
+        setCampaignContacts(prev => [...prev, ...uniqueNew]);
+
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: [...prev.contacts, ...uniqueNew.map(c => c.id)]
+        }));
+
+        setOpenAdd(false);
     };
 
-    const showSuccess = (message: string) => {
-        setError('');
-        setSuccess(message);
-    };
+    const handleAddContactLists = () => {
 
+        const selectedSet = new Set(selectedContactLists)
 
-    /* ---------------------------
-        Fetch Contacts
-    ---------------------------- */
+        // Get contacts belonging to selected lists
+        const listContacts = crmContacts.filter(contact =>
+            selectedSet.has(contact.contact_list_id)
+        )
 
-    const loadContacts = async () => {
-        const data = await callCampaignService.allContacts({
-            search: search || undefined,
-            skip: campaignContactPage * campaignContactRowsPerPage,
-            limit: campaignContactRowsPerPage,
-        });
-        console.log("contacts data", data)
-        setContacts(data.items || []);
-        setCampaignContactTotal(data.pagination?.total || 0);
-    };
+        // Keep manually added contacts (optional but recommended)
+        const manualContacts = campaignContacts.filter(
+            c => !c.contact_list_id
+        )
+
+        // Merge list contacts + manual contacts
+        const mergedContacts = [
+            ...manualContacts,
+            ...listContacts
+        ]
+
+        // Remove duplicates
+        const uniqueMap = new Map()
+
+        mergedContacts.forEach(c => {
+            if (c?.id) uniqueMap.set(c.id, c)
+        })
+
+        const finalContacts = Array.from(uniqueMap.values())
+
+        // Update campaign contacts
+        setCampaignContacts(finalContacts)
+
+        // Update form
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: finalContacts.map(c => c.id)
+        }))
+
+        setOpenContactList(false)
+    }
 
     const loadContactLists = async () => {
         const data = await callCampaignService.getContactLists();
         setContactLists(data || []);
     };
 
+    const loadExistingContacts = async () => {
+        const data = await callCampaignService.getContactLookup();
+        setCrmContacts(data || []);
+    };
+
+
     useEffect(() => {
-        loadContacts();
         loadContactLists();
+        loadExistingContacts();
+        setUploadResult(null)
     }, []);
 
-    /* ---------------------------
-    Search Filter
----------------------------- */
 
     useEffect(() => {
-        const run = async () => {
-            try {
-                await loadContacts();
-            } catch (err: any) {
-                showError(err?.response?.data?.detail || 'Failed to load contact lists');
-            }
-        };
-        run();
-    }, [search, campaignContactPage, campaignContactRowsPerPage]);
+        const selectedContactListIds = [
+            ...new Set(dialogContacts.map(c => c.contact_list_id))
+        ];
+        setSelectedContactLists(selectedContactListIds);
+    }, [dialogContacts]);
 
-    const validate = () => {
 
-        const newErrors: any = {};
+    const handleCloseDialog = () => {
+        setOpenAdd(false);
+        setMode(null)
+    };
 
-        if (!form.contact_list_id) {
-            newErrors.contact_list_id = "List Name is required";
+    const handleCloseContactListDialog = () => {
+        setOpenContactList(false);
+    };
+
+    const handleContinue = () => {
+        if (form.contacts.length === 0) {
+            setContactError("Please add at least one contact");
+            return;
         }
 
-        if (!form.name.trim()) {
-            newErrors.name = "Name is required";
-        }
-
-        if (!form.phone.trim()) {
-            newErrors.phone = "Phone is required";
-        }
-
-        if (!form.email.trim()) {
-            newErrors.email = "Email is required";
-        }
-
-        if (form.email && !/\S+@\S+\.\S+/.test(form.email)) {
-            newErrors.email = "Invalid email";
-        }
-
-        setErrors(newErrors);
-
-        return Object.keys(newErrors).length === 0;
+        setContactError("");
+        nextStep();
     };
 
 
-    /* ---------------------------
-        Open Add Form
-    ---------------------------- */
+    const handleOpenExistingContacts = () => {
+        setDialogContacts(campaignContacts); // preload selected contacts
+        setOpenAdd(true);
+        setMode("crm")
+        setCsvFile(null);
+        setUploadListId('');
+    }
 
-    const handleAdd = () => {
 
-        setEditContact(null);
-        setForm({
-            name: "",
-            email: "",
-            phone: "",
-            company: "",
-            contact_list_id: ""
-        });
-        setErrors({});
-        setOpenForm(true);
+    const handleRemove = (contactId: number) => {
+        // Remove from UI list
+        setCampaignContacts((prev: any[]) =>
+            prev.filter((c) => c.id !== contactId)
+        );
+
+        // Remove from form.contacts
+        setForm((prev: any) => ({
+            ...prev,
+            contacts: prev.contacts.filter((id: number) => id !== contactId)
+        }));
     };
 
-    /* ---------------------------
-        Open Edit Form
-    ---------------------------- */
-
-    const handleEdit = (contact: Contact) => {
-
-        setEditContact(contact);
-        setErrors({});
-        setForm({
-            name: contact.name,
-            email: contact.email,
-            phone: contact.phone,
-            company: contact.company || "",
-            contact_list_id: contact.contact_list_id.toString()
-        });
-
-        setOpenForm(true);
-    };
-
-    /* ---------------------------
-        Save Contact
-    ---------------------------- */
-
-    const saveContact = async () => {
-        if (!validate()) return;
-        try {
-            if (editContact) {
-                await callCampaignService.updateContact(form, editContact.id);
-            } else {
-                console.log("calling api")
-                await callCampaignService.createContact(form);
-            }
-            setOpenForm(false);
-            loadContacts();
-        } catch {
-            console.log("Something went wrong!")
-        }
-    };
+    const handleMenuAction = (action: () => void) => {
+        handleMenuClose()
+        action()
+    }
 
     return (
+        <Grid container spacing={2}>
 
-        <Box>
-            {/* FILTERS */}
+            {/* BUTTONS */}
+            <Grid item xs={12} textAlign="right">
 
-            <Grid container spacing={2} mb={2} alignItems="center">
+                <Button
+                    variant="contained"
+                    endIcon={<ArrowDropDownIcon />}
+                    onClick={handleMenuOpen}
+                >
+                    Add Contacts
+                </Button>
 
-                <Grid item xs={12} md={6}>
-                    <TextField
-                        fullWidth
-                        size="small"
-                        label="Search Contacts"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        InputProps={{
-                            endAdornment: (
-                                <InputAdornment position="end">
-                                    <SearchIcon />
-                                </InputAdornment>
-                            )
-                        }}
-                    />
-                </Grid>
+                <Menu
+                    anchorEl={anchorEl}
+                    open={Boolean(anchorEl)}
+                    onClose={handleMenuClose}
+                >
 
-                <Grid item xs={12} md={6} textAlign="right">
+                    <MenuItem onClick={() => handleMenuAction(handleOpenExistingContacts)}>
+                        <GroupIcon sx={{ mr: 1 }} />
+                        Select Existing Contacts
+                    </MenuItem>
 
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={handleAdd}
-                    >
-                        Add Contact
-                    </Button>
-
-                </Grid>
+                    <MenuItem onClick={() => handleMenuAction(() => setOpenContactList(true))}>
+                        <ListAltIcon sx={{ mr: 1 }} />
+                        Select Contact List
+                    </MenuItem>
+                </Menu>
 
             </Grid>
 
-            <Stack
-                mb={2}
-            >
-                {error && (
-                    <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
-                        {error}
-                    </Alert>
-                )}
-                {success && (
-                    <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
-                        {success}
-                    </Alert>
-                )}
-            </Stack>
-
             {/* CONTACT TABLE */}
 
-            <Paper>
+            <Grid item xs={12}>
+                <Stack
+                    mb={2}
+                >
+                    {contactError && (
+                        <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
+                            {contactError}
+                        </Alert>
+                    )}
+                </Stack>
                 <Table>
 
                     <TableHead>
-
                         <TableRow>
                             <TableCell>Name</TableCell>
-                            <TableCell>Email</TableCell>
                             <TableCell>Phone</TableCell>
+                            <TableCell>Email</TableCell>
                             <TableCell>Company</TableCell>
-                            <TableCell width={120}>Actions</TableCell>
+                            <TableCell align="center">Action</TableCell>
                         </TableRow>
-
                     </TableHead>
 
                     <TableBody>
-                        {contacts.length === 0 ? (
+                        {campaignContacts.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={4} sx={{ py: 8 }}>
-                                    <Box
-                                        display="flex"
-                                        flexDirection="column"
-                                        alignItems="center"
-                                        justifyContent="center"
-                                        textAlign="center"
-                                        gap={1}
-                                    >
-                                        <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
-
-                                        <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
-                                            No contacts found
-                                        </Typography>
-
-                                        <Typography variant="body2" sx={{ color: "text.disabled" }}>
-                                            Try adjusting your search or add a new contact
-                                        </Typography>
-                                    </Box>
+                                <TableCell colSpan={4} align="center">
+                                    No contacts added
                                 </TableCell>
                             </TableRow>
-
                         ) : (
-                            contacts.map((contact) => (
-
-                                <TableRow key={contact.id} hover>
-
+                            campaignContacts.map((contact: any, index: number) => (
+                                <TableRow key={index}>
                                     <TableCell>{contact.name}</TableCell>
-                                    <TableCell>{contact.email}</TableCell>
                                     <TableCell>{contact.phone}</TableCell>
+                                    <TableCell>{contact.email}</TableCell>
                                     <TableCell>{contact.company}</TableCell>
-
-                                    <TableCell>
-
+                                    <TableCell align="center">
                                         <IconButton
-                                            size="small"
-                                            onClick={() => handleEdit(contact)}
+                                            color="error"
+                                            onClick={() => handleRemove(contact.id)}
                                         >
-                                            <EditIcon />
+                                            <DeleteIcon />
                                         </IconButton>
-
                                     </TableCell>
-
                                 </TableRow>
-
-                            )))}
+                            ))
+                        )}
                     </TableBody>
+
                 </Table>
-                <TablePagination
-                    component="div"
-                    count={campaignContactTotal}
-                    page={campaignContactPage}
-                    onPageChange={(_, value) => setCampaignContactPage(value)}
-                    rowsPerPage={campaignContactRowsPerPage}
-                    onRowsPerPageChange={(event) => {
-                        setCampaignContactRowsPerPage(parseInt(event.target.value, 10));
-                        setCampaignContactPage(0);
-                    }}
-                    rowsPerPageOptions={[10, 25, 50]}
-                />
-            </Paper>
+            </Grid>
 
-            {/* ADD / EDIT FORM */}
+            {/* STEPPER */}
 
-            <Dialog
-                open={openForm}
-                onClose={() => setOpenForm(false)}
-                maxWidth="sm"
-                fullWidth
-            >
+            <Grid item xs={6}>
+                <Button onClick={prevStep}>Back</Button>
+            </Grid>
 
-                <DialogTitle>
-                    {editContact ? "Edit Contact" : "Add Contact"}
-                </DialogTitle>
+            <Grid item xs={6} textAlign="right">
+                <Button variant="contained"
+                    onClick={handleContinue}
+                >
+                    Continue
+                </Button>
+            </Grid>
+
+            {/* ADD CONTACTS POPUP */}
+
+            <Dialog open={openAdd} onClose={() => setOpenAdd(false)} maxWidth="sm" fullWidth>
+
+                <DialogTitle>Add Contacts</DialogTitle>
 
                 <DialogContent>
 
-                    <Box
-                        display="flex"
-                        flexDirection="column"
-                        gap={2}
-                        mt={1}
-                    >
-                        <TextField
-                            select
-                            required
-                            label="Contact List"
-                            name="name"
-                            value={form.contact_list_id}
-                            onChange={(e) =>
-                                setForm({ ...form, contact_list_id: e.target.value })
-                            }
-                            error={!!errors.contact_list_id}
-                            helperText={errors.contact_list_id}
-                        >
-                            {contactLists.map((list) => (
-                                <MenuItem key={list.id} value={list.id}>
-                                    {list.list_name}
-                                </MenuItem>
-                            ))}
-                        </TextField>
+                    {!mode && (
+                        <>
+                            <Typography mb={2}>
+                                Choose how you'd like to add contacts to your database
+                            </Typography>
 
-                        <TextField
-                            required
-                            label="Name"
-                            value={form.name}
-                            onChange={(e) =>
-                                setForm({ ...form, name: e.target.value })
-                            }
-                            error={!!errors.name}
-                            helperText={errors.name}
-                        />
+                            <Box display="flex" gap={2}>
 
-                        <TextField
-                            required
-                            label="Email"
-                            value={form.email}
-                            onChange={(e) =>
-                                setForm({ ...form, email: e.target.value })
-                            }
-                            error={!!errors.email}
-                            helperText={errors.email}
-                        />
+                                <Button
+                                    variant="outlined"
+                                    fullWidth
+                                    onClick={() => setMode("crm")}
+                                >
+                                    Select CRM Contacts
+                                </Button>
 
-                        <TextField
-                            required
-                            label="Phone"
-                            value={form.phone}
-                            onChange={(e) =>
-                                setForm({ ...form, phone: e.target.value })
-                            }
-                            error={!!errors.phone}
-                            helperText={errors.phone}
-                        />
+                                <Button
+                                    variant="outlined"
+                                    fullWidth
+                                    onClick={() => setMode("csv")}
+                                >
+                                    Upload CSV File
+                                </Button>
 
-                        <TextField
-                            label="Company"
-                            value={form.company}
-                            onChange={(e) =>
-                                setForm({ ...form, company: e.target.value })
-                            }
-                            error={!!errors.company}
-                            helperText={errors.company}
-                        />
+                            </Box>
+                        </>
+                    )}
 
-                    </Box>
+                    {mode === "crm" && (
+                        <Box mt={2}>
 
+                            <Autocomplete
+                                multiple
+                                options={crmContacts}
+                                getOptionLabel={(option: Contact) => option.label ?? ""}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                value={dialogContacts}
+                                onChange={(event, newValue) => setDialogContacts(newValue)}
+                                renderInput={(params) => (
+                                    <TextField {...params} label="Select Contacts" />
+                                )}
+                            />
+
+                        </Box>
+                    )}
                 </DialogContent>
 
                 <DialogActions>
-
-                    <Button onClick={() => setOpenForm(false)}>
-                        Cancel
+                    <Button variant="outlined" onClick={handleCloseDialog} color="error">Cancel</Button>
+                    <Button variant="contained" onClick={handleAddContacts}>
+                        Done
                     </Button>
-
-                    <Button
-                        variant="contained"
-                        onClick={saveContact}
-                    >
-                        Save
-                    </Button>
-
                 </DialogActions>
 
             </Dialog>
 
+            {/* CONTACT LIST SELECTION */}
 
-        </Box>
+            <Dialog open={openContactList} onClose={() => setOpenContactList(false)} maxWidth="sm" fullWidth>
 
+                <DialogTitle>Add Contact Lists</DialogTitle>
+                <DialogContent>
+                    <Box mt={2}>
+
+                        <Autocomplete
+                            multiple
+                            options={contactLists}
+                            getOptionLabel={(option: ContactList) => option.list_name ?? ""}
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+
+                            value={contactLists.filter(list =>
+                                selectedContactLists.includes(list.id)
+                            )}
+
+                            onChange={(event, newValue) =>
+                                setSelectedContactLists(newValue.map(item => item.id))
+                            }
+
+                            renderInput={(params) => (
+                                <TextField {...params} label="Select Contact Lists" />
+                            )}
+                        />
+                    </Box>
+                </DialogContent>
+
+                <DialogActions>
+                    <Button variant="outlined" onClick={handleCloseContactListDialog} color="error">Cancel</Button>
+                    <Button variant="contained" onClick={handleAddContactLists}>
+                        Done
+                    </Button>
+                </DialogActions>
+
+            </Dialog>
+
+        </Grid>
     );
 };
 

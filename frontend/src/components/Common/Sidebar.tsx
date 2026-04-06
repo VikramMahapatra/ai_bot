@@ -34,6 +34,8 @@ import CallIcon from '@mui/icons-material/Call';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { chatService } from '../../services/chatService';
+import ContactsIcon from '@mui/icons-material/Contacts';
+import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 
 const drawerWidth = 280;
 
@@ -48,25 +50,27 @@ interface MenuItem {
   path: string;
   requiredRole?: 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'ADMIN_OR_HANDOFF' | 'ALL';
   featureKey?:
-    | 'module_knowledge_enabled'
-    | 'module_leads_enabled'
-    | 'module_analytics_enabled'
-    | 'module_advanced_analytics_enabled'
-    | 'module_reports_enabled'
-    | 'module_campaigns_enabled'
-    | 'module_appointments_enabled'
-    | 'module_products_enabled'
-    | 'module_users_enabled'
-    | 'human_handoff_enabled';
+  | 'module_knowledge_enabled'
+  | 'module_leads_enabled'
+  | 'module_analytics_enabled'
+  | 'module_advanced_analytics_enabled'
+  | 'module_reports_enabled'
+  | 'module_campaigns_enabled'
+  | 'module_appointments_enabled'
+  | 'module_products_enabled'
+  | 'module_users_enabled'
+  | 'human_handoff_enabled'
+  | 'module_contact_book_enabled';
 }
 
 const allMenuItems: MenuItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin', requiredRole: 'ADMIN' },
-  { text: 'Agent Management', icon: <WidgetsIcon />, path: '/widgets', requiredRole: 'ADMIN' },
-  { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
-  { text: 'Calls', icon: <CallIcon />, path: '/calls', requiredRole: 'ALL' },
+  { text: 'Chat Agents', icon: <SmartToyIcon />, path: '/widgets', requiredRole: 'ADMIN' },
+  // { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
+  { text: 'Calling Agents', icon: <HeadsetMicIcon />, path: '/calls', requiredRole: 'ALL' },
   { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN', featureKey: 'module_knowledge_enabled' },
   { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN', featureKey: 'module_leads_enabled' },
+  { text: 'Contact Book', icon: <ContactsIcon />, path: '/contacts', requiredRole: 'ADMIN', featureKey: 'module_contact_book_enabled' },
   { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN', featureKey: 'module_analytics_enabled' },
   { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },

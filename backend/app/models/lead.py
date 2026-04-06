@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class Lead(Base):
     __tablename__ = "leads"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=True)
     product_id = Column(String, nullable=True)

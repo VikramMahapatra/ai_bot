@@ -15,33 +15,26 @@ from email_validator import EmailNotValidError, validate_email
 from typing import Iterable, Optional
 from urllib.parse import quote
 from app.config import settings
+from app.services.organization_setting_service import get_org_smtp_config
+from app.models.organization_settings import OrganizationSettings
 
 logger = logging.getLogger(__name__)
 SMTP_TIMEOUT_SECONDS = 20
 RESERVED_TEST_DOMAINS = {"example.com", "example.org", "example.net", "test.com", "localhost", "local"}
 
-
-# def _open_smtp_server():
-#     if settings.SMTP_USE_SSL:
-#         return smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
-
-#     server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
-#     server.starttls()
-#     return server
-
-def _open_smtp_server():
-    if settings.SMTP_USE_SSL:
+def _open_smtp_server(smtp_config):
+    if not smtp_config["use_tls"]:
         server = smtplib.SMTP_SSL(
-            settings.SMTP_HOST,
-            settings.SMTP_PORT,
+            smtp_config["host"],
+            smtp_config["port"],
             timeout=SMTP_TIMEOUT_SECONDS
         )
         server.ehlo()
         return server
 
     server = smtplib.SMTP(
-        settings.SMTP_HOST,
-        settings.SMTP_PORT,
+        smtp_config["host"],
+        smtp_config["port"],
         timeout=SMTP_TIMEOUT_SECONDS
     )
 
@@ -144,47 +137,7 @@ def _precheck_recipient_mailbox(email: str) -> tuple[bool | None, str | None]:
     reason = "; ".join(inconclusive_errors).strip()
     return None, reason or "Recipient check inconclusive"
 
-
-# def send_conversation_email(recipient_email: str, conversation_data: list) -> bool:
-#     """
-#     Send conversation transcript via email
-    
-#     Args:
-#         recipient_email: Email address to send to
-#         conversation_data: List of message dicts with 'role' and 'content'
-    
-#     Returns:
-#         bool: True if sent successfully, False otherwise
-#     """
-#     try:
-#         # Create message
-#         msg = MIMEMultipart('alternative')
-#         msg['Subject'] = 'Your Conversation Transcript - Zentrixel AI'
-#         msg['From'] = settings.EMAIL_SENDER
-#         msg['To'] = recipient_email
-        
-#         # Create HTML content
-#         html_content = _create_html_email(conversation_data)
-        
-#         # Attach HTML part
-#         html_part = MIMEText(html_content, 'html')
-#         msg.attach(html_part)
-        
-#         # Send email
-#         server = _open_smtp_server()
-        
-#         server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-#         server.send_message(msg)
-#         server.quit()
-        
-#         logger.info(f"Conversation email sent successfully to {recipient_email}")
-#         return True
-        
-#     except Exception as e:
-#         logger.error(f"Failed to send email to {recipient_email}: {str(e)}", exc_info=True)
-#         return False
-
-def send_conversation_email(recipient_email: str, conversation_data: list) -> bool:
+def send_conversation_email(recipient_email: str, conversation_data: list, settings: OrganizationSettings) -> bool:
     """
     Send conversation transcript via email
     """
@@ -201,11 +154,11 @@ def send_conversation_email(recipient_email: str, conversation_data: list) -> bo
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-        with _open_smtp_server() as server:
+        with _open_smtp_server(get_org_smtp_config(settings)) as server:
             print("SMTP CONNECTED")
-            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+            if settings.smtp_username and settings.smtp_password:
                 print("Logging into SMTP")
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                server.login(settings.smtp_username, settings.smtp_password)
             print("Sending email...")
             refused = server.send_message(msg)
             print("Send response:", refused)
@@ -432,7 +385,8 @@ def send_new_lead_notification(
     lead_name: str,
     lead_phone: str,
     lead_company: str = None,
-    admin_emails: list = None
+    admin_emails: list = None,
+    settings: OrganizationSettings = None
 ) -> bool:
     """
     Send notification email when new lead is captured
@@ -493,10 +447,10 @@ def send_new_lead_notification(
 
         plain_content = _html_to_plain_text(html_content)
 
-        with _open_smtp_server() as server:
+        with _open_smtp_server(get_org_smtp_config(settings)) as server:
 
-            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            if settings.smtp_username and settings.smtp_password:
+                server.login(settings.smtp_username, settings.smtp_password)
 
             for admin_email in admin_emails:
 
@@ -504,7 +458,7 @@ def send_new_lead_notification(
 
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = f"🎉 New Lead: {lead_name}"
-                    msg["From"] = settings.EMAIL_SENDER
+                    msg["From"] = settings.smtp_sender_email
                     msg["To"] = admin_email
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
@@ -541,6 +495,7 @@ def send_campaign_email(
     subject: Optional[str] = None,
     tracking_token: Optional[str] = None,
     tracking_base_url: Optional[str] = None,
+    settings: OrganizationSettings = None
 ) -> tuple[bool, str | None, str | None]:
     """Send a campaign email and return success/failure with an optional error message."""
 
@@ -609,8 +564,8 @@ def send_campaign_email(
         logger.warning("Campaign recipient precheck inconclusive for %s: %s", normalized_email, rcpt_error)
 
     try:
-        sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
-        envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+        sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
+        envelope_sender = (settings.smtp_username or sender_email).strip()
         if not sender_email:
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
 
@@ -658,8 +613,8 @@ def send_campaign_email(
         msg.attach(text_part)
         msg.attach(html_part)
 
-        with _open_smtp_server() as server:
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+            server.login(settings.smtp_username, settings.smtp_password)
             refused_recipients = server.send_message(
                 msg,
                 from_addr=envelope_sender,
@@ -691,6 +646,7 @@ def send_widget_test_link_email(
     recipient_email: str,
     subject: str,
     message_body: str,
+    settings: OrganizationSettings
 ) -> tuple[bool, str | None]:
     """Send a simple Zentrixel-branded widget test-link email."""
     normalized_email, validation_error = _validate_email_address(recipient_email)
@@ -706,8 +662,8 @@ def send_widget_test_link_email(
     if rcpt_ok is None and rcpt_error:
         logger.warning("Widget test-link precheck inconclusive for %s: %s", normalized_email, rcpt_error)
 
-    sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
-    envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+    sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
+    envelope_sender = (settings.smtp_username or sender_email).strip()
     if not sender_email or not envelope_sender:
         return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
 
@@ -757,9 +713,9 @@ def send_widget_test_link_email(
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-        with _open_smtp_server() as server:
-            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+            if settings.smtp_username and settings.smtp_password:
+                server.login(settings.smtp_username, settings.smtp_password)
 
             refused = server.send_message(
                 msg,
@@ -795,6 +751,7 @@ def send_appointment_rescheduled_notification(
     meeting_link: Optional[str] = None,
     widget_name: Optional[str] = None,
     notes: Optional[str] = None,
+    settings: OrganizationSettings = None
 ) -> tuple[bool, list[str]]:
     """Send appointment reschedule notifications to participant and escalation/admin contacts."""
     unique_recipients: list[str] = []
@@ -863,16 +820,16 @@ def send_appointment_rescheduled_notification(
     html_content = "".join(html_parts)
     plain_content = _html_to_plain_text(html_content)
     errors: list[str] = []
-    sender_email = (settings.EMAIL_SENDER or settings.SMTP_USERNAME or "").strip()
-    envelope_sender = (settings.SMTP_USERNAME or sender_email).strip()
+    sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
+    envelope_sender = (settings.smtp_username or sender_email).strip()
 
     if not sender_email or not envelope_sender:
         return False, ["EMAIL_SENDER/SMTP_USERNAME is not configured"]
 
     try:
-        with _open_smtp_server() as server:
-            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+            if settings.smtp_username and settings.smtp_password:
+                server.login(settings.smtp_username, settings.smtp_password)
 
             for recipient in unique_recipients:
                 try:

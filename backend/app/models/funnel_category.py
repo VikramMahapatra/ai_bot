@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Identity, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -9,7 +9,7 @@ class FunnelCategory(Base):
         UniqueConstraint("organization_id", "key", name="uq_funnel_categories_org_key"),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     key = Column(String, nullable=False, index=True)

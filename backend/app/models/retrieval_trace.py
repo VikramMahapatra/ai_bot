@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Float, Boolean
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey, Float, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -6,7 +6,7 @@ from app.database import Base
 class RetrievalTrace(Base):
     __tablename__ = "retrieval_traces"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
     session_id = Column(String, nullable=False, index=True)
     widget_id = Column(String, nullable=True, index=True)

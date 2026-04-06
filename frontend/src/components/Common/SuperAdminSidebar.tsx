@@ -21,6 +21,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import InsightsIcon from '@mui/icons-material/Insights';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
@@ -48,6 +49,7 @@ const menuItems: MenuItem[] = [
   { text: 'Billing', icon: <ReceiptLongIcon />, path: '/superadmin/billing' },
   { text: 'Organizations', icon: <BusinessIcon />, path: '/superadmin/organizations' },
   { text: 'Analytics', icon: <InsightsIcon />, path: '/superadmin/analytics' },
+  { text: 'Call Analytics', icon: <SupportAgentIcon />, path: '/superadmin/call-analytics' },
 ];
 
 const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {

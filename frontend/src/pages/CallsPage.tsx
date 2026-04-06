@@ -53,7 +53,6 @@ const CampaignManager: React.FC = () => {
                         scrollButtons="auto"
                     >
                         <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Analytics" />
-                        <Tab icon={<ContactsIcon />} iconPosition="start" label="Contacts" />
                         <Tab icon={<GroupIcon />} iconPosition="start" label="Calling Agent" /> {/* NEW */}
                         <Tab icon={<CampaignIcon />} iconPosition="start" label="Campaign Builder" />
                         <Tab icon={<ListAltIcon />} iconPosition="start" label="Call Logs" />
@@ -63,10 +62,9 @@ const CampaignManager: React.FC = () => {
                 {/* Tab Content */}
                 <Box>
                     {tab === 0 && <CampaignAnalytics />}
-                    {tab === 1 && <CampaignContacts />}
-                    {tab === 2 && <CallingAgentTab />} {/* NEW */}
-                    {tab === 3 && <CampaignBuilder />}
-                    {tab === 4 && <CallLogsTab />}
+                    {tab === 1 && <CallingAgentTab />} {/* NEW */}
+                    {tab === 2 && <CampaignBuilder />}
+                    {tab === 3 && <CallLogsTab />}
                 </Box>
 
             </Box>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Text, ForeignKey, Index
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Float, Text, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -7,7 +7,7 @@ from app.database import Base
 class ConversationMetrics(Base):
     __tablename__ = "conversation_metrics"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
     session_id = Column(String, index=True, nullable=False)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)

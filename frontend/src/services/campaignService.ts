@@ -38,16 +38,16 @@ export interface CampaignLogItem {
   email?: string;
   phone?: string;
   status:
-    | 'pending'
-    | 'sent'
-    | 'delivered'
-    | 'opened'
-    | 'read'
-    | 'clicked'
-    | 'bounced'
-    | 'complained'
-    | 'unsubscribed'
-    | 'failed';
+  | 'pending'
+  | 'sent'
+  | 'delivered'
+  | 'opened'
+  | 'read'
+  | 'clicked'
+  | 'bounced'
+  | 'complained'
+  | 'unsubscribed'
+  | 'failed';
   sent_at?: string;
   delivered_at?: string;
   opened_at?: string;
@@ -217,11 +217,12 @@ export interface ContactListResponse {
 
 export interface ContactItem {
   id: number;
-  name?: string;
-  email?: string;
-  phone?: string;
+  name: string;
+  email: string;
+  phone: string;
   company?: string;
-  contact_list_id: number;
+  contact_list_id: number | null;
+  contact_list_name?: string;
   created_at: string;
 }
 
@@ -398,6 +399,11 @@ export const campaignService = {
     return response.data;
   },
 
+  async updateContactList(editingListId: number, payload: { list_name: string; description?: string }): Promise<ContactListItem> {
+    const response = await api.put(`/api/admin/campaigns/contact-lists/${editingListId}`, payload);
+    return response.data;
+  },
+
   async listContactLists(params: ContactFilters = {}): Promise<ContactListResponse> {
     const response = await api.get('/api/admin/campaigns/contact-lists', { params });
     return response.data;
@@ -417,9 +423,7 @@ export const campaignService = {
     return response.data;
   },
 
-  async uploadContactsCsv(contactListId: number, file: File): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
-    const formData = new FormData();
-    formData.append('file', file);
+  async uploadContactsCsv(contactListId: number, formData: FormData): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
     const response = await api.post(`/api/admin/campaigns/contact-lists/${contactListId}/contacts/csv`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

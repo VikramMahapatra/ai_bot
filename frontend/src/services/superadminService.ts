@@ -7,6 +7,8 @@ import {
   Plan,
   Subscription,
   CallingNumber,
+  OrganizationReport,
+  OrganizationReportResponse,
   PriceMatrixItem,
   PriceMatrixItemPayload,
   PriceMatrixEstimateRequest,
@@ -32,7 +34,7 @@ import {
   BillingPayment,
   BillingPaymentCreateRequest,
   BillingInvoiceBackfillResponse,
-  BillingBill,
+  BillingBill
 } from '../types';
 
 export const superadminService = {
@@ -141,7 +143,7 @@ export const superadminService = {
     return response.data;
   },
 
-  async updateCallingNumber(callingNoId: number, payload: Partial<Plan>) {
+  async updateCallingNumber(callingNoId: number, payload: Omit<CallingNumber, 'id'>) {
     const response = await api.put<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`, payload);
     return response.data;
   },
@@ -158,6 +160,11 @@ export const superadminService = {
 
   async deleteCallingNumber(callingNoId: number) {
     const response = await api.delete<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`);
+    return response.data;
+  },
+
+  async getOrganizationReport(params: { search?: string; skip?: number; limit?: number } = {}): Promise<OrganizationReportResponse> {
+    const response = await api.get<OrganizationReportResponse>(`/api/superadmin/org/organization-calling-report`, { params });
     return response.data;
   },
 

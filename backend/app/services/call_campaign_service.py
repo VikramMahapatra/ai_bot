@@ -4,13 +4,14 @@ import json
 import logging
 from typing import List, Optional
 from urllib import response
+from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import case, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
-from app.schemas.call_campaign import CampaignCreate, CampaignStatusUpdate, CampaignUpdate, ContactCreate
+from app.schemas.call_campaign import CampaignCreate, CampaignLookupParameters, CampaignStatusUpdate, CampaignUpdate, ContactCreate
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
@@ -95,6 +96,15 @@ def list_campaigns(
 
     db.commit()
 
+    contact_count_subq = (
+        db.query(
+            CampaignContact.campaign_id,
+            func.count(CampaignContact.id).label("contact_count")
+        )
+        .group_by(CampaignContact.campaign_id)
+        .subquery()
+    )
+
     base_query = (
         db.query(
             CallCampaign.id,
@@ -107,13 +117,18 @@ def list_campaigns(
             (Product.name + " (" + Product.code + ")").label("product_name"),
             CallCampaign.total_calls,
             CallCampaign.completed_calls,
-            func.count(CampaignContact.id).label("contact_count")
+            contact_count_subq.c.contact_count
         )
         .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(Product, Product.id == CallCampaign.product_id)
-        .outerjoin(CampaignContact, CallCampaign.id == CampaignContact.campaign_id)
-        .filter(CallCampaign.organization_id == organization_id, CallCampaign.is_deleted == False)
-        .group_by(CallCampaign.id)
+        .outerjoin(
+            contact_count_subq,
+            CallCampaign.id == contact_count_subq.c.campaign_id
+        )
+        .filter(
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False
+        )
     )
 
     # SEARCH FILTER
@@ -325,6 +340,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     agent = db.query(CallingAgent).filter(
             CallingAgent.id == data.agent_id
         ).first()
+    
+    unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
 
     campaign = CallCampaign(
         organization_id=organization_id,
@@ -336,7 +353,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         agent_id=data.agent_id,
         product_id=data.product_id,
         status= "draft",
-        external_campaign_name= f"{org.name}-{data.name}"
+        external_campaign_name= unique_campaign_code
     )
 
     db.add(campaign)
@@ -414,7 +431,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         schedule_time = data.call_start_time
     
     payload = {
-        "campaign_name": f"{org.name}-{data.name}",
+        "campaign_name": unique_campaign_code,
         "agent_id": agent.external_agent_id,
         "from_number": data.calling_no,
         "send_option": send_option,
@@ -565,8 +582,13 @@ def update_campaign(
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
         
+    unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
+    if not campaign.external_campaign_name:
+        campaign.external_campaign_name = unique_campaign_code
+        
+        
     payload = {
-        "campaign_name": f"{org.name}-{campaign.name}",
+        "campaign_name": campaign.external_campaign_name,
         "agent_id": agent.external_agent_id if agent else None,
         "from_number": data.calling_no,
         "send_option": send_option,
@@ -830,6 +852,7 @@ def get_contacts(
                 "phone": row.phone,
                 "company": row.company,
                 "contact_list_id": row.contact_list_id,
+                "contact_list_name": row.contact_list.list_name if row.contact_list else None,
                 "created_at": row.created_at,
             }
             for row in rows
@@ -859,6 +882,7 @@ def get_contacts_lookup(db: Session, organization_id: int):
             "email": row.email,
             "phone": row.phone,
             "company": row.company,
+            "contact_list_id": row.contact_list_id,
         }
         for row in rows
     ]
@@ -867,26 +891,58 @@ def get_contacts_lookup(db: Session, organization_id: int):
 def get_contact_lists(db: Session, organization_id: int):
     return db.query(ContactList).filter(ContactList.organization_id == organization_id).all()
 
-
 def create_contact(db: Session, data: ContactCreate):
+    existing = db.query(Contact).filter(
+        Contact.contact_list_id == data.contact_list_id,
+        or_(
+            Contact.phone == data.phone,
+            Contact.email == data.email
+        )
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contact with phone {data.phone} or email {data.email} already exists in this list"
+        )
+
     contact = Contact(**data.dict())
     db.add(contact)
     db.commit()
     db.refresh(contact)
-   
+
     return {
         **contact.__dict__,
-       "label": f"{contact.name} ({contact.phone})"
+        "label": f"{contact.name} ({contact.phone})"
     }
 
 
 def update_contact(db: Session, contact_id: int, data: ContactCreate):
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
 
+    existing = db.query(Contact).filter(
+        Contact.contact_list_id == data.contact_list_id,
+        Contact.id != contact_id,
+        or_(
+            Contact.phone == data.phone,
+            Contact.email == data.email
+        )
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Another contact with phone {data.phone} or email {data.email} already exists in this list"
+        )
+
+    # Update fields
     for key, value in data.dict().items():
         setattr(contact, key, value)
 
     db.commit()
+    db.refresh(contact)
     return contact
 
 def update_campaign_status(
@@ -959,7 +1015,7 @@ def update_campaign_status(
 def campaign_lookup(
     db: Session, 
     organization_id: int,
-    search: Optional[str] = None):
+    params: CampaignLookupParameters):
 
     query = db.query(
         CallCampaign.id,
@@ -969,10 +1025,16 @@ def campaign_lookup(
         CallCampaign.is_deleted == False,
     )
 
-    if search:
+    if params.search:
         query = query.filter(
-            CallCampaign.name.ilike(f"%{search}%")
+            CallCampaign.name.ilike(f"%{params.search}%")
         )
+        
+    if params.agent_id:
+        query = query.filter(
+            CallCampaign.agent_id == params.agent_id
+        )
+        
 
     campaigns = query.order_by(CallCampaign.name.asc()).all()
 
@@ -1163,7 +1225,14 @@ def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
 
     db.commit()
 
-    return external_contact_ids
+    seen = set()
+    unique_external_ids = []
+    for eid in external_contact_ids:
+        if eid not in seen:
+            seen.add(eid)
+            unique_external_ids.append(eid)
+
+    return unique_external_ids
 
 def normalize_phone(phone: str):
     if not phone:

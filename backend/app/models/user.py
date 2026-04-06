@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Identity, Integer, String, DateTime, Enum as SQLEnum, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -14,7 +14,7 @@ class UserRole(str, enum.Enum):
 class Organization(Base):
     __tablename__ = "organizations"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
     default_meet_link = Column(String, nullable=True)
@@ -34,7 +34,7 @@ class User(Base):
         UniqueConstraint("organization_id", "email", name="uq_users_org_email"),
     )
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     username = Column(String, index=True, nullable=False)
     email = Column(String, index=True, nullable=False)  # Removed unique=True to allow same email across orgs
     hashed_password = Column(String, nullable=False)

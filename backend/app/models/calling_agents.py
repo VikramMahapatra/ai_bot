@@ -1,6 +1,6 @@
 # models.py
 import uuid
-from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, Float, ForeignKey, Identity, Index, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -10,8 +10,9 @@ from app.database import Base
 class CallingAgent(Base):
     __tablename__ = "calling_agents"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    widget_id = Column(String, unique=True, index=True)
     
     # Agent info
     name = Column(String, nullable=False)
@@ -38,6 +39,7 @@ class CallingAgent(Base):
     enable_call_summary = Column(Boolean, default=False)
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
+    inbound_phone_number = Column(String, nullable=True)
     
     gender = Column(String, nullable=False)
     accent = Column(String)
@@ -70,7 +72,7 @@ class CallingAgent(Base):
     transcriber_model = Column(String)
 
     # Meta
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)
     
@@ -80,12 +82,17 @@ class CallingAgent(Base):
     
     campaigns = relationship("CallCampaign", back_populates="agent")
     
+    __table_args__ = (
+        Index("idx_agent_external_id", "external_agent_id"),
+        Index("idx_agent_external_a_id", "external_agent_a_id"),
+    )
+    
     
     
 class CallingAgentTestCall(Base):
     __tablename__ = "calling_agent_test_calls"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
     phone_no = Column(String)
     name = Column(String)

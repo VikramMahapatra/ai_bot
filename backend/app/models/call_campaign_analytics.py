@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, ForeignKey, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import Column, Float, ForeignKey, Identity, String, Boolean, DateTime, Integer, JSON, Text, func
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -7,7 +7,7 @@ from app.database import Base
 class CampaignKeyInsight(Base):
     __tablename__ = "campaign_key_insights"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Identity(), primary_key=True)
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
     
     title = Column(String)
@@ -24,7 +24,7 @@ class CampaignKeyInsight(Base):
 class CampaignSentiment(Base):
     __tablename__ = "campaign_sentiments"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
     sentiment = Column(String)  # positive / neutral / negative
@@ -38,7 +38,7 @@ class CampaignSentiment(Base):
 class CampaignAIRecommendation(Base):
     __tablename__ = "campaign_ai_recommendations"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
     campaign_id = Column(Integer, ForeignKey("call_campaigns.id"))
 
     recommendation = Column(Text)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Card,
@@ -28,16 +28,25 @@ import {
   IconButton,
   Tooltip,
   Typography,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import AdminLayout from '../components/Layout/AdminLayout';
-import { useAuth } from '../context/AuthContext';
-import { organizationService, type User as OrganizationUser, type OrganizationWidget } from '../services/organizationService';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import BlockIcon from '@mui/icons-material/Block';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+  LinearProgress,
+  InputAdornment,
+  TablePagination,
+} from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import AdminLayout from "../components/Layout/AdminLayout";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
+import { useAuth } from "../context/AuthContext";
+import {
+  organizationService,
+  type User as OrganizationUser,
+  type OrganizationWidget,
+} from "../services/organizationService";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import SearchIcon from "@mui/icons-material/Search";
 
 interface User extends OrganizationUser {
   organization_id?: number;
@@ -47,7 +56,7 @@ interface CreateUserData {
   username: string;
   email: string;
   password: string;
-  role: 'ADMIN' | 'USER' | 'USER_HANDOFF';
+  role: "ADMIN" | "USER" | "USER_HANDOFF";
   assigned_widget_ids: string[];
 }
 
@@ -61,31 +70,43 @@ const UserManagementPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [formData, setFormData] = useState<CreateUserData>({
-    username: '',
-    email: '',
-    password: '',
-    role: 'USER',
+    username: "",
+    email: "",
+    password: "",
+    role: "USER",
     assigned_widget_ids: [],
   });
 
+  const [search, setSearch] = useState("");
+  const [userTotal, setUserTotal] = useState(0);
+  const [userPage, setUserPage] = useState(0);
+  const [userRowsPerPage, setUserRowsPerPage] = useState(10);
+
   useEffect(() => {
     if (!isAdmin) {
-      setError('You do not have permission to access this page');
+      setError("You do not have permission to access this page");
       return;
     }
     fetchUsers();
     fetchWidgets();
-  }, [isAdmin, organizationId]);
+  }, [isAdmin, organizationId, search, userPage, userRowsPerPage]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await organizationService.listUsers();
-      setUsers(response);
+      const data = await organizationService.listUsers({
+        search: search || undefined,
+        skip: userPage * userRowsPerPage,
+        limit: userRowsPerPage,
+      });
+      setUsers(data.users);
+      setUserTotal(data.pagination?.total || 0);
       setError(null);
     } catch (err) {
-      setError('Failed to load users');
+      setError("Failed to load users");
       console.error(err);
     } finally {
       setLoading(false);
@@ -119,17 +140,17 @@ const UserManagementPage: React.FC = () => {
       setFormData({
         username: user.username,
         email: user.email,
-        password: '',
+        password: "",
         role: user.role,
         assigned_widget_ids: user.assigned_widget_ids || [],
       });
     } else {
       setEditingUser(null);
       setFormData({
-        username: '',
-        email: '',
-        password: '',
-        role: 'USER',
+        username: "",
+        email: "",
+        password: "",
+        role: "USER",
         assigned_widget_ids: [],
       });
     }
@@ -140,10 +161,10 @@ const UserManagementPage: React.FC = () => {
     setOpenDialog(false);
     setEditingUser(null);
     setFormData({
-      username: '',
-      email: '',
-      password: '',
-      role: 'USER',
+      username: "",
+      email: "",
+      password: "",
+      role: "USER",
       assigned_widget_ids: [],
     });
   };
@@ -151,12 +172,15 @@ const UserManagementPage: React.FC = () => {
   const handleCreateUser = async () => {
     try {
       if (!formData.username || !formData.email || !formData.password) {
-        setError('All fields are required');
+        setError("All fields are required");
         return;
       }
 
-      if (formData.role === 'USER_HANDOFF' && formData.assigned_widget_ids.length === 0) {
-        setError('Select at least one agent for User (Human Handoff) role');
+      if (
+        formData.role === "USER_HANDOFF" &&
+        formData.assigned_widget_ids.length === 0
+      ) {
+        setError("Select at least one agent for User (Human Handoff) role");
         return;
       }
 
@@ -165,14 +189,15 @@ const UserManagementPage: React.FC = () => {
         email: formData.email,
         password: formData.password,
         role: formData.role,
-        assigned_widget_ids: formData.role === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
+        assigned_widget_ids:
+          formData.role === "USER_HANDOFF" ? formData.assigned_widget_ids : [],
       });
 
       setError(null);
       handleCloseDialog();
       fetchUsers();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create user');
+      setError(err.response?.data?.detail || "Failed to create user");
     }
   };
 
@@ -180,34 +205,42 @@ const UserManagementPage: React.FC = () => {
     try {
       if (!editingUser) return;
 
-      if (formData.role === 'USER_HANDOFF' && formData.assigned_widget_ids.length === 0) {
-        setError('Select at least one agent for User (Human Handoff) role');
+      if (
+        formData.role === "USER_HANDOFF" &&
+        formData.assigned_widget_ids.length === 0
+      ) {
+        setError("Select at least one agent for User (Human Handoff) role");
         return;
       }
 
       await organizationService.updateUser(editingUser.id, {
         role: formData.role,
         is_active: editingUser.is_active,
-        assigned_widget_ids: formData.role === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
+        assigned_widget_ids:
+          formData.role === "USER_HANDOFF" ? formData.assigned_widget_ids : [],
       });
 
       setError(null);
       handleCloseDialog();
       fetchUsers();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update user');
+      setError(err.response?.data?.detail || "Failed to update user");
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      try {
-        await organizationService.deleteUser(userId);
-        setError(null);
-        fetchUsers();
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to delete user');
-      }
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete?.id) return;
+
+    setDeleteSubmitting(true);
+    try {
+      await organizationService.deleteUser(userToDelete.id);
+      setUserToDelete(null);
+      setError(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to delete user");
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -216,12 +249,13 @@ const UserManagementPage: React.FC = () => {
       await organizationService.updateUser(user.id, {
         role: user.role,
         is_active: !user.is_active,
-        assigned_widget_ids: user.role === 'USER_HANDOFF' ? (user.assigned_widget_ids || []) : [],
+        assigned_widget_ids:
+          user.role === "USER_HANDOFF" ? user.assigned_widget_ids || [] : [],
       });
       setError(null);
       fetchUsers();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update user status');
+      setError(err.response?.data?.detail || "Failed to update user status");
     }
   };
 
@@ -230,7 +264,8 @@ const UserManagementPage: React.FC = () => {
       <AdminLayout>
         <Box sx={{ p: 3 }}>
           <Alert severity="error">
-            You do not have permission to access this page. Only admins can manage users.
+            You do not have permission to access this page. Only admins can
+            manage users.
           </Alert>
         </Box>
       </AdminLayout>
@@ -245,63 +280,73 @@ const UserManagementPage: React.FC = () => {
           sx={{
             mb: 3,
             p: { xs: 2, md: 2.3 },
-            borderRadius: '22px',
+            borderRadius: "22px",
             border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+            background: `linear-gradient(125deg, ${alpha("#deebfb", 0.92)} 0%, ${alpha(
               theme.palette.background.paper,
-              0.84
-            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+              0.84,
+            )} 72%, ${alpha("#a9bfdc", 0.98)} 100%)`,
             boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
-            position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
+            position: "relative",
+            overflow: "hidden",
+            "&::before": {
               content: '""',
-              position: 'absolute',
+              position: "absolute",
               inset: 0,
               background:
-                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-              pointerEvents: 'none',
+                "linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)",
+              pointerEvents: "none",
             },
-            '&::after': {
+            "&::after": {
               content: '""',
-              position: 'absolute',
-              top: '-24%',
-              right: '-6%',
-              width: '42%',
-              height: '150%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-              pointerEvents: 'none',
+              position: "absolute",
+              top: "-24%",
+              right: "-6%",
+              width: "42%",
+              height: "150%",
+              background:
+                "radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)",
+              pointerEvents: "none",
             },
-            '& > *': {
-              position: 'relative',
+            "& > *": {
+              position: "relative",
               zIndex: 1,
             },
           }}
         >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.8 }}>
-              User Management
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Create and manage users in your organization
-            </Typography>
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
+          <Box
             sx={{
-              background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
-              textTransform: 'none',
-              borderRadius: 2,
-              fontWeight: 700,
-              boxShadow: '0 12px 20px rgba(45,122,240,0.28)',
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            Create User
-          </Button>
-        </Box>
+            <Box>
+              <Typography
+                variant="h4"
+                sx={{ fontWeight: 800, color: "primary.main", mb: 0.8 }}
+              >
+                User Management
+              </Typography>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                Create and manage users in your organization
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+              sx={{
+                background: "linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)",
+                textTransform: "none",
+                borderRadius: 2,
+                fontWeight: 700,
+                boxShadow: "0 12px 20px rgba(45,122,240,0.28)",
+              }}
+            >
+              Create User
+            </Button>
+          </Box>
         </Card>
 
         {error && (
@@ -309,29 +354,88 @@ const UserManagementPage: React.FC = () => {
             {error}
           </Alert>
         )}
+        {loading && <LinearProgress sx={{ mb: 4, borderRadius: 1 }} />}
+
+        {/* Search Box */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            mt: 2,
+            mb: 2,
+          }}
+        >
+          <TextField
+            size="small"
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ width: 260 }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
 
         {/* Users Table */}
-        <Card sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}>
+        <Card
+          sx={{
+            borderRadius: 3,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+          }}
+        >
           <CardContent sx={{ p: 0 }}>
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
                 <CircularProgress />
               </Box>
             ) : users.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
+              <Box sx={{ p: 3, textAlign: "center", color: "text.secondary" }}>
                 No users found. Create one to get started.
               </Box>
             ) : (
               <TableContainer>
                 <Table>
                   <TableHead>
-                    <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}` }}>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Username</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Email</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Role</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Assigned Agents</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }} align="right">
+                    <TableRow
+                      sx={{
+                        bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                      }}
+                    >
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                      >
+                        Username
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                      >
+                        Email
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                      >
+                        Role
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                      >
+                        Assigned Agents
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                      >
+                        Status
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 700, color: "primary.main" }}
+                        align="right"
+                      >
                         Actions
                       </TableCell>
                     </TableRow>
@@ -341,50 +445,84 @@ const UserManagementPage: React.FC = () => {
                       <TableRow
                         key={user.id}
                         sx={{
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.primary.main, 0.05),
+                          },
                           borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
                         }}
                       >
-                        <TableCell sx={{ fontWeight: 500 }}>{user.username}</TableCell>
+                        <TableCell sx={{ fontWeight: 500 }}>
+                          {user.username}
+                        </TableCell>
                         <TableCell>{user.email}</TableCell>
                         <TableCell>
                           <Chip
                             label={
-                              user.role === 'USER_HANDOFF'
-                                ? 'USER (HUMAN HANDOFF)'
+                              user.role === "USER_HANDOFF"
+                                ? "USER (HUMAN HANDOFF)"
                                 : user.role
                             }
                             size="small"
                             color={
-                              user.role === 'ADMIN'
-                                ? 'error'
-                                : user.role === 'USER_HANDOFF'
-                                  ? 'warning'
-                                  : 'default'
+                              user.role === "ADMIN"
+                                ? "error"
+                                : user.role === "USER_HANDOFF"
+                                  ? "warning"
+                                  : "default"
                             }
                             variant="outlined"
                           />
                         </TableCell>
                         <TableCell>
-                          {user.role === 'USER_HANDOFF' ? (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
-                              {getAssignedWidgetLabels(user.assigned_widget_ids).map((label) => (
-                                <Chip key={`${user.id}-${label}`} size="small" label={label} variant="outlined" />
+                          {user.role === "USER_HANDOFF" ? (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 0.6,
+                              }}
+                            >
+                              {getAssignedWidgetLabels(
+                                user.assigned_widget_ids,
+                              ).map((label) => (
+                                <Chip
+                                  key={`${user.id}-${label}`}
+                                  size="small"
+                                  label={label}
+                                  variant="outlined"
+                                />
                               ))}
-                              {(!user.assigned_widget_ids || user.assigned_widget_ids.length === 0) && (
-                                <Typography variant="caption" color="text.secondary">No agents assigned</Typography>
+                              {(!user.assigned_widget_ids ||
+                                user.assigned_widget_ids.length === 0) && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  No agents assigned
+                                </Typography>
                               )}
                             </Box>
                           ) : (
-                            <Typography variant="caption" color="text.secondary">-</Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              -
+                            </Typography>
                           )}
                         </TableCell>
                         <TableCell>
                           <Chip
-                            icon={user.is_active ? <CheckCircleIcon /> : <BlockIcon />}
-                            label={user.is_active ? 'Active' : 'Inactive'}
+                            icon={
+                              user.is_active ? (
+                                <CheckCircleIcon />
+                              ) : (
+                                <BlockIcon />
+                              )
+                            }
+                            label={user.is_active ? "Active" : "Inactive"}
                             size="small"
-                            color={user.is_active ? 'success' : 'default'}
+                            color={user.is_active ? "success" : "default"}
                             variant="outlined"
                           />
                         </TableCell>
@@ -393,25 +531,33 @@ const UserManagementPage: React.FC = () => {
                             <IconButton
                               size="small"
                               onClick={() => handleOpenDialog(user)}
-                              sx={{ color: 'primary.main' }}
+                              sx={{ color: "primary.main" }}
                             >
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title={user.is_active ? 'Deactivate' : 'Activate'}>
+                          <Tooltip
+                            title={user.is_active ? "Deactivate" : "Activate"}
+                          >
                             <IconButton
                               size="small"
                               onClick={() => handleToggleUserStatus(user)}
-                              sx={{ color: user.is_active ? '#ff9800' : '#4caf50' }}
+                              sx={{
+                                color: user.is_active ? "#ff9800" : "#4caf50",
+                              }}
                             >
-                              {user.is_active ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                              {user.is_active ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Delete">
                             <IconButton
                               size="small"
-                              onClick={() => handleDeleteUser(user.id)}
-                              sx={{ color: '#f44336' }}
+                              onClick={() => setUserToDelete(user)}
+                              sx={{ color: "#f44336" }}
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
@@ -421,22 +567,47 @@ const UserManagementPage: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
+                <TablePagination
+                  component="div"
+                  count={userTotal}
+                  page={userPage}
+                  onPageChange={(_, value) => setUserPage(value)}
+                  rowsPerPage={userRowsPerPage}
+                  onRowsPerPageChange={(event) => {
+                    setUserRowsPerPage(parseInt(event.target.value, 10));
+                    setUserPage(0);
+                  }}
+                  rowsPerPageOptions={[10, 25, 50]}
+                />
               </TableContainer>
             )}
           </CardContent>
         </Card>
 
         {/* Create/Edit User Dialog */}
-        <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700, color: 'primary.main' }}>
-            {editingUser ? 'Edit User' : 'Create New User'}
+        <Dialog
+          open={openDialog}
+          onClose={handleCloseDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle
+            sx={{
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+              fontWeight: 700,
+              color: "primary.main",
+            }}
+          >
+            {editingUser ? "Edit User" : "Create New User"}
           </DialogTitle>
           <DialogContent sx={{ pt: 3 }}>
             <TextField
               fullWidth
               label="Username"
               value={formData.username}
-              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, username: e.target.value })
+              }
               disabled={!!editingUser}
               margin="normal"
             />
@@ -445,7 +616,9 @@ const UserManagementPage: React.FC = () => {
               label="Email"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
               disabled={!!editingUser}
               margin="normal"
             />
@@ -455,7 +628,9 @@ const UserManagementPage: React.FC = () => {
                 label="Password"
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 margin="normal"
               />
             )}
@@ -465,11 +640,17 @@ const UserManagementPage: React.FC = () => {
                 value={formData.role}
                 label="Role"
                 onChange={(e) => {
-                  const nextRole = e.target.value as 'ADMIN' | 'USER' | 'USER_HANDOFF';
+                  const nextRole = e.target.value as
+                    | "ADMIN"
+                    | "USER"
+                    | "USER_HANDOFF";
                   setFormData({
                     ...formData,
                     role: nextRole,
-                    assigned_widget_ids: nextRole === 'USER_HANDOFF' ? formData.assigned_widget_ids : [],
+                    assigned_widget_ids:
+                      nextRole === "USER_HANDOFF"
+                        ? formData.assigned_widget_ids
+                        : [],
                   });
                 }}
               >
@@ -479,27 +660,43 @@ const UserManagementPage: React.FC = () => {
               </Select>
             </FormControl>
 
-            {formData.role === 'USER_HANDOFF' && (
+            {formData.role === "USER_HANDOFF" && (
               <FormControl fullWidth margin="normal" disabled={loadingWidgets}>
                 <InputLabel>Assigned Agents</InputLabel>
                 <Select
                   multiple
                   value={formData.assigned_widget_ids}
-                  onChange={(e) => setFormData({ ...formData, assigned_widget_ids: e.target.value as string[] })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      assigned_widget_ids: e.target.value as string[],
+                    })
+                  }
                   input={<OutlinedInput label="Assigned Agents" />}
                   renderValue={(selected) =>
                     (selected as string[])
                       .map((widgetId) => {
-                        const widget = widgets.find((w) => w.widget_id === widgetId);
+                        const widget = widgets.find(
+                          (w) => w.widget_id === widgetId,
+                        );
                         return widget ? widget.name : widgetId;
                       })
-                      .join(', ')
+                      .join(", ")
                   }
                 >
                   {widgets.map((widget) => (
                     <MenuItem key={widget.widget_id} value={widget.widget_id}>
-                      <Checkbox checked={formData.assigned_widget_ids.indexOf(widget.widget_id) > -1} />
-                      <ListItemText primary={widget.name} secondary={widget.widget_id} />
+                      <Checkbox
+                        checked={
+                          formData.assigned_widget_ids.indexOf(
+                            widget.widget_id,
+                          ) > -1
+                        }
+                      />
+                      <ListItemText
+                        primary={widget.name}
+                        secondary={widget.widget_id}
+                      />
                     </MenuItem>
                   ))}
                 </Select>
@@ -511,17 +708,35 @@ const UserManagementPage: React.FC = () => {
             <Button
               onClick={editingUser ? handleUpdateUser : handleCreateUser}
               variant="contained"
-              sx={{ background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)', fontWeight: 700, textTransform: 'none' }}
+              sx={{
+                background: "linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)",
+                fontWeight: 700,
+                textTransform: "none",
+              }}
             >
-              {editingUser ? 'Update' : 'Create'}
+              {editingUser ? "Update" : "Create"}
             </Button>
           </DialogActions>
         </Dialog>
+
+        <ConfirmDialog
+          open={Boolean(userToDelete)}
+          title="Delete user?"
+          description={
+            userToDelete
+              ? `This will permanently remove ${userToDelete.username}. This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmColor="error"
+          loading={deleteSubmitting}
+          onCancel={() => !deleteSubmitting && setUserToDelete(null)}
+          onConfirm={handleConfirmDeleteUser}
+        />
       </Box>
     </AdminLayout>
   );
 };
 
 export default UserManagementPage;
-
-

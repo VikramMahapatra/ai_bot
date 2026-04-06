@@ -21,6 +21,10 @@ export interface AppointmentFilters {
   upcoming_only?: boolean;
   start_date?: string;
   end_date?: string;
+   // pagination
+  search?: String;
+  skip?: number;
+  limit?: number;
 }
 
 export interface AppointmentReschedulePayload {
@@ -44,10 +48,19 @@ export interface AppointmentRescheduleResponse {
   message?: string;
 }
 
+export interface AppointmentListResponse {
+  appointments: AppointmentItem[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
+}
+
 export const appointmentService = {
-  async list(filters?: AppointmentFilters): Promise<AppointmentItem[]> {
+  async list(filters?: AppointmentFilters): Promise<AppointmentListResponse> {
     const response = await api.get('/api/admin/appointments', { params: filters });
-    return Array.isArray(response.data?.appointments) ? response.data.appointments : [];
+    return response.data;
   },
 
   async updateStatus(appointmentId: number, status: AppointmentItem['status']): Promise<void> {

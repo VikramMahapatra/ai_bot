@@ -87,3 +87,8 @@ class ContactCreate(BaseModel):
 class ContactByIdsRequest(BaseModel):
 
     ids: list[int]
+    
+    
+class CampaignLookupParameters(BaseModel):
+    search: Optional[str] = None
+    agent_id: Optional[int] = None

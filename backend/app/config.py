@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     WHATSAPP_GRAPH_VERSION: str
     DEV_BYPASS_SUBSCRIPTION_CHECK: bool = False
 
-    # Chat Escalation Defaults
-    DEFAULT_ESCALATION_CONTACT_LEVEL_1: str
-    DEFAULT_ESCALATION_CONTACT_LEVEL_2: str
     HUMAN_HANDOFF_DISTANCE_THRESHOLD: float = 0.65
     HUMAN_HANDOFF_NO_ANSWER_PATTERNS: str = "i don't know|i do not know|don't have a reliable answer|unable to answer|no relevant context found|knowledge base doesn't contain|don't have reliable expertise|escalation contacts|would you like me to connect you"
     HUMAN_HANDOFF_WAITING_MESSAGE: str = "I am connecting you to a human expert. Please share any additional details and we will respond shortly."
@@ -56,7 +53,6 @@ class Settings(BaseSettings):
     TOKEN_COST_COMPLETION_PER_1K: float
     
     # Database Configuration
-    DATABASE_URL: str
     CHROMA_PERSIST_DIR: str
     UPLOAD_DIR: str
     EXPORT_DIR: str
@@ -75,12 +71,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_HEADERS: str
     
     # Email Configuration
-    SMTP_HOST: str
-    SMTP_PORT: int
-    SMTP_USERNAME: str
-    SMTP_PASSWORD: str
-    SMTP_USE_SSL: bool
-    EMAIL_SENDER: str
+    
     CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
     CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
     CAMPAIGN_EMAIL_TRACKING_BASE_URL: str = "http://localhost:8000"
@@ -104,6 +95,13 @@ class Settings(BaseSettings):
     
     CAN_AUTO_SYNC_CAMPAIGN_LEAD: bool = False
     
+    DB_USER: str 
+    DB_PASS: str
+    DB_HOST: str 
+    DB_PORT: str 
+    DB_SSLMODE: str 
+    DB_NAME: str 
+    
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
@@ -119,6 +117,15 @@ class Settings(BaseSettings):
     @property
     def handoff_no_answer_patterns_list(self) -> List[str]:
         return [item.strip().lower() for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|") if item.strip()]
+    
+    
+    @property
+    def DATABASE_URL(self) -> str:
+        """Generate full Postgres URL dynamically"""
+        base_url = f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        if self.DB_SSLMODE:
+            base_url += f"?sslmode={self.DB_SSLMODE}"
+        return base_url
 
     model_config = SettingsConfigDict(
         env_file=(str(BASE_DIR / ".env.example"), str(BASE_DIR / ".env")),
@@ -128,3 +135,17 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def build_db_url(db_name: str) -> str:
+    base_url = (
+        f"postgresql+psycopg2://"
+        f"{settings.DB_USER}:{settings.DB_PASS}"
+        f"@{settings.DB_HOST}:{settings.DB_PORT}/{db_name}"
+    )
+
+    # append ssl only if provided
+    if settings.DB_SSLMODE:
+        base_url += f"?sslmode={settings.DB_SSLMODE}"
+
+    return base_url
