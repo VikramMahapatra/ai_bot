@@ -7,12 +7,11 @@ import React, {
     ReactNode,
 } from "react";
 import axios from "axios";
-import { organizationService } from "../services/organizationService";
+import { organizationCreditService } from "../services/organizationCreditService";
 
 // Types
 export interface CreditItem {
-    module: string;
-    sub_module?: string;
+    feature_code: string;
     allocated: number;
     used: number;
     remaining: number;
@@ -23,6 +22,9 @@ interface CreditsContextType {
     totalCredits: number;
     loading: boolean;
     refreshCredits: () => Promise<void>;
+    reserveCredits: (feature_code: string, referenceType: string, referenceId: string, requiredCredits: number) => Promise<void>;
+    consumeCredits: (feature_code: string, referenceType: string, referenceId: string, quantity: number) => Promise<void>;
+    useCreditAction: (feature_code: string, requiredCredits: number) => Promise<boolean>;
 }
 
 // Context
@@ -43,7 +45,7 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
         try {
             setLoading(true);
 
-            const data = await organizationService.getOrgCredits();
+            const data = await organizationCreditService.getOrgCredits();
 
             setCredits(data);
 
@@ -66,6 +68,96 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
         fetchCredits();
     }, [fetchCredits]);
 
+    const reserveCredits = async (
+        featureCode: string,
+        referenceType: string,
+        referenceId: string,
+        quantity: number
+    ) => {
+
+        const credit = credits.find(c => c.feature_code === featureCode);
+
+        // Quick frontend validation
+        if (!credit || credit.remaining < quantity) {
+            return false;
+        }
+
+        try {
+            const success = await organizationCreditService.reserveCredits(
+                featureCode,
+                referenceType,
+                referenceId,
+                quantity
+            );
+
+            if (success) {
+                await fetchCredits();
+            }
+
+            return success;
+
+        } catch (err) {
+            console.error("Reserve credits failed", err);
+            return false;
+        }
+    };
+
+    const consumeCredits = async (
+        feature_code: string,
+        referenceType: string,
+        referenceId: string,
+        quantity: number
+    ) => {
+
+        try {
+
+            const success = await organizationCreditService.consumeCredits(
+                feature_code,
+                referenceType,
+                referenceId,
+                quantity
+            );
+
+            if (success) {
+                await fetchCredits();
+            }
+
+            return success;
+
+        } catch (err) {
+            console.error("Consume credits failed", err);
+            return false;
+        }
+    };
+
+    const useCreditAction = async (
+        featureCode: string,
+        quantity: number
+    ) => {
+
+        const credit = credits.find(c => c.feature_code === featureCode);
+
+        if (!credit || credit.remaining < quantity) {
+            return false;
+        }
+
+        try {
+            const success = await organizationCreditService.deductCredits(
+                featureCode,
+                quantity
+            );
+
+            if (success) {
+                await fetchCredits();
+            }
+
+            return success;
+
+        } catch (err) {
+            console.error("Credit deduction failed", err);
+            return false;
+        }
+    };
     return (
         <CreditsContext.Provider
             value={{
@@ -73,6 +165,9 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
                 totalCredits,
                 loading,
                 refreshCredits: fetchCredits,
+                reserveCredits,
+                consumeCredits,
+                useCreditAction
             }}
         >
             {children}
@@ -90,3 +185,4 @@ export const useCredits = (): CreditsContextType => {
 
     return context;
 };
+

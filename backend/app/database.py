@@ -436,6 +436,34 @@ def init_db():
             """))
         except Exception:
             pass
+        
+        # --------------------------------------------------
+        # organization_credit_usages
+        # --------------------------------------------------
+        try:
+            conn.execute(text("""
+                ALTER TABLE organization_credit_usages
+                ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'reserved'
+            """))
+        except Exception:
+            pass
+        
+        # --------------------------------------------------
+        # price_matrix_items
+        # --------------------------------------------------
+        try:
+            conn.execute(text("""
+                ALTER TABLE price_matrix_items
+                ADD COLUMN IF NOT EXISTS feature_code TEXT
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_price_matrix_feature_code
+                ON price_matrix_items(feature_code)
+            """))
+
+        except Exception:
+            pass
 
 
 

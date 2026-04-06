@@ -32,6 +32,7 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Campaign
 from app.services import organization_credit_service
+from app.schemas.organization import CreditParameters
 
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
@@ -936,4 +937,56 @@ def get_credit_summary(
     """
     return organization_credit_service.get_credit_summary(
         db, current_user.organization_id
+    )
+
+
+@router.get("/credits/validate")
+def validate_credits(
+    feature_code: str = Query(..., description="Feature code to validate credits for"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return organization_credit_service.validate_credits(
+        db, current_user.organization_id
+    )
+
+
+@router.post("/credits/deduct")
+def deduct_credits(
+    params: CreditParameters,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return organization_credit_service.deduct_credits(
+        db, current_user.organization_id, params.feature_code
+    )
+
+
+@router.post("/credits/reserve")
+def reserve_credits(
+    params: CreditParameters,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return organization_credit_service.reserve_credits(
+        db,
+        current_user.organization_id,
+        params.feature_code,
+        params.quantity,
+        params.reference_type,
+        params.reference_id,
+    )
+
+
+@router.post("/credits/consume")
+def consume_credits(
+    params: CreditParameters,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return organization_credit_service.consume_reserved_credits(
+        db,
+        params.reference_type,
+        params.reference_id,
+        params.quantity,
     )
