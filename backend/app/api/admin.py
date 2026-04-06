@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import (
@@ -594,15 +595,32 @@ async def run_outcome_processing_now(
 
 @router.get("/widgets")
 async def list_widgets(
-    db: Session = Depends(get_db), current_user: User = Depends(require_admin)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
 ):
     """List all widgets for the current organization"""
     from app.models import WidgetConfig
 
+    query = db.query(WidgetConfig).filter(
+        WidgetConfig.organization_id == current_user.organization_id
+    )
+
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                WidgetConfig.name.ilike(search_term),
+            )
+        )
+
+    total = query.count()
+
     configs = (
-        db.query(WidgetConfig)
-        .filter(WidgetConfig.organization_id == current_user.organization_id)
-        .all()
+        query.order_by(WidgetConfig.created_at.desc()).offset(skip).limit(limit).all()
     )
 
     changed = False
@@ -612,7 +630,10 @@ async def list_widgets(
     if changed:
         db.commit()
 
-    return configs
+    return {
+        "widgets": configs,
+        "pagination": {"total": total, "skip": skip, "limit": limit},
+    }
 
 
 @router.get("/appointments")
@@ -660,7 +681,15 @@ async def list_appointments(
                 status_code=400, detail="Invalid end_date format. Use ISO format"
             )
 
-    # appointments = query.order_by(Appointment.appointment_at.asc()).all()
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Appointment.name.ilike(search_term),
+                Appointment.status.ilike(search_term),
+            )
+        )
 
     total = query.count()
 
