@@ -24,6 +24,10 @@ import {
   Card,
   CardContent,
   Button,
+  Divider,
+  TextField,
+  InputAdornment,
+  TablePagination,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -40,6 +44,7 @@ import WebCrawler from "./WebCrawler";
 import DocumentUpload from "./DocumentUpload";
 import VectorizedDataViewer from "./VectorizedDataViewer";
 import { analyticsService } from "../../services/analyticsService";
+import SearchIcon from "@mui/icons-material/Search";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 
 interface KnowledgeGap {
@@ -65,12 +70,17 @@ const KnowledgeManager: React.FC = () => {
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [pendingDeleteName, setPendingDeleteName] = useState("");
   const [pendingDeleteEmbeddings, setPendingDeleteEmbeddings] =
+   
     useState<number>(0);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [gapSuggestions, setGapSuggestions] = useState<KnowledgeGap[]>([]);
   const [gapLoading, setGapLoading] = useState(false);
   const [gapError, setGapError] = useState("");
   const [ingestTab, setIngestTab] = useState(0);
+  const [search, setSearch] = useState("");
+  const [sourceTotal, setSourceTotal] = useState(0);
+  const [sourcePage, setSourcePage] = useState(0);
+  const [sourceRowsPerPage, setSourceRowsPerPage] = useState(10);
 
   const sectionPanelSx = {
     borderRadius: "18px",
@@ -128,8 +138,14 @@ const KnowledgeManager: React.FC = () => {
         setSources([]);
         return;
       }
-      const data = await knowledgeService.listSources(widgetId);
-      setSources(data);
+      const data = await knowledgeService.listSources({
+        widgetId: widgetId,
+        search: search || undefined,
+        skip: sourcePage * sourceRowsPerPage,
+        limit: sourceRowsPerPage,
+      });
+      setSources(data.items);
+      setSourceTotal(data.pagination?.total || 0);
     } catch (err) {
       setError("Failed to load knowledge sources");
     } finally {
@@ -164,7 +180,7 @@ const KnowledgeManager: React.FC = () => {
     loadSources(selectedWidgetId);
     const interval = setInterval(() => loadSources(selectedWidgetId), 5000); // Refresh every 5 seconds
     return () => clearInterval(interval);
-  }, [selectedWidgetId]);
+  }, [selectedWidgetId, search, sourcePage, sourceRowsPerPage]);
 
   useEffect(() => {
     const loadGaps = async () => {
@@ -571,6 +587,31 @@ const KnowledgeManager: React.FC = () => {
                   </Stack>
                 )}
 
+                {/* Search Box */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "flex-start",
+                    mt: 2,
+                    mb: 2,
+                  }}
+                >
+                  <TextField
+                    size="small"
+                    label="Search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    sx={{ width: 260 }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+
                 <TableContainer
                   sx={{
                     borderRadius: "12px",
@@ -664,6 +705,18 @@ const KnowledgeManager: React.FC = () => {
                       )}
                     </TableBody>
                   </Table>
+                  <TablePagination
+                    component="div"
+                    count={sourceTotal}
+                    page={sourcePage}
+                    onPageChange={(_, value) => setSourcePage(value)}
+                    rowsPerPage={sourceRowsPerPage}
+                    onRowsPerPageChange={(event) => {
+                      setSourceRowsPerPage(parseInt(event.target.value, 10));
+                      setSourcePage(0);
+                    }}
+                    rowsPerPageOptions={[10, 25, 50]}
+                  />
                 </TableContainer>
               </Stack>
             </CardContent>

@@ -61,6 +61,22 @@ export interface OrganizationMeetingSettings {
   default_meet_link: string;
 }
 
+export interface UserListResponse {
+  users: User[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
+}
+
+export interface UsersFilters {
+   // pagination
+  search?: String;
+  skip?: number;
+  limit?: number;
+}
+
 export const organizationService = {
   async getOrganization(orgId: number): Promise<Organization> {
     const response = await api.get<Organization>(`/api/organizations/${orgId}`);
@@ -84,8 +100,8 @@ export const organizationService = {
     return response.data;
   },
 
-  async listUsers(): Promise<User[]> {
-    const response = await api.get<User[]>('/api/organizations/users');
+  async listUsers(filters?: UsersFilters): Promise<UserListResponse> {
+    const response = await api.get('/api/organizations/users', { params: filters });
     return response.data;
   },
 

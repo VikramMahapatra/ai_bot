@@ -28,6 +28,9 @@ import {
   IconButton,
   Tooltip,
   Typography,
+  LinearProgress,
+  InputAdornment,
+  TablePagination,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -43,6 +46,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import SearchIcon from "@mui/icons-material/Search";
 
 interface User extends OrganizationUser {
   organization_id?: number;
@@ -76,6 +80,11 @@ const UserManagementPage: React.FC = () => {
     assigned_widget_ids: [],
   });
 
+  const [search, setSearch] = useState("");
+  const [userTotal, setUserTotal] = useState(0);
+  const [userPage, setUserPage] = useState(0);
+  const [userRowsPerPage, setUserRowsPerPage] = useState(10);
+
   useEffect(() => {
     if (!isAdmin) {
       setError("You do not have permission to access this page");
@@ -83,13 +92,18 @@ const UserManagementPage: React.FC = () => {
     }
     fetchUsers();
     fetchWidgets();
-  }, [isAdmin, organizationId]);
+  }, [isAdmin, organizationId, search, userPage, userRowsPerPage]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await organizationService.listUsers();
-      setUsers(response);
+      const data = await organizationService.listUsers({
+        search: search || undefined,
+        skip: userPage * userRowsPerPage,
+        limit: userRowsPerPage,
+      });
+      setUsers(data.users);
+      setUserTotal(data.pagination?.total || 0);
       setError(null);
     } catch (err) {
       setError("Failed to load users");
@@ -340,6 +354,32 @@ const UserManagementPage: React.FC = () => {
             {error}
           </Alert>
         )}
+        {loading && <LinearProgress sx={{ mb: 4, borderRadius: 1 }} />}
+
+        {/* Search Box */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            mt: 2,
+            mb: 2,
+          }}
+        >
+          <TextField
+            size="small"
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ width: 260 }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
 
         {/* Users Table */}
         <Card
@@ -527,6 +567,18 @@ const UserManagementPage: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
+                <TablePagination
+                  component="div"
+                  count={userTotal}
+                  page={userPage}
+                  onPageChange={(_, value) => setUserPage(value)}
+                  rowsPerPage={userRowsPerPage}
+                  onRowsPerPageChange={(event) => {
+                    setUserRowsPerPage(parseInt(event.target.value, 10));
+                    setUserPage(0);
+                  }}
+                  rowsPerPageOptions={[10, 25, 50]}
+                />
               </TableContainer>
             )}
           </CardContent>

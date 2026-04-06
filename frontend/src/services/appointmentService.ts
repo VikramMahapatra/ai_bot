@@ -22,6 +22,7 @@ export interface AppointmentFilters {
   start_date?: string;
   end_date?: string;
    // pagination
+  search?: String;
   skip?: number;
   limit?: number;
 }

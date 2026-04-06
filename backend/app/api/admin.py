@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import (
@@ -46,10 +47,14 @@ def _build_org_domain(name: str) -> str:
 def _ensure_widget_escalation_contacts(config, org_settings) -> bool:
     changed = False
     if not getattr(config, "escalation_contact_level_1", None):
-        config.escalation_contact_level_1 = org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        config.escalation_contact_level_1 = (
+            org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        )
         changed = True
     if not getattr(config, "escalation_contact_level_2", None):
-        config.escalation_contact_level_2 = org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        config.escalation_contact_level_2 = (
+            org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        )
         changed = True
     return changed
 
@@ -363,9 +368,9 @@ async def get_feature_flags(
 
 @router.get("/widget/config/{widget_id}")
 async def get_widget_config(
-    widget_id: str, 
-    db: Session = Depends(get_db), 
-    settings: OrganizationSettings = Depends(get_settings)
+    widget_id: str,
+    db: Session = Depends(get_db),
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Get widget configuration (public endpoint)"""
     from app.models import WidgetConfig
@@ -429,10 +434,10 @@ async def generate_widget_test_link(
 
 @router.get("/widget/test/config/{widget_id}")
 async def get_widget_test_config(
-    widget_id: str, 
-    token: str = Query(..., min_length=1), 
+    widget_id: str,
+    token: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Get widget config for public test pages using a signed expiring token."""
     _validate_widget_test_link_token(token, widget_id)
@@ -453,7 +458,7 @@ async def send_widget_test_link_via_email(
     payload: WidgetTestLinkEmailRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Send a widget test-link email via configured SMTP service."""
     widget_id = (payload.widget_id or "").strip()
@@ -482,7 +487,7 @@ async def send_widget_test_link_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
-        settings=settings
+        settings=settings,
     )
     if not success:
         raise HTTPException(
@@ -537,7 +542,7 @@ async def update_widget_config(
     config_data: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Update widget configuration (only for user's own widgets)"""
     from app.models import WidgetConfig
@@ -607,17 +612,33 @@ async def run_outcome_processing_now(
 
 @router.get("/widgets")
 async def list_widgets(
-    db: Session = Depends(get_db), 
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-    settings: OrganizationSettings = Depends(get_settings)
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """List all widgets for the current organization"""
     from app.models import WidgetConfig
 
+    query = db.query(WidgetConfig).filter(
+        WidgetConfig.organization_id == current_user.organization_id
+    )
+
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                WidgetConfig.name.ilike(search_term),
+            )
+        )
+
+    total = query.count()
+
     configs = (
-        db.query(WidgetConfig)
-        .filter(WidgetConfig.organization_id == current_user.organization_id)
-        .all()
+        query.order_by(WidgetConfig.created_at.desc()).offset(skip).limit(limit).all()
     )
 
     changed = False
@@ -627,7 +648,10 @@ async def list_widgets(
     if changed:
         db.commit()
 
-    return configs
+    return {
+        "widgets": configs,
+        "pagination": {"total": total, "skip": skip, "limit": limit},
+    }
 
 
 @router.get("/appointments")
@@ -675,7 +699,15 @@ async def list_appointments(
                 status_code=400, detail="Invalid end_date format. Use ISO format"
             )
 
-    # appointments = query.order_by(Appointment.appointment_at.asc()).all()
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Appointment.name.ilike(search_term),
+                Appointment.status.ilike(search_term),
+            )
+        )
 
     total = query.count()
 
@@ -757,7 +789,7 @@ async def reschedule_appointment(
     payload: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Reschedule an appointment and notify participant + escalation contacts."""
     raw_appointment_at = payload.get("appointment_at")
@@ -855,7 +887,7 @@ async def reschedule_appointment(
         meeting_link=meeting_link,
         widget_name=(widget_config.name if widget_config else appointment.widget_id),
         notes=appointment.notes,
-        settings=settings
+        settings=settings,
     )
 
     response_message = "Appointment rescheduled successfully"
