@@ -23,4 +23,5 @@ python-dotenv==1.0.0
 pydantic[email]
 Pillow
 cairosvg
+phonenumbers==8.13.45
 

@@ -13,6 +13,9 @@ from app.services.limits_service import get_effective_limits, increment_usage
 from app.services.funnel_category_service import is_valid_funnel_stage
 import logging
 
+from app.api.organization_setting import get_settings
+from app.models.organization_settings import OrganizationSettings
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/leads", tags=["leads"])
@@ -73,6 +76,7 @@ async def create_lead(
     lead: LeadCreate,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Create a new lead"""
     try:
@@ -166,6 +170,7 @@ async def create_lead(
                         lead_phone=new_lead.phone or "",
                         lead_company=new_lead.company,
                         admin_emails=admin_emails,
+                        settings=settings
                     )
             except Exception as e:
                 logger.error(

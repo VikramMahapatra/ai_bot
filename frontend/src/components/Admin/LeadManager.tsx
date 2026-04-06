@@ -66,6 +66,18 @@ import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
+/** Whether a widget row should appear for the selected lead source filter. */
+const widgetMatchesLeadSource = (
+  widgetSource: string | undefined | null,
+  selectedLeadSource: string,
+): boolean => {
+  const ws = (widgetSource || "chat").toLowerCase().trim();
+  const sel = selectedLeadSource.toLowerCase().trim();
+  if (ws === sel) return true;
+  if (["email", "sms", "whatsapp"].includes(sel) && ws === "chat") return true;
+  return false;
+};
+
 const titleCase = (value: string) =>
   value
     .split("_")
@@ -192,10 +204,9 @@ const LeadManager: React.FC = () => {
 
   const visibleWidgets = useMemo(() => {
     if (selectedSource === "all") return widgets;
-    return widgets.filter((w) => {
-      const ws = (w.source || "").toLowerCase().trim();
-      return ws === selectedSource.toLowerCase();
-    });
+    return widgets.filter((w) =>
+      widgetMatchesLeadSource(w.source, selectedSource),
+    );
   }, [widgets, selectedSource]);
 
   const stageNameByKey = useMemo(() => {
@@ -314,23 +325,6 @@ const LeadManager: React.FC = () => {
     widgets,
   ]);
 
-  const loadWidgets = async () => {
-    try {
-      const data = await dashboardService.getWidgets();
-      const widgetItems = data?.widgets || [];
-      setWidgets(
-        widgetItems.map((widget: any) => ({
-          widget_id: widget.widget_id,
-          name: widget.name,
-          source: widget.source ?? undefined,
-          created_at: widget.created_at,
-        })),
-      );
-    } catch {
-      setError("Failed to load widgets");
-    }
-  };
-
   const loadFunnelCategories = async () => {
     try {
       const data = await funnelCategoryService.list(true);
@@ -380,10 +374,67 @@ const LeadManager: React.FC = () => {
   };
 
   useEffect(() => {
-    loadWidgets();
     loadProducts();
     loadFunnelCategories();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const mapWidget = (widget: any, inferredSource: string): OrganizationWidget => ({
+      widget_id: widget.widget_id,
+      name: widget.name,
+      source: String(widget.source ?? inferredSource).toLowerCase().trim(),
+      created_at: widget.created_at,
+    });
+
+    (async () => {
+      try {
+        if (selectedSource === "voice") {
+          const data = await dashboardService.getWidgets({ source: "voice" });
+          if (cancelled) return;
+          setWidgets((data?.widgets || []).map((w: any) => mapWidget(w, "voice")));
+          return;
+        }
+
+        const baseRes = await dashboardService.getWidgets();
+        if (cancelled) return;
+        const baseItems = baseRes?.widgets || [];
+
+        if (selectedSource === "all") {
+          let voiceItems: any[] = [];
+          try {
+            const voiceRes = await dashboardService.getWidgets({
+              source: "voice",
+            });
+            voiceItems = voiceRes?.widgets || [];
+          } catch {
+            voiceItems = [];
+          }
+          if (cancelled) return;
+          const merged = new Map<string, OrganizationWidget>();
+          for (const w of voiceItems) {
+            merged.set(w.widget_id, mapWidget(w, "voice"));
+          }
+          for (const w of baseItems) {
+            if (!merged.has(w.widget_id)) {
+              merged.set(w.widget_id, mapWidget(w, "chat"));
+            }
+          }
+          setWidgets([...merged.values()]);
+          return;
+        }
+
+        if (cancelled) return;
+        setWidgets(baseItems.map((w: any) => mapWidget(w, "chat")));
+      } catch {
+        if (!cancelled) setError("Failed to load widgets");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSource]);
 
   useEffect(() => {
     if (selectedWidgetId === "all") return;
@@ -792,7 +843,7 @@ const LeadManager: React.FC = () => {
   const advancedLeadsFilterPanel = (
     <Box sx={{ ...filterSheetSx, mb: 2.8 }}>
       <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
-        <Grid item xs={12} md={5}>
+        <Grid item xs={12} md={4}>
           <TextField
             fullWidth
             size="small"
@@ -833,7 +884,7 @@ const LeadManager: React.FC = () => {
             sx={filterControlSx}
           />
         </Grid>
-        <Grid item xs={6} sm={6} md={1.5}>
+        <Grid item xs={6} sm={6} md={2}>
           <Button
             fullWidth
             variant={advancedFiltersOpen ? "contained" : "outlined"}
@@ -844,17 +895,17 @@ const LeadManager: React.FC = () => {
               advancedFiltersOpen ? gradientBarButtonSx : filtersToggleClosedSx
             }
           >
-            {advancedFiltersOpen ? "Filters" : "Filters"}
+            {advancedFiltersOpen ? "Hide filters" : "Filters"}
           </Button>
         </Grid>
-        <Grid item xs={6} sm={6} md={1.5}>
+        <Grid item xs={6} sm={6} md={2}>
           <Button
             fullWidth
             variant="contained"
             startIcon={<DownloadIcon />}
             onClick={handleExport}
             disabled={leads.length === 0}
-            sx={gradientBarButtonSx}
+            sx={{ ...gradientBarButtonSx, whiteSpace: "nowrap" }}
           >
             Export to CSV
           </Button>
@@ -1041,10 +1092,11 @@ const LeadManager: React.FC = () => {
             sx={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "flex-start",
               gap: 0.75,
               cursor: "pointer",
               userSelect: "none",
-              flex: 1,
+              flexShrink: 0,
               minWidth: 0,
               outline: "none",
               "&:focus-visible": {

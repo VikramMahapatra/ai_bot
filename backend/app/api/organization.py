@@ -1,4 +1,7 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import get_current_user, require_admin, get_password_hash, create_access_token
@@ -16,6 +19,8 @@ from pydantic import BaseModel
 from app.models.calling_agents import CallingAgent
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Campaign
+from app.services import organization_credit_service
+
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
@@ -182,7 +187,7 @@ def get_current_org_campaigns(
     if source and source == "voice":
         call_campaigns = db.query(CallCampaign).filter(
             CallCampaign.organization_id == org_id
-        ).innerjoin(CallingAgent, CallCampaign.agent_id == CallingAgent.id).all()
+        ).join(CallingAgent, CallCampaign.agent_id == CallingAgent.id).all()
         
         if widget_id:
             call_campaigns = [c for c in call_campaigns if c.agent and c.agent.widget_id == widget_id]
@@ -801,3 +806,14 @@ def get_organization_widgets(
             for w in widgets
         ]
     }
+ 
+
+@router.get("/credits/summary")
+def get_credit_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get credit summary for the organization.
+    """
+    return organization_credit_service.get_credit_summary(db, current_user.organization_id)
