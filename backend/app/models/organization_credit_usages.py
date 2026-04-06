@@ -11,6 +11,9 @@ class OrganizationCreditUsage(Base):
 
     used_quantity = Column(Float, nullable=False, default=0)
     credits_used = Column(Float, nullable=False, default=0)
+    
+    status = Column(String(20), default="reserved")  
+    # reserved | consumed | released
 
     reference_type = Column(String(64), nullable=True)  
     # ex: "call", "email", "api", "campaign"

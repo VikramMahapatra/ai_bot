@@ -101,3 +101,8 @@ class OrganizationReport(BaseModel):
 
     agents: List[AgentReport]
     campaigns: List[CampaignReport]
+    
+    
+class CreditParameters(BaseModel):
+    feature_code: str
+    required_credits: Optional[float] = None

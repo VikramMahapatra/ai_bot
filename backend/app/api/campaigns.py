@@ -1140,6 +1140,40 @@ async def create_contact_list(
     }
 
 
+@router.put("/contact-lists/{contact_list_id}")
+async def update_contact_list(
+    contact_list_id: int,
+    payload: ContactListCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    list_name = payload.list_name.strip()
+    if not list_name:
+        raise HTTPException(status_code=400, detail="list_name is required")
+
+    contact_list = db.query(ContactList).filter(
+        ContactList.id == contact_list_id,
+        ContactList.organization_id == current_user.organization_id
+    ).first()
+    
+    if not contact_list:
+        raise HTTPException(status_code=404, detail="Contact list not found")
+
+    contact_list.list_name = list_name
+    contact_list.description = (payload.description or "").strip() or None
+    db.add(contact_list)
+    db.commit()
+    db.refresh(contact_list)
+
+    return {
+        "id": contact_list.id,
+        "list_name": contact_list.list_name,
+        "description": contact_list.description,
+        "is_agent_auto_list": False,
+        "agent_widget_id": None,
+        "created_at": contact_list.created_at,
+    }
+
 @router.get("/contact-lists")
 async def list_contact_lists(
     search: Optional[str] = None,

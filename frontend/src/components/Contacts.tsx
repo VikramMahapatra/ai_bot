@@ -51,6 +51,8 @@ import EmailIcon from "@mui/icons-material/Email";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import InfoIcon from "@mui/icons-material/Info";
 import ErrorIcon from "@mui/icons-material/Error";
+import EllipsisCell from "./EllipsisCell";
+import GroupIcon from "@mui/icons-material/Group";
 
 type ContactForm = Omit<ContactItem, 'id' | 'created_at'>;
 
@@ -95,6 +97,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     const [allContactSearch, setAllContactSearch] = useState("");
     const [openForm, setOpenForm] = useState(false);
     const [editContact, setEditContact] = useState<ContactItem | null>(null);
+    const [editContactList, setEditContactList] = useState<ContactListItem | null>(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [errors, setErrors] = useState<any>({});
@@ -105,8 +108,54 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
         company: "",
         contact_list_id: null
     });
+
     const [uploadCountryCode, setUploadCountryCode] = useState("IN");
     const [uploadResult, setUploadResult] = useState<any>(null);
+    const [editingListId, setEditingListId] = useState<number | null>(null);
+
+    const handleEditList = (list: ContactListItem) => {
+        setEditingListId(list.id);
+        setNewListName(list.list_name);
+        setNewListDescription(list.description || "");
+    };
+
+    const handleSaveList = async () => {
+        if (!editingListId) return;
+
+        if (!newListName.trim()) {
+            showError('Contact list name is required');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await campaignService.updateContactList(editingListId, {
+                list_name: newListName,
+                description: newListDescription || undefined,
+            });
+            setNewListName('');
+            setNewListDescription('');
+            showSuccess('Contact list updated successfully');
+            await loadContactLists();
+        } catch (err: any) {
+            showError(err?.response?.data?.detail || 'Failed to update contact list');
+        } finally {
+            setLoading(false);
+        }
+
+        // Reset form
+        setEditingListId(null);
+        setNewListName("");
+        setNewListDescription("");
+    };
+
+    const handleCreateOrSave = () => {
+        if (editingListId) {
+            handleSaveList();
+        } else {
+            handleCreateList();
+        }
+    };
 
     const showError = (message: string) => {
         setSuccess('');
@@ -575,7 +624,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
 
                     <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Create Contact List</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                            {editingListId ? "Edit Contact List" : "Create Contact List"}
+                        </Typography>
+
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={4}>
                                 <TextField
@@ -598,7 +650,35 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                 />
                             </Grid>
                             <Grid item xs={12} md={2}>
-                                <Button size="small" sx={compactButtonSx} fullWidth variant="contained" onClick={handleCreateList}>Create</Button>
+                                <Stack direction="row" spacing={1}>
+                                    <Button
+                                        size="small"
+                                        sx={compactButtonSx}
+                                        fullWidth
+                                        variant="contained"
+                                        onClick={handleCreateOrSave}
+                                    >
+                                        {editingListId ? "Save" : "Create"}
+                                    </Button>
+
+                                    {editingListId && (
+                                        <Button
+                                            size="small"
+                                            sx={compactButtonSx}
+                                            fullWidth
+                                            variant="outlined"
+                                            color="secondary"
+                                            onClick={() => {
+                                                // Reset form & cancel edit
+                                                setEditingListId(null);
+                                                setNewListName("");
+                                                setNewListDescription("");
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    )}
+                                </Stack>
                             </Grid>
                         </Grid>
                     </Paper>
@@ -624,7 +704,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                     <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
                                         <TableCell>List Name</TableCell>
                                         <TableCell>Description</TableCell>
-                                        <TableCell>Contacts</TableCell>
                                         <TableCell>Created</TableCell>
                                         <TableCell>Actions</TableCell>
                                     </TableRow>
@@ -634,20 +713,38 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                         contactLists.map((list) => (
                                             <TableRow key={list.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
                                                 <TableCell>
-                                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                        <Typography>{list.list_name}</Typography>
-                                                        {list.is_agent_auto_list && (
-                                                            <Chip size="small" color="info" variant="outlined" label="Auto-created" />
-                                                        )}
+                                                    <Stack direction="column" spacing={0.5}>
+                                                        {/* List Name */}
+                                                        <Typography variant="body1" fontWeight={500}>
+                                                            {list.list_name}
+                                                        </Typography>
+
+                                                        {/* Row with contact count and auto-created chip */}
+                                                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                            {/* Contact Count with Icon */}
+                                                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                                                <GroupIcon fontSize="small" color="primary" />
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    {list.contact_count}
+                                                                </Typography>
+                                                            </Stack>
+
+                                                            {/* Auto-created Chip */}
+                                                            {list.is_agent_auto_list && (
+                                                                <Chip size="small" color="info" variant="outlined" label="Auto-created" />
+                                                            )}
+                                                        </Stack>
                                                     </Stack>
                                                 </TableCell>
-                                                <TableCell>{getContactListDescription(list)}</TableCell>
-                                                <TableCell>{list.contact_count}</TableCell>
+                                                <TableCell><EllipsisCell value={getContactListDescription(list)} /></TableCell>
                                                 <TableCell>{formatDate(list.created_at)}</TableCell>
                                                 <TableCell>
                                                     <Stack direction="row" spacing={1}>
                                                         <Button size="small" startIcon={<ListAltIcon />} onClick={() => handleSelectListForContacts(list.id)}>
                                                             View Contacts
+                                                        </Button>
+                                                        <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => handleEditList(list)}>
+                                                            Edit
                                                         </Button>
                                                         <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteList(list.id)}>
                                                             Delete
@@ -658,7 +755,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={5} align="center">No contact lists found.</TableCell>
+                                            <TableCell colSpan={4} align="center">No contact lists found.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>
@@ -1201,111 +1298,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                             rowsPerPageOptions={[10, 25, 50]}
                         />
                     </Paper >
-
-                    {/* ADD / EDIT FORM */}
-
-                    <Dialog
-                        open={openForm}
-                        onClose={() => setOpenForm(false)}
-                        maxWidth="sm"
-                        fullWidth
-                    >
-
-                        <DialogTitle>
-                            {editContact ? "Edit Contact" : "Add Contact"}
-                        </DialogTitle>
-
-                        <DialogContent>
-
-                            <Box
-                                display="flex"
-                                flexDirection="column"
-                                gap={2}
-                                mt={1}
-                            >
-                                <TextField
-                                    select
-                                    required
-                                    label="Contact List"
-                                    name="name"
-                                    value={form.contact_list_id}
-                                    onChange={(e) =>
-                                        setForm({ ...form, contact_list_id: Number(e.target.value) })
-                                    }
-                                    error={!!errors.contact_list_id}
-                                    helperText={errors.contact_list_id}
-                                >
-                                    {contactListLookupItems.map((list) => (
-                                        <MenuItem key={list.id} value={list.id}>
-                                            {list.list_name}
-                                        </MenuItem>
-                                    ))}
-                                </TextField>
-
-                                <TextField
-                                    required
-                                    label="Name"
-                                    value={form.name}
-                                    onChange={(e) =>
-                                        setForm({ ...form, name: e.target.value })
-                                    }
-                                    error={!!errors.name}
-                                    helperText={errors.name}
-                                />
-
-                                <TextField
-                                    required
-                                    label="Email"
-                                    value={form.email}
-                                    onChange={(e) =>
-                                        setForm({ ...form, email: e.target.value })
-                                    }
-                                    error={!!errors.email}
-                                    helperText={errors.email}
-                                />
-
-                                <TextField
-                                    required
-                                    label="Phone"
-                                    value={form.phone}
-                                    onChange={(e) =>
-                                        setForm({ ...form, phone: e.target.value })
-                                    }
-                                    error={!!errors.phone}
-                                    helperText={errors.phone}
-                                />
-
-                                <TextField
-                                    label="Company"
-                                    value={form.company}
-                                    onChange={(e) =>
-                                        setForm({ ...form, company: e.target.value })
-                                    }
-                                    error={!!errors.company}
-                                    helperText={errors.company}
-                                />
-
-                            </Box>
-
-                        </DialogContent>
-
-                        <DialogActions>
-
-                            <Button onClick={() => setOpenForm(false)}>
-                                Cancel
-                            </Button>
-
-                            <Button
-                                variant="contained"
-                                onClick={saveContact}
-                            >
-                                Save
-                            </Button>
-
-                        </DialogActions>
-
-                    </Dialog >
-
 
                 </Box >
             )}

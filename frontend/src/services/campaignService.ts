@@ -399,6 +399,11 @@ export const campaignService = {
     return response.data;
   },
 
+  async updateContactList(editingListId: number, payload: { list_name: string; description?: string }): Promise<ContactListItem> {
+    const response = await api.put(`/api/admin/campaigns/contact-lists/${editingListId}`, payload);
+    return response.data;
+  },
+
   async listContactLists(params: ContactFilters = {}): Promise<ContactListResponse> {
     const response = await api.get('/api/admin/campaigns/contact-lists', { params });
     return response.data;

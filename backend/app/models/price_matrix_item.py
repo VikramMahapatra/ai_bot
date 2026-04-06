@@ -11,6 +11,7 @@ class PriceMatrixItem(Base):
     category = Column(String(120), nullable=False, index=True)
     module = Column(String(120), nullable=False, index=True)
     sub_module = Column(String(160), nullable=True)
+    feature_code = Column(String(120), nullable=True, unique=True, index=True)
     billing_unit = Column(String(120), nullable=True)
     credits_per_unit = Column(Float, nullable=True)
     credit_formula = Column(Text, nullable=True)

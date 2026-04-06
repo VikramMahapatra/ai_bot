@@ -20,10 +20,10 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Campaign
 from app.services import organization_credit_service
+from app.schemas.organization import CreditParameters
 
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
-
 
 class OrganizationMeetingSettingsResponse(BaseModel):
     default_meet_link: str
@@ -817,3 +817,21 @@ def get_credit_summary(
     Get credit summary for the organization.
     """
     return organization_credit_service.get_credit_summary(db, current_user.organization_id)
+
+
+@router.get("/credits/validate")
+def validate_credits(
+    feature_code: str = Query(..., description="Feature code to validate credits for"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return organization_credit_service.validate_credits(db, current_user.organization_id)
+
+
+@router.post("/credits/deduct")
+def deduct_credits(
+    params: CreditParameters,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return organization_credit_service.deduct_credits(db, current_user.organization_id, params.feature_code)
