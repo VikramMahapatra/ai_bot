@@ -23,10 +23,6 @@ import {
   Tab,
   Card,
   CardContent,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
   Divider,
   TextField,
@@ -49,6 +45,7 @@ import DocumentUpload from "./DocumentUpload";
 import VectorizedDataViewer from "./VectorizedDataViewer";
 import { analyticsService } from "../../services/analyticsService";
 import SearchIcon from "@mui/icons-material/Search";
+import { ConfirmDialog } from "../Common/ConfirmDialog";
 
 interface KnowledgeGap {
   keyword: string;
@@ -70,10 +67,12 @@ const KnowledgeManager: React.FC = () => {
   const [vectorRefreshToken, setVectorRefreshToken] = useState<number>(0);
   const [vectorLoading, setVectorLoading] = useState<boolean>(false);
   const [lastTotalChunks, setLastTotalChunks] = useState<number>(0);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingDeleteName, setPendingDeleteName] = useState("");
   const [pendingDeleteEmbeddings, setPendingDeleteEmbeddings] =
+   
     useState<number>(0);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [gapSuggestions, setGapSuggestions] = useState<KnowledgeGap[]>([]);
   const [gapLoading, setGapLoading] = useState(false);
   const [gapError, setGapError] = useState("");
@@ -219,9 +218,12 @@ const KnowledgeManager: React.FC = () => {
         },
       ).length;
 
+      const sourceMeta = sources.find((s) => s.id === id);
+      setPendingDeleteName(
+        sourceMeta?.name?.trim() || "this knowledge source",
+      );
       setPendingDeleteId(id);
       setPendingDeleteEmbeddings(embeddingsForSource);
-      setDeleteDialogOpen(true);
     } catch (err) {
       setError("Failed to delete source");
     }
@@ -230,18 +232,28 @@ const KnowledgeManager: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!selectedWidgetId || pendingDeleteId === null) return;
 
+    setDeleteSubmitting(true);
     try {
       setVectorLoading(true);
       await knowledgeService.deleteSource(pendingDeleteId);
       loadSources(selectedWidgetId);
       setVectorRefreshToken((t) => t + 1);
-      setDeleteDialogOpen(false);
       setPendingDeleteId(null);
+      setPendingDeleteName("");
       setPendingDeleteEmbeddings(0);
     } catch (err) {
       setError("Failed to delete source");
       setVectorLoading(false);
+    } finally {
+      setDeleteSubmitting(false);
     }
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteSubmitting) return;
+    setPendingDeleteId(null);
+    setPendingDeleteName("");
+    setPendingDeleteEmbeddings(0);
   };
 
   const buildGapTemplate = (title: string, questions: string[]) => {
@@ -743,65 +755,21 @@ const KnowledgeManager: React.FC = () => {
         </Paper>
       )}
 
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            background:
-              "linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(30,41,59,0.98) 100%)",
-            color: "common.white",
-            border: "1px solid rgba(148,163,184,0.2)",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-            minWidth: 420,
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 700 }}>
-          Delete knowledge source?
-        </DialogTitle>
-        <Divider sx={{ borderColor: "rgba(148,163,184,0.25)" }} />
-        <DialogContent sx={{ pt: 2 }}>
-          <Typography variant="body2" sx={{ color: "rgba(226,232,240,0.9)" }}>
-            This will delete 1 knowledge source and{" "}
-            <strong>{pendingDeleteEmbeddings}</strong> embeddings.
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{ display: "block", mt: 1.5, color: "rgba(148,163,184,0.85)" }}
-          >
-            This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button
-            onClick={() => setDeleteDialogOpen(false)}
-            variant="outlined"
-            sx={{
-              borderColor: "rgba(148,163,184,0.5)",
-              color: "rgba(226,232,240,0.9)",
-              "&:hover": {
-                borderColor: "rgba(226,232,240,0.9)",
-                background: "rgba(148,163,184,0.1)",
-              },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirmDelete}
-            variant="contained"
-            color="error"
-            sx={{
-              background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
-              boxShadow: "0 12px 24px rgba(239,68,68,0.35)",
-            }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete knowledge source?"
+        description={
+          pendingDeleteId !== null
+            ? `This will remove "${pendingDeleteName}" and ${pendingDeleteEmbeddings} associated embedding(s). This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deleteSubmitting}
+        onCancel={closeDeleteDialog}
+        onConfirm={handleConfirmDelete}
+      />
     </Box>
   );
 };

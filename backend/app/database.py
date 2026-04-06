@@ -44,777 +44,387 @@ def get_db():
         db.close()
 
 
+def column_exists(conn, table, column):
+    result = conn.execute(text("""
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name=:table 
+        AND column_name=:column
+    """), {"table": table, "column": column}).fetchone()
+    return result is not None
 
 
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
 
-    # Lightweight SQLite migrations for new columns
-    if engine.url.drivername.startswith("sqlite"):
-        with engine.connect() as conn:
-            # Add plan_id to organization_limits if missing
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('organization_limits')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "plan_id" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN plan_id INTEGER"
-                        )
-                    )
-                if "voice_chat_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN voice_chat_enabled BOOLEAN"
-                        )
-                    )
-                if "multilingual_text_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN multilingual_text_enabled BOOLEAN"
-                        )
-                    )
-                if "whatsapp_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN whatsapp_enabled BOOLEAN"
-                        )
-                    )
-                if "human_handoff_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN human_handoff_enabled BOOLEAN"
-                        )
-                    )
-                if "email_campaign_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN email_campaign_enabled BOOLEAN"
-                        )
-                    )
-                if "sms_campaign_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN sms_campaign_enabled BOOLEAN"
-                        )
-                    )
-                if "module_knowledge_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_knowledge_enabled BOOLEAN"
-                        )
-                    )
-                if "module_leads_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_leads_enabled BOOLEAN"
-                        )
-                    )
-                if "module_analytics_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_analytics_enabled BOOLEAN"
-                        )
-                    )
-                if "module_advanced_analytics_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_advanced_analytics_enabled BOOLEAN"
-                        )
-                    )
-                if "module_reports_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_reports_enabled BOOLEAN"
-                        )
-                    )
-                if "module_campaigns_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_campaigns_enabled BOOLEAN"
-                        )
-                    )
-                if "module_appointments_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_appointments_enabled BOOLEAN"
-                        )
-                    )
-                if "module_products_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_products_enabled BOOLEAN"
-                        )
-                    )
-                if "module_users_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN module_users_enabled BOOLEAN"
-                        )
-                    )
-                if "max_agents" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN max_agents INTEGER"
-                        )
-                    )
-                if "max_campaigns" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN max_campaigns INTEGER"
-                        )
-                    )
-                if "max_calls" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_limits ADD COLUMN max_calls INTEGER"
-                        )
-                    )
-            except Exception:
-                # If table doesn't exist yet, create_all already handled it
-                pass
+    with engine.connect() as conn:
 
-            try:
-                cols = conn.execute(text("PRAGMA table_info('plans')")).fetchall()
-                col_names = {row[1] for row in cols}
-                if "voice_chat_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN voice_chat_enabled BOOLEAN DEFAULT 0"
-                        )
-                    )
-                if "multilingual_text_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN multilingual_text_enabled BOOLEAN DEFAULT 0"
-                        )
-                    )
-                if "whatsapp_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN whatsapp_enabled BOOLEAN DEFAULT 0"
-                        )
-                    )
-                if "human_handoff_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN human_handoff_enabled BOOLEAN DEFAULT 0"
-                        )
-                    )
-                if "email_campaign_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN email_campaign_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "sms_campaign_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN sms_campaign_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_knowledge_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_knowledge_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_leads_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_leads_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_analytics_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_analytics_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_advanced_analytics_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_advanced_analytics_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_reports_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_reports_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_campaigns_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_campaigns_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_appointments_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_appointments_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_products_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_products_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-                if "module_users_enabled" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE plans ADD COLUMN module_users_enabled BOOLEAN DEFAULT 1"
-                        )
-                    )
-            except Exception:
-                pass
+        # ----------------------------
+        # organization_limits
+        # ----------------------------
+        try:
+            columns = {
+                "plan_id": "INTEGER",
+                "voice_chat_enabled": "BOOLEAN",
+                "multilingual_text_enabled": "BOOLEAN",
+                "whatsapp_enabled": "BOOLEAN",
+                "human_handoff_enabled": "BOOLEAN",
+                "email_campaign_enabled": "BOOLEAN",
+                "sms_campaign_enabled": "BOOLEAN",
+                "module_knowledge_enabled": "BOOLEAN",
+                "module_leads_enabled": "BOOLEAN",
+                "module_analytics_enabled": "BOOLEAN",
+                "module_advanced_analytics_enabled": "BOOLEAN",
+                "module_reports_enabled": "BOOLEAN",
+                "module_campaigns_enabled": "BOOLEAN",
+                "module_appointments_enabled": "BOOLEAN",
+                "module_products_enabled": "BOOLEAN",
+                "module_users_enabled": "BOOLEAN",
+                "max_agents": "INTEGER",
+                "max_campaigns": "INTEGER",
+                "max_calls": "INTEGER",
+            }
 
-            # Normalize user uniqueness constraints to organization scope.
-            # Old databases may have global-unique indexes on username/email.
-            try:
-                cols = conn.execute(text("PRAGMA table_info('users')")).fetchall()
-                if cols:
-                    index_rows = conn.execute(
-                        text("PRAGMA index_list('users')")
-                    ).fetchall()
-                    index_map = {row[1]: row for row in index_rows}
-
-                    username_idx = index_map.get("ix_users_username")
-                    if username_idx and int(username_idx[2]) == 1:
-                        conn.execute(text("DROP INDEX IF EXISTS ix_users_username"))
-
-                    email_idx = index_map.get("ix_users_email")
-                    if email_idx and int(email_idx[2]) == 1:
-                        conn.execute(text("DROP INDEX IF EXISTS ix_users_email"))
-
+            for col, col_type in columns.items():
+                if not column_exists(conn, "organization_limits", col):
                     conn.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)"
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)"
-                        )
+                        text(f"ALTER TABLE organization_limits ADD COLUMN {col} {col_type}")
                     )
 
-                    conn.execute(
-                        text(
-                            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_username ON users(organization_id, username)"
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_email ON users(organization_id, email)"
-                        )
-                    )
-            except Exception:
-                # Keep startup resilient on older/partial schemas.
-                pass
+        except Exception:
+            pass
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('organization_usage')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "messages_count" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_usage ADD COLUMN messages_count INTEGER DEFAULT 0"
-                        )
-                    )
-            except Exception:
-                pass
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('organization_subscription_usage')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "messages_count" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_subscription_usage ADD COLUMN messages_count INTEGER DEFAULT 0"
-                        )
-                    )
-            except Exception:
-                pass
+        # ----------------------------
+        # plans table
+        # ----------------------------
+        try:
+            columns = {
+                "voice_chat_enabled": "BOOLEAN DEFAULT FALSE",
+                "multilingual_text_enabled": "BOOLEAN DEFAULT FALSE",
+                "whatsapp_enabled": "BOOLEAN DEFAULT FALSE",
+                "human_handoff_enabled": "BOOLEAN DEFAULT FALSE",
+                "email_campaign_enabled": "BOOLEAN DEFAULT TRUE",
+                "sms_campaign_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_knowledge_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_leads_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_analytics_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_advanced_analytics_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_reports_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_campaigns_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_appointments_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_products_enabled": "BOOLEAN DEFAULT TRUE",
+                "module_users_enabled": "BOOLEAN DEFAULT TRUE",
+            }
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('widget_configs')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "escalation_contact_level_1" not in col_names:
+            for col, col_type in columns.items():
+                if not column_exists(conn, "plans", col):
                     conn.execute(
-                        text(
-                            "ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_1 TEXT"
-                        )
+                        text(f"ALTER TABLE plans ADD COLUMN {col} {col_type}")
                     )
-                if "escalation_contact_level_2" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE widget_configs ADD COLUMN escalation_contact_level_2 TEXT"
-                        )
-                    )
-                if "system_prompt" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE widget_configs ADD COLUMN system_prompt TEXT")
-                    )
-            except Exception:
-                pass
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('conversations')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "outcome" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE conversations ADD COLUMN outcome TEXT")
-                    )
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('organizations')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "default_meet_link" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organizations ADD COLUMN default_meet_link TEXT"
-                        )
-                    )
-            except Exception:
-                pass
 
-            try:
-                cols = conn.execute(text("PRAGMA table_info('contacts')")).fetchall()
-                col_names = {row[1] for row in cols}
-                if "external_contact_id" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE contacts ADD COLUMN external_contact_id INTEGER"
-                        )
-                    )
-                if "company" not in col_names:
-                    conn.execute(text("ALTER TABLE contacts ADD COLUMN company TEXT"))
-            except Exception:
-                pass
+        # ----------------------------
+        # users indexes
+        # ----------------------------
+        try:
+            conn.execute(
+                text("DROP INDEX IF EXISTS ix_users_username")
+            )
 
-            try:
-                cols = conn.execute(text("PRAGMA table_info('campaigns')")).fetchall()
-                col_names = {row[1] for row in cols}
-                if "product_id" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaigns ADD COLUMN product_id INTEGER")
-                    )
-            except Exception:
-                pass
+            conn.execute(
+                text("DROP INDEX IF EXISTS ix_users_email")
+            )
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('campaign_logs')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "run_sequence" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN run_sequence INTEGER DEFAULT 1"
-                        )
-                    )
-                if "run_started_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN run_started_at DATETIME"
-                        )
-                    )
-                if "delivered_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN delivered_at DATETIME"
-                        )
-                    )
-                if "opened_at" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN opened_at DATETIME")
-                    )
-                if "read_at" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN read_at DATETIME")
-                    )
-                if "clicked_at" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN clicked_at DATETIME")
-                    )
-                if "bounced_at" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN bounced_at DATETIME")
-                    )
-                if "complained_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN complained_at DATETIME"
-                        )
-                    )
-                if "unsubscribed_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN unsubscribed_at DATETIME"
-                        )
-                    )
-                if "provider_message_id" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN provider_message_id TEXT"
-                        )
-                    )
-                if "tracking_token" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN tracking_token TEXT")
-                    )
-                if "open_count" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN open_count INTEGER DEFAULT 0"
-                        )
-                    )
-                if "click_count" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN click_count INTEGER DEFAULT 0"
-                        )
-                    )
-                if "last_event_type" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN last_event_type TEXT"
-                        )
-                    )
-                if "last_event_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN last_event_at DATETIME"
-                        )
-                    )
-                if "event_payload" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE campaign_logs ADD COLUMN event_payload TEXT")
-                    )
-                if "converted_lead_id" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_logs ADD COLUMN converted_lead_id INTEGER"
-                        )
-                    )
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)")
+            )
+
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)")
+            )
+
+            conn.execute(
+                text("""CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_username 
+                ON users(organization_id, username)""")
+            )
+
+            conn.execute(
+                text("""CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_email 
+                ON users(organization_id, email)""")
+            )
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # organization_usage
+        # ----------------------------
+        try:
+            if not column_exists(conn, "organization_usage", "messages_count"):
                 conn.execute(
-                    text(
-                        "UPDATE campaign_logs SET run_sequence = 1 WHERE run_sequence IS NULL"
-                    )
+                    text("ALTER TABLE organization_usage ADD COLUMN messages_count INTEGER DEFAULT 0")
                 )
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # organization_subscription_usage
+        # ----------------------------
+        try:
+            if not column_exists(conn, "organization_subscription_usage", "messages_count"):
                 conn.execute(
-                    text(
-                        "UPDATE campaign_logs SET open_count = 0 WHERE open_count IS NULL"
-                    )
+                    text("ALTER TABLE organization_subscription_usage ADD COLUMN messages_count INTEGER DEFAULT 0")
                 )
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # widget_configs
+        # ----------------------------
+        try:
+            columns = {
+                "escalation_contact_level_1": "TEXT",
+                "escalation_contact_level_2": "TEXT",
+                "system_prompt": "TEXT"
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "widget_configs", col):
+                    conn.execute(
+                        text(f"ALTER TABLE widget_configs ADD COLUMN {col} {col_type}")
+                    )
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # conversations
+        # ----------------------------
+        try:
+            if not column_exists(conn, "conversations", "outcome"):
                 conn.execute(
-                    text(
-                        "UPDATE campaign_logs SET click_count = 0 WHERE click_count IS NULL"
-                    )
+                    text("ALTER TABLE conversations ADD COLUMN outcome TEXT")
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-            try:
-                cols = conn.execute(text("PRAGMA table_info('leads')")).fetchall()
-                col_names = {row[1] for row in cols}
-                if "source" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'chat'")
-                    )
-                if "funnel_stage" not in col_names:
-                    conn.execute(text("ALTER TABLE leads ADD COLUMN funnel_stage TEXT"))
-                if "lead_outcome" not in col_names:
-                    conn.execute(text("ALTER TABLE leads ADD COLUMN lead_outcome TEXT"))
-                if "product_id" not in col_names:
-                    conn.execute(
-                        text("ALTER TABLE leads ADD COLUMN product_id INTEGER")
-                    )
+
+        # ----------------------------
+        # organizations
+        # ----------------------------
+        try:
+            if not column_exists(conn, "organizations", "default_meet_link"):
                 conn.execute(
-                    text(
-                        "UPDATE leads SET source = 'chat' WHERE source IS NULL OR TRIM(source) = ''"
-                    )
+                    text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT")
                 )
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # contacts
+        # ----------------------------
+        try:
+            columns = {
+                "external_contact_id": "INTEGER",
+                "company": "TEXT"
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "contacts", col):
+                    conn.execute(
+                        text(f"ALTER TABLE contacts ADD COLUMN {col} {col_type}")
+                    )
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # campaigns
+        # ----------------------------
+        try:
+            if not column_exists(conn, "campaigns", "product_id"):
                 conn.execute(
-                    text(
-                        """
-                    UPDATE leads
-                    SET lead_outcome = COALESCE(
-                        NULLIF(json_extract(custom_fields, '$.lead_outcome'), ''),
-                        NULLIF(json_extract(custom_fields, '$.call_outcome'), ''),
-                        NULLIF(json_extract(custom_fields, '$.outcome'), ''),
-                        NULLIF(json_extract(custom_fields, '$.callOutcome'), '')
-                    )
-                    WHERE (lead_outcome IS NULL OR TRIM(lead_outcome) = '')
-                      AND custom_fields IS NOT NULL
-                """
-                    )
+                    text("ALTER TABLE campaigns ADD COLUMN product_id INTEGER")
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('handoff_sessions')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "call_room_id" not in col_names:
+
+        # ----------------------------
+        # campaign_logs
+        # ----------------------------
+        try:
+            columns = {
+                "run_sequence": "INTEGER DEFAULT 1",
+                "run_started_at": "TIMESTAMP",
+                "delivered_at": "TIMESTAMP",
+                "opened_at": "TIMESTAMP",
+                "read_at": "TIMESTAMP",
+                "clicked_at": "TIMESTAMP",
+                "bounced_at": "TIMESTAMP",
+                "complained_at": "TIMESTAMP",
+                "unsubscribed_at": "TIMESTAMP",
+                "provider_message_id": "TEXT",
+                "tracking_token": "TEXT",
+                "open_count": "INTEGER DEFAULT 0",
+                "click_count": "INTEGER DEFAULT 0",
+                "last_event_type": "TEXT",
+                "last_event_at": "TIMESTAMP",
+                "event_payload": "TEXT",
+                "converted_lead_id": "INTEGER",
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "campaign_logs", col):
                     conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_room_id TEXT"
-                        )
+                        text(f"ALTER TABLE campaign_logs ADD COLUMN {col} {col_type}")
                     )
-                if "call_status" not in col_names:
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # leads
+        # ----------------------------
+        try:
+            columns = {
+                "source": "TEXT DEFAULT 'chat'",
+                "funnel_stage": "TEXT",
+                "lead_outcome": "TEXT",
+                "product_id": "INTEGER"
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "leads", col):
                     conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_status TEXT DEFAULT 'none'"
-                        )
+                        text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}")
                     )
-                if "call_mode" not in col_names:
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # handoff_sessions
+        # ----------------------------
+        try:
+            columns = {
+                "call_room_id": "TEXT",
+                "call_status": "TEXT DEFAULT 'none'",
+                "call_mode": "TEXT DEFAULT 'video'",
+                "call_requested_at": "TIMESTAMP",
+                "call_started_at": "TIMESTAMP",
+                "call_ended_at": "TIMESTAMP"
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "handoff_sessions", col):
                     conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_mode TEXT DEFAULT 'video'"
-                        )
+                        text(f"ALTER TABLE handoff_sessions ADD COLUMN {col} {col_type}")
                     )
-                if "call_requested_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_requested_at DATETIME"
-                        )
-                    )
-                if "call_started_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_started_at DATETIME"
-                        )
-                    )
-                if "call_ended_at" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE handoff_sessions ADD COLUMN call_ended_at DATETIME"
-                        )
-                    )
+
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # calling_agents
+        # ----------------------------
+        try:
+            if not column_exists(conn, "calling_agents", "external_agent_name"):
                 conn.execute(
-                    text(
-                        "UPDATE handoff_sessions SET call_status = 'none' WHERE call_status IS NULL OR TRIM(call_status) = ''"
-                    )
+                    text("ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT")
                 )
+        except Exception:
+            pass
+
+
+        # ----------------------------
+        # campaign_schedules
+        # ----------------------------
+        try:
+            if not column_exists(conn, "campaign_schedules", "end_datetime"):
                 conn.execute(
-                    text(
-                        "UPDATE handoff_sessions SET call_mode = 'video' WHERE call_mode IS NULL OR TRIM(call_mode) = ''"
-                    )
+                    text("ALTER TABLE campaign_schedules ADD COLUMN end_datetime TIMESTAMP")
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
+        
+        # ----------------------------
+        # call_campaigns
+        # ----------------------------
+        try:
+            columns = {
+                "external_campaign_name": "TEXT",
+                "success_rate": "DOUBLE PRECISION DEFAULT 0.0",
+                "response_rate": "DOUBLE PRECISION DEFAULT 0.0",
+                "product_id": "INTEGER",
+                "calling_no": "TEXT",
+            }
 
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('calling_agents')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "external_agent_name" not in col_names:
+            for col, col_type in columns.items():
+                if not column_exists(conn, "call_campaigns", col):
                     conn.execute(
-                        text(
-                            "ALTER TABLE calling_agents ADD COLUMN external_agent_name TEXT"
-                        )
-                    )
-                if "inbound_phone_number" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE calling_agents ADD COLUMN inbound_phone_number TEXT"
-                        )
-                    )
-                if "widget_id" not in col_names:
-                    # Add column
-                    conn.execute(
-                        text("ALTER TABLE calling_agents ADD COLUMN widget_id VARCHAR")
+                        text(f"ALTER TABLE call_campaigns ADD COLUMN {col} {col_type}")
                     )
 
-                    # Populate existing records
-                    rows = conn.execute(
-                        text("SELECT id FROM calling_agents")
-                    ).fetchall()
-
-                    for row in rows:
-                        widget_id = f"widget_{int(datetime.now().timestamp()*1000)}_{random.randint(1000,9999)}"
-
-                        conn.execute(
-                            text(
-                                """
-                                UPDATE calling_agents 
-                                SET widget_id = :widget_id 
-                                WHERE id = :id
-                            """
-                            ),
-                            {"widget_id": widget_id, "id": row.id},
-                        )
-
-            except Exception:
-                pass
-
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('campaign_schedules')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "end_datetime" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE campaign_schedules ADD COLUMN end_datetime DATETIME"
-                        )
-                    )
-
-            except Exception:
-                pass
-
-            try:
-                columns = {
-                    "duration": "INTEGER",
-                    "ended_reason": "TEXT",
-                    "call_summary": "TEXT",
-                    "sentiment": "TEXT",
-                    "follow_up_recommended": "TEXT",
-                    "extract_data": "TEXT",
-                    "lead_info": "TEXT",
-                    "success_evaluation": "BOOLEAN DEFAULT 0",
-                    "is_lead_qualified": "BOOLEAN DEFAULT 0",
-                    "external_call_a_id": "TEXT",
-                    "call_session_id": "TEXT",
-                }
-
-                cols = conn.execute(text("PRAGMA table_info('call_logs')")).fetchall()
-                col_names = {row[1] for row in cols}
-
-                for col, col_type in columns.items():
-                    if col not in col_names:
-                        conn.execute(
-                            text(f"ALTER TABLE call_logs ADD COLUMN {col} {col_type}")
-                        )
-                if "success_evaluation" not in col_names:
-                    conn.execute(
-                        text(
-                            "UPDATE call_logs SET success_evaluation = 0 WHERE success_evaluation IS NULL"
-                        )
-                    )
-                if "call_session_id" not in col_names:
-                    rows = conn.execute(text("SELECT id FROM call_logs")).fetchall()
-                    for row in rows:
-                        session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
-
-                        conn.execute(
-                            text(
-                                """
-                                UPDATE call_logs 
-                                SET call_session_id = :session_id 
-                                WHERE id = :id
-                            """
-                            ),
-                            {"session_id": session_id, "id": row.id},
-                        )
-            except Exception as e:
-                pass
-
-            try:
-                columns = {
-                    "external_campaign_name": "TEXT",
-                    "success_rate": "FLOAT DEFAULT 0.0",
-                    "response_rate": "FLOAT DEFAULT 0.0",
-                    "product_id": "INTEGER",
-                    "calling_no": "TEXT",
-                }
-
-                cols = conn.execute(
-                    text("PRAGMA table_info('call_campaigns')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-
-                for col, col_type in columns.items():
-                    if col not in col_names:
-                        conn.execute(
-                            text(
-                                f"ALTER TABLE call_campaigns ADD COLUMN {col} {col_type}"
-                            )
-                        )
-                if "calling_no" not in col_names:
-                    conn.execute(
-                        text(
-                            "UPDATE call_campaigns SET calling_no = '+918046733457' WHERE calling_no IS NULL"
-                        )
-                    )
-            except Exception as e:
-                print(str(e))
-
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('organization_calling_numbers')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "type" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE organization_calling_numbers ADD COLUMN type TEXT"
-                        )
-                    )
-                if "type" not in col_names:
-                    conn.execute(
-                        text(
-                            "UPDATE organization_calling_numbers SET type = 'outbound' WHERE type IS NULL"
-                        )
-                    )
-            except Exception:
-                pass
-
-            try:
-                conn.commit()
-            except Exception:
-                pass
-            try:
-                cols = conn.execute(
-                    text("PRAGMA table_info('credit_estimator_shares')")
-                ).fetchall()
-                col_names = {row[1] for row in cols}
-                if "company_name" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE credit_estimator_shares ADD COLUMN company_name TEXT DEFAULT 'Untitled Company'"
-                        )
-                    )
-                if "input_json" not in col_names:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE credit_estimator_shares ADD COLUMN input_json TEXT DEFAULT '{}'"
-                        )
-                    )
+            if not column_exists(conn, "call_campaigns", "calling_no"):
                 conn.execute(
-                    text(
-                        "UPDATE credit_estimator_shares SET company_name = 'Untitled Company' WHERE company_name IS NULL OR TRIM(company_name) = ''"
-                    )
+                    text("""
+                        UPDATE call_campaigns 
+                        SET calling_no = '+918046733457' 
+                        WHERE calling_no IS NULL
+                    """)
                 )
-                conn.execute(
-                    text(
-                        "UPDATE credit_estimator_shares SET input_json = '{}' WHERE input_json IS NULL OR TRIM(input_json) = ''"
-                    )
-                )
-            except Exception:
-                pass
+
+        except Exception as e:
+            print(str(e))
 
 
+        # ----------------------------
+        # credit_estimator_shares
+        # ----------------------------
+        try:
+            columns = {
+                "company_name": "TEXT DEFAULT 'Untitled Company'",
+                "input_json": "TEXT DEFAULT '{}'"
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "credit_estimator_shares", col):
+                    conn.execute(
+                        text(f"ALTER TABLE credit_estimator_shares ADD COLUMN {col} {col_type}")
+                    )
+
+            conn.execute(text("""
+                UPDATE credit_estimator_shares 
+                SET company_name = 'Untitled Company'
+                WHERE company_name IS NULL 
+                OR TRIM(company_name) = ''
+            """))
+
+            conn.execute(text("""
+                UPDATE credit_estimator_shares 
+                SET input_json = '{}'
+                WHERE input_json IS NULL 
+                OR TRIM(input_json) = ''
+            """))
+
+        except Exception:
+            pass
+        
         # --------------------------------------------------
         # organization_settings
         # --------------------------------------------------
@@ -828,4 +438,12 @@ def init_db():
             pass
 
 
-        conn.commit()
+
+        # ----------------------------
+        # commit
+        # ----------------------------
+        try:
+            conn.commit()
+        except Exception:
+            pass
+

@@ -33,6 +33,8 @@ import json
 import re
 
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
+from app.models.organization_settings import OrganizationSettings
+from app.services.organization_setting_service import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +42,16 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 
-def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) -> str:
+def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig], org_settings: OrganizationSettings) -> str:
     level_1 = (
         widget_config.escalation_contact_level_1
         if widget_config and widget_config.escalation_contact_level_1
-        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        else org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
     )
     level_2 = (
         widget_config.escalation_contact_level_2
         if widget_config and widget_config.escalation_contact_level_2
-        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        else org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
     )
     return (
         "Sorry-I do not have a reliable answer for this right now. "
@@ -470,7 +472,7 @@ def _response_offers_handoff(response_text: Optional[str]) -> bool:
     return any(marker in normalized for marker in offer_markers)
 
 
-def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[WidgetConfig]) -> str:
+def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[WidgetConfig], org_settings: OrganizationSettings) -> str:
     if not _response_looks_like_no_answer(response_text):
         return response_text
     if _response_offers_handoff(response_text):
@@ -478,7 +480,7 @@ def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[W
 
     base = (response_text or "").strip()
     if not base:
-        return _build_escalation_contacts_message(widget_config)
+        return _build_escalation_contacts_message(widget_config, org_settings)
 
     return f"{base}\n\n{_build_light_handoff_offer_prompt()}"
 
@@ -1325,7 +1327,8 @@ async def suggested_questions(
 async def chat(
     message: ChatMessage,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_optional)
+    current_user = Depends(get_current_user_optional),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
     try:
@@ -1667,7 +1670,7 @@ async def chat(
             )
 
             if limits.get("human_handoff_enabled"):
-                response_text = _ensure_handoff_offer_response(response_text, widget_config)
+                response_text = _ensure_handoff_offer_response(response_text, widget_config, settings)
 
             increment_usage(
                 db,
@@ -1693,7 +1696,8 @@ async def chat(
 async def chat_stream(
     message: ChatMessage,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_optional)
+    current_user = Depends(get_current_user_optional),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     try:
         user_id = None
@@ -2049,7 +2053,7 @@ async def chat_stream(
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
                 else:
@@ -2074,7 +2078,7 @@ async def chat_stream(
                 if not collected_parts:
                     fallback_text = "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
             finally:
@@ -2604,7 +2608,8 @@ async def check_lead_capture(
 @router.post("/email-conversation")
 async def email_conversation(
     request: EmailConversationRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Send conversation transcript via email"""
     try:
@@ -2642,7 +2647,7 @@ async def email_conversation(
                     })
         
         # Send email
-        success = send_conversation_email(request.email, conversation_data)
+        success = send_conversation_email(request.email, conversation_data, settings)
         
         if not success:
             raise HTTPException(status_code=500, detail="Failed to send email")

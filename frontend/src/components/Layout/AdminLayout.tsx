@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, AppBar, Toolbar, IconButton, Tooltip, Chip } from '@mui/material';
+import { Box, AppBar, Toolbar, IconButton, Tooltip, Chip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -10,6 +10,8 @@ import { useContext } from 'react';
 import { ColorModeContext } from '../../App';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../Common/Sidebar';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import { useCredits } from '../../context/CreditsContext';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -20,6 +22,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const { logout, organizationName } = useAuth();
   const colorMode = useContext(ColorModeContext);
+  const { credits, totalCredits } = useCredits();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -29,6 +32,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     logout();
     navigate('/login');
   };
+
 
   return (
     <Box
@@ -129,6 +133,32 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   }}
                 />
               )}
+              {credits !== undefined && (
+                <Tooltip
+                  title={
+                    <Box>
+                      {credits.map(c => (
+                        <Typography key={c.module}>
+                          {c.module}: {c.remaining}
+                        </Typography>
+                      ))}
+                    </Box>
+                  }
+                >
+                  <Chip
+                    icon={<AccountBalanceWalletIcon />}
+                    label={`${totalCredits} Credits`}
+                    color={totalCredits < 100 ? "warning" : "success"}
+                    variant="outlined"
+                    sx={{
+                      mr: 0.8,
+                      fontWeight: 700,
+                      borderColor: (theme) => alpha(theme.palette.success.main, 0.35),
+                      backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.55),
+                    }}
+                  />
+                </Tooltip>
+              )}
               <Tooltip title={colorMode.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
                 <IconButton onClick={colorMode.toggleColorMode} color="primary" sx={{ mr: 0.4 }}>
                   {colorMode.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
@@ -158,7 +188,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           {children}
         </Box>
       </Box>
-    </Box>
+    </Box >
   );
 };
 

@@ -17,12 +17,12 @@ import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from '@mui/material/styles';
 
 import CampaignInfo from "./CampaignInfo";
-import Contacts from "./Contacts";
 import Schedule from "./Schedule";
 import CampaignList from "./CampaignList";
 import { CallCampaign, callCampaignService, Contact } from "../../services/callCampaignService";
 import CampaignDetails from "./CampaignDetails";
 import moment from "moment-timezone";
+import CampaignContacts from "./CampaignContacts";
 
 
 const steps = [
@@ -345,7 +345,7 @@ const CampaignBuilder = () => {
 
             case 1:
                 return (
-                    <Contacts
+                    <CampaignContacts
                         form={campaignForm}
                         setForm={setCampaignForm}
                         campaignContacts={campaignContacts}

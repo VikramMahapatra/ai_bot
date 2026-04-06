@@ -418,9 +418,7 @@ export const campaignService = {
     return response.data;
   },
 
-  async uploadContactsCsv(contactListId: number, file: File): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
-    const formData = new FormData();
-    formData.append('file', file);
+  async uploadContactsCsv(contactListId: number, formData: FormData): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
     const response = await api.post(`/api/admin/campaigns/contact-lists/${contactListId}/contacts/csv`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

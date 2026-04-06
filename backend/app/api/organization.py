@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import (
@@ -25,6 +28,11 @@ from app.schemas import (
 )
 from typing import Dict, List, Optional
 from pydantic import BaseModel
+from app.models.calling_agents import CallingAgent
+from app.models.call_campaigns import CallCampaign
+from app.models.campaign import Campaign
+from app.services import organization_credit_service
+
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
@@ -150,6 +158,7 @@ def update_current_org_meeting_settings(
 
 @router.get("/me/widgets")
 def get_current_org_widgets(
+    source: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -158,6 +167,27 @@ def get_current_org_widgets(
     Available to all authenticated users (not just admins).
     """
     org_id = current_user.organization_id
+
+    if source and source == "voice":
+        calling_agents = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == org_id, CallingAgent.is_deleted == False
+            )
+            .all()
+        )
+        return {
+            "widgets": [
+                {
+                    "widget_id": agent.widget_id,
+                    "name": agent.name,
+                    "created_at": (
+                        agent.created_at.isoformat() if agent.created_at else None
+                    ),
+                }
+                for agent in calling_agents
+            ]
+        }
 
     widgets = (
         db.query(WidgetConfig).filter(WidgetConfig.organization_id == org_id).all()
@@ -171,6 +201,57 @@ def get_current_org_widgets(
                 "created_at": w.created_at.isoformat() if w.created_at else None,
             }
             for w in widgets
+        ]
+    }
+
+
+@router.get("/me/campaigns")
+def get_current_org_campaigns(
+    source: Optional[str] = Query(None),
+    widget_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all campaigns for the current user's organization.
+    Available to all authenticated users (not just admins).
+    """
+    org_id = current_user.organization_id
+
+    if source and source == "voice":
+        call_campaigns = (
+            db.query(CallCampaign)
+            .filter(CallCampaign.organization_id == org_id)
+            .join(CallingAgent, CallCampaign.agent_id == CallingAgent.id)
+            .all()
+        )
+
+        if widget_id:
+            call_campaigns = [
+                c for c in call_campaigns if c.agent and c.agent.widget_id == widget_id
+            ]
+
+        return {
+            "campaigns": [
+                {
+                    "campaign_id": c.id,
+                    "name": c.name,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in call_campaigns
+            ]
+        }
+
+    campaigns = db.query(Campaign).filter(Campaign.organization_id == org_id).all()
+
+    return {
+        "campaigns": [
+            {
+                "campaign_id": w.id,
+                "name": w.campaign_name,
+                "created_at": w.created_at.isoformat() if w.created_at else None,
+            }
+            for w in campaigns
         ]
     }
 
@@ -844,3 +925,15 @@ def get_organization_widgets(
             for w in widgets
         ]
     }
+
+
+@router.get("/credits/summary")
+def get_credit_summary(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Get credit summary for the organization.
+    """
+    return organization_credit_service.get_credit_summary(
+        db, current_user.organization_id
+    )

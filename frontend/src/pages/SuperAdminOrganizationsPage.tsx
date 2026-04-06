@@ -38,6 +38,7 @@ import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import { superadminService } from '../services/superadminService';
 import { OrganizationLimits, SuperAdminOrganization, Plan, CallingNumber } from '../types';
 import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
@@ -157,6 +158,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const [isSavingOrg, setIsSavingOrg] = useState(false);
   const [deletingOrgId, setDeletingOrgId] = useState<number | null>(null);
+  const [callingNumberToDelete, setCallingNumberToDelete] = useState<{ id: number; number: string } | null>(null);
+  const [callingNumberDeleteSubmitting, setCallingNumberDeleteSubmitting] = useState(false);
+  const [orgToDelete, setOrgToDelete] = useState<SuperAdminOrganization | null>(null);
 
   const [callingform, setCallingForm] = useState<Omit<CallingNumber, "id">>({
     calling_number: "",
@@ -327,12 +331,20 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     fetchCallingNumbers()
   }
 
-  const handleDelete = async (row: any) => {
-    if (!window.confirm("Delete this calling number?")) return
+  const handleConfirmDeleteCallingNumber = async () => {
+    if (!callingNumberToDelete) return;
 
-    await superadminService.deleteCallingNumber(row.id)
-    fetchCallingNumbers()
-  }
+    setCallingNumberDeleteSubmitting(true);
+    try {
+      await superadminService.deleteCallingNumber(callingNumberToDelete.id);
+      setCallingNumberToDelete(null);
+      fetchCallingNumbers();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCallingNumberDeleteSubmitting(false);
+    }
+  };
 
   const loadOrganizations = async () => {
     const data = await superadminService.listOrganizations();
@@ -469,26 +481,25 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteOrganization = async (org: SuperAdminOrganization) => {
-    const confirmDelete = window.confirm(
-      `Delete organization "${org.name}"? This cannot be undone.`
-    );
-    if (!confirmDelete) return;
+  const handleConfirmDeleteOrganization = async () => {
+    if (!orgToDelete) return;
 
     try {
-      setDeletingOrgId(org.id);
+      setDeletingOrgId(orgToDelete.id);
       setActionError('');
       setActionSuccess('');
-      await superadminService.deleteOrganization(org.id);
-      if (editingOrg?.id === org.id) {
+      await superadminService.deleteOrganization(orgToDelete.id);
+      const deletedName = orgToDelete.name;
+      if (editingOrg?.id === orgToDelete.id) {
         setOpen(false);
         setEditingOrg(null);
       }
-      if (viewOrg?.id === org.id) {
+      if (viewOrg?.id === orgToDelete.id) {
         setViewOpen(false);
         setViewOrg(null);
       }
-      setActionSuccess(`Organization "${org.name}" deleted successfully.`);
+      setOrgToDelete(null);
+      setActionSuccess(`Organization "${deletedName}" deleted successfully.`);
       await loadOrganizations();
     } catch (error: any) {
       setActionError(error?.response?.data?.detail || 'Failed to delete organization');
@@ -694,7 +705,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   </Tooltip>
                   <Tooltip title="Delete Organization">
                     <IconButton
-                      onClick={() => handleDeleteOrganization(org)}
+                      onClick={() => setOrgToDelete(org)}
                       disabled={deletingOrgId === org.id}
                       sx={{
                         width: 40,
@@ -1291,7 +1302,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                       <IconButton
                         color="error"
                         onClick={() =>
-                          handleDelete(row)
+                          setCallingNumberToDelete({
+                            id: row.id,
+                            number: String(row.calling_number ?? row.id),
+                          })
                         }
                       >
                         <DeleteIcon />
@@ -1367,6 +1381,38 @@ const SuperAdminOrganizationsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={callingNumberToDelete !== null}
+        title="Delete calling number?"
+        description={
+          callingNumberToDelete
+            ? `This will permanently remove "${callingNumberToDelete.number}" from this organization. This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={callingNumberDeleteSubmitting}
+        onCancel={() => !callingNumberDeleteSubmitting && setCallingNumberToDelete(null)}
+        onConfirm={handleConfirmDeleteCallingNumber}
+      />
+
+      <ConfirmDialog
+        open={orgToDelete !== null}
+        title="Delete organization?"
+        description={
+          orgToDelete
+            ? `This will permanently remove "${orgToDelete.name}" and related data. This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deletingOrgId !== null}
+        onCancel={() => !deletingOrgId && setOrgToDelete(null)}
+        onConfirm={handleConfirmDeleteOrganization}
+      />
     </SuperAdminLayout>
   );
 };

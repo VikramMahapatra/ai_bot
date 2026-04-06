@@ -34,6 +34,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
 import { useAuth } from "../context/AuthContext";
 import {
   organizationService,
@@ -69,6 +70,8 @@ const UserManagementPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [formData, setFormData] = useState<CreateUserData>({
     username: "",
     email: "",
@@ -225,15 +228,19 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (window.confirm("Are you sure you want to delete this user?")) {
-      try {
-        await organizationService.deleteUser(userId);
-        setError(null);
-        fetchUsers();
-      } catch (err: any) {
-        setError(err.response?.data?.detail || "Failed to delete user");
-      }
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete?.id) return;
+
+    setDeleteSubmitting(true);
+    try {
+      await organizationService.deleteUser(userToDelete.id);
+      setUserToDelete(null);
+      setError(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to delete user");
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -549,7 +556,7 @@ const UserManagementPage: React.FC = () => {
                           <Tooltip title="Delete">
                             <IconButton
                               size="small"
-                              onClick={() => handleDeleteUser(user.id)}
+                              onClick={() => setUserToDelete(user)}
                               sx={{ color: "#f44336" }}
                             >
                               <DeleteIcon fontSize="small" />
@@ -711,6 +718,22 @@ const UserManagementPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <ConfirmDialog
+          open={Boolean(userToDelete)}
+          title="Delete user?"
+          description={
+            userToDelete
+              ? `This will permanently remove ${userToDelete.username}. This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmColor="error"
+          loading={deleteSubmitting}
+          onCancel={() => !deleteSubmitting && setUserToDelete(null)}
+          onConfirm={handleConfirmDeleteUser}
+        />
       </Box>
     </AdminLayout>
   );

@@ -13,7 +13,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import AdminLayout from "../components/Layout/AdminLayout";
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ListAltIcon from '@mui/icons-material/ListAlt';
-import CampaignContacts from "../components/calls/CampaignContacts";
+import Contacts from "../components/Contacts";
 
 
 export default function SuperAdminOrgCallAnalyticsReport() {
@@ -138,7 +138,7 @@ export default function SuperAdminOrgCallAnalyticsReport() {
                         </Stack>
                     </Stack>
                 </Paper>
-                <CampaignContacts tab={tab} setTab={setTab} />
+                <Contacts tab={tab} setTab={setTab} />
             </Stack>
         </AdminLayout>
     );

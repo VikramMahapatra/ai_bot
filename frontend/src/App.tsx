@@ -36,6 +36,7 @@ import ProductManagementPage from './pages/ProductManagementPage.tsx';
 import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalyticsReport.tsx';
 import ContactBookPage from './pages/ContactBookPage.tsx';
 import CreditEstimatorSharePage from './pages/CreditEstimatorSharePage';
+import CreditsLayout from './components/Layout/CreditsLayout.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -502,159 +503,161 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AdminDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/chat"
-        element={
-          <ProtectedRoute>
-            <ChatPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/calls"
-        element={
-          <ProtectedRoute>
-            <CallsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/knowledge"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <KnowledgePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/leads"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <LeadsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/analytics"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AnalyticsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/analytics/advanced"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AdvancedAnalyticsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/widgets"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <WidgetManagementPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/create-chat-agent"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <CreateChatAgentPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/widgets/edit/:widgetId"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <CreateChatAgentPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/campaigns"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <CampaignManagementPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/appointments"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <AppointmentsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/handoff"
-        element={
-          <ProtectedRoute requiredRole="HANDOFF_OPERATOR">
-            <HandoffInboxPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/users"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <UserManagementPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <ReportsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/integrations/whatsapp"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <WhatsAppIntegrationPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/products"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <ProductManagementPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/contacts"
-        element={
-          <ProtectedRoute requiredRole="ADMIN">
-            <ContactBookPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/" element={<Navigate to="/admin" />} />
+      <Route element={<CreditsLayout />}>
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <ChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/calls"
+          element={
+            <ProtectedRoute>
+              <CallsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/knowledge"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <KnowledgePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/leads"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <LeadsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics/advanced"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdvancedAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/widgets"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <WidgetManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-chat-agent"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <CreateChatAgentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/widgets/edit/:widgetId"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <CreateChatAgentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/campaigns"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <CampaignManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AppointmentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/handoff"
+          element={
+            <ProtectedRoute requiredRole="HANDOFF_OPERATOR">
+              <HandoffInboxPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <UserManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/integrations/whatsapp"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <WhatsAppIntegrationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <ProductManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/contacts"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <ContactBookPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/" element={<Navigate to="/admin" />} />
+      </Route>
     </Routes>
   );
 }

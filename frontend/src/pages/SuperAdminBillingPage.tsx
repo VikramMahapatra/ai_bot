@@ -49,112 +49,358 @@ import {
 type InvoiceFilterStatus = 'all' | 'pending' | 'partial' | 'paid';
 type PaymentFilterStatus = 'all' | 'completed' | 'pending' | 'failed';
 
-const dateOnly = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : '-');
+const dateOnly = (value?: string | null) => (value ? new Date(value).toLocaleDateString('en-IN') : '—');
 const dateToIsoAtMidnight = (value: string) => (value ? `${value}T00:00:00Z` : null);
-const fmt = (v: number | undefined | null) => (v != null ? `₹ ${Number(v).toFixed(2)}` : '-');
+const fmt = (v: number | undefined | null) => (v != null ? `₹ ${Number(v).toFixed(2)}` : '—');
+const fmtINR = (v: number | undefined | null): string => {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(Number(v));
+};
+
+/** Company identity read from env vars (set in .env) */
+const COMPANY = {
+  name:    (import.meta.env.VITE_COMPANY_NAME    || 'Zentrixel Pvt Ltd').trim(),
+  gstin:   (import.meta.env.VITE_COMPANY_GSTIN   || '').trim(),
+  pan:     (import.meta.env.VITE_COMPANY_PAN     || '').trim(),
+  cin:     (import.meta.env.VITE_COMPANY_CIN     || '').trim(),
+  address: (import.meta.env.VITE_COMPANY_ADDRESS || '').trim(),
+  city:    (import.meta.env.VITE_COMPANY_CITY    || '').trim(),
+  phone:   (import.meta.env.VITE_COMPANY_PHONE   || '').trim(),
+  email:   (import.meta.env.VITE_COMPANY_EMAIL   || '').trim(),
+  website: (import.meta.env.VITE_COMPANY_WEBSITE || 'zentrixel.com').trim(),
+};
+
+/** Shared footer printed on every PDF page */
+const addDocFooter = (doc: jsPDF, genAt: string) => {
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  doc.setFillColor(245, 247, 252);
+  doc.rect(0, ph - 16, pw, 16, 'F');
+  doc.setDrawColor(210, 218, 235);
+  doc.line(0, ph - 16, pw, ph - 16);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(130, 140, 160);
+  doc.text('This is a computer-generated document. No signature required.', 14, ph - 9);
+  doc.text(genAt, pw / 2, ph - 9, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 52, 96);
+  doc.text('Powered by Zentrixel', pw - 14, ph - 9, { align: 'right' });
+};
+
+/** Shared professional header band */
+const addDocHeader = (doc: jsPDF, docTitle: string, accentRGB: [number, number, number]) => {
+  const pw = doc.internal.pageSize.getWidth();
+  doc.setFillColor(15, 52, 96);
+  doc.rect(0, 0, pw, 46, 'F');
+  // Company name
+  doc.setFontSize(17);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(COMPANY.name, 14, 15);
+  // Document title (right)
+  doc.setFontSize(20);
+  doc.setTextColor(...accentRGB);
+  doc.text(docTitle, pw - 14, 17, { align: 'right' });
+  // Address row
+  const addrParts = [COMPANY.address, COMPANY.city].filter(Boolean).join(', ');
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 205, 240);
+  if (addrParts) doc.text(addrParts, 14, 25);
+  // Tax / contact row
+  const taxParts = [
+    COMPANY.gstin  ? `GSTIN: ${COMPANY.gstin}`  : '',
+    COMPANY.pan    ? `PAN: ${COMPANY.pan}`       : '',
+    COMPANY.cin    ? `CIN: ${COMPANY.cin}`       : '',
+    COMPANY.phone  ? `Tel: ${COMPANY.phone}`     : '',
+    COMPANY.email  ? COMPANY.email               : '',
+    COMPANY.website? COMPANY.website             : '',
+  ].filter(Boolean).join('   |   ');
+  if (taxParts) doc.text(taxParts, 14, 33);
+  // Website (right side of tax row)
+  // Accent line
+  doc.setFillColor(...accentRGB);
+  doc.rect(0, 46, pw, 2, 'F');
+};
 
 const generateInvoicePDF = (payload: any) => {
-  const doc = new jsPDF();
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
   const inv = payload.invoice;
-  const margin = 14;
-  let y = 18;
+  const status = (inv.status || 'pending').toLowerCase();
 
-  doc.setFontSize(20);
-  doc.setTextColor(0, 51, 153);
-  doc.text('INVOICE', margin, y);
-  y += 10;
+  addDocHeader(doc, 'AIBOT Platform Invoice', [41, 182, 246]);
 
-  doc.setFontSize(10);
-  doc.setTextColor(60, 60, 60);
-  doc.text(`Invoice #: ${inv.invoice_number}`, margin, y); y += 6;
-  doc.text(`Organization: ${inv.organization_name}`, margin, y); y += 6;
-  doc.text(`Issue Date: ${dateOnly(inv.issue_date)}`, margin, y); y += 6;
-  doc.text(`Due Date: ${dateOnly(inv.due_date)}`, margin, y); y += 6;
-  doc.text(`Status: ${(inv.status || '').toUpperCase()}`, margin, y); y += 6;
-  doc.text(`Total Amount: ${fmt(inv.amount)}`, margin, y); y += 6;
-  doc.text(`Amount Paid: ${fmt(inv.paid_amount)}`, margin, y); y += 6;
-  doc.text(`Outstanding: ${fmt(Math.max(0, (inv.amount || 0) - (inv.paid_amount || 0)))}`, margin, y); y += 10;
+  let y = 54;
 
-  if (inv.notes) { doc.text(`Notes: ${inv.notes}`, margin, y); y += 8; }
+  // ── BILL TO (left) + INVOICE META (right) ──────────────────────────────────
+  doc.setFillColor(244, 247, 255);
+  doc.setDrawColor(210, 220, 240);
+  doc.rect(14, y, 88, 42, 'FD');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(90, 110, 155);
+  doc.text('BILL TO', 19, y + 7);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 30, 65);
+  doc.text(inv.organization_name || 'N/A', 19, y + 16);
 
-  if (inv.items && inv.items.length > 0) {
-    doc.setFontSize(12);
-    doc.setTextColor(0, 51, 153);
-    doc.text('Subscribed Services', margin, y); y += 4;
-    autoTable(doc, {
-      startY: y,
-      head: [['Category', 'Module', 'Sub-Module', 'Billing Unit', 'Qty', 'Credits/Unit', 'Allocated Credits']],
-      body: inv.items.map((item: any) => [
-        item.category || '-', item.module || '-', item.sub_module || '-',
-        item.billing_unit || '-', item.quantity ?? '-', item.credits_per_unit ?? '-',
-        item.allocated_credits ?? '-',
-      ]),
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [0, 51, 153] },
-      margin: { left: margin, right: margin },
-    });
+  // Status badge inside bill-to box
+  const statusColors: Record<string, [number, number, number]> = { paid: [22, 163, 74], partial: [234, 88, 12], pending: [202, 138, 4], overdue: [220, 38, 38] };
+  const sc = statusColors[status] || [100, 100, 100];
+  doc.setFillColor(...sc);
+  doc.roundedRect(19, y + 20, 28, 6, 1.2, 1.2, 'F');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(status.toUpperCase(), 33, y + 24.3, { align: 'center' });
+
+  // Right: Invoice meta box
+  const rx = 110;
+  doc.setFillColor(15, 52, 96);
+  doc.rect(rx, y, pw - rx - 14, 42, 'F');
+  const metaRows = [
+    ['Invoice Number', inv.invoice_number],
+    ['Issue Date',     dateOnly(inv.issue_date)],
+    ['Due Date',       inv.due_date ? dateOnly(inv.due_date) : 'N/A'],
+    ['Billing Period', inv.billing_start_date && inv.billing_end_date
+      ? `${dateOnly(inv.billing_start_date)} – ${dateOnly(inv.billing_end_date)}` : 'N/A'],
+  ];
+  let ry = y + 8;
+  metaRows.forEach(([label, value]) => {
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(160, 195, 235);
+    doc.text(label + ':', rx + 4, ry);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(255, 255, 255);
+    doc.text(String(value), rx + 4, ry + 4.5);
+    ry += 10;
+  });
+
+  y += 50;
+
+  // ── SUBSCRIBED SERVICES TABLE ──────────────────────────────────────────────
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 52, 96);
+  doc.text('SUBSCRIBED SERVICES', 14, y);
+  y += 3;
+
+  const items = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : [];
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'Category', 'Module', 'Sub-Module', 'Billing Unit', 'Qty', 'Credits/Unit', 'Allocated Credits']],
+    body: items.length > 0 ? items.map((item: any, idx: number) => [
+      idx + 1, item.category || '—', item.module || '—', item.sub_module || '—',
+      item.billing_unit || '—', item.quantity ?? '—', item.credits_per_unit ?? '—',
+      item.allocated_credits ?? '—',
+    ]) : [['', 'No line items recorded for this invoice.', '', '', '', '', '', '']],
+    styles: { fontSize: 8, cellPadding: 3, lineColor: [220, 228, 245] },
+    headStyles: { fillColor: [15, 52, 96], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    alternateRowStyles: { fillColor: [245, 248, 255] },
+    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 7: { halign: 'right' } },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 8;
+
+  // ── FINANCIAL SUMMARY (right-aligned block) ────────────────────────────────
+  const outstanding = Math.max(0, (inv.amount || 0) - (inv.paid_amount || 0));
+  const bx = pw - 14 - 78;
+  doc.setFillColor(244, 247, 255);
+  doc.setDrawColor(210, 220, 240);
+  doc.rect(bx, y, 78, 33, 'FD');
+  const sumRows: [string, string, boolean][] = [
+    ['Invoice Total',      fmtINR(inv.amount),      false],
+    ['Amount Paid',        fmtINR(inv.paid_amount),  false],
+    ['Outstanding Balance', fmtINR(outstanding),     outstanding > 0],
+  ];
+  let sy = y + 9;
+  sumRows.forEach(([label, value, hi]) => {
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', hi ? 'bold' : 'normal');
+    doc.setTextColor(hi ? 180 : 80, hi ? 30 : 90, hi ? 30 : 130);
+    doc.text(label + ':', bx + 4, sy);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(hi ? 190 : 15, hi ? 40 : 52, hi ? 40 : 96);
+    doc.text(value, pw - 18, sy, { align: 'right' });
+    sy += 9;
+  });
+  y = sy + 6;
+
+  // ── TERMS & NOTES ──────────────────────────────────────────────────────────
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(80, 100, 140);
+  doc.text('TERMS & CONDITIONS', 14, y); y += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120, 130, 150);
+  const terms = 'Payment is due within 7 days from the date of invoice. Please include the invoice number in your payment reference. Zentrixel Pvt Ltd reserves the right to suspend services on non-payment.';
+  const splitT = doc.splitTextToSize(terms, pw - 28);
+  doc.text(splitT, 14, y); y += splitT.length * 4 + 5;
+
+  if (inv.notes) {
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(80, 100, 140);
+    doc.text('NOTES', 14, y); y += 4;
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(100, 115, 135);
+    doc.text(doc.splitTextToSize(inv.notes, pw - 28), 14, y);
   }
 
-  doc.setFontSize(8);
-  doc.setTextColor(130, 130, 130);
-  doc.text(`Generated at: ${new Date(payload.generated_at).toLocaleString()}`, margin, doc.internal.pageSize.getHeight() - 10);
-  doc.save(`invoice-${inv.invoice_number}.pdf`);
+  // ── STATUS WATERMARK ───────────────────────────────────────────────────────
+  doc.setFontSize(status === 'partial' ? 58 : 72);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(status === 'paid' ? 200 : status === 'partial' ? 252 : 252, status === 'paid' ? 235 : status === 'partial' ? 215 : 220, status === 'paid' ? 205 : status === 'partial' ? 185 : 185);
+  doc.text(status.toUpperCase(), pw / 2, ph / 2 + 10, { align: 'center', angle: 45 });
+
+  addDocFooter(doc, `Generated: ${new Date(payload.generated_at).toLocaleString('en-IN')}`);
+  doc.save(`AIBOT-Invoice-${inv.invoice_number}.pdf`);
 };
 
 const generateReceiptPDF = (payload: any) => {
-  const doc = new jsPDF();
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
   const bill = payload.bill;
   const inv = payload.invoice;
-  const margin = 14;
-  let y = 18;
 
-  doc.setFontSize(20);
-  doc.setTextColor(0, 120, 60);
-  doc.text('PAYMENT RECEIPT', margin, y);
-  y += 10;
+  addDocHeader(doc, 'AIBOT Platform Receipt', [46, 213, 115]);
 
-  doc.setFontSize(10);
-  doc.setTextColor(60, 60, 60);
-  doc.text(`Receipt #: ${bill.bill_number}`, margin, y); y += 6;
-  doc.text(`Organization: ${bill.organization_name}`, margin, y); y += 6;
-  doc.text(`Linked Invoice #: ${bill.invoice_number}`, margin, y); y += 6;
-  doc.text(`Receipt Date: ${dateOnly(bill.issued_date)}`, margin, y); y += 6;
+  let y = 54;
 
-  y += 2;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, 200 - margin, y); y += 6;
+  // ── RECEIPT DETAILS (left) + RECEIVED FROM (right) ────────────────────────
+  doc.setFillColor(240, 253, 244);
+  doc.setDrawColor(180, 230, 200);
+  doc.rect(14, y, 88, 46, 'FD');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 101, 52);
+  doc.text('RECEIPT DETAILS', 19, y + 7);
+  const rDetails = [
+    ['Receipt Number', bill.bill_number],
+    ['Receipt Date',   dateOnly(bill.issued_date)],
+    ['Payment Method', bill.payment_method || '—'],
+    ['Reference',      bill.payment_reference || '—'],
+  ];
+  let rd = y + 14;
+  rDetails.forEach(([lbl, val]) => {
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(80, 120, 90);
+    doc.text(lbl + ':', 19, rd);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(20, 50, 30);
+    doc.text(String(val), 19, rd + 4.5);
+    rd += 10;
+  });
 
-  doc.setFontSize(12);
-  doc.setTextColor(0, 120, 60);
-  doc.text('Payment Details', margin, y); y += 7;
+  // Right: Received from
+  const rx = 110;
+  doc.setFillColor(15, 52, 96);
+  doc.rect(rx, y, pw - rx - 14, 46, 'F');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(160, 195, 235);
+  doc.text('RECEIVED FROM', rx + 4, y + 8);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(bill.organization_name || '—', rx + 4, y + 18);
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 205, 240);
+  doc.text(`Against Invoice: ${bill.invoice_number}`, rx + 4, y + 28);
+  doc.text(`Invoice Date: ${dateOnly(inv?.issue_date)}`, rx + 4, y + 36);
+  doc.text(`Invoice Status: ${(inv?.status || '').toUpperCase()}`, rx + 4, y + 44);
 
-  doc.setFontSize(10);
-  doc.setTextColor(30, 30, 30);
-  doc.text(`Amount Paid: ${fmt(bill.amount)}`, margin, y); y += 6;
-  if (bill.payment_method) { doc.text(`Payment Method: ${bill.payment_method}`, margin, y); y += 6; }
-  if (bill.payment_reference) { doc.text(`Reference: ${bill.payment_reference}`, margin, y); y += 6; }
-  if (bill.notes) { doc.text(`Notes: ${bill.notes}`, margin, y); y += 6; }
+  y += 54;
 
-  y += 4;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, 200 - margin, y); y += 6;
+  // ── PAYMENT TABLE ──────────────────────────────────────────────────────────
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 101, 52);
+  doc.text('PAYMENT DETAILS', 14, y);
+  y += 3;
+  autoTable(doc, {
+    startY: y,
+    head: [['Description', 'Invoice #', 'Invoice Date', 'Payment Mode', 'Amount Paid']],
+    body: [[
+      'Payment received for services rendered — ' + COMPANY.name,
+      bill.invoice_number,
+      dateOnly(inv?.issue_date),
+      bill.payment_method || '—',
+      fmtINR(bill.amount),
+    ]],
+    styles: { fontSize: 9, cellPadding: 4, lineColor: [200, 230, 210] },
+    headStyles: { fillColor: [21, 94, 54], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    alternateRowStyles: { fillColor: [240, 253, 244] },
+    columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 6;
 
-  doc.setFontSize(12);
-  doc.setTextColor(0, 51, 153);
-  doc.text('Invoice Summary', margin, y); y += 7;
+  // ── AMOUNT PAID HIGHLIGHT ──────────────────────────────────────────────────
+  const bx = pw - 14 - 82;
+  doc.setFillColor(21, 94, 54);
+  doc.rect(bx, y, 82, 12, 'F');
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('Amount Paid:', bx + 5, y + 7.8);
+  doc.text(fmtINR(bill.amount), pw - 18, y + 7.8, { align: 'right' });
+  y += 18;
 
-  doc.setFontSize(10);
-  doc.setTextColor(60, 60, 60);
-  doc.text(`Invoice Total: ${fmt(inv?.amount)}`, margin, y); y += 6;
-  doc.text(`Total Paid: ${fmt(inv?.paid_amount)}`, margin, y); y += 6;
+  // ── INVOICE SUMMARY ────────────────────────────────────────────────────────
   const outstanding = Math.max(0, (inv?.amount || 0) - (inv?.paid_amount || 0));
-  doc.text(`Outstanding Balance: ${fmt(outstanding)}`, margin, y); y += 6;
-  doc.text(`Invoice Status: ${(inv?.status || '').toUpperCase()}`, margin, y); y += 8;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 101, 52);
+  doc.text('INVOICE SUMMARY', 14, y); y += 4;
+  const sumRows: [string, string][] = [
+    ['Invoice Total',       fmtINR(inv?.amount)],
+    ['This Payment',        fmtINR(bill.amount)],
+    ['Total Paid to Date',  fmtINR(inv?.paid_amount)],
+    ['Outstanding Balance', fmtINR(outstanding)],
+  ];
+  sumRows.forEach(([label, value]) => {
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 100, 90);
+    doc.text(label + ':', 14, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 52, 96);
+    doc.text(value, 14 + 70, y, { align: 'right' });
+    y += 7;
+  });
+  y += 6;
 
+  if (bill.notes) {
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(22, 101, 52);
+    doc.text('NOTES', 14, y); y += 4;
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(90, 110, 100);
+    doc.text(doc.splitTextToSize(bill.notes, pw - 28), 14, y); y += 8;
+  }
+
+  // ── PAID WATERMARK ─────────────────────────────────────────────────────────
+  doc.setFontSize(72);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(200, 240, 215);
+  doc.text('PAID', pw / 2, ph / 2 + 10, { align: 'center', angle: 45 });
+
+  // ── NOTICE ─────────────────────────────────────────────────────────────────
   doc.setFontSize(8);
-  doc.setTextColor(130, 130, 130);
-  doc.text(`Generated at: ${new Date(payload.generated_at).toLocaleString()}`, margin, doc.internal.pageSize.getHeight() - 10);
-  doc.save(`receipt-${bill.bill_number}.pdf`);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(130, 145, 135);
+  doc.text('This is a computer-generated receipt and does not require a physical signature.', 14, ph - 22);
+
+  addDocFooter(doc, `Generated: ${new Date(payload.generated_at).toLocaleString('en-IN')}`);
+  doc.save(`AIBOT-Receipt-${bill.bill_number}.pdf`);
 };
 
 const SuperAdminBillingPage: React.FC = () => {
@@ -178,6 +424,15 @@ const SuperAdminBillingPage: React.FC = () => {
 
   const [invoiceViewOpen, setInvoiceViewOpen] = useState(false);
   const [invoiceDetail, setInvoiceDetail] = useState<BillingInvoiceDetail | null>(null);
+  // View Invoice as Document
+  const [invoiceDocOpen, setInvoiceDocOpen] = useState(false);
+  const [invoiceDocPayload, setInvoiceDocPayload] = useState<any | null>(null);
+  const [isLoadingInvoiceDoc, setIsLoadingInvoiceDoc] = useState(false);
+  // View Receipt as Document
+  const [receiptDocOpen, setReceiptDocOpen] = useState(false);
+  const [receiptDocPayload, setReceiptDocPayload] = useState<any | null>(null);
+  const [isLoadingReceiptDoc, setIsLoadingReceiptDoc] = useState(false);
+
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
   const [targetInvoice, setTargetInvoice] = useState<BillingInvoice | null>(null);
   const [markPaidDate, setMarkPaidDate] = useState(new Date().toISOString().slice(0, 10));
@@ -274,7 +529,7 @@ const SuperAdminBillingPage: React.FC = () => {
     try {
       const payload = await superadminService.exportBillingInvoice(invoice.id);
       generateInvoicePDF(payload);
-      setSuccessMessage(`Invoice ${invoice.invoice_number} exported as PDF.`);
+      setSuccessMessage(`Invoice ${invoice.invoice_number} downloaded as PDF.`);
     } catch (error: any) {
       setErrorMessage(error?.response?.data?.detail || 'Failed to export invoice');
     }
@@ -285,9 +540,37 @@ const SuperAdminBillingPage: React.FC = () => {
     try {
       const payload = await superadminService.exportBillingBill(bill.id);
       generateReceiptPDF(payload);
-      setSuccessMessage(`Receipt ${bill.bill_number} exported as PDF.`);
+      setSuccessMessage(`Receipt ${bill.bill_number} downloaded as PDF.`);
     } catch (error: any) {
       setErrorMessage(error?.response?.data?.detail || 'Failed to export receipt');
+    }
+  };
+
+  const openInvoiceDoc = async (invoiceId: number) => {
+    resetMessages();
+    try {
+      setIsLoadingInvoiceDoc(true);
+      const payload = await superadminService.exportBillingInvoice(invoiceId);
+      setInvoiceDocPayload(payload);
+      setInvoiceDocOpen(true);
+    } catch (error: any) {
+      setErrorMessage(error?.response?.data?.detail || 'Failed to load invoice document');
+    } finally {
+      setIsLoadingInvoiceDoc(false);
+    }
+  };
+
+  const openReceiptDoc = async (bill: BillingBill) => {
+    resetMessages();
+    try {
+      setIsLoadingReceiptDoc(true);
+      const payload = await superadminService.exportBillingBill(bill.id);
+      setReceiptDocPayload(payload);
+      setReceiptDocOpen(true);
+    } catch (error: any) {
+      setErrorMessage(error?.response?.data?.detail || 'Failed to load receipt document');
+    } finally {
+      setIsLoadingReceiptDoc(false);
     }
   };
 
@@ -438,10 +721,10 @@ const SuperAdminBillingPage: React.FC = () => {
                         <TableCell>{invoice.paid_amount}</TableCell>
                         <TableCell>{invoice.status}</TableCell>
                         <TableCell align="right">
-                          <IconButton size="small" title="View Invoice" onClick={() => openInvoiceView(invoice.id)}><VisibilityIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" title="Export Invoice PDF" onClick={() => exportInvoice(invoice)}><DownloadIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title="View Details (Matrix)" onClick={() => openInvoiceView(invoice.id)} disabled={isLoadingInvoiceDetail}><VisibilityIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="info" title="View Invoice Document" onClick={() => openInvoiceDoc(invoice.id)} disabled={isLoadingInvoiceDoc}><ReceiptLongIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title="Download Invoice PDF" onClick={() => exportInvoice(invoice)}><DownloadIcon fontSize="small" /></IconButton>
                           <IconButton size="small" color="success" title="Register Payment Received" onClick={() => openMarkPaidDialog(invoice)} disabled={invoice.status === 'paid'}><PaymentsIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" color="primary" title="Export Receipt PDF" onClick={() => { const latest = invoiceBills[0]; if (latest) exportReceipt(latest); }} disabled={!invoiceBills.length}><ReceiptLongIcon fontSize="small" /></IconButton>
                         </TableCell>
                       </TableRow>
                     );
@@ -516,8 +799,9 @@ const SuperAdminBillingPage: React.FC = () => {
                       <TableCell>{bill.payment_method || '-'}</TableCell>
                       <TableCell>{bill.payment_reference || '-'}</TableCell>
                       <TableCell align="right">
-                        <IconButton size="small" title="View Invoice" onClick={() => openInvoiceView(bill.invoice_id)}><VisibilityIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" title="Export Receipt PDF" onClick={() => exportReceipt(bill)}><DownloadIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title="View Invoice Details" onClick={() => openInvoiceView(bill.invoice_id)} disabled={isLoadingInvoiceDetail}><VisibilityIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" color="success" title="View Receipt Document" onClick={() => openReceiptDoc(bill)} disabled={isLoadingReceiptDoc}><ReceiptLongIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title="Download Receipt PDF" onClick={() => exportReceipt(bill)}><DownloadIcon fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -580,8 +864,213 @@ const SuperAdminBillingPage: React.FC = () => {
           ) : null}
         </DialogContent>
         <DialogActions>
-          {invoiceDetail ? <Button onClick={() => exportInvoice(invoiceDetail)} startIcon={<DownloadIcon />}>Export Invoice PDF</Button> : null}
+          {invoiceDetail ? <Button onClick={() => exportInvoice(invoiceDetail)} startIcon={<DownloadIcon />}>Download Invoice PDF</Button> : null}
+          {invoiceDetail ? <Button color="info" onClick={() => { setInvoiceViewOpen(false); openInvoiceDoc(invoiceDetail.id); }} startIcon={<ReceiptLongIcon />}>View as Document</Button> : null}
           <Button onClick={() => setInvoiceViewOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── VIEW INVOICE DOCUMENT ─────────────────────────────────────────── */}
+      <Dialog open={invoiceDocOpen} onClose={() => setInvoiceDocOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ bgcolor: 'rgb(15,52,96)', color: '#fff', fontWeight: 700, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReceiptLongIcon sx={{ color: 'rgb(41,182,246)' }} /> AIBOT Platform Invoice
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: '#f4f6fb' }}>
+          {invoiceDocPayload ? (() => {
+            const inv = invoiceDocPayload.invoice;
+            const outstanding = Math.max(0, (inv.amount || 0) - (inv.paid_amount || 0));
+            const statusColor: Record<string, string> = { paid: '#16a34a', partial: '#ea580c', pending: '#ca8a04', overdue: '#dc2626' };
+            const sc = statusColor[(inv.status || 'pending').toLowerCase()] || '#666';
+            return (
+              <Stack sx={{ p: 0 }}>
+                {/* Company Header */}
+                <Stack sx={{ bgcolor: 'rgb(15,52,96)', px: 3, pt: 2, pb: 1.5, gap: 0.3 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                    <Typography variant="h6" sx={{ color: '#fff', fontWeight: 800, lineHeight: 1.2 }}>{COMPANY.name}</Typography>
+                    <Typography sx={{ color: 'rgb(41,182,246)', fontWeight: 800, fontSize: 22 }}>AIBOT Platform Invoice</Typography>
+                  </Stack>
+                  {(COMPANY.address || COMPANY.city) && <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>{[COMPANY.address, COMPANY.city].filter(Boolean).join(', ')}</Typography>}
+                  <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>
+                    {[COMPANY.gstin && `GSTIN: ${COMPANY.gstin}`, COMPANY.pan && `PAN: ${COMPANY.pan}`, COMPANY.phone && `Tel: ${COMPANY.phone}`, COMPANY.email, COMPANY.website].filter(Boolean).join('   |   ')}
+                  </Typography>
+                </Stack>
+                <Stack sx={{ height: 3, bgcolor: 'rgb(41,182,246)' }} />
+                {/* Bill To + Invoice Meta */}
+                <Grid container sx={{ px: 3, pt: 2, pb: 1 }} spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: '#eef2ff', border: '1px solid #c7d2f0', borderRadius: 2, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: '#5a6e9b', fontWeight: 700, letterSpacing: 1 }}>BILL TO</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#0f1e41', mt: 0.5 }}>{inv.organization_name}</Typography>
+                      <Stack direction="row" alignItems="center" gap={1} mt={1}>
+                        <Typography variant="caption" sx={{ bgcolor: sc, color: '#fff', px: 1.2, py: 0.3, borderRadius: 1, fontWeight: 700 }}>{(inv.status || '').toUpperCase()}</Typography>
+                      </Stack>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgb(15,52,96)', border: 0, borderRadius: 2, height: '100%' }}>
+                      {[['Invoice Number', inv.invoice_number], ['Issue Date', dateOnly(inv.issue_date)], ['Due Date', inv.due_date ? dateOnly(inv.due_date) : 'N/A'], ['Billing Period', inv.billing_start_date && inv.billing_end_date ? `${dateOnly(inv.billing_start_date)} – ${dateOnly(inv.billing_end_date)}` : 'N/A']].map(([l, v]) => (
+                        <Stack key={l} direction="row" justifyContent="space-between" mb={0.4}>
+                          <Typography variant="caption" sx={{ color: 'rgb(160,195,235)', fontWeight: 700 }}>{l}:</Typography>
+                          <Typography variant="caption" sx={{ color: '#fff', fontWeight: 600 }}>{v}</Typography>
+                        </Stack>
+                      ))}
+                    </Paper>
+                  </Grid>
+                </Grid>
+                {/* Items Table */}
+                <Stack sx={{ px: 3, pb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'rgb(15,52,96)', mb: 0.5, letterSpacing: 0.5 }}>SUBSCRIBED SERVICES</Typography>
+                  <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #d0d8ee', borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead sx={{ bgcolor: 'rgb(15,52,96)' }}>
+                        <TableRow>{['#', 'Category', 'Module', 'Sub-Module', 'Billing Unit', 'Qty', 'Credits/Unit', 'Allocated Credits'].map((h) => (<TableCell key={h} sx={{ color: '#fff', fontWeight: 700, fontSize: 11 }}>{h}</TableCell>))}</TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(inv.items || []).length > 0 ? (inv.items || []).map((item: any, i: number) => (
+                          <TableRow key={item.id || i} sx={{ bgcolor: i % 2 === 0 ? '#f5f8ff' : '#fff' }}>
+                            <TableCell sx={{ fontSize: 12 }}>{i + 1}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.category || '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.module || '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.sub_module || '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.billing_unit || '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.quantity ?? '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{item.credits_per_unit ?? '—'}</TableCell>
+                            <TableCell sx={{ fontSize: 12, fontWeight: 700 }}>{item.allocated_credits ?? '—'}</TableCell>
+                          </TableRow>
+                        )) : <TableRow><TableCell colSpan={8} sx={{ textAlign: 'center', color: '#888', fontSize: 12 }}>No line items recorded.</TableCell></TableRow>}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Stack>
+                {/* Financial Summary */}
+                <Stack direction="row" justifyContent="flex-end" sx={{ px: 3, pb: 1 }}>
+                  <Paper elevation={0} sx={{ p: 2, bgcolor: '#eef2ff', border: '1px solid #c7d2f0', borderRadius: 2, minWidth: 240 }}>
+                    {[['Invoice Total', fmtINR(inv.amount), false], ['Amount Paid', fmtINR(inv.paid_amount), false], ['Outstanding Balance', fmtINR(outstanding), outstanding > 0]].map(([l, v, hi]) => (
+                      <Stack key={String(l)} direction="row" justifyContent="space-between" mb={0.5}>
+                        <Typography variant="caption" sx={{ color: hi ? '#b91c1c' : '#506080', fontWeight: hi ? 700 : 400 }}>{l}:</Typography>
+                        <Typography variant="caption" sx={{ color: hi ? '#b91c1c' : 'rgb(15,52,96)', fontWeight: 700 }}>{v as string}</Typography>
+                      </Stack>
+                    ))}
+                  </Paper>
+                </Stack>
+                {inv.notes && <Typography variant="caption" sx={{ px: 3, pb: 1, color: '#666', fontStyle: 'italic' }}><strong>Notes:</strong> {inv.notes}</Typography>}
+                {/* Footer */}
+                <Stack sx={{ bgcolor: '#f4f6fb', borderTop: '1px solid #d0d8ee', px: 3, py: 1 }} direction="row" justifyContent="space-between">
+                  <Typography variant="caption" sx={{ color: '#999' }}>This is a computer-generated document. No signature required.</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgb(15,52,96)', fontWeight: 800 }}>Powered by Zentrixel</Typography>
+                </Stack>
+              </Stack>
+            );
+          })() : <Typography sx={{ p: 3 }}>Loading...</Typography>}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#f4f6fb' }}>
+          {invoiceDocPayload ? <Button variant="contained" onClick={() => generateInvoicePDF(invoiceDocPayload)} startIcon={<DownloadIcon />}>Download PDF</Button> : null}
+          <Button onClick={() => setInvoiceDocOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── VIEW RECEIPT DOCUMENT ────────────────────────────────────────── */}
+      <Dialog open={receiptDocOpen} onClose={() => setReceiptDocOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ bgcolor: 'rgb(21,94,54)', color: '#fff', fontWeight: 700, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReceiptLongIcon sx={{ color: 'rgb(46,213,115)' }} /> AIBOT Platform Receipt
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: '#f0fdf4' }}>
+          {receiptDocPayload ? (() => {
+            const bill = receiptDocPayload.bill;
+            const inv  = receiptDocPayload.invoice;
+            const outstanding = Math.max(0, (inv?.amount || 0) - (inv?.paid_amount || 0));
+            return (
+              <Stack>
+                {/* Company Header */}
+                <Stack sx={{ bgcolor: 'rgb(15,52,96)', px: 3, pt: 2, pb: 1.5, gap: 0.3 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                    <Typography variant="h6" sx={{ color: '#fff', fontWeight: 800, lineHeight: 1.2 }}>{COMPANY.name}</Typography>
+                    <Typography sx={{ color: 'rgb(46,213,115)', fontWeight: 800, fontSize: 22 }}>AIBOT Platform Receipt</Typography>
+                  </Stack>
+                  {(COMPANY.address || COMPANY.city) && <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>{[COMPANY.address, COMPANY.city].filter(Boolean).join(', ')}</Typography>}
+                  <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>
+                    {[COMPANY.gstin && `GSTIN: ${COMPANY.gstin}`, COMPANY.pan && `PAN: ${COMPANY.pan}`, COMPANY.phone && `Tel: ${COMPANY.phone}`, COMPANY.email, COMPANY.website].filter(Boolean).join('   |   ')}
+                  </Typography>
+                </Stack>
+                <Stack sx={{ height: 3, bgcolor: 'rgb(46,213,115)' }} />
+                {/* Receipt Details + Received From */}
+                <Grid container sx={{ px: 3, pt: 2, pb: 1 }} spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 2, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: '#166534', fontWeight: 700, letterSpacing: 1 }}>RECEIPT DETAILS</Typography>
+                      {[['Receipt Number', bill.bill_number], ['Receipt Date', dateOnly(bill.issued_date)], ['Payment Method', bill.payment_method || '—'], ['Reference', bill.payment_reference || '—']].map(([l, v]) => (
+                        <Stack key={l} direction="row" justifyContent="space-between" mt={0.8}>
+                          <Typography variant="caption" sx={{ color: '#506070', fontWeight: 700 }}>{l}:</Typography>
+                          <Typography variant="caption" sx={{ color: '#14321e', fontWeight: 600 }}>{v}</Typography>
+                        </Stack>
+                      ))}
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgb(15,52,96)', border: 0, borderRadius: 2, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: 'rgb(160,195,235)', fontWeight: 700, letterSpacing: 1 }}>RECEIVED FROM</Typography>
+                      <Typography variant="h6" sx={{ color: '#fff', fontWeight: 800, mt: 0.5 }}>{bill.organization_name}</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>Against Invoice: {bill.invoice_number}</Typography><br />
+                      <Typography variant="caption" sx={{ color: 'rgb(180,205,240)' }}>Invoice Date: {dateOnly(inv?.issue_date)}</Typography><br />
+                      <Typography variant="caption" sx={{ color: 'rgb(46,213,115)', fontWeight: 700 }}>Status: {(inv?.status || '').toUpperCase()}</Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+                {/* Amount Paid highlight */}
+                <Stack sx={{ px: 3, pb: 1 }}>
+                  <Paper elevation={0} sx={{ p: 2, bgcolor: 'rgb(21,94,54)', borderRadius: 2 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography sx={{ color: '#fff', fontWeight: 700 }}>Amount Paid</Typography>
+                      <Typography variant="h5" sx={{ color: '#fff', fontWeight: 900 }}>{fmtINR(bill.amount)}</Typography>
+                    </Stack>
+                  </Paper>
+                </Stack>
+                {/* Payment description row */}
+                <Stack sx={{ px: 3, pb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'rgb(21,94,54)', mb: 0.5, letterSpacing: 0.5 }}>PAYMENT DETAILS</Typography>
+                  <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #bbf7d0', borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead sx={{ bgcolor: 'rgb(21,94,54)' }}>
+                        <TableRow>{['Description', 'Invoice #', 'Invoice Date', 'Mode', 'Amount Paid'].map((h) => (<TableCell key={h} sx={{ color: '#fff', fontWeight: 700, fontSize: 11 }}>{h}</TableCell>))}</TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow sx={{ bgcolor: '#f0fdf4' }}>
+                          <TableCell sx={{ fontSize: 12 }}>Payment received for services rendered — {COMPANY.name}</TableCell>
+                          <TableCell sx={{ fontSize: 12 }}>{bill.invoice_number}</TableCell>
+                          <TableCell sx={{ fontSize: 12 }}>{dateOnly(inv?.issue_date)}</TableCell>
+                          <TableCell sx={{ fontSize: 12 }}>{bill.payment_method || '—'}</TableCell>
+                          <TableCell sx={{ fontSize: 12, fontWeight: 700 }}>{fmtINR(bill.amount)}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Stack>
+                {/* Invoice Summary */}
+                <Stack direction="row" justifyContent="flex-end" sx={{ px: 3, pb: 1 }}>
+                  <Paper elevation={0} sx={{ p: 2, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 2, minWidth: 260 }}>
+                    <Typography variant="caption" sx={{ color: '#166534', fontWeight: 700, letterSpacing: 0.5 }}>INVOICE SUMMARY</Typography>
+                    {[['Invoice Total', fmtINR(inv?.amount)], ['This Payment', fmtINR(bill.amount)], ['Total Paid to Date', fmtINR(inv?.paid_amount)], ['Outstanding Balance', fmtINR(outstanding)]].map(([l, v]) => (
+                      <Stack key={String(l)} direction="row" justifyContent="space-between" mt={0.5}>
+                        <Typography variant="caption" sx={{ color: '#506070', fontWeight: 600 }}>{l}:</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgb(15,52,96)', fontWeight: 700 }}>{v as string}</Typography>
+                      </Stack>
+                    ))}
+                  </Paper>
+                </Stack>
+                {bill.notes && <Typography variant="caption" sx={{ px: 3, pb: 1, color: '#555', fontStyle: 'italic' }}><strong>Notes:</strong> {bill.notes}</Typography>}
+                <Typography variant="caption" sx={{ px: 3, pb: 1, color: '#888', fontStyle: 'italic' }}>This is a computer-generated receipt and does not require a physical signature.</Typography>
+                {/* Footer */}
+                <Stack sx={{ bgcolor: '#dcfce7', borderTop: '1px solid #bbf7d0', px: 3, py: 1 }} direction="row" justifyContent="space-between">
+                  <Typography variant="caption" sx={{ color: '#999' }}>Generated: {new Date(receiptDocPayload.generated_at).toLocaleString('en-IN')}</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgb(15,52,96)', fontWeight: 800 }}>Powered by Zentrixel</Typography>
+                </Stack>
+              </Stack>
+            );
+          })() : <Typography sx={{ p: 3 }}>Loading...</Typography>}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#f0fdf4' }}>
+          {receiptDocPayload ? <Button variant="contained" color="success" onClick={() => generateReceiptPDF(receiptDocPayload)} startIcon={<DownloadIcon />}>Download PDF</Button> : null}
+          <Button onClick={() => setReceiptDocOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 

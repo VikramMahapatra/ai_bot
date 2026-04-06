@@ -941,14 +941,14 @@ async def get_advanced_analytics(
         peak_hour = None
         peak_share = 0
         hour_counts = db.query(
-            func.strftime('%H:00', Conversation.created_at).label("hour"),
+            func.to_char(Conversation.created_at, 'HH24:00').label("hour"),
             func.count(Conversation.id).label("count")
         ).filter(
             Conversation.organization_id == org_id,
             func.date(Conversation.created_at) >= last7_start,
             func.date(Conversation.created_at) <= end_date,
             Conversation.role == "user"
-        ).group_by(func.strftime('%H:00', Conversation.created_at)).all()
+        ).group_by(func.to_char(Conversation.created_at, 'HH24:00')).all()
 
         total_hour_count = sum(int(row.count) for row in hour_counts) if hour_counts else 0
         if hour_counts:
