@@ -57,6 +57,7 @@ import {
 } from "@mui/material";
 import TestCallDialog from './TestCallDialog';
 import { formatDateTime } from "../../utils/dateUtils";
+import { ConfirmDialog } from '../Common/ConfirmDialog';
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
@@ -79,6 +80,8 @@ export const CallingAgentTab: React.FC = () => {
 
     // CALL TEST DIALOG
     const [openTestDialog, setOpenTestDialog] = useState(false);
+    const [agentToDelete, setAgentToDelete] = useState<CallingAgent | null>(null);
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
     const showError = (message: string) => {
         setSuccess('');
@@ -219,17 +222,19 @@ export const CallingAgentTab: React.FC = () => {
         setSuccess('');
     }
 
-    const handleDelete = async (agent: CallingAgent) => {
+    const handleConfirmDelete = async () => {
+        if (!agentToDelete?.id) return;
         setError('');
         setSuccess('');
-        setLoading(true);
+        setDeleteSubmitting(true);
         try {
-            await callingAgentService.deleteAgent(agent.id!);
-            loadCallingAgents();
+            await callingAgentService.deleteAgent(agentToDelete.id);
+            setAgentToDelete(null);
+            await loadCallingAgents();
         } catch (error) {
             showError(`Failed to delete the agent`);
         } finally {
-            setLoading(false);
+            setDeleteSubmitting(false);
         }
     };
 
@@ -627,7 +632,7 @@ export const CallingAgentTab: React.FC = () => {
                                                             <IconButton
                                                                 size="small"
                                                                 color="error"
-                                                                onClick={() => handleDelete(agent)}
+                                                                onClick={() => setAgentToDelete(agent)}
                                                             >
                                                                 <DeleteIcon />
                                                             </IconButton>
@@ -746,6 +751,21 @@ export const CallingAgentTab: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmDialog
+                open={Boolean(agentToDelete)}
+                title="Delete calling agent?"
+                description={
+                    agentToDelete
+                        ? `This will permanently remove "${agentToDelete.name}". This action cannot be undone.`
+                        : undefined
+                }
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                confirmColor="error"
+                loading={deleteSubmitting}
+                onCancel={() => !deleteSubmitting && setAgentToDelete(null)}
+                onConfirm={handleConfirmDelete}
+            />
             {selectedAgent && (
                 <TestCallDialog
                     open={openTestDialog}

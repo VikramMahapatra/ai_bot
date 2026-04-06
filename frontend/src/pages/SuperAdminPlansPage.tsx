@@ -32,6 +32,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import { superadminService } from '../services/superadminService';
 import { Plan } from '../types';
 
@@ -121,6 +122,7 @@ const SuperAdminPlansPage: React.FC = () => {
   const [isSeedingPlans, setIsSeedingPlans] = useState(false);
   const [togglingPlanId, setTogglingPlanId] = useState<number | null>(null);
   const [deletingPlanId, setDeletingPlanId] = useState<number | null>(null);
+  const [planToDelete, setPlanToDelete] = useState<Plan | null>(null);
 
   const planStats = useMemo(() => {
     const total = plans.length;
@@ -311,24 +313,23 @@ const SuperAdminPlansPage: React.FC = () => {
     }
   };
 
-  const handleDeletePlan = async (plan: Plan) => {
-    const confirmDelete = window.confirm(
-      `Delete plan "${plan.name}"? This cannot be undone.`
-    );
-    if (!confirmDelete) return;
+  const handleConfirmDeletePlan = async () => {
+    if (!planToDelete) return;
 
     try {
-      setDeletingPlanId(plan.id);
+      setDeletingPlanId(planToDelete.id);
       setActionError('');
       setActionSuccess('');
-      await superadminService.deletePlan(plan.id);
-      if (activePlan?.id === plan.id) {
+      const deletedName = planToDelete.name;
+      await superadminService.deletePlan(planToDelete.id);
+      if (activePlan?.id === planToDelete.id) {
         setActivePlan(null);
         setViewOpen(false);
         setEditOpen(false);
       }
+      setPlanToDelete(null);
       await loadPlans();
-      setActionSuccess(`Plan "${plan.name}" deleted successfully.`);
+      setActionSuccess(`Plan "${deletedName}" deleted successfully.`);
     } catch (error: any) {
       setActionError(error?.response?.data?.detail || 'Failed to delete plan');
     } finally {
@@ -534,7 +535,7 @@ const SuperAdminPlansPage: React.FC = () => {
                   </Tooltip>
                   <Tooltip title="Delete Plan">
                     <IconButton
-                      onClick={() => handleDeletePlan(plan)}
+                      onClick={() => setPlanToDelete(plan)}
                       disabled={deletingPlanId === plan.id}
                       sx={{
                         width: 40,
@@ -787,6 +788,22 @@ const SuperAdminPlansPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={planToDelete !== null}
+        title="Delete plan?"
+        description={
+          planToDelete
+            ? `This will permanently remove "${planToDelete.name}". This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deletingPlanId !== null}
+        onCancel={() => !deletingPlanId && setPlanToDelete(null)}
+        onConfirm={handleConfirmDeletePlan}
+      />
     </SuperAdminLayout>
   );
 };
