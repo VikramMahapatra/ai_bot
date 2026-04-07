@@ -12,6 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../Common/Sidebar';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useCredits } from '../../context/CreditsContext';
+import CreditSummaryDialog from '../CreditSummaryDialog';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -22,7 +23,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const { logout, organizationName } = useAuth();
   const colorMode = useContext(ColorModeContext);
-  const { credits, totalCredits } = useCredits();
+  const { credits, creditMonthlySummary, totalCredits } = useCredits();
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -134,30 +136,30 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 />
               )}
               {credits !== undefined && (
-                <Tooltip
-                  title={
-                    <Box>
-                      {credits.map(c => (
-                        <Typography key={c.module}>
-                          {c.module}: {c.remaining}
-                        </Typography>
-                      ))}
-                    </Box>
-                  }
-                >
+                <>
                   <Chip
                     icon={<AccountBalanceWalletIcon />}
                     label={`${totalCredits} Credits`}
                     color={totalCredits < 100 ? "warning" : "success"}
                     variant="outlined"
+                    onClick={() => setCreditDialogOpen(true)}
                     sx={{
                       mr: 0.8,
                       fontWeight: 700,
+                      cursor: "pointer",
                       borderColor: (theme) => alpha(theme.palette.success.main, 0.35),
-                      backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.55),
+                      backgroundColor: (theme) =>
+                        alpha(theme.palette.background.paper, 0.55),
                     }}
                   />
-                </Tooltip>
+
+                  <CreditSummaryDialog
+                    open={creditDialogOpen}
+                    onClose={() => setCreditDialogOpen(false)}
+                    credits={credits}
+                    monthlySummary={creditMonthlySummary}
+                  />
+                </>
               )}
               <Tooltip title={colorMode.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
                 <IconButton onClick={colorMode.toggleColorMode} color="primary" sx={{ mr: 0.4 }}>

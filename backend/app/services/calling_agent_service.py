@@ -21,8 +21,17 @@ from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
 from app.models.organization_limits import OrganizationLimits
 from app.services.call_log_service import process_call, sync_call_logs
+from app.services import organization_credit_service
+from app.enums.credit_feature_codes import FeatureCodes
 
 UPLOAD_DIR = "uploads/agent_training_docs"
+
+def get_agent_feature_code(agent_type: str):
+    return (
+        FeatureCodes.CORE_CALL_AGENT_OUT
+        if agent_type == "outbound"
+        else FeatureCodes.CORE_CALL_AGENT_IN
+    )
 
 def create_agent(
     db: Session,
@@ -37,25 +46,21 @@ def create_agent(
     if not org:
         raise ValueError("Organization not found")
     
-    unique_agent_code = f"ORG{organization_id}AG{uuid4().hex[:5]}".upper()
     
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == organization_id
-    ).first()
-
-    # Count existing agents
-    existing_agents_count = db.query(CallingAgent).filter(
-        CallingAgent.organization_id == organization_id,
-        CallingAgent.is_deleted == False
-    ).count()
-
-    # Check max_agents limit
-    if limits and limits.max_agents is not None and limits.max_agents > 0:
-        if existing_agents_count >= limits.max_agents:
-            raise HTTPException(
-                status_code=400,
-                detail = f"Cannot create agent. Maximum allowed agents: {limits.max_agents}"
-            )
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        agent.organization_id,
+        get_agent_feature_code(agent.type),
+        1
+    )
+    
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )
+    
+    unique_agent_code = f"ORG{organization_id}AG{uuid4().hex[:5]}".upper()
     
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -171,9 +176,9 @@ def create_agent(
         "silence_timeout": str(agent.silence_timeout),
         "talking_speed": str(agent.talking_speed),
         "max_duration_seconds": str(agent.max_call_duration),
-        "voice_mail_detection_enabled": "0",
+        "voice_mail_detection_enabled": "1" if agent.voice_mail_detection else "0",
         "voicemail_provider": "vapi",
-        "voicemail_beep_max_await_seconds": "0",
+        "voicemail_beep_max_await_seconds": "5",
         "voicemail_max_retries": "10",
         "voicemail_start_at_seconds": "5",
         "voicemail_frequency_seconds": "5",
@@ -240,6 +245,25 @@ def create_agent(
         message = "Agent created successfully, but sync failed. Please reload the page to sync the agent."
     else:
         message = "Agent created successfully"
+        
+    if echo_failed:
+        organization_credit_service.reserve_credits(
+            db=db,
+            organization_id=agent.organization_id,
+            feature_code=get_agent_feature_code(agent.type),
+            quantity=1,
+            reference_type="agent",
+            reference_id=db_agent.id
+        )        
+    else:
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=agent.organization_id,
+            feature_code=get_agent_feature_code(agent.type),
+            quantity=1,
+            reference_type="agent",
+            reference_id=db_agent.id
+        )
     
     return {
         "message": message,
@@ -286,6 +310,11 @@ def update_agent(
         "summary":  "1" if agent.summary_prompt else "0",
         "sentiment_detection": "1" if agent.enable_sentiment else "0",
         "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
+        "voicemail_provider": "vapi",
+        "voicemail_beep_max_await_seconds": "5",
+        "voicemail_max_retries": "10",
+        "voicemail_start_at_seconds": "5",
+        "voicemail_frequency_seconds": "5",
         "calendar_sync": agent.calendar_sync,
         "speaks_first":agent.who_speaks_first,
         "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
@@ -400,7 +429,7 @@ def read_agents(
             ).all()
 
             for db_agent in db_agents:
-
+                old_status = db_agent.status
                 echo_agent = None
 
                 if db_agent.external_agent_id:
@@ -425,13 +454,21 @@ def read_agents(
                             if external_agent_status == "draft"
                             else external_agent_status
                         )
+                        
+                        if old_status == "pending" :
+                            organization_credit_service.consume_reserved_credits(
+                                db=db,
+                                reference_type="agent",
+                                reference_id=db_agent.id,
+                                quantity=1
+                            )  
 
                     if not db_agent.external_agent_id:
                         db_agent.external_agent_id = echo_agent.get("id")
 
                     if not db_agent.external_agent_a_id:
                         db_agent.external_agent_a_id = echo_agent.get("a_id")
-
+                        
             db.commit()
             
     except Exception as e:
@@ -469,15 +506,16 @@ def read_agents(
         query = query.filter(
             CallingAgent.name.ilike(f"%{search}%")
         )
+        
+    total = query.count()
 
     # SORT
+    print(sort_by)
     if sort_by == "oldest":
         query = query.order_by(CallingAgent.created_at.asc())
     else:
         query = query.order_by(CallingAgent.created_at.desc())
 
-    # TOTAL (⚠️ correct way with group_by)
-    total = query.count()
 
     rows = query.offset(skip).limit(limit).all()
 
@@ -558,26 +596,21 @@ def test_call(
     if not agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
     
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == agent.organization_id
-    ).first()
-
-    # --- Count active test calls for this agent ---
-    active_calls_count = db.query(CallLog).filter(
-        CallLog.organization_id == agent.organization_id,
-        CallLog.status.in_(["queued", "ended", "completed"])
-    ).count()
+    feature_code = FeatureCodes.CORE_CALL_OUT_ATTEMPT if agent.type == "outbound" else FeatureCodes.CORE_CALL_IN_ATTEMPT
     
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        agent.organization_id,
+        feature_code,
+        1
+    )
     
-    print("Active Count :", active_calls_count)
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )
 
-    # --- Restrict test calls based on max_calls ---
-    if limits and limits.max_calls and limits.max_calls > 0:
-        if active_calls_count >= limits.max_calls:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot initiate test call. Maximum allowed calls: {limits.max_calls}"
-            )
     
     # Prepare API request
     echoleads = EcholeadsClient()
@@ -605,8 +638,6 @@ def test_call(
     try:
         api_response = echoleads.create_call(payload)
         
-        print("EchoLeads Test Call Response:", api_response)
-        
         if api_response and "data" in api_response:
             sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
             
@@ -626,8 +657,19 @@ def test_call(
         external_call_id=external_call_id,
         status=call_status
     )
-
     db.add(test_call)
+    db.flush()
+    
+    if echo_success:
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=agent.organization_id,
+            feature_code=feature_code,
+            quantity=1,
+            reference_type="calling_agent_test_call",
+            reference_id=test_call.id
+        )
+    
     db.commit()
     db.refresh(test_call)
 
@@ -677,7 +719,7 @@ def publish_agent(
         "silence_timeout": str(agent.silence_timeout),
         "talking_speed": str(agent.talking_speed),
         "max_duration_seconds": str(agent.max_call_duration),
-        "voice_mail_detection_enabled": "0",
+        "voice_mail_detection_enabled": "1" if agent.voice_mail_detection else "0",
         "voicemail_provider": "vapi",
         "voicemail_beep_max_await_seconds": "0",
         "voicemail_max_retries": "10",
@@ -795,6 +837,13 @@ def delete_agent(db: Session, agent_id: int):
         agent.is_deleted = True
         db.commit()
         db.refresh(agent)
+        
+        if agent.status == "pending":
+            organization_credit_service.release_reserved_credits(
+                db=db,
+                reference_type="agent",
+                reference_id=agent.id,
+            )
     else:
         raise HTTPException(
             status_code=400,
@@ -820,7 +869,8 @@ def agent_lookup(
     ).filter(
         CallingAgent.organization_id == organization_id, 
         CallingAgent.is_deleted == False,
-        CallingAgent.status == "active"
+        CallingAgent.status == "active",
+        CallingAgent.type == "outbound"
     )
 
     if search:

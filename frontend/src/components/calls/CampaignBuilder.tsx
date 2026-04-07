@@ -23,6 +23,8 @@ import { CallCampaign, callCampaignService, Contact } from "../../services/callC
 import CampaignDetails from "./CampaignDetails";
 import moment from "moment-timezone";
 import CampaignContacts from "./CampaignContacts";
+import { FEATURE_CODES } from "../../types/creditModules";
+import { CREDIT_ERRORS, useCredits } from "../../context/CreditsContext";
 
 
 const steps = [
@@ -83,10 +85,10 @@ const CampaignBuilder = () => {
     const [loading, setLoading] = useState(false);
     const theme = useTheme();
 
-
     const [campaignForm, setCampaignForm] = useState<CallCampaign>(emptyCampaignForm);
     const [errors, setErrors] = useState<any>({});
     const [sendOption, setSendOption] = useState<"now" | "schedule">("schedule");
+    const { getRequiredCreditInfo, totalCredits, refreshCredits } = useCredits();
 
     const nextStep = () => {
         setActiveStep((prev) => prev + 1);
@@ -108,8 +110,21 @@ const CampaignBuilder = () => {
         setSuccess(message);
     };
 
+    const validateAddCampaignCredits = (setError: any) => {
+        const credits = getRequiredCreditInfo(FEATURE_CODES.CORE_CALL_OUT_MINUTE);
 
-    const handleAddCampaign = () => {
+        if (credits.minReservedCredits != null && totalCredits < credits.minReservedCredits) {
+            setError(CREDIT_ERRORS.BELOW_MIN_RESERVED);
+            return false;
+        }
+
+        return true;
+    };
+
+    const handleAddCampaign = (setListError: any) => {
+        if (!validateAddCampaignCredits(setListError))
+            return;
+
         setView("form");
         setError('');
         setSuccess('');
@@ -182,7 +197,32 @@ const CampaignBuilder = () => {
         }
     }, [loading]);
 
+    const validateCreateCampaignCredits = (contactsCount: number) => {
+        const { creditsPerUnit, minReservedCredits } =
+            getRequiredCreditInfo(FEATURE_CODES.CORE_CALL_OUT_ATTEMPT);
+
+        // 1 contact = 1 call attempt
+        const requiredCredits = contactsCount * creditsPerUnit;
+
+        // Optional min reserved validation
+        if (minReservedCredits && totalCredits < minReservedCredits) {
+            showError(CREDIT_ERRORS.BELOW_MIN_RESERVED);
+            return false;
+        }
+
+        // Required credits validation
+        if (totalCredits < requiredCredits) {
+            showError(CREDIT_ERRORS.INSUFFICIENT_CREDITS);
+            return false;
+        }
+
+        return true;
+    };
+
     const handleSaveCampaign = async () => {
+        if (!validateCreateCampaignCredits(campaignForm.contacts.length))
+            return;
+
         setError('');
         setSuccess('');
         setLoading(true);
@@ -206,6 +246,7 @@ const CampaignBuilder = () => {
 
             if (response.success) {
                 showSuccess(response.message || "Campaign saved successfully")
+                refreshCredits();
             }
             else {
                 showError(response.message || "Failed to save the campaign data")
@@ -256,6 +297,7 @@ const CampaignBuilder = () => {
 
     const handleSave = () => {
         const newErrors: any = {};
+        window.scrollTo({ top: 0, behavior: "smooth" });
 
         if (sendOption === "schedule") {
 
@@ -267,7 +309,6 @@ const CampaignBuilder = () => {
             const hasStart = !!campaignForm.start_datetime;
             const hasEnd = !!campaignForm.end_datetime;
 
-            console.log("hasStart", hasStart, "hasEnd", hasEnd)
 
             // If only start selected
             if (hasStart && !hasEnd) {

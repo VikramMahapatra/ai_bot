@@ -226,7 +226,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             <Box display="flex" alignItems="center" gap={1}>
                                 <CallEndIcon fontSize="small" color="error" />
                                 <Typography variant="body2" color="text.secondary">
-                                    Disconnected By:
+                                    Ended Reason:
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600} color="error.main">
                                     {formatEndedReason(selectedCall.ended_reason) || "N/A"}

@@ -5,7 +5,7 @@ import logging
 from typing import List, Optional
 from urllib import response
 from uuid import uuid4
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import case, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
@@ -21,6 +21,8 @@ from app.models.user import Organization
 from app.models.organization_limits import OrganizationLimits
 from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 from app.models.products import Product
+from app.services import organization_credit_service
+from app.enums.credit_feature_codes import FeatureCodes
 
 
 STALE_MINUTES = 1
@@ -145,7 +147,7 @@ def list_campaigns(
     # PAGINATION
     campaigns = (
         base_query
-        .order_by(CallCampaign.created_at.desc())
+        .order_by(CallCampaign.updated_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -228,7 +230,7 @@ def get_campaign(db: Session, campaign_id: int):
         "retry_on_voicemail": schedule.retry_voicemail if schedule else None
     }
     
-def get_campaign_detail(db: Session, campaign_id: int):
+def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign_id: int):
     campaign = (
         db.query(
             CallCampaign,
@@ -246,6 +248,14 @@ def get_campaign_detail(db: Session, campaign_id: int):
 
     if not campaign:
         return None
+    
+    echolead_client = EcholeadsClient()
+    background_tasks.add_task(
+            sync_campaign_from_echoleads,
+            db,
+            echolead_client,
+            campaign
+    )
 
     campaign_obj, product_name, schedule = campaign
     
@@ -298,37 +308,24 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     limits = db.query(OrganizationLimits).filter(
         OrganizationLimits.organization_id == organization_id
     ).first()
-
-    # Count existing agents
-    existing_campaigns_count = db.query(CallCampaign).filter(
-        CallCampaign.organization_id == organization_id,
-        CallCampaign.status.in_(["completed", "running", "scheduled"]) 
-    ).count()
-
-    # Check max_agents limit
-    if limits and limits.max_agents is not None and limits.max_agents > 0:
-        if existing_campaigns_count >= limits.max_campaigns:
-            raise HTTPException(
-                status_code=400,
-                detail = f"Cannot create campaign. Maximum allowed agents: {limits.max_campaigns}"
-            )
-            
-    total_calls_used = db.query(CallLog).filter(
-        CallLog.organization_id == organization_id,
-        CallLog.status.in_(["queued", "ended", "completed"])
-    ).count()
     
     contacts_count = len(data.contacts)
     retries = data.max_retry_attempts or 0
 
     calls_needed = contacts_count * (1 + retries)
-            
-    if limits and limits.max_calls is not None and limits.max_calls > 0:
-        if total_calls_used + calls_needed > limits.max_calls:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Call limit exceeded. Allowed: {limits.max_calls}, Used: {total_calls_used}, Required: {calls_needed}"
-            )
+
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        org.id,
+        FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+        calls_needed
+    )
+    
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )            
             
     if data.start_datetime or data.active_days:
         status = "scheduled"
@@ -398,7 +395,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             "other_fields": [
                 {
                     "field": "name",
-                    "value": contact.name,
+                    "value": contact.name.split()[0] if contact.name else "",
                     "mergeField": "name"
                 }
             ]
@@ -473,8 +470,26 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
+        
+        organization_credit_service.reserve_credits(
+            db=db,
+            organization_id=agent.organization_id,
+            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+            quantity=calls_needed,
+            reference_type="call_campaign",
+            reference_id=campaign.id
+        )     
     else:
         message = "Campaign created successfully"
+        
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=agent.organization_id,
+            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+            quantity=calls_needed,
+            reference_type="call_campaign",
+            reference_id=campaign.id
+        )
 
     return {
         "message": message,
@@ -779,7 +794,11 @@ def delete_campaign(
 #### Campaign Contacts
 
 def get_contacts_by_ids(db: Session, ids: list[int]):
-    contacts = db.query(Contact).filter(Contact.id.in_(ids)).all()
+    contacts = (
+        db.query(Contact)
+        .filter(Contact.id.in_(ids), Contact.phone.isnot(None), Contact.phone != "")
+        .all()
+    )
     
     return [
             {
@@ -813,14 +832,16 @@ def get_contacts(
     # Search filter
     # ---------------------------
     if search:
-        search_term = f"%{search}%"
+        search_term = f"%{search.strip()}%"
         query = query.filter(
-            or_(
-                Contact.name.ilike(search_term),
-                Contact.email.ilike(search_term),
-                Contact.phone.ilike(search_term),
-                ContactList.list_name.ilike(search_term),
-            )
+            Contact.name.ilike(search_term) |
+            Contact.email.ilike(search_term) |
+            Contact.phone.ilike(search_term) |
+            Contact.company.ilike(search_term) |
+            Contact.whatsapp_number.ilike(search_term) |
+            Contact.designation.ilike(search_term) |
+            Contact.item_name.ilike(search_term) |
+            Contact.item_category.ilike(search_term)
         )
 
     # ---------------------------
@@ -846,13 +867,28 @@ def get_contacts(
         "items": [
             {
                 "id": row.id,
+                "contact_list_id": row.contact_list_id,
+                "contact_list_name": row.contact_list.list_name if row.contact_list else None,
                 "label": f"{row.name} ({row.phone})",
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
+                "whatsapp_number": row.whatsapp_number,
+                "gender": row.gender,
                 "company": row.company,
-                "contact_list_id": row.contact_list_id,
-                "contact_list_name": row.contact_list.list_name if row.contact_list else None,
+                "designation": row.designation,
+                "item_name": row.item_name,
+                "item_type": row.item_type,
+                "interest_stage": row.interest_stage,
+                "item_category": row.item_category,
+                "amount": row.amount,
+                "offer_value": row.offer_value,
+                "city": row.city,
+                "state": row.state,
+                "country": row.country,
+                "source": row.source,
+                "lifecycle_stage": row.lifecycle_stage,
+                "tags": row.tags,
                 "created_at": row.created_at,
             }
             for row in rows
@@ -869,7 +905,7 @@ def get_contacts_lookup(db: Session, organization_id: int):
     rows = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
-        .filter(ContactList.organization_id == organization_id)
+        .filter(ContactList.organization_id == organization_id, Contact.phone.isnot(None), Contact.phone != "")
         .order_by(Contact.name.asc())
         .all()
     )
@@ -1269,6 +1305,12 @@ def sync_campaign_from_echoleads(
             
 
         if not campaign_data:
+            if campaign.status == "pending":
+                organization_credit_service.release_reserved_credits(
+                db=db,
+                reference_type="call_campaign",
+                reference_id=campaign.id
+            )  
             return
 
         # -------------------------

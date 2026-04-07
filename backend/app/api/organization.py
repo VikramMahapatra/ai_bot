@@ -862,5 +862,5 @@ def consume_credits(
         db, 
         params.reference_type,
         params.reference_id,
-         params.quantity,
+        params.quantity
     )

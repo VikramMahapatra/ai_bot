@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from app.database import get_db
 from sqlalchemy.orm import Session
 from app.schemas.call_campaign import CampaignCreate, CampaignLookupParameters, CampaignStatusUpdate, CampaignUpdate, ContactByIdsRequest, ContactCreate
@@ -35,8 +35,11 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     return service.get_campaign(db, campaign_id)
 
 @router.get("/{campaign_id:int}/detail")
-def get_campaign_detail(campaign_id: int, db: Session = Depends(get_db)):
-    return service.get_campaign_detail(db, campaign_id)
+def get_campaign_detail(
+    campaign_id: int, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)):
+    return service.get_campaign_detail(background_tasks, db, campaign_id)
 
 @router.post("/create") 
 def create_campaign( 

@@ -1360,10 +1360,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             control={<Switch checked={formData.enable_sentiment} onChange={(e) => handleToggleChange('enable_sentiment', e.target.checked)} />}
                             label="Enable Sentiment Detection"
                         /> 
-                        <FormControlLabel
-                            control={<Switch checked={formData.voice_mail_detection} onChange={(e) => handleToggleChange('voice_mail_detection', e.target.checked)} />}
-                            label="Voice Mail Detection"
-                        />
+                      
                          <FormControlLabel
                             control={<Switch checked={formData.enable_call_recording} onChange={(e) => handleToggleChange('enable_call_recording', e.target.checked)} />}
                             label="Enable Call Recording"
@@ -1381,6 +1378,15 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                     />
                                 }
                                 label="Calendar Sync"
+                            />
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={formData.voice_mail_detection}
+                                        onChange={(e) => handleToggleChange('voice_mail_detection', e.target.checked)}
+                                    />
+                                }
+                                label="Voice Mail Detection"
                             />
                         </Stack>
                     </Card >
