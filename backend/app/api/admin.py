@@ -672,10 +672,22 @@ async def list_appointments(
         Appointment.organization_id == current_user.organization_id
     )
 
+    today = datetime.now(timezone.utc)
+
     if widget_id:
         query = query.filter(Appointment.widget_id == widget_id)
+    # if status:
+    #     query = query.filter(Appointment.status == status)
+
+    # 🔹 Status filter
     if status:
-        query = query.filter(Appointment.status == status)
+        if status == "overdue":
+            query = query.filter(
+                Appointment.status == "booked", Appointment.appointment_at < today
+            )
+        else:
+            query = query.filter(Appointment.status == status)
+
     if upcoming_only:
         query = query.filter(Appointment.appointment_at >= datetime.now(timezone.utc))
 
@@ -735,7 +747,11 @@ async def list_appointments(
                 "notes": item.notes,
                 "timezone": item.timezone,
                 "appointment_at": item.appointment_at,
-                "status": item.status,
+                "status": (
+                    "overdue"
+                    if item.status == "booked" and item.appointment_at < today
+                    else item.status
+                ),
                 "created_at": item.created_at,
             }
             for item in appointments
@@ -752,7 +768,7 @@ async def update_appointment_status(
     current_user: User = Depends(require_admin),
 ):
     """Update appointment status for the current organization."""
-    allowed = {"booked", "completed", "cancelled", "no_show"}
+    allowed = {"booked", "completed", "cancelled", "overdue", "no_show"}
     new_status = str(payload.get("status", "")).strip().lower()
     if new_status not in allowed:
         raise HTTPException(
