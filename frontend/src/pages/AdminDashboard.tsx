@@ -466,7 +466,7 @@ const AdminDashboard: React.FC = () => {
               0.82
             )} 74%, ${alpha('#a9bfdc', 0.96)} 100%)`,
             color: 'text.primary',
-            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,            
           }}
         >
           <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.4, color: 'text.primary' }}>
