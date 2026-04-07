@@ -11,7 +11,7 @@ export interface AppointmentItem {
   notes?: string;
   timezone?: string;
   appointment_at: string;
-  status: 'booked' | 'completed' | 'cancelled' | 'no_show';
+  status: 'booked' | 'completed' | 'cancelled' |  'overdue' | 'no_show';
   created_at?: string;
 }
 
@@ -22,6 +22,7 @@ export interface AppointmentFilters {
   start_date?: string;
   end_date?: string;
    // pagination
+  search?: String;
   skip?: number;
   limit?: number;
 }

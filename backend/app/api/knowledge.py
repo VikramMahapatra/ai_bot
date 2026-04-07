@@ -1,4 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
+from operator import or_
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    BackgroundTasks,
+    Form,
+)
 from sqlalchemy.orm import Session
 from typing import List, Dict
 from pydantic import BaseModel
@@ -11,10 +21,20 @@ from app.schemas import (
     WebCrawlPreviewRequest,
     WebCrawlPreviewResponse,
     DocumentUploadResponse,
-    WebCrawlResponse
+    WebCrawlResponse,
 )
-from app.services import ingest_web_content, ingest_document, ingest_text_content, delete_knowledge_source, discover_web_links
-from app.services.limits_service import get_effective_limits, get_or_create_subscription_usage, increment_usage
+from app.services import (
+    ingest_web_content,
+    ingest_document,
+    ingest_text_content,
+    delete_knowledge_source,
+    discover_web_links,
+)
+from app.services.limits_service import (
+    get_effective_limits,
+    get_or_create_subscription_usage,
+    increment_usage,
+)
 from app.services.rag import chroma_client
 import logging
 import uuid
@@ -41,7 +61,11 @@ def _cleanup_crawl_jobs(now_ts: float = None) -> None:
     for job_id, job in _crawl_jobs.items():
         status = job.get("status")
         updated_at_ts = float(job.get("updated_at_ts", 0.0))
-        if status in {"completed", "failed"} and updated_at_ts and (now_ts - updated_at_ts) > _CRAWL_JOB_TTL_SECONDS:
+        if (
+            status in {"completed", "failed"}
+            and updated_at_ts
+            and (now_ts - updated_at_ts) > _CRAWL_JOB_TTL_SECONDS
+        ):
             expired_ids.append(job_id)
     for job_id in expired_ids:
         _crawl_jobs.pop(job_id, None)
@@ -67,7 +91,9 @@ def _get_crawl_job(job_id: str) -> Dict[str, object]:
         return dict(job) if job else {}
 
 
-def _get_latest_active_crawl_job(organization_id: int, widget_id: str) -> Dict[str, object]:
+def _get_latest_active_crawl_job(
+    organization_id: int, widget_id: str
+) -> Dict[str, object]:
     now_ts = time.time()
     with _crawl_jobs_lock:
         _cleanup_crawl_jobs(now_ts)
@@ -82,7 +108,9 @@ def _get_latest_active_crawl_job(organization_id: int, widget_id: str) -> Dict[s
     if not candidates:
         return {}
 
-    candidates.sort(key=lambda item: float(item.get("updated_at_ts") or 0.0), reverse=True)
+    candidates.sort(
+        key=lambda item: float(item.get("updated_at_ts") or 0.0), reverse=True
+    )
     return candidates[0]
 
 
@@ -112,7 +140,9 @@ def _job_public_payload(job: Dict[str, object]) -> Dict[str, object]:
     }
 
 
-def _validate_crawl_limits(request: WebCrawlRequest, current_user: User, db: Session) -> None:
+def _validate_crawl_limits(
+    request: WebCrawlRequest, current_user: User, db: Session
+) -> None:
     limits = get_effective_limits(db, current_user.organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
@@ -128,7 +158,9 @@ def _validate_crawl_limits(request: WebCrawlRequest, current_user: User, db: Ses
         )
 
     selected_urls_count = len(request.selected_urls or [])
-    effective_pages = selected_urls_count if selected_urls_count > 0 else request.max_pages
+    effective_pages = (
+        selected_urls_count if selected_urls_count > 0 else request.max_pages
+    )
 
     remaining_pages = limits["monthly_crawl_pages_limit"] - usage.crawl_pages_count
     if effective_pages > remaining_pages:
@@ -138,7 +170,9 @@ def _validate_crawl_limits(request: WebCrawlRequest, current_user: User, db: Ses
         )
 
 
-def _run_crawl_job(job_id: str, request_payload: Dict[str, object], user_id: int, organization_id: int) -> None:
+def _run_crawl_job(
+    job_id: str, request_payload: Dict[str, object], user_id: int, organization_id: int
+) -> None:
     db = SessionLocal()
     try:
         _update_crawl_job(
@@ -177,7 +211,11 @@ def _run_crawl_job(job_id: str, request_payload: Dict[str, object], user_id: int
 
         increment_usage(db, organization_id, crawl_pages_count=pages_crawled)
         unchanged = pages_crawled == 0
-        message = "No changes detected. Page already embedded." if unchanged else f"Crawled {pages_crawled} updated pages."
+        message = (
+            "No changes detected. Page already embedded."
+            if unchanged
+            else f"Crawled {pages_crawled} updated pages."
+        )
 
         _update_crawl_job(
             job_id,
@@ -223,7 +261,7 @@ async def start_crawl_website_job(
     request: WebCrawlRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Start crawl/embed as a background job and return a job id for polling."""
     try:
@@ -243,7 +281,11 @@ async def start_crawl_website_job(
                 "error": None,
                 "url": request.url,
                 "widget_id": request.widget_id,
-                "pages_total": len(request.selected_urls or []) if request.selected_urls else request.max_pages,
+                "pages_total": (
+                    len(request.selected_urls or [])
+                    if request.selected_urls
+                    else request.max_pages
+                ),
                 "pages_completed": 0,
                 "pages_crawled": 0,
                 "pages_scanned": 0,
@@ -276,8 +318,7 @@ async def start_crawl_website_job(
 
 @router.get("/crawl/async/latest")
 async def get_latest_active_crawl_website_job(
-    widget_id: str,
-    current_user: User = Depends(require_admin)
+    widget_id: str, current_user: User = Depends(require_admin)
 ):
     """Get the latest active (queued/running) crawl/embed job for a widget."""
     widget = (widget_id or "").strip()
@@ -293,8 +334,7 @@ async def get_latest_active_crawl_website_job(
 
 @router.get("/crawl/async/{job_id}")
 async def get_crawl_website_job(
-    job_id: str,
-    current_user: User = Depends(require_admin)
+    job_id: str, current_user: User = Depends(require_admin)
 ):
     """Get status and progress of a background crawl/embed job."""
     job = _get_crawl_job(job_id)
@@ -312,7 +352,7 @@ async def crawl_website(
     request: WebCrawlRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Crawl website and ingest content for the current user"""
     try:
@@ -328,15 +368,21 @@ async def crawl_website(
             selected_urls=request.selected_urls,
         )
 
-        increment_usage(db, current_user.organization_id, crawl_pages_count=pages_crawled)
+        increment_usage(
+            db, current_user.organization_id, crawl_pages_count=pages_crawled
+        )
         unchanged = pages_crawled == 0
-        message = "No changes detected. Page already embedded." if unchanged else f"Crawled {pages_crawled} updated pages."
+        message = (
+            "No changes detected. Page already embedded."
+            if unchanged
+            else f"Crawled {pages_crawled} updated pages."
+        )
         return WebCrawlResponse(
             source=source,
             pages_crawled=pages_crawled,
             pages_scanned=pages_scanned,
             unchanged=unchanged,
-            message=message
+            message=message,
         )
     except HTTPException:
         raise
@@ -355,7 +401,9 @@ async def preview_crawl_links(
     try:
         limits = get_effective_limits(db, current_user.organization_id)
         if not limits.get("subscription_active"):
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            raise HTTPException(
+                status_code=403, detail="Subscription inactive or expired"
+            )
 
         if request.max_depth > limits["max_crawl_depth"]:
             raise HTTPException(
@@ -386,29 +434,33 @@ async def upload_document(
     file: UploadFile = File(...),
     widget_id: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Upload and ingest document for the current user"""
     try:
         limits = get_effective_limits(db, current_user.organization_id)
         if not limits.get("subscription_active"):
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            raise HTTPException(
+                status_code=403, detail="Subscription inactive or expired"
+            )
 
         usage = get_or_create_subscription_usage(db, current_user.organization_id)
         if not usage:
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            raise HTTPException(
+                status_code=403, detail="Subscription inactive or expired"
+            )
 
         # Determine file type
         filename = file.filename.lower()
-        if filename.endswith('.pdf'):
+        if filename.endswith(".pdf"):
             source_type = SourceType.PDF
-        elif filename.endswith(('.docx', '.doc')):
+        elif filename.endswith((".docx", ".doc")):
             source_type = SourceType.DOCX
-        elif filename.endswith(('.xlsx', '.xls')):
+        elif filename.endswith((".xlsx", ".xls")):
             source_type = SourceType.XLSX
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type")
-        
+
         # Read file content
         content = await file.read()
 
@@ -424,12 +476,14 @@ async def upload_document(
                 status_code=403,
                 detail="Monthly document limit exceeded",
             )
-        
+
         # Ingest document
-        source = ingest_document(content, file.filename, source_type, current_user.id, widget_id, db)
+        source = ingest_document(
+            content, file.filename, source_type, current_user.id, widget_id, db
+        )
 
         increment_usage(db, current_user.organization_id, documents_count=1)
-        
+
         return DocumentUploadResponse(
             id=source.id,
             name=source.name,
@@ -448,17 +502,21 @@ async def upload_document(
 async def ingest_text(
     request: TextIngestRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Ingest raw text content (used for knowledge gap suggestions)."""
     try:
         limits = get_effective_limits(db, current_user.organization_id)
         if not limits.get("subscription_active"):
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            raise HTTPException(
+                status_code=403, detail="Subscription inactive or expired"
+            )
 
         usage = get_or_create_subscription_usage(db, current_user.organization_id)
         if not usage:
-            raise HTTPException(status_code=403, detail="Subscription inactive or expired")
+            raise HTTPException(
+                status_code=403, detail="Subscription inactive or expired"
+            )
 
         max_bytes = limits["max_document_size_mb"] * 1024 * 1024
         content_bytes = len((request.content or "").encode("utf-8"))
@@ -474,7 +532,9 @@ async def ingest_text(
                 detail="Monthly document limit exceeded",
             )
 
-        source = ingest_text_content(request.content, request.title, current_user.id, request.widget_id, db)
+        source = ingest_text_content(
+            request.content, request.title, current_user.id, request.widget_id, db
+        )
         increment_usage(db, current_user.organization_id, documents_count=1)
 
         return DocumentUploadResponse(
@@ -491,39 +551,66 @@ async def ingest_text(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/sources", response_model=List[KnowledgeSourceResponse])
+@router.get("/sources")  # , response_model=List[KnowledgeSourceResponse])
 async def list_sources(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
     widget_id: str = None,
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
 ):
     """List all knowledge sources for the current organization"""
-    query = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
-        User.organization_id == current_user.organization_id
+    query = (
+        db.query(KnowledgeSource)
+        .join(User, KnowledgeSource.user_id == User.id)
+        .filter(User.organization_id == current_user.organization_id)
     )
     if widget_id:
         query = query.filter(KnowledgeSource.widget_id == widget_id)
-    sources = query.all()
-    return sources
+
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                KnowledgeSource.name.ilike(search_term),
+            )
+        )
+
+    total = query.count()
+
+    sources = query.order_by(KnowledgeSource.id.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": sources,
+        "pagination": {"total": total, "skip": skip, "limit": limit},
+    }
 
 
 @router.delete("/sources/{source_id}")
 async def delete_source(
     source_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
 ):
     """Delete knowledge source"""
     try:
         # Verify the source belongs to the current user
-        source = db.query(KnowledgeSource).join(User, KnowledgeSource.user_id == User.id).filter(
-            KnowledgeSource.id == source_id,
-            User.organization_id == current_user.organization_id
-        ).first()
-        
+        source = (
+            db.query(KnowledgeSource)
+            .join(User, KnowledgeSource.user_id == User.id)
+            .filter(
+                KnowledgeSource.id == source_id,
+                User.organization_id == current_user.organization_id,
+            )
+            .first()
+        )
+
         if not source:
-            raise HTTPException(status_code=404, detail="Knowledge source not found or unauthorized")
-        
+            raise HTTPException(
+                status_code=404, detail="Knowledge source not found or unauthorized"
+            )
+
         delete_knowledge_source(source_id, db)
         return {"message": "Knowledge source deleted successfully"}
     except HTTPException:
@@ -547,9 +634,11 @@ async def get_vectorized_data(
             raise HTTPException(status_code=400, detail="widget_id is required")
 
         limit = max(1, min(limit, 1000))
-        
-        logger.info(f"Fetching vectorized data for org {current_user.organization_id}, widget {widget_id}")
-        
+
+        logger.info(
+            f"Fetching vectorized data for org {current_user.organization_id}, widget {widget_id}"
+        )
+
         # Get all vectorized documents for this user from ChromaDB
         try:
             results = chroma_client.get_documents(
@@ -562,9 +651,9 @@ async def get_vectorized_data(
             logger.error(f"ChromaDB query error: {str(chroma_error)}", exc_info=True)
             # Return empty results instead of failing
             results = {"ids": [], "metadatas": [], "documents": []}
-        
-        ids = results.get('ids', []) if results else []
-        metadatas = results.get('metadatas', []) if results else []
+
+        ids = results.get("ids", []) if results else []
+        metadatas = results.get("metadatas", []) if results else []
 
         source_summary_map: Dict[str, Dict] = {}
         for i, _doc_id in enumerate(ids):
@@ -575,42 +664,53 @@ async def get_vectorized_data(
                 entry = {
                     "source_id": source_id,
                     "source_type": metadata.get("source_type") or "UNKNOWN",
-                    "name": metadata.get("filename") or metadata.get("title") or metadata.get("url") or "Unknown",
+                    "name": metadata.get("filename")
+                    or metadata.get("title")
+                    or metadata.get("url")
+                    or "Unknown",
                     "url": metadata.get("url"),
                     "chunks": 0,
                 }
                 source_summary_map[source_id] = entry
             entry["chunks"] += 1
 
-        source_summary = sorted(source_summary_map.values(), key=lambda item: item["chunks"], reverse=True)
+        source_summary = sorted(
+            source_summary_map.values(), key=lambda item: item["chunks"], reverse=True
+        )
 
         # Optional detailed row payload (disabled by default).
         documents_info = []
         if include_documents and ids:
-            documents = results.get('documents', []) if results else []
+            documents = results.get("documents", []) if results else []
             for i, doc_id in enumerate(ids):
                 try:
                     metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
                     preview = ""
                     if documents and i < len(documents):
                         doc_content = documents[i]
-                        preview = doc_content[:200] + "..." if len(doc_content) > 200 else doc_content
-                    
-                    documents_info.append({
-                        "id": doc_id,
-                        "source_id": metadata.get("source_id"),
-                        "source_type": metadata.get("source_type"),
-                        "filename": metadata.get("filename"),
-                        "url": metadata.get("url"),
-                        "title": metadata.get("title"),
-                        "chunk_index": metadata.get("chunk_index"),
-                        "created_at": metadata.get("created_at"),
-                        "preview": preview
-                    })
+                        preview = (
+                            doc_content[:200] + "..."
+                            if len(doc_content) > 200
+                            else doc_content
+                        )
+
+                    documents_info.append(
+                        {
+                            "id": doc_id,
+                            "source_id": metadata.get("source_id"),
+                            "source_type": metadata.get("source_type"),
+                            "filename": metadata.get("filename"),
+                            "url": metadata.get("url"),
+                            "title": metadata.get("title"),
+                            "chunk_index": metadata.get("chunk_index"),
+                            "created_at": metadata.get("created_at"),
+                            "preview": preview,
+                        }
+                    )
                 except Exception as item_error:
                     logger.error(f"Error processing document {i}: {str(item_error)}")
                     continue
-        
+
         return {
             "organization_id": current_user.organization_id,
             "user_id": current_user.id,
@@ -619,7 +719,7 @@ async def get_vectorized_data(
             "total_sources": len(source_summary),
             "include_documents": include_documents,
             "source_summary": source_summary,
-            "documents": documents_info
+            "documents": documents_info,
         }
     except HTTPException:
         raise

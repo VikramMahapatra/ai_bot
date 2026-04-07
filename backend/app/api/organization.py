@@ -1,11 +1,23 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.auth import get_current_user, require_admin, get_password_hash, create_access_token
-from app.models import User, Organization, UserRole, WidgetConfig, HandoffAgentAssignment
+from app.auth import (
+    get_current_user,
+    require_admin,
+    get_password_hash,
+    create_access_token,
+)
+from app.models import (
+    User,
+    Organization,
+    UserRole,
+    WidgetConfig,
+    HandoffAgentAssignment,
+)
 from app.schemas import (
     OrganizationCreate,
     OrganizationResponse,
@@ -25,6 +37,7 @@ from app.schemas.organization import CreditParameters
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
+
 class OrganizationMeetingSettingsResponse(BaseModel):
     default_meet_link: str
 
@@ -33,7 +46,9 @@ class OrganizationMeetingSettingsUpdateRequest(BaseModel):
     default_meet_link: str
 
 
-@router.post("/", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED
+)
 def create_organization(
     org_data: OrganizationCreate,
     db: Session = Depends(get_db),
@@ -43,13 +58,15 @@ def create_organization(
     Returns the organization details.
     """
     # Check if organization already exists
-    existing_org = db.query(Organization).filter(Organization.name == org_data.name).first()
+    existing_org = (
+        db.query(Organization).filter(Organization.name == org_data.name).first()
+    )
     if existing_org:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Organization name already exists",
         )
-    
+
     new_org = Organization(
         name=org_data.name,
         description=org_data.description,
@@ -66,7 +83,11 @@ def get_current_organization(
     db: Session = Depends(get_db),
 ):
     """Get the current user's organization."""
-    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == current_user.organization_id)
+        .first()
+    )
     if not org:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -81,7 +102,11 @@ def get_current_org_meeting_settings(
     db: Session = Depends(get_db),
 ):
     """Get organization-level default Google Meet URL."""
-    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == current_user.organization_id)
+        .first()
+    )
     if not org:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -89,7 +114,8 @@ def get_current_org_meeting_settings(
         )
 
     return OrganizationMeetingSettingsResponse(
-        default_meet_link=(org.default_meet_link or "").strip() or "https://meet.google.com/new"
+        default_meet_link=(org.default_meet_link or "").strip()
+        or "https://meet.google.com/new"
     )
 
 
@@ -100,7 +126,11 @@ def update_current_org_meeting_settings(
     db: Session = Depends(get_db),
 ):
     """Update organization-level default Google Meet URL (admin only)."""
-    org = db.query(Organization).filter(Organization.id == admin_user.organization_id).first()
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == admin_user.organization_id)
+        .first()
+    )
     if not org:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -138,27 +168,31 @@ def get_current_org_widgets(
     Available to all authenticated users (not just admins).
     """
     org_id = current_user.organization_id
-    
+
     if source and source == "voice":
-        calling_agents = db.query(CallingAgent).filter(
-            CallingAgent.organization_id == org_id,
-            CallingAgent.is_deleted == False
-        ).all()
+        calling_agents = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == org_id, CallingAgent.is_deleted == False
+            )
+            .all()
+        )
         return {
             "widgets": [
                 {
                     "widget_id": agent.widget_id,
                     "name": agent.name,
-                    "created_at": agent.created_at.isoformat() if agent.created_at else None,
+                    "created_at": (
+                        agent.created_at.isoformat() if agent.created_at else None
+                    ),
                 }
                 for agent in calling_agents
             ]
         }
-        
 
-    widgets = db.query(WidgetConfig).filter(
-        WidgetConfig.organization_id == org_id
-    ).all()
+    widgets = (
+        db.query(WidgetConfig).filter(WidgetConfig.organization_id == org_id).all()
+    )
 
     return {
         "widgets": [
@@ -170,7 +204,8 @@ def get_current_org_widgets(
             for w in widgets
         ]
     }
-    
+
+
 @router.get("/me/campaigns")
 def get_current_org_campaigns(
     source: Optional[str] = Query(None),
@@ -183,15 +218,20 @@ def get_current_org_campaigns(
     Available to all authenticated users (not just admins).
     """
     org_id = current_user.organization_id
-    
+
     if source and source == "voice":
-        call_campaigns = db.query(CallCampaign).filter(
-            CallCampaign.organization_id == org_id
-        ).join(CallingAgent, CallCampaign.agent_id == CallingAgent.id).all()
-        
+        call_campaigns = (
+            db.query(CallCampaign)
+            .filter(CallCampaign.organization_id == org_id)
+            .join(CallingAgent, CallCampaign.agent_id == CallingAgent.id)
+            .all()
+        )
+
         if widget_id:
-            call_campaigns = [c for c in call_campaigns if c.agent and c.agent.widget_id == widget_id]
-            
+            call_campaigns = [
+                c for c in call_campaigns if c.agent and c.agent.widget_id == widget_id
+            ]
+
         return {
             "campaigns": [
                 {
@@ -202,12 +242,9 @@ def get_current_org_campaigns(
                 for c in call_campaigns
             ]
         }
-        
 
-    campaigns = db.query(Campaign).filter(
-        Campaign.organization_id == org_id
-    ).all()
-    
+    campaigns = db.query(Campaign).filter(Campaign.organization_id == org_id).all()
+
     return {
         "campaigns": [
             {
@@ -239,14 +276,20 @@ def _normalize_assigned_widget_ids(raw_ids: Optional[List[str]]) -> List[str]:
     return normalized
 
 
-def _validate_widget_assignments(db: Session, organization_id: int, widget_ids: List[str]) -> None:
+def _validate_widget_assignments(
+    db: Session, organization_id: int, widget_ids: List[str]
+) -> None:
     if not widget_ids:
         return
 
-    rows = db.query(WidgetConfig.widget_id).filter(
-        WidgetConfig.organization_id == organization_id,
-        WidgetConfig.widget_id.in_(widget_ids),
-    ).all()
+    rows = (
+        db.query(WidgetConfig.widget_id)
+        .filter(
+            WidgetConfig.organization_id == organization_id,
+            WidgetConfig.widget_id.in_(widget_ids),
+        )
+        .all()
+    )
     valid_ids = {row[0] for row in rows}
     missing = [widget_id for widget_id in widget_ids if widget_id not in valid_ids]
     if missing:
@@ -256,7 +299,9 @@ def _validate_widget_assignments(db: Session, organization_id: int, widget_ids: 
         )
 
 
-def _replace_user_widget_assignments(db: Session, user_id: int, widget_ids: List[str]) -> None:
+def _replace_user_widget_assignments(
+    db: Session, user_id: int, widget_ids: List[str]
+) -> None:
     db.query(HandoffAgentAssignment).filter(
         HandoffAgentAssignment.user_id == user_id
     ).delete(synchronize_session=False)
@@ -266,10 +311,15 @@ def _replace_user_widget_assignments(db: Session, user_id: int, widget_ids: List
 
 
 def _get_org_assignment_map(db: Session, organization_id: int) -> Dict[int, List[str]]:
-    rows = db.query(HandoffAgentAssignment.user_id, HandoffAgentAssignment.widget_id).join(
-        User,
-        User.id == HandoffAgentAssignment.user_id,
-    ).filter(User.organization_id == organization_id).all()
+    rows = (
+        db.query(HandoffAgentAssignment.user_id, HandoffAgentAssignment.widget_id)
+        .join(
+            User,
+            User.id == HandoffAgentAssignment.user_id,
+        )
+        .filter(User.organization_id == organization_id)
+        .all()
+    )
 
     assignment_map: Dict[int, List[str]] = {}
     for user_id, widget_id in rows:
@@ -277,7 +327,9 @@ def _get_org_assignment_map(db: Session, organization_id: int) -> Dict[int, List
     return assignment_map
 
 
-def _serialize_user_with_assignments(user: User, assignment_map: Dict[int, List[str]]) -> dict:
+def _serialize_user_with_assignments(
+    user: User, assignment_map: Dict[int, List[str]]
+) -> dict:
     return {
         "id": user.id,
         "username": user.username,
@@ -301,31 +353,39 @@ def create_user(
     Create a new user in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
-    
+
     # Check if username already exists within the organization
-    existing_user = db.query(User).filter(
-        User.organization_id == org_id,
-        User.username == user_data.username
-    ).first()
+    existing_user = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.username == user_data.username)
+        .first()
+    )
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already exists in this organization",
         )
-    
+
     # Check if email already exists in the organization
-    existing_email = db.query(User).filter(
-        User.organization_id == org_id,
-        User.email == user_data.email
-    ).first()
+    existing_email = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.email == user_data.email)
+        .first()
+    )
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already exists in this organization",
         )
 
-    selected_role = user_data.role if hasattr(user_data, "role") and user_data.role else UserRole.USER
-    assigned_widget_ids = _normalize_assigned_widget_ids(getattr(user_data, "assigned_widget_ids", None))
+    selected_role = (
+        user_data.role
+        if hasattr(user_data, "role") and user_data.role
+        else UserRole.USER
+    )
+    assigned_widget_ids = _normalize_assigned_widget_ids(
+        getattr(user_data, "assigned_widget_ids", None)
+    )
 
     # Enforce single admin per organization
     if selected_role == UserRole.ADMIN:
@@ -341,7 +401,7 @@ def create_user(
                 detail="At least one agent assignment is required for User (Human Handoff)",
             )
         _validate_widget_assignments(db, org_id, assigned_widget_ids)
-    
+
     # Create new user
     new_user = User(
         username=user_data.username,
@@ -359,11 +419,16 @@ def create_user(
 
     db.commit()
     db.refresh(new_user)
-    return _serialize_user_with_assignments(new_user, {new_user.id: assigned_widget_ids})
+    return _serialize_user_with_assignments(
+        new_user, {new_user.id: assigned_widget_ids}
+    )
 
 
-@router.get("/users", response_model=List[UserListResponse])
+@router.get("/users")  # , response_model=List[UserListResponse]
 def list_users(
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
     admin_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -371,9 +436,30 @@ def list_users(
     List all users in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
-    users = db.query(User).filter(User.organization_id == org_id).all()
+    query = db.query(User).filter(User.organization_id == org_id)
+
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                User.username.ilike(search_term),
+                User.email.ilike(search_term),
+            )
+        )
+
+    total = query.count()
+
+    users = query.order_by(User.id.desc()).offset(skip).limit(limit).all()
+
     assignment_map = _get_org_assignment_map(db, org_id)
-    return [_serialize_user_with_assignments(user, assignment_map) for user in users]
+
+    return {
+        "users": [
+            _serialize_user_with_assignments(user, assignment_map) for user in users
+        ],
+        "pagination": {"total": total, "skip": skip, "limit": limit},
+    }
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
@@ -386,10 +472,11 @@ def get_user(
     Get a specific user in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -410,29 +497,34 @@ def update_user(
     Update a user in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     # Prevent deactivating the only admin
     if user_data.is_active is False and user.role == UserRole.ADMIN:
-        admin_count = db.query(User).filter(
-            User.organization_id == org_id,
-            User.role == UserRole.ADMIN,
-            User.is_active == True
-        ).count()
+        admin_count = (
+            db.query(User)
+            .filter(
+                User.organization_id == org_id,
+                User.role == UserRole.ADMIN,
+                User.is_active == True,
+            )
+            .count()
+        )
         if admin_count == 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot deactivate the only admin user",
             )
-    
+
     assignment_map = _get_org_assignment_map(db, org_id)
     current_widget_ids = assignment_map.get(user.id, [])
 
@@ -451,7 +543,9 @@ def update_user(
     target_widget_ids = current_widget_ids
     if selected_role == UserRole.USER_HANDOFF:
         if user_data.assigned_widget_ids is not None:
-            target_widget_ids = _normalize_assigned_widget_ids(user_data.assigned_widget_ids)
+            target_widget_ids = _normalize_assigned_widget_ids(
+                user_data.assigned_widget_ids
+            )
         if not target_widget_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -465,7 +559,7 @@ def update_user(
         user.is_active = user_data.is_active
 
     _replace_user_widget_assignments(db, user.id, target_widget_ids)
-    
+
     db.commit()
     db.refresh(user)
     return _serialize_user_with_assignments(user, {user.id: target_widget_ids})
@@ -482,22 +576,24 @@ def delete_user(
     Cannot delete the only admin user.
     """
     org_id = admin_user.organization_id
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     # Prevent deleting the only admin
     if user.role == UserRole.ADMIN:
-        admin_count = db.query(User).filter(
-            User.organization_id == org_id,
-            User.role == UserRole.ADMIN
-        ).count()
+        admin_count = (
+            db.query(User)
+            .filter(User.organization_id == org_id, User.role == UserRole.ADMIN)
+            .count()
+        )
         if admin_count == 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -507,12 +603,13 @@ def delete_user(
     db.query(HandoffAgentAssignment).filter(
         HandoffAgentAssignment.user_id == user.id
     ).delete(synchronize_session=False)
-    
+
     db.delete(user)
     db.commit()
 
 
 # ======================== Organization by ID ========================
+
 
 @router.get("/{org_id}", response_model=OrganizationResponse)
 def get_organization(
@@ -526,7 +623,7 @@ def get_organization(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
-    
+
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(
@@ -538,7 +635,10 @@ def get_organization(
 
 # ======================== Organization-scoped endpoints ========================
 
-@router.post("/{org_id}/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/{org_id}/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 def create_user_in_organization(
     org_id: int,
     user_data: UserCreate,
@@ -555,31 +655,39 @@ def create_user_in_organization(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create users in another organization",
         )
-    
+
     # Check if username already exists within the organization
-    existing_user = db.query(User).filter(
-        User.organization_id == org_id,
-        User.username == user_data.username
-    ).first()
+    existing_user = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.username == user_data.username)
+        .first()
+    )
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already exists in this organization",
         )
-    
+
     # Check if email already exists in the organization (to prevent duplicates within org)
-    existing_email = db.query(User).filter(
-        User.organization_id == org_id,
-        User.email == user_data.email
-    ).first()
+    existing_email = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.email == user_data.email)
+        .first()
+    )
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already exists in this organization",
         )
-    
-    selected_role = user_data.role if hasattr(user_data, "role") and user_data.role else UserRole.USER
-    assigned_widget_ids = _normalize_assigned_widget_ids(getattr(user_data, "assigned_widget_ids", None))
+
+    selected_role = (
+        user_data.role
+        if hasattr(user_data, "role") and user_data.role
+        else UserRole.USER
+    )
+    assigned_widget_ids = _normalize_assigned_widget_ids(
+        getattr(user_data, "assigned_widget_ids", None)
+    )
     if selected_role == UserRole.USER_HANDOFF:
         if not assigned_widget_ids:
             raise HTTPException(
@@ -605,7 +713,9 @@ def create_user_in_organization(
 
     db.commit()
     db.refresh(new_user)
-    return _serialize_user_with_assignments(new_user, {new_user.id: assigned_widget_ids})
+    return _serialize_user_with_assignments(
+        new_user, {new_user.id: assigned_widget_ids}
+    )
 
 
 @router.get("/{org_id}/users", response_model=List[UserListResponse])
@@ -623,7 +733,7 @@ def list_organization_users(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot access users in another organization",
         )
-    
+
     users = db.query(User).filter(User.organization_id == org_id).all()
     assignment_map = _get_org_assignment_map(db, org_id)
     return [_serialize_user_with_assignments(user, assignment_map) for user in users]
@@ -645,11 +755,12 @@ def get_organization_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot access users in another organization",
         )
-    
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -676,30 +787,35 @@ def update_organization_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot update users in another organization",
         )
-    
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     # Prevent deactivating the only admin
     if user_data.is_active is False and user.role == UserRole.ADMIN:
-        admin_count = db.query(User).filter(
-            User.organization_id == org_id,
-            User.role == UserRole.ADMIN,
-            User.is_active == True
-        ).count()
+        admin_count = (
+            db.query(User)
+            .filter(
+                User.organization_id == org_id,
+                User.role == UserRole.ADMIN,
+                User.is_active == True,
+            )
+            .count()
+        )
         if admin_count == 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot deactivate the only admin user",
             )
-    
+
     assignment_map = _get_org_assignment_map(db, org_id)
     current_widget_ids = assignment_map.get(user.id, [])
 
@@ -713,7 +829,9 @@ def update_organization_user(
     target_widget_ids = current_widget_ids
     if selected_role == UserRole.USER_HANDOFF:
         if user_data.assigned_widget_ids is not None:
-            target_widget_ids = _normalize_assigned_widget_ids(user_data.assigned_widget_ids)
+            target_widget_ids = _normalize_assigned_widget_ids(
+                user_data.assigned_widget_ids
+            )
         if not target_widget_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -727,7 +845,7 @@ def update_organization_user(
         user.is_active = user_data.is_active
 
     _replace_user_widget_assignments(db, user.id, target_widget_ids)
-    
+
     db.commit()
     db.refresh(user)
     return _serialize_user_with_assignments(user, {user.id: target_widget_ids})
@@ -750,23 +868,25 @@ def delete_organization_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot delete users in another organization",
         )
-    
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == org_id
-    ).first()
+
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     # Prevent deleting the only admin
     if user.role == UserRole.ADMIN:
-        admin_count = db.query(User).filter(
-            User.organization_id == org_id,
-            User.role == UserRole.ADMIN
-        ).count()
+        admin_count = (
+            db.query(User)
+            .filter(User.organization_id == org_id, User.role == UserRole.ADMIN)
+            .count()
+        )
         if admin_count == 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -776,7 +896,7 @@ def delete_organization_user(
     db.query(HandoffAgentAssignment).filter(
         HandoffAgentAssignment.user_id == user.id
     ).delete(synchronize_session=False)
-    
+
     db.delete(user)
     db.commit()
 
@@ -791,11 +911,11 @@ def get_organization_widgets(
     Available to all authenticated users (not just admins).
     """
     org_id = current_user.organization_id
-    
-    widgets = db.query(WidgetConfig).filter(
-        WidgetConfig.organization_id == org_id
-    ).all()
-    
+
+    widgets = (
+        db.query(WidgetConfig).filter(WidgetConfig.organization_id == org_id).all()
+    )
+
     return {
         "widgets": [
             {
@@ -806,60 +926,66 @@ def get_organization_widgets(
             for w in widgets
         ]
     }
- 
+
 
 @router.get("/credits/summary")
 def get_credit_summary(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get credit summary for the organization.
     """
-    return organization_credit_service.get_credit_summary(db, current_user.organization_id)
+    return organization_credit_service.get_credit_summary(
+        db, current_user.organization_id
+    )
 
 
 @router.get("/credits/validate")
 def validate_credits(
     feature_code: str = Query(..., description="Feature code to validate credits for"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    return organization_credit_service.validate_credits(db, current_user.organization_id)
+    return organization_credit_service.validate_credits(
+        db, current_user.organization_id
+    )
 
 
 @router.post("/credits/deduct")
 def deduct_credits(
     params: CreditParameters,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    return organization_credit_service.deduct_credits(db, current_user.organization_id, params.feature_code)
+    return organization_credit_service.deduct_credits(
+        db, current_user.organization_id, params.feature_code
+    )
 
 
 @router.post("/credits/reserve")
 def reserve_credits(
     params: CreditParameters,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     return organization_credit_service.reserve_credits(
-        db, 
-        current_user.organization_id, 
+        db,
+        current_user.organization_id,
         params.feature_code,
         params.quantity,
         params.reference_type,
-        params.reference_id
+        params.reference_id,
     )
+
 
 @router.post("/credits/consume")
 def consume_credits(
     params: CreditParameters,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     return organization_credit_service.consume_reserved_credits(
-        db, 
+        db,
         params.reference_type,
         params.reference_id,
         params.quantity
