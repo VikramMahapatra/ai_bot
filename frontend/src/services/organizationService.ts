@@ -52,6 +52,8 @@ export interface Organization {
   id: number;
   name: string;
   description?: string;
+  joining_date?: string | null;
+  effective_joining_date?: string | null;
   default_meet_link?: string;
   created_at: string;
   updated_at: string;

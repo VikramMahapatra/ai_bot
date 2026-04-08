@@ -8,7 +8,6 @@ class OrganizationSubscription(Base):
 
     id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False, index=True)
     status = Column(String, default="active")  # active|trial|expired
     billing_cycle = Column(String, default="monthly")  # monthly|yearly
     start_date = Column(DateTime(timezone=True), nullable=False)

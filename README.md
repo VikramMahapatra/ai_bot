@@ -49,6 +49,7 @@ cd backend
 uvicorn app.main:app --reload --port 8000
 ```
 Backend runs on: **http://localhost:8000**
+pip install psycopg2-binary==2.9.9
 
 #### Start Frontend (React)
 ```bash

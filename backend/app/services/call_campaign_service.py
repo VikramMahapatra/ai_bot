@@ -18,7 +18,6 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import process_call, save_transcripts
 from app.models.user import Organization
-from app.models.organization_limits import OrganizationLimits
 from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 from app.models.products import Product
 
@@ -294,42 +293,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     org = db.query(Organization).filter(
         Organization.id == organization_id
     ).first()
-    
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == organization_id
-    ).first()
 
-    # Count existing agents
-    existing_campaigns_count = db.query(CallCampaign).filter(
-        CallCampaign.organization_id == organization_id,
-        CallCampaign.status.in_(["completed", "running", "scheduled"]) 
-    ).count()
-
-    # Check max_agents limit
-    if limits and limits.max_agents is not None and limits.max_agents > 0:
-        if existing_campaigns_count >= limits.max_campaigns:
-            raise HTTPException(
-                status_code=400,
-                detail = f"Cannot create campaign. Maximum allowed agents: {limits.max_campaigns}"
-            )
-            
-    total_calls_used = db.query(CallLog).filter(
-        CallLog.organization_id == organization_id,
-        CallLog.status.in_(["queued", "ended", "completed"])
-    ).count()
-    
-    contacts_count = len(data.contacts)
-    retries = data.max_retry_attempts or 0
-
-    calls_needed = contacts_count * (1 + retries)
-            
-    if limits and limits.max_calls is not None and limits.max_calls > 0:
-        if total_calls_used + calls_needed > limits.max_calls:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Call limit exceeded. Allowed: {limits.max_calls}, Used: {total_calls_used}, Required: {calls_needed}"
-            )
-            
     if data.start_datetime or data.active_days:
         status = "scheduled"
         send_option = "schedule"

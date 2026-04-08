@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import date, datetime
 
 
 class SuperAdminLoginRequest(BaseModel):
@@ -22,13 +22,6 @@ class SuperAdminBootstrapRequest(BaseModel):
 
 
 class OrganizationLimitsBase(BaseModel):
-    monthly_conversation_limit: Optional[int] = None
-    monthly_crawl_pages_limit: Optional[int] = None
-    max_crawl_depth: Optional[int] = None
-    monthly_document_limit: Optional[int] = None
-    max_document_size_mb: Optional[int] = None
-    monthly_token_limit: Optional[int] = None
-    max_query_words: Optional[int] = None
     lead_generation_enabled: Optional[bool] = None
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
@@ -45,19 +38,9 @@ class OrganizationLimitsBase(BaseModel):
     module_appointments_enabled: Optional[bool] = None
     module_products_enabled: Optional[bool] = None
     module_users_enabled: Optional[bool] = None
-    max_agents: Optional[int] = None
-    max_campaigns: Optional[int] = None
-    max_calls: Optional[int] = None
 
 
 class OrganizationLimitsUpdate(BaseModel):
-    monthly_conversation_limit: Optional[int] = None
-    monthly_crawl_pages_limit: Optional[int] = None
-    max_crawl_depth: Optional[int] = None
-    monthly_document_limit: Optional[int] = None
-    max_document_size_mb: Optional[int] = None
-    monthly_token_limit: Optional[int] = None
-    max_query_words: Optional[int] = None
     lead_generation_enabled: Optional[bool] = None
     voice_chat_enabled: Optional[bool] = None
     multilingual_text_enabled: Optional[bool] = None
@@ -74,15 +57,11 @@ class OrganizationLimitsUpdate(BaseModel):
     module_appointments_enabled: Optional[bool] = None
     module_products_enabled: Optional[bool] = None
     module_users_enabled: Optional[bool] = None
-    max_agents: Optional[int] = None
-    max_campaigns: Optional[int] = None
-    max_calls: Optional[int] = None
 
 
 class OrganizationLimitsResponse(OrganizationLimitsBase):
     id: int
     organization_id: int
-    plan_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -93,18 +72,19 @@ class OrganizationLimitsResponse(OrganizationLimitsBase):
 class SuperAdminCreateOrganizationRequest(BaseModel):
     organization_name: str
     description: Optional[str] = None
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
     admin_username: str
     admin_email: EmailStr
     admin_password: str
-    plan_id: int
-    billing_cycle: str = "monthly"
-    trial_days: Optional[int] = None
     limits: Optional[OrganizationLimitsUpdate] = None
 
 
 class SuperAdminUpdateOrganizationRequest(BaseModel):
     organization_name: Optional[str] = None
     description: Optional[str] = None
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
     admin_username: Optional[str] = None
     admin_email: Optional[EmailStr] = None
     admin_password: Optional[str] = None
@@ -114,11 +94,11 @@ class SuperAdminOrganizationResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
     admin_username: Optional[str] = None
     admin_email: Optional[str] = None
     limits: Optional[OrganizationLimitsResponse] = None
-    plan: Optional["PlanResponse"] = None
-    subscription: Optional["SubscriptionResponse"] = None
 
     class Config:
         from_attributes = True
@@ -144,99 +124,6 @@ class SuperAdminOverviewResponse(BaseModel):
     total_documents: int
     total_crawl_pages: int
 
-
-class PlanCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price_inr: int
-    billing_cycle: str = "monthly"
-    is_active: bool = True
-    monthly_conversation_limit: int
-    monthly_crawl_pages_limit: int
-    max_crawl_depth: int
-    monthly_document_limit: int
-    max_document_size_mb: int
-    monthly_token_limit: int
-    max_query_words: int
-    lead_generation_enabled: bool
-    voice_chat_enabled: bool
-    multilingual_text_enabled: bool
-    whatsapp_enabled: bool = False
-    human_handoff_enabled: bool = False
-    email_campaign_enabled: bool = True
-    sms_campaign_enabled: bool = True
-    module_knowledge_enabled: bool = True
-    module_leads_enabled: bool = True
-    module_analytics_enabled: bool = True
-    module_advanced_analytics_enabled: bool = True
-    module_reports_enabled: bool = True
-    module_campaigns_enabled: bool = True
-    module_appointments_enabled: bool = True
-    module_products_enabled: bool = True
-    module_users_enabled: bool = True
-
-
-class PlanUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    price_inr: Optional[int] = None
-    billing_cycle: Optional[str] = None
-    is_active: Optional[bool] = None
-    monthly_conversation_limit: Optional[int] = None
-    monthly_crawl_pages_limit: Optional[int] = None
-    max_crawl_depth: Optional[int] = None
-    monthly_document_limit: Optional[int] = None
-    max_document_size_mb: Optional[int] = None
-    monthly_token_limit: Optional[int] = None
-    max_query_words: Optional[int] = None
-    lead_generation_enabled: Optional[bool] = None
-    voice_chat_enabled: Optional[bool] = None
-    multilingual_text_enabled: Optional[bool] = None
-    whatsapp_enabled: Optional[bool] = None
-    human_handoff_enabled: Optional[bool] = None
-    email_campaign_enabled: Optional[bool] = None
-    sms_campaign_enabled: Optional[bool] = None
-    module_knowledge_enabled: Optional[bool] = None
-    module_leads_enabled: Optional[bool] = None
-    module_analytics_enabled: Optional[bool] = None
-    module_advanced_analytics_enabled: Optional[bool] = None
-    module_reports_enabled: Optional[bool] = None
-    module_campaigns_enabled: Optional[bool] = None
-    module_appointments_enabled: Optional[bool] = None
-    module_products_enabled: Optional[bool] = None
-    module_users_enabled: Optional[bool] = None
-
-
-class PlanResponse(PlanCreate):
-    id: int
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class SubscriptionCreate(BaseModel):
-    plan_id: int
-    billing_cycle: str = "monthly"
-    trial_days: Optional[int] = None
-
-
-class SubscriptionResponse(BaseModel):
-    id: int
-    organization_id: int
-    plan_id: int
-    status: str
-    billing_cycle: str
-    start_date: datetime
-    end_date: datetime
-    trial_end: Optional[datetime] = None
-    is_active: bool
-    days_left: int
-
-    class Config:
-        from_attributes = True
-        
 
 class CallingNumberBase(BaseModel):
     calling_number: str
@@ -586,4 +473,3 @@ class BillingInvoiceMarkPaidResponse(BaseModel):
     credit_applied: Optional[float] = None
 
 
-SuperAdminOrganizationResponse.model_rebuild()

@@ -32,7 +32,6 @@ from app.services import (
 )
 from app.services.limits_service import (
     get_effective_limits,
-    get_or_create_subscription_usage,
     increment_usage,
 )
 from app.services.rag import chroma_client
@@ -146,28 +145,6 @@ def _validate_crawl_limits(
     limits = get_effective_limits(db, current_user.organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
-
-    usage = get_or_create_subscription_usage(db, current_user.organization_id)
-    if not usage:
-        raise HTTPException(status_code=403, detail="Subscription inactive or expired")
-
-    if request.max_depth > limits["max_crawl_depth"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Max crawl depth exceeded. Limit is {limits['max_crawl_depth']}",
-        )
-
-    selected_urls_count = len(request.selected_urls or [])
-    effective_pages = (
-        selected_urls_count if selected_urls_count > 0 else request.max_pages
-    )
-
-    remaining_pages = limits["monthly_crawl_pages_limit"] - usage.crawl_pages_count
-    if effective_pages > remaining_pages:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Monthly crawl page limit exceeded. Remaining pages: {remaining_pages}",
-        )
 
 
 def _run_crawl_job(
@@ -405,12 +382,6 @@ async def preview_crawl_links(
                 status_code=403, detail="Subscription inactive or expired"
             )
 
-        if request.max_depth > limits["max_crawl_depth"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Max crawl depth exceeded. Limit is {limits['max_crawl_depth']}",
-            )
-
         discovered_urls, pages_scanned = discover_web_links(
             request.url,
             request.max_pages,
@@ -444,12 +415,6 @@ async def upload_document(
                 status_code=403, detail="Subscription inactive or expired"
             )
 
-        usage = get_or_create_subscription_usage(db, current_user.organization_id)
-        if not usage:
-            raise HTTPException(
-                status_code=403, detail="Subscription inactive or expired"
-            )
-
         # Determine file type
         filename = file.filename.lower()
         if filename.endswith(".pdf"):
@@ -463,19 +428,6 @@ async def upload_document(
 
         # Read file content
         content = await file.read()
-
-        max_bytes = limits["max_document_size_mb"] * 1024 * 1024
-        if len(content) > max_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Document size exceeds {limits['max_document_size_mb']} MB limit",
-            )
-
-        if usage.documents_count >= limits["monthly_document_limit"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Monthly document limit exceeded",
-            )
 
         # Ingest document
         source = ingest_document(
@@ -510,26 +462,6 @@ async def ingest_text(
         if not limits.get("subscription_active"):
             raise HTTPException(
                 status_code=403, detail="Subscription inactive or expired"
-            )
-
-        usage = get_or_create_subscription_usage(db, current_user.organization_id)
-        if not usage:
-            raise HTTPException(
-                status_code=403, detail="Subscription inactive or expired"
-            )
-
-        max_bytes = limits["max_document_size_mb"] * 1024 * 1024
-        content_bytes = len((request.content or "").encode("utf-8"))
-        if content_bytes > max_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Content size exceeds {limits['max_document_size_mb']} MB limit",
-            )
-
-        if usage.documents_count >= limits["monthly_document_limit"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Monthly document limit exceeded",
             )
 
         source = ingest_text_content(

@@ -19,7 +19,6 @@ from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
-from app.models.organization_limits import OrganizationLimits
 from app.services.call_log_service import process_call, sync_call_logs
 
 UPLOAD_DIR = "uploads/agent_training_docs"
@@ -38,24 +37,6 @@ def create_agent(
         raise ValueError("Organization not found")
     
     unique_agent_code = f"ORG{organization_id}AG{uuid4().hex[:5]}".upper()
-    
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == organization_id
-    ).first()
-
-    # Count existing agents
-    existing_agents_count = db.query(CallingAgent).filter(
-        CallingAgent.organization_id == organization_id,
-        CallingAgent.is_deleted == False
-    ).count()
-
-    # Check max_agents limit
-    if limits and limits.max_agents is not None and limits.max_agents > 0:
-        if existing_agents_count >= limits.max_agents:
-            raise HTTPException(
-                status_code=400,
-                detail = f"Cannot create agent. Maximum allowed agents: {limits.max_agents}"
-            )
     
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -182,7 +163,6 @@ def create_agent(
         "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
         "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
         "analysis_plan": None,
-        "plan_id": None,
         "transaction_id": None,
         "prompt_timezone": None,
         "tool_ids": [],
@@ -558,27 +538,6 @@ def test_call(
     if not agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
     
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == agent.organization_id
-    ).first()
-
-    # --- Count active test calls for this agent ---
-    active_calls_count = db.query(CallLog).filter(
-        CallLog.organization_id == agent.organization_id,
-        CallLog.status.in_(["queued", "ended", "completed"])
-    ).count()
-    
-    
-    print("Active Count :", active_calls_count)
-
-    # --- Restrict test calls based on max_calls ---
-    if limits and limits.max_calls and limits.max_calls > 0:
-        if active_calls_count >= limits.max_calls:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot initiate test call. Maximum allowed calls: {limits.max_calls}"
-            )
-    
     # Prepare API request
     echoleads = EcholeadsClient()
     
@@ -688,7 +647,6 @@ def publish_agent(
         "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
         "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
         "analysis_plan": None,
-        "plan_id": 1,
         "transaction_id": f"{agent.external_agent_a_id}",
         "prompt_timezone": None,
         "tool_ids": [],

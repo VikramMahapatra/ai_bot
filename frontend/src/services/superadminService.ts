@@ -4,8 +4,6 @@ import {
   SuperAdminLoginResponse,
   SuperAdminOrganization,
   OrganizationLimits,
-  Plan,
-  Subscription,
   CallingNumber,
   OrganizationReport,
   OrganizationReportResponse,
@@ -56,12 +54,11 @@ export const superadminService = {
   async createOrganization(payload: {
     organization_name: string;
     description?: string;
+    joining_date?: string;
+    effective_joining_date?: string;
     admin_username: string;
     admin_email: string;
     admin_password: string;
-    plan_id: number;
-    billing_cycle: 'monthly' | 'yearly';
-    trial_days?: number;
     limits?: Partial<OrganizationLimits>;
   }) {
     const response = await api.post<SuperAdminOrganization>('/api/superadmin/organizations', payload);
@@ -73,6 +70,8 @@ export const superadminService = {
     payload: {
       organization_name?: string;
       description?: string;
+      joining_date?: string;
+      effective_joining_date?: string;
       admin_username?: string;
       admin_email?: string;
       admin_password?: string;
@@ -89,31 +88,6 @@ export const superadminService = {
 
   async updateLimits(orgId: number, limits: Partial<OrganizationLimits>) {
     const response = await api.put<OrganizationLimits>(`/api/superadmin/organizations/${orgId}/limits`, limits);
-    return response.data;
-  },
-
-  async assignSubscription(orgId: number, payload: { plan_id: number; billing_cycle: 'monthly' | 'yearly'; trial_days?: number }) {
-    const response = await api.post<Subscription>(`/api/superadmin/organizations/${orgId}/subscription`, payload);
-    return response.data;
-  },
-
-  async listPlans(): Promise<Plan[]> {
-    const response = await api.get<Plan[]>('/api/superadmin/plans');
-    return response.data;
-  },
-
-  async createPlan(payload: Omit<Plan, 'id'>) {
-    const response = await api.post<Plan>('/api/superadmin/plans', payload);
-    return response.data;
-  },
-
-  async updatePlan(planId: number, payload: Partial<Plan>) {
-    const response = await api.put<Plan>(`/api/superadmin/plans/${planId}`, payload);
-    return response.data;
-  },
-
-  async deletePlan(planId: number) {
-    const response = await api.delete<{ success: boolean; deleted_plan_id: number }>(`/api/superadmin/plans/${planId}`);
     return response.data;
   },
 

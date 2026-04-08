@@ -26,10 +26,13 @@ import {
   TableRow,
   TableCell,
   TableBody,
-  Stack,
-  Divider,
+  TableContainer,
+  TablePagination,
   ToggleButton,
   ToggleButtonGroup,
+  InputAdornment,
+  Stack,
+  Divider,
   Alert,
   CircularProgress,
 } from '@mui/material';
@@ -37,25 +40,17 @@ import { alpha, useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
+import SearchIcon from '@mui/icons-material/Search';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
 import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import { superadminService } from '../services/superadminService';
-import { OrganizationLimits, SuperAdminOrganization, Plan, CallingNumber } from '../types';
+import { OrganizationLimits, SuperAdminOrganization, CallingNumber } from '../types';
 import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
 import DeleteIcon from "@mui/icons-material/Delete";
-
-const limitNumberFields: Array<[keyof OrganizationLimits, string]> = [
-  ['monthly_conversation_limit', 'Monthly Conversations'],
-  ['monthly_crawl_pages_limit', 'Monthly Crawl Pages'],
-  ['max_crawl_depth', 'Max Crawl Depth'],
-  ['monthly_document_limit', 'Monthly Documents'],
-  ['max_document_size_mb', 'Max Document Size (MB)'],
-  ['monthly_token_limit', 'Monthly Token Limit'],
-  ['max_query_words', 'Max Query Words'],
-  ['max_agents', 'Max Agents'],
-  ['max_campaigns', 'Max Campaigns'],
-  ['max_calls', 'Max Calls'],
-];
 
 const limitToggleFields: Array<[keyof OrganizationLimits, string]> = [
   ['lead_generation_enabled', 'Lead Generation Enabled'],
@@ -76,27 +71,9 @@ const limitToggleFields: Array<[keyof OrganizationLimits, string]> = [
   ['human_handoff_enabled', 'Human Handoff Enabled'],
 ];
 
-const planReadableFieldLabel: Record<string, string> = {
-  monthly_conversation_limit: 'Monthly Conversations',
-  monthly_crawl_pages_limit: 'Monthly Crawl Pages',
-  max_crawl_depth: 'Max Crawl Depth',
-  monthly_document_limit: 'Monthly Documents',
-  max_document_size_mb: 'Max Document Size (MB)',
-  monthly_token_limit: 'Monthly Token Limit',
-  max_query_words: 'Max Query Words',
-  max_agents: 'Max Agents',
-  max_campaigns: 'Max Campaigns',
-  max_calls: 'Max Calls',
-};
+const organizationLimitKeys = limitToggleFields.map(([key]) => key) as Array<keyof OrganizationLimits>;
 
 const defaultLimits: OrganizationLimits = {
-  monthly_conversation_limit: 1000,
-  monthly_crawl_pages_limit: 1000,
-  max_crawl_depth: 3,
-  monthly_document_limit: 100,
-  max_document_size_mb: 20,
-  monthly_token_limit: 200000,
-  max_query_words: 200,
   lead_generation_enabled: true,
   voice_chat_enabled: false,
   multilingual_text_enabled: false,
@@ -113,36 +90,29 @@ const defaultLimits: OrganizationLimits = {
   module_products_enabled: true,
   module_users_enabled: true,
   human_handoff_enabled: false,
-  max_agents: 0,
-  max_campaigns: 0,
-  max_calls: 0,
 };
 
 const SuperAdminOrganizationsPage: React.FC = () => {
   const theme = useTheme();
   const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
   const [form, setForm] = useState({
     organization_name: '',
     description: '',
+    joining_date: '',
+    effective_joining_date: '',
     admin_username: '',
     admin_email: '',
     admin_password: '',
-    plan_id: 0,
-    billing_cycle: 'monthly' as 'monthly' | 'yearly',
-    trial_days: 7,
   });
   const [createOpen, setCreateOpen] = useState(false);
-  const [limits, setLimits] = useState<OrganizationLimits>(defaultLimits);
-  const [createOverrideLimits, setCreateOverrideLimits] = useState<Partial<OrganizationLimits>>({});
+  const [createOverrideLimits, setCreateOverrideLimits] = useState<Partial<OrganizationLimits>>({ ...defaultLimits });
   const [editingOrg, setEditingOrg] = useState<SuperAdminOrganization | null>(null);
-  const [editPlanId, setEditPlanId] = useState<number>(0);
-  const [editBillingCycle, setEditBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [editTrialDays, setEditTrialDays] = useState<number>(0);
   const [editAdminUsername, setEditAdminUsername] = useState('');
   const [editAdminEmail, setEditAdminEmail] = useState('');
   const [editAdminPassword, setEditAdminPassword] = useState('');
-  const [editOverrideLimits, setEditOverrideLimits] = useState<Partial<OrganizationLimits>>({});
+  const [editJoiningDate, setEditJoiningDate] = useState('');
+  const [editEffectiveJoiningDate, setEditEffectiveJoiningDate] = useState('');
+  const [editOverrideLimits, setEditOverrideLimits] = useState<Partial<OrganizationLimits>>({ ...defaultLimits });
   const [viewOpen, setViewOpen] = useState(false);
   const [viewOrg, setViewOrg] = useState<SuperAdminOrganization | null>(null);
   const [open, setOpen] = useState(false);
@@ -161,6 +131,21 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [callingNumberToDelete, setCallingNumberToDelete] = useState<{ id: number; number: string } | null>(null);
   const [callingNumberDeleteSubmitting, setCallingNumberDeleteSubmitting] = useState(false);
   const [orgToDelete, setOrgToDelete] = useState<SuperAdminOrganization | null>(null);
+  const [orgSearch, setOrgSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(8);
+  const [createResultDialog, setCreateResultDialog] = useState<{
+    open: boolean;
+    success: boolean;
+    title: string;
+    message: string;
+  }>({
+    open: false,
+    success: true,
+    title: '',
+    message: '',
+  });
 
   const [callingform, setCallingForm] = useState<Omit<CallingNumber, "id">>({
     calling_number: "",
@@ -173,51 +158,54 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     calling_number: ""
   })
 
-  const selectedPlan = useMemo(
-    () => plans.find((item) => item.id === form.plan_id) || null,
-    [plans, form.plan_id]
-  );
-
-  const getPlanDefaultValue = (key: keyof OrganizationLimits): number | boolean | null => {
-    if (!selectedPlan) return null;
-    if (key in selectedPlan) {
-      return (selectedPlan as unknown as Record<string, number | boolean | null>)[key as string] ?? null;
-    }
-    return null;
-  };
-
-  const isOverridden = (key: keyof OrganizationLimits) => Object.prototype.hasOwnProperty.call(createOverrideLimits, key);
-
-  const setCreateNumericOverride = (key: keyof OrganizationLimits, value: number) => {
-    setCreateOverrideLimits((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const toggleCreateOverride = (key: keyof OrganizationLimits, enabled: boolean) => {
-    if (enabled) {
-      const planValue = getPlanDefaultValue(key);
-      const fallback = (defaultLimits as unknown as Record<string, number | boolean>)[key as string];
-      const initialValue = typeof planValue !== 'undefined' && planValue !== null ? planValue : fallback;
-      setCreateOverrideLimits((prev) => ({ ...prev, [key]: initialValue }));
-      return;
-    }
-
-    setCreateOverrideLimits((prev) => {
-      const next = { ...prev };
-      delete (next as Record<string, unknown>)[key as string];
-      return next;
-    });
-  };
-
   const orgStats = useMemo(() => {
     const total = organizations.length;
-    const withSubscription = organizations.filter((org) => org.subscription?.status === 'active').length;
-    const expiringSoon = organizations.filter((org) => {
-      const days = Number(org.subscription?.days_left ?? 0);
-      return org.subscription?.status === 'active' && days >= 0 && days <= 7;
-    }).length;
-    const withoutPlan = organizations.filter((org) => !org.plan).length;
-    return { total, withSubscription, expiringSoon, withoutPlan };
+    const leadGenerationEnabled = organizations.filter((org) => Boolean(org.limits?.lead_generation_enabled)).length;
+    const whatsappEnabled = organizations.filter((org) => Boolean(org.limits?.whatsapp_enabled)).length;
+    const humanHandoffEnabled = organizations.filter((org) => Boolean(org.limits?.human_handoff_enabled)).length;
+    return { total, leadGenerationEnabled, whatsappEnabled, humanHandoffEnabled };
   }, [organizations]);
+
+  const filteredOrganizations = useMemo(() => {
+    const term = orgSearch.trim().toLowerCase();
+    const sorted = [...organizations].sort((a, b) => a.name.localeCompare(b.name));
+    if (!term) return sorted;
+    return sorted.filter((org) =>
+      [
+        org.name,
+        org.description || '',
+        org.admin_username || '',
+        org.admin_email || '',
+        org.joining_date || '',
+        org.effective_joining_date || '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    );
+  }, [organizations, orgSearch]);
+
+  const pagedOrganizations = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredOrganizations.slice(start, start + rowsPerPage);
+  }, [filteredOrganizations, page, rowsPerPage]);
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString();
+  };
+
+  const normalizeErrorDetail = (detail: unknown): string => {
+    if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object') return JSON.stringify(detail);
+    return 'Failed to create organization';
+  };
+
+  useEffect(() => {
+    setPage(0);
+  }, [orgSearch, rowsPerPage, viewMode]);
 
   useEffect(() => {
     if (openCallingNumberDialog) {
@@ -351,72 +339,75 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setOrganizations(data);
   };
 
-  const loadPlans = async () => {
-    const data = await superadminService.listPlans();
-    setPlans(data);
-    if (data.length > 0 && form.plan_id === 0) {
-      setForm((prev) => ({ ...prev, plan_id: data[0].id }));
-    }
-  };
-
   useEffect(() => {
     loadOrganizations();
-    loadPlans();
   }, []);
 
   const handleCreate = async () => {
     try {
       setIsCreatingOrg(true);
       setActionError('');
-      setActionSuccess('');
 
-      if (!form.plan_id) {
-        setActionError('Please create/select a plan before creating organization.');
-        return;
-      }
-
-      const payloadLimits = Object.entries(createOverrideLimits).reduce<Partial<OrganizationLimits>>((acc, [key, value]) => {
+      const payloadLimits = organizationLimitKeys.reduce<Partial<OrganizationLimits>>((acc, key) => {
+        const value = createOverrideLimits[key];
         if (value !== undefined) {
-          (acc as Record<string, unknown>)[key] = value;
+          (acc as Record<string, unknown>)[key as string] = value;
         }
         return acc;
       }, {});
 
       await superadminService.createOrganization({
-        ...form,
+        organization_name: form.organization_name,
+        description: form.description || undefined,
+        joining_date: form.joining_date || undefined,
+        effective_joining_date: form.effective_joining_date || undefined,
+        admin_username: form.admin_username,
+        admin_email: form.admin_email,
+        admin_password: form.admin_password,
         limits: payloadLimits,
       });
-      setForm({
-        organization_name: '',
-        description: '',
-        admin_username: '',
-        admin_email: '',
-        admin_password: '',
-        plan_id: plans[0]?.id || 0,
-        billing_cycle: 'monthly',
-        trial_days: 7,
+      setCreateResultDialog({
+        open: true,
+        success: true,
+        title: 'Organization Created',
+        message: 'Organization and admin user were created successfully.',
       });
-      setLimits(defaultLimits);
-      setCreateOverrideLimits({});
-      setCreateOpen(false);
-      setActionSuccess('Organization created successfully.');
-      loadOrganizations();
     } catch (error: any) {
-      setActionError(error?.response?.data?.detail || 'Failed to create organization');
+      setCreateResultDialog({
+        open: true,
+        success: false,
+        title: 'Creation Failed',
+        message: normalizeErrorDetail(error?.response?.data?.detail),
+      });
     } finally {
       setIsCreatingOrg(false);
     }
   };
 
+  const handleCreateResultOk = async () => {
+    setCreateResultDialog((prev) => ({ ...prev, open: false }));
+    setCreateOpen(false);
+    setForm({
+      organization_name: '',
+      description: '',
+      joining_date: '',
+      effective_joining_date: '',
+      admin_username: '',
+      admin_email: '',
+      admin_password: '',
+    });
+    setCreateOverrideLimits({ ...defaultLimits });
+    await loadOrganizations();
+  };
+
   const handleEditOpen = (org: SuperAdminOrganization) => {
     setEditingOrg(org);
-    setEditPlanId(org.plan?.id || plans[0]?.id || 0);
-    setEditBillingCycle(org.subscription?.billing_cycle || 'monthly');
-    setEditTrialDays(0);
     setEditAdminUsername(org.admin_username || '');
     setEditAdminEmail(org.admin_email || '');
     setEditAdminPassword('');
-    setEditOverrideLimits({ ...(org.limits || {}) });
+    setEditJoiningDate(org.joining_date || '');
+    setEditEffectiveJoiningDate(org.effective_joining_date || '');
+    setEditOverrideLimits({ ...defaultLimits, ...(org.limits || {}) });
     setOpen(true);
   };
 
@@ -450,26 +441,22 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       }
 
       await superadminService.updateOrganization(editingOrg.id, {
+        joining_date: editJoiningDate || undefined,
+        effective_joining_date: editEffectiveJoiningDate || undefined,
         admin_username: trimmedAdminUsername,
         admin_email: trimmedAdminEmail,
         admin_password: trimmedAdminPassword || undefined,
       });
 
       // Only send true overrides
-      const payloadLimits = Object.entries(editOverrideLimits).reduce<Partial<OrganizationLimits>>((acc, [key, value]) => {
+      const payloadLimits = organizationLimitKeys.reduce<Partial<OrganizationLimits>>((acc, key) => {
+        const value = editOverrideLimits[key];
         if (value !== undefined) {
-          (acc as Record<string, unknown>)[key] = value;
+          (acc as Record<string, unknown>)[key as string] = value;
         }
         return acc;
       }, {});
       await superadminService.updateLimits(editingOrg.id, payloadLimits);
-      if (editPlanId) {
-        await superadminService.assignSubscription(editingOrg.id, {
-          plan_id: editPlanId,
-          billing_cycle: editBillingCycle,
-          trial_days: editTrialDays || 0,
-        });
-      }
       setOpen(false);
       setEditingOrg(null);
       setActionSuccess('Organization updated successfully.');
@@ -557,7 +544,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               Organization Management
             </Typography>
             <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.75), mt: 0.75 }}>
-              Create tenants, assign subscriptions, and manage feature governance across teams.
+              Create tenants and manage feature governance directly per organization.
             </Typography>
           </Box>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
@@ -580,9 +567,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
           { label: 'Total Organizations', value: orgStats.total },
-          { label: 'Active Subscriptions', value: orgStats.withSubscription },
-          { label: 'Expiring in 7 Days', value: orgStats.expiringSoon },
-          { label: 'Without Plan', value: orgStats.withoutPlan },
+          { label: 'Lead Generation On', value: orgStats.leadGenerationEnabled },
+          { label: 'WhatsApp On', value: orgStats.whatsappEnabled },
+          { label: 'Human Handoff On', value: orgStats.humanHandoffEnabled },
         ].map((item) => (
           <Grid item xs={12} sm={6} md={3} key={item.label}>
             <Paper
@@ -605,126 +592,259 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         ))}
       </Grid>
 
-      <Grid container spacing={3}>
-        {organizations.map((org) => (
-          <Grid item xs={12} md={6} key={org.id}>
-            <Card sx={{
-              border: '1px solid',
-              borderColor: alpha(theme.palette.secondary.main, 0.2),
-              borderRadius: '18px',
-              background: `linear-gradient(145deg, ${alpha('#ebfaf7', 0.92)} 0%, rgba(255,255,255,1) 62%)`,
-              transition: 'all 0.24s ease',
-              position: 'relative',
-              overflow: 'hidden',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 4,
-                background: `linear-gradient(90deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
-              },
-              '&:hover': { boxShadow: `0 12px 24px ${alpha(theme.palette.secondary.main, 0.18)}`, transform: 'translateY(-3px)' },
-            }}>
-              <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
-                  <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                      {org.name}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.68) }}>
-                      Admin: {org.admin_username || 'N/A'} ({org.admin_email || '-'})
-                    </Typography>
-                  </Box>
-                  <Chip
-                    label={org.subscription?.status || 'inactive'}
-                    size="small"
-                    color={org.subscription?.status === 'active' ? 'success' : 'default'}
-                  />
-                </Stack>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 1.6,
+          mb: 2,
+          borderRadius: '16px',
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+          background: `linear-gradient(150deg, ${alpha('#eef6ff', 0.85)} 0%, ${alpha('#ffffff', 1)} 88%)`,
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.3} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+          <TextField
+            size="small"
+            label="Search organizations"
+            placeholder="Name, admin, email, description, joining date..."
+            value={orgSearch}
+            onChange={(event) => setOrgSearch(event.target.value)}
+            sx={{ minWidth: { xs: '100%', md: 360 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={viewMode}
+            onChange={(_, value) => value && setViewMode(value)}
+          >
+            <ToggleButton value="cards">
+              <ViewModuleIcon fontSize="small" sx={{ mr: 0.7 }} />
+              Cards
+            </ToggleButton>
+            <ToggleButton value="table">
+              <ViewListIcon fontSize="small" sx={{ mr: 0.7 }} />
+              Table
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+      </Paper>
 
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap={true} sx={{ mt: 1.2 }}>
-                  <Chip label={org.plan?.name || 'Unassigned'} size="small" variant="outlined" />
-                  <Chip label={`Days left: ${org.subscription?.days_left ?? 0}`} size="small" />
-                </Stack>
+      {viewMode === 'cards' ? (
+        <Grid container spacing={3}>
+          {pagedOrganizations.map((org) => (
+            <Grid item xs={12} md={6} key={org.id}>
+              <Card sx={{
+                border: '1px solid',
+                borderColor: alpha(theme.palette.secondary.main, 0.2),
+                borderRadius: '18px',
+                background: `linear-gradient(145deg, ${alpha('#ebfaf7', 0.92)} 0%, rgba(255,255,255,1) 62%)`,
+                transition: 'all 0.24s ease',
+                position: 'relative',
+                overflow: 'hidden',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 4,
+                  background: `linear-gradient(90deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
+                },
+                '&:hover': { boxShadow: `0 12px 24px ${alpha(theme.palette.secondary.main, 0.18)}`, transform: 'translateY(-3px)' },
+              }}>
+                <CardContent>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                        {org.name}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.68) }}>
+                        Admin: {org.admin_username || 'N/A'} ({org.admin_email || '-'})
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: alpha(theme.palette.text.primary, 0.7) }}>
+                        Joining: {formatDate(org.joining_date)} | Effective: {formatDate(org.effective_joining_date)}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={org.limits?.lead_generation_enabled ? 'Lead Gen: ON' : 'Lead Gen: OFF'}
+                      size="small"
+                      color={org.limits?.lead_generation_enabled ? 'success' : 'default'}
+                    />
+                  </Stack>
 
-                <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.68), mt: 1.15 }}>
-                  {org.subscription
-                    ? `Start: ${new Date(org.subscription.start_date).toLocaleDateString()} | End: ${new Date(org.subscription.end_date).toLocaleDateString()}`
-                    : 'No active subscription'}
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap={true} sx={{ mt: 1.2 }}>
+                    <Chip label={`Voice: ${org.limits?.voice_chat_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                    <Chip label={`WhatsApp: ${org.limits?.whatsapp_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                    <Chip label={`Handoff: ${org.limits?.human_handoff_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                  </Stack>
+
+                  <Divider sx={{ my: 1.45, borderColor: alpha(theme.palette.secondary.main, 0.18) }} />
+
+                  <Stack direction="row" spacing={1.5}>
+                    <Tooltip title="View">
+                      <IconButton
+                        onClick={() => handleViewOpen(org)}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.primary.main, 0.15),
+                          color: 'primary.main',
+                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
+                        }}
+                      >
+                        <VisibilityIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit">
+                      <IconButton
+                        onClick={() => handleEditOpen(org)}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                          color: 'secondary.main',
+                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                        }}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Calling Numbers">
+                      <IconButton
+                        onClick={() => handleOpenCallingNumberDialog(org)}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
+                          color: 'secondary.main',
+                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                        }}
+                      >
+                        <SettingsPhoneIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Organization">
+                      <IconButton
+                        onClick={() => setOrgToDelete(org)}
+                        disabled={deletingOrgId === org.id}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.error.main, 0.14),
+                          color: 'error.main',
+                          '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.24) },
+                        }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+          {pagedOrganizations.length === 0 && (
+            <Grid item xs={12}>
+              <Paper elevation={0} sx={{ p: 3, borderRadius: '14px', border: `1px dashed ${alpha(theme.palette.primary.main, 0.3)}` }}>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  No organizations match your filter.
                 </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Try another search term or clear the filter.
+                </Typography>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
+      ) : (
+        <Paper elevation={0} sx={{ borderRadius: '16px', border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Organization</TableCell>
+                  <TableCell>Admin</TableCell>
+                  <TableCell>Joining Date</TableCell>
+                  <TableCell>Effective Joining Date</TableCell>
+                  <TableCell>Feature Snapshot</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pagedOrganizations.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      No organizations found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pagedOrganizations.map((org) => (
+                    <TableRow key={`org-table-${org.id}`} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{org.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{org.description || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{org.admin_username || 'N/A'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{org.admin_email || '-'}</Typography>
+                      </TableCell>
+                      <TableCell>{formatDate(org.joining_date)}</TableCell>
+                      <TableCell>{formatDate(org.effective_joining_date)}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                          <Chip label={`Lead: ${org.limits?.lead_generation_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                          <Chip label={`Voice: ${org.limits?.voice_chat_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                          <Chip label={`WA: ${org.limits?.whatsapp_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                        </Stack>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="View">
+                          <IconButton onClick={() => handleViewOpen(org)} size="small"><VisibilityIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit">
+                          <IconButton onClick={() => handleEditOpen(org)} size="small"><EditIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                        <Tooltip title="Calling Numbers">
+                          <IconButton onClick={() => handleOpenCallingNumberDialog(org)} size="small"><SettingsPhoneIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton onClick={() => setOrgToDelete(org)} size="small" disabled={deletingOrgId === org.id}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
-                <Divider sx={{ my: 1.45, borderColor: alpha(theme.palette.secondary.main, 0.18) }} />
-
-                <Stack direction="row" spacing={1.5}>
-                  <Tooltip title="View">
-                    <IconButton
-                      onClick={() => handleViewOpen(org)}
-                      sx={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.primary.main, 0.15),
-                        color: 'primary.main',
-                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
-                      }}
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Edit">
-                    <IconButton
-                      onClick={() => handleEditOpen(org)}
-                      sx={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.secondary.main, 0.16),
-                        color: 'secondary.main',
-                        '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
-                      }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Calling Numbers">
-                    <IconButton
-                      onClick={() => handleOpenCallingNumberDialog(org)}
-                      sx={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.secondary.main, 0.16),
-                        color: 'secondary.main',
-                        '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
-                      }}
-                    >
-                      <SettingsPhoneIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete Organization">
-                    <IconButton
-                      onClick={() => setOrgToDelete(org)}
-                      disabled={deletingOrgId === org.id}
-                      sx={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.error.main, 0.14),
-                        color: 'error.main',
-                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.24) },
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      <TablePagination
+        component="div"
+        count={filteredOrganizations.length}
+        page={page}
+        onPageChange={(_, nextPage) => setPage(nextPage)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(event) => {
+          setRowsPerPage(parseInt(event.target.value, 10));
+          setPage(0);
+        }}
+        rowsPerPageOptions={[8, 16, 24, 48]}
+      />
 
       <Dialog
         open={viewOpen}
@@ -747,19 +867,22 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 <TextField label="Admin Email" fullWidth value={viewOrg.admin_email || ''} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Plan" fullWidth value={viewOrg.plan?.name || 'Unassigned'} InputProps={{ readOnly: true }} />
+                <TextField label="Joining Date" fullWidth value={formatDate(viewOrg.joining_date)} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Subscription Status" fullWidth value={viewOrg.subscription?.status || 'none'} InputProps={{ readOnly: true }} />
+                <TextField label="Effective Joining Date" fullWidth value={formatDate(viewOrg.effective_joining_date)} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Days Left" fullWidth value={viewOrg.subscription?.days_left ?? 0} InputProps={{ readOnly: true }} />
+                <TextField label="Lead Generation" fullWidth value={viewOrg.limits?.lead_generation_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Start Date" fullWidth value={viewOrg.subscription ? new Date(viewOrg.subscription.start_date).toLocaleDateString() : ''} InputProps={{ readOnly: true }} />
+                <TextField label="Voice Chat" fullWidth value={viewOrg.limits?.voice_chat_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="End Date" fullWidth value={viewOrg.subscription ? new Date(viewOrg.subscription.end_date).toLocaleDateString() : ''} InputProps={{ readOnly: true }} />
+                <TextField label="WhatsApp" fullWidth value={viewOrg.limits?.whatsapp_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField label="Human Handoff" fullWidth value={viewOrg.limits?.human_handoff_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
               </Grid>
             </Grid>
           )}
@@ -785,6 +908,26 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             <Grid item xs={12} md={6}>
               <TextField label="Description" fullWidth value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                label="Joining Date"
+                type="date"
+                fullWidth
+                value={form.joining_date}
+                onChange={(e) => setForm({ ...form, joining_date: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                label="Effective Joining Date"
+                type="date"
+                fullWidth
+                value={form.effective_joining_date}
+                onChange={(e) => setForm({ ...form, effective_joining_date: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
             <Grid item xs={12} md={4}>
               <TextField label="Admin Username" fullWidth value={form.admin_username} onChange={(e) => setForm({ ...form, admin_username: e.target.value })} />
             </Grid>
@@ -793,45 +936,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={4}>
               <TextField label="Admin Password" type="password" fullWidth value={form.admin_password} onChange={(e) => setForm({ ...form, admin_password: e.target.value })} />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Plan</InputLabel>
-                <Select
-                  label="Plan"
-                  value={form.plan_id}
-                  onChange={(e) => {
-                    setForm({ ...form, plan_id: Number(e.target.value) });
-                    setCreateOverrideLimits({});
-                  }}
-                >
-                  {plans.map((plan) => (
-                    <MenuItem key={plan.id} value={plan.id}>{plan.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Billing Cycle</InputLabel>
-                <Select
-                  label="Billing Cycle"
-                  value={form.billing_cycle}
-                  onChange={(e) => setForm({ ...form, billing_cycle: e.target.value as 'monthly' | 'yearly' })}
-                >
-                  <MenuItem value="monthly">Monthly</MenuItem>
-                  <MenuItem value="yearly">Yearly</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                label="Trial Days"
-                type="number"
-                fullWidth
-                value={form.trial_days}
-                onChange={(e) => setForm({ ...form, trial_days: Number(e.target.value) })}
-              />
             </Grid>
           </Grid>
 
@@ -848,76 +952,20 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Plan Baseline
+                  Organization Limits
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selected plan values are inherited by default. Override only what this org needs.
+                  Configure feature access overrides for this organization at creation.
                 </Typography>
               </Box>
-              {selectedPlan && (
-                <Stack direction="row" spacing={1}>
-                  <Chip label={selectedPlan.name} variant="outlined" size="small" />
-                  <Chip label={`INR ${selectedPlan.price_inr}/${selectedPlan.billing_cycle}`} size="small" />
-                </Stack>
-              )}
             </Stack>
-
-            <Grid container spacing={2} sx={{ mt: 0.4 }}>
-              {limitNumberFields.map(([key, label]) => {
-                const overridden = isOverridden(key);
-                const baseValue = getPlanDefaultValue(key);
-                const currentValue = overridden
-                  ? (createOverrideLimits[key] as number | undefined)
-                  : (typeof baseValue === 'number' ? baseValue : undefined);
-
-                return (
-                  <Grid item xs={12} md={6} key={`create-num-${String(key)}`}>
-                    <Paper
-                      variant="outlined"
-                      sx={{ p: 1.25, borderRadius: '12px', borderColor: alpha(theme.palette.primary.main, 0.18) }}
-                    >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
-                        <Chip
-                          size="small"
-                          label={overridden ? 'Override' : 'Inherit'}
-                          color={overridden ? 'primary' : 'default'}
-                          variant={overridden ? 'filled' : 'outlined'}
-                        />
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
-                        Plan: {typeof baseValue === 'number' ? Number(baseValue).toLocaleString() : 'Not defined at plan level'}
-                      </Typography>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Switch
-                          checked={overridden}
-                          onChange={(e) => toggleCreateOverride(key, e.target.checked)}
-                        />
-                        <TextField
-                          size="small"
-                          type="number"
-                          fullWidth
-                          value={currentValue ?? ''}
-                          disabled={!overridden}
-                          onChange={(e) => setCreateNumericOverride(key, Number(e.target.value))}
-                          placeholder={typeof baseValue === 'number' ? String(baseValue) : 'Enter value'}
-                        />
-                      </Stack>
-                    </Paper>
-                  </Grid>
-                );
-              })}
-            </Grid>
 
             <Typography variant="subtitle2" sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}>
               Feature Entitlements
             </Typography>
             <Grid container spacing={1.4}>
               {limitToggleFields.map(([key, label]) => {
-                const overridden = isOverridden(key);
-                const baseValue = getPlanDefaultValue(key);
-                const overrideValue = createOverrideLimits[key] as boolean | undefined;
-                const effective = overridden ? Boolean(overrideValue) : Boolean(baseValue);
+                const effective = Boolean(createOverrideLimits[key]);
 
                 return (
                   <Grid item xs={12} md={6} key={`create-flag-${String(key)}`}>
@@ -934,23 +982,17 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           variant="outlined"
                         />
                       </Stack>
-                      <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={overridden ? (overrideValue ? 'enabled' : 'disabled') : 'inherit'}
-                        onChange={(_, value) => {
-                          if (!value) return;
-                          if (value === 'inherit') {
-                            toggleCreateOverride(key, false);
-                            return;
-                          }
-                          setCreateOverrideLimits((prev) => ({ ...prev, [key]: value === 'enabled' }));
-                        }}
-                      >
-                        <ToggleButton value="inherit">Inherit</ToggleButton>
-                        <ToggleButton value="enabled">Enable</ToggleButton>
-                        <ToggleButton value="disabled">Disable</ToggleButton>
-                      </ToggleButtonGroup>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={effective}
+                            onChange={(e) =>
+                              setCreateOverrideLimits((prev) => ({ ...prev, [key]: e.target.checked }))
+                            }
+                          />
+                        }
+                        label={effective ? 'Enabled' : 'Disabled'}
+                      />
                     </Paper>
                   </Grid>
                 );
@@ -961,10 +1003,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
               <Typography variant="body2" color="text.secondary">
-                Overrides to be stored for this org: {Object.keys(createOverrideLimits).length}
+                Review and save limits for this organization.
               </Typography>
-              <Button variant="text" onClick={() => setCreateOverrideLimits({})}>
-                Reset All Overrides
+              <Button variant="text" onClick={() => setCreateOverrideLimits({ ...defaultLimits })}>
+                Apply Default Limits
               </Button>
             </Stack>
           </Paper>
@@ -993,6 +1035,26 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Joining Date"
+                type="date"
+                fullWidth
+                value={editJoiningDate}
+                onChange={(e) => setEditJoiningDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Effective Joining Date"
+                type="date"
+                fullWidth
+                value={editEffectiveJoiningDate}
+                onChange={(e) => setEditEffectiveJoiningDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 label="Admin Username"
@@ -1024,45 +1086,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 }
               />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Plan</InputLabel>
-                <Select
-                  label="Plan"
-                  value={editPlanId}
-                  onChange={(e) => {
-                    setEditPlanId(Number(e.target.value));
-                    setEditOverrideLimits({});
-                  }}
-                >
-                  {plans.map((plan) => (
-                    <MenuItem key={plan.id} value={plan.id}>{plan.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Billing Cycle</InputLabel>
-                <Select
-                  label="Billing Cycle"
-                  value={editBillingCycle}
-                  onChange={(e) => setEditBillingCycle(e.target.value as 'monthly' | 'yearly')}
-                >
-                  <MenuItem value="monthly">Monthly</MenuItem>
-                  <MenuItem value="yearly">Yearly</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Trial Days"
-                type="number"
-                fullWidth
-                value={editTrialDays}
-                onChange={(e) => setEditTrialDays(Number(e.target.value))}
-              />
-            </Grid>
           </Grid>
 
           <Paper
@@ -1072,90 +1095,20 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Plan Baseline
+                  Organization Limits
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selected plan values are inherited by default. Override only what this org needs.
+                  Update organization-level feature access directly.
                 </Typography>
               </Box>
-              {(() => {
-                const plan = plans.find((p) => p.id === editPlanId);
-                return plan ? (
-                  <Stack direction="row" spacing={1}>
-                    <Chip label={plan.name} variant="outlined" size="small" />
-                    <Chip label={`INR ${plan.price_inr}/${plan.billing_cycle}`} size="small" />
-                  </Stack>
-                ) : null;
-              })()}
             </Stack>
-
-            <Grid container spacing={2} sx={{ mt: 0.4 }}>
-              {limitNumberFields.map(([key, label]) => {
-                const plan = plans.find((p) => p.id === editPlanId);
-                const overridden = Object.prototype.hasOwnProperty.call(editOverrideLimits, key);
-                const baseValue = plan && key in plan ? (plan as any)[key] : (defaultLimits as any)[key];
-                const currentValue = overridden
-                  ? (editOverrideLimits[key] as number | undefined)
-                  : (typeof baseValue === 'number' ? baseValue : undefined);
-                return (
-                  <Grid item xs={12} md={6} key={`edit-num-${String(key)}`}>
-                    <Paper
-                      variant="outlined"
-                      sx={{ p: 1.25, borderRadius: '12px', borderColor: alpha(theme.palette.primary.main, 0.18) }}
-                    >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
-                        <Chip
-                          size="small"
-                          label={overridden ? 'Override' : 'Inherit'}
-                          color={overridden ? 'primary' : 'default'}
-                          variant={overridden ? 'filled' : 'outlined'}
-                        />
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
-                        Plan: {typeof baseValue === 'number' ? Number(baseValue).toLocaleString() : 'Not defined at plan level'}
-                      </Typography>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Switch
-                          checked={overridden}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditOverrideLimits((prev) => ({ ...prev, [key]: baseValue }));
-                            } else {
-                              setEditOverrideLimits((prev) => {
-                                const next = { ...prev };
-                                delete (next as any)[key];
-                                return next;
-                              });
-                            }
-                          }}
-                        />
-                        <TextField
-                          size="small"
-                          type="number"
-                          fullWidth
-                          value={currentValue ?? ''}
-                          disabled={!overridden}
-                          onChange={(e) => setEditOverrideLimits((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
-                          placeholder={typeof baseValue === 'number' ? String(baseValue) : 'Enter value'}
-                        />
-                      </Stack>
-                    </Paper>
-                  </Grid>
-                );
-              })}
-            </Grid>
 
             <Typography variant="subtitle2" sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}>
               Feature Entitlements
             </Typography>
             <Grid container spacing={1.4}>
               {limitToggleFields.map(([key, label]) => {
-                const plan = plans.find((p) => p.id === editPlanId);
-                const overridden = Object.prototype.hasOwnProperty.call(editOverrideLimits, key);
-                const baseValue = plan && key in plan ? (plan as any)[key] : (defaultLimits as any)[key];
-                const overrideValue = editOverrideLimits[key] as boolean | undefined;
-                const effective = overridden ? Boolean(overrideValue) : Boolean(baseValue);
+                const effective = Boolean(editOverrideLimits[key]);
                 return (
                   <Grid item xs={12} md={6} key={`edit-flag-${String(key)}`}>
                     <Paper
@@ -1171,27 +1124,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           variant="outlined"
                         />
                       </Stack>
-                      <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={overridden ? (overrideValue ? 'enabled' : 'disabled') : 'inherit'}
-                        onChange={(_, value) => {
-                          if (!value) return;
-                          if (value === 'inherit') {
-                            setEditOverrideLimits((prev) => {
-                              const next = { ...prev };
-                              delete (next as any)[key];
-                              return next;
-                            });
-                            return;
-                          }
-                          setEditOverrideLimits((prev) => ({ ...prev, [key]: value === 'enabled' }));
-                        }}
-                      >
-                        <ToggleButton value="inherit">Inherit</ToggleButton>
-                        <ToggleButton value="enabled">Enable</ToggleButton>
-                        <ToggleButton value="disabled">Disable</ToggleButton>
-                      </ToggleButtonGroup>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={effective}
+                            onChange={(e) => setEditOverrideLimits((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          />
+                        }
+                        label={effective ? 'Enabled' : 'Disabled'}
+                      />
                     </Paper>
                   </Grid>
                 );
@@ -1202,10 +1143,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
               <Typography variant="body2" color="text.secondary">
-                Overrides to be stored for this org: {Object.keys(editOverrideLimits).length}
+                Save when you're done updating organization limits.
               </Typography>
-              <Button variant="text" onClick={() => setEditOverrideLimits({})}>
-                Reset All Overrides
+              <Button variant="text" onClick={() => setEditOverrideLimits({ ...defaultLimits, ...(editingOrg?.limits || {}) })}>
+                Reset to Saved Values
               </Button>
             </Stack>
           </Paper>
@@ -1215,6 +1156,49 @@ const SuperAdminOrganizationsPage: React.FC = () => {
           <Button variant="contained" onClick={handleEditSave} disabled={isSavingOrg} sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
             {isSavingOrg ? <CircularProgress size={18} color="inherit" /> : null}
             {isSavingOrg ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={createResultDialog.open}
+        onClose={handleCreateResultOk}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '18px',
+            border: `1px solid ${alpha(
+              createResultDialog.success ? theme.palette.success.main : theme.palette.error.main,
+              0.28
+            )}`,
+            background: `linear-gradient(160deg, ${alpha(
+              createResultDialog.success ? '#eaf9ef' : '#feeef0',
+              0.9
+            )} 0%, ${alpha('#ffffff', 1)} 88%)`,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" spacing={1.2} alignItems="center">
+            {createResultDialog.success ? (
+              <CheckCircleOutlineIcon color="success" />
+            ) : (
+              <ErrorOutlineIcon color="error" />
+            )}
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              {createResultDialog.title}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.78) }}>
+            {createResultDialog.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={handleCreateResultOk}>
+            OK
           </Button>
         </DialogActions>
       </Dialog>

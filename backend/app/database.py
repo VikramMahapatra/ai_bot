@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
+from app.migrations import apply_db_migrations
 import os
 
 # Create database engine
@@ -59,13 +60,16 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
     with engine.connect() as conn:
+        # ----------------------------
+        # schema migrations
+        # ----------------------------
+        apply_db_migrations(conn)
 
         # ----------------------------
         # organization_limits
         # ----------------------------
         try:
             columns = {
-                "plan_id": "INTEGER",
                 "voice_chat_enabled": "BOOLEAN",
                 "multilingual_text_enabled": "BOOLEAN",
                 "whatsapp_enabled": "BOOLEAN",
@@ -81,47 +85,12 @@ def init_db():
                 "module_appointments_enabled": "BOOLEAN",
                 "module_products_enabled": "BOOLEAN",
                 "module_users_enabled": "BOOLEAN",
-                "max_agents": "INTEGER",
-                "max_campaigns": "INTEGER",
-                "max_calls": "INTEGER",
             }
 
             for col, col_type in columns.items():
                 if not column_exists(conn, "organization_limits", col):
                     conn.execute(
                         text(f"ALTER TABLE organization_limits ADD COLUMN {col} {col_type}")
-                    )
-
-        except Exception:
-            pass
-
-
-        # ----------------------------
-        # plans table
-        # ----------------------------
-        try:
-            columns = {
-                "voice_chat_enabled": "BOOLEAN DEFAULT FALSE",
-                "multilingual_text_enabled": "BOOLEAN DEFAULT FALSE",
-                "whatsapp_enabled": "BOOLEAN DEFAULT FALSE",
-                "human_handoff_enabled": "BOOLEAN DEFAULT FALSE",
-                "email_campaign_enabled": "BOOLEAN DEFAULT TRUE",
-                "sms_campaign_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_knowledge_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_leads_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_analytics_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_advanced_analytics_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_reports_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_campaigns_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_appointments_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_products_enabled": "BOOLEAN DEFAULT TRUE",
-                "module_users_enabled": "BOOLEAN DEFAULT TRUE",
-            }
-
-            for col, col_type in columns.items():
-                if not column_exists(conn, "plans", col):
-                    conn.execute(
-                        text(f"ALTER TABLE plans ADD COLUMN {col} {col_type}")
                     )
 
         except Exception:
@@ -222,10 +191,17 @@ def init_db():
         # organizations
         # ----------------------------
         try:
-            if not column_exists(conn, "organizations", "default_meet_link"):
-                conn.execute(
-                    text("ALTER TABLE organizations ADD COLUMN default_meet_link TEXT")
-                )
+            columns = {
+                "default_meet_link": "TEXT",
+                "joining_date": "DATE",
+                "effective_joining_date": "DATE",
+            }
+
+            for col, col_type in columns.items():
+                if not column_exists(conn, "organizations", col):
+                    conn.execute(
+                        text(f"ALTER TABLE organizations ADD COLUMN {col} {col_type}")
+                    )
         except Exception:
             pass
 

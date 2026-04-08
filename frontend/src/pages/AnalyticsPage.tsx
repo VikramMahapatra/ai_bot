@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -76,56 +76,6 @@ const AnalyticsPage: React.FC = () => {
       zIndex: 1,
     },
   } as const;
-
-  const usagePercent = (used: number, limit: number | null): number => {
-    if (!limit || limit <= 0) return 0;
-    return Math.min((used / limit) * 100, 100);
-  };
-
-  const formatLimitValue = (value: number | null): string => {
-    if (value === null || typeof value === 'undefined') return '∞';
-    return value.toLocaleString();
-  };
-
-  const analyticsPlanUsageItems = metrics.plan_usage
-    ? [
-        {
-          label: 'Conversations',
-          used: metrics.plan_usage.used.conversations_used,
-          limit: metrics.plan_usage.limits.monthly_conversation_limit,
-          remaining: metrics.plan_usage.remaining.conversations_remaining,
-          color: '#4e89d5',
-        },
-        {
-          label: 'Messages',
-          used: metrics.plan_usage.used.messages_used,
-          limit: metrics.plan_usage.limits.monthly_message_limit,
-          remaining: metrics.plan_usage.remaining.messages_remaining,
-          color: '#5a9fdd',
-        },
-        {
-          label: 'Tokens',
-          used: metrics.plan_usage.used.tokens_used,
-          limit: metrics.plan_usage.limits.monthly_token_limit,
-          remaining: metrics.plan_usage.remaining.tokens_remaining,
-          color: '#56a8d6',
-        },
-        {
-          label: 'Crawl Pages',
-          used: metrics.plan_usage.used.crawl_pages_used,
-          limit: metrics.plan_usage.limits.monthly_crawl_pages_limit,
-          remaining: metrics.plan_usage.remaining.crawl_pages_remaining,
-          color: '#4f83cf',
-        },
-        {
-          label: 'Documents',
-          used: metrics.plan_usage.used.documents_used,
-          limit: metrics.plan_usage.limits.monthly_document_limit,
-          remaining: metrics.plan_usage.remaining.documents_remaining,
-          color: '#6a98d0',
-        },
-      ]
-    : [];
 
   const getChunkPreview = (chunk: { chunk?: string; content?: string }) => {
     const text = (chunk.chunk || chunk.content || '').trim();
@@ -300,108 +250,6 @@ const AnalyticsPage: React.FC = () => {
         </Paper>
 
         <Grid container spacing={3} sx={{ position: 'relative', zIndex: 1 }}>
-          {metrics.plan_usage && (
-            <Grid item xs={12}>
-              <Card sx={{ ...panelSx }}>
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-                    Current Plan Usage
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} lg={4}>
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: 1.8,
-                          borderRadius: '12px',
-                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                          background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.76)} 0%, ${alpha(
-                            '#dfeafb',
-                            0.68
-                          )} 100%)`,
-                        }}
-                      >
-                        <Typography variant="body2" color="text.secondary">Plan</Typography>
-                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.4 }}>
-                          {metrics.plan_usage.plan_name || '—'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {metrics.plan_usage.billing_cycle || '—'} • {metrics.plan_usage.status || '—'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Ends: {metrics.plan_usage.end_date ? new Date(metrics.plan_usage.end_date).toLocaleDateString() : '—'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Days left: {metrics.plan_usage.days_left ?? '—'}
-                        </Typography>
-                      </Paper>
-                    </Grid>
-                    <Grid item xs={12} lg={8}>
-                      <Grid container spacing={1.5}>
-                        {analyticsPlanUsageItems.map((item) => {
-                          const progress = usagePercent(item.used, item.limit);
-                          return (
-                            <Grid item xs={12} sm={6} key={item.label}>
-                              <Paper
-                                elevation={0}
-                                sx={{
-                                  p: 1.4,
-                                  borderRadius: '12px',
-                                  border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                  background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.74)} 0%, ${alpha(
-                                    '#deebfb',
-                                    0.62
-                                  )} 100%)`,
-                                }}
-                              >
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.6 }}>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                                    {item.label}
-                                  </Typography>
-                                  <Box
-                                    sx={{
-                                      px: 0.8,
-                                      py: 0.2,
-                                      borderRadius: 2,
-                                      fontSize: '0.74rem',
-                                      fontWeight: 700,
-                                      color: item.color,
-                                      bgcolor: alpha(item.color, 0.14),
-                                      border: `1px solid ${alpha(item.color, 0.24)}`,
-                                    }}
-                                  >
-                                    {progress.toFixed(1)}%
-                                  </Box>
-                                </Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                                  {item.used.toLocaleString()} / {formatLimitValue(item.limit)}
-                                  {item.remaining !== null ? ` (remaining ${item.remaining.toLocaleString()})` : ''}
-                                </Typography>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={progress}
-                                  sx={{
-                                    height: 8,
-                                    borderRadius: 999,
-                                    overflow: 'hidden',
-                                    bgcolor: alpha(item.color, 0.18),
-                                    '& .MuiLinearProgress-bar': {
-                                      borderRadius: 999,
-                                      background: `linear-gradient(90deg, ${alpha(item.color, 0.85)} 0%, ${item.color} 100%)`,
-                                    },
-                                  }}
-                                />
-                              </Paper>
-                            </Grid>
-                          );
-                        })}
-                      </Grid>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-          )}
           {/* Session & Message Trends */}
           <Grid item xs={12} lg={6}>
             <Card sx={{ ...panelSx }}>
@@ -675,5 +523,8 @@ const AnalyticsPage: React.FC = () => {
 };
 
 export default AnalyticsPage;
+
+
+
 
 

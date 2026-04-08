@@ -15,14 +15,6 @@ export interface ReportSummary {
   plan_usage?: PlanUsageSummary | null;
 }
 
-export interface PlanUsageLimits {
-  monthly_conversation_limit: number | null;
-  monthly_message_limit: number | null;
-  monthly_token_limit: number | null;
-  monthly_crawl_pages_limit: number | null;
-  monthly_document_limit: number | null;
-}
-
 export interface PlanUsageCounts {
   conversations_used: number;
   messages_used: number;
@@ -31,25 +23,8 @@ export interface PlanUsageCounts {
   documents_used: number;
 }
 
-export interface PlanUsageRemaining {
-  conversations_remaining: number | null;
-  messages_remaining: number | null;
-  tokens_remaining: number | null;
-  crawl_pages_remaining: number | null;
-  documents_remaining: number | null;
-}
-
 export interface PlanUsageSummary {
-  plan_id: number | null;
-  plan_name: string | null;
-  billing_cycle: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  days_left: number | null;
-  status: string | null;
-  limits: PlanUsageLimits;
   used: PlanUsageCounts;
-  remaining: PlanUsageRemaining;
 }
 
 export interface ConversationMetric {

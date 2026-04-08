@@ -163,6 +163,8 @@ export interface Organization {
   id: number;
   name: string;
   description?: string;
+  joining_date?: string | null;
+  effective_joining_date?: string | null;
 }
 
 export interface LeadCreate {
@@ -242,14 +244,6 @@ export interface SuperAdminLoginResponse {
 export interface OrganizationLimits {
   id?: number;
   organization_id?: number;
-  plan_id?: number;
-  monthly_conversation_limit: number;
-  monthly_crawl_pages_limit: number;
-  max_crawl_depth: number;
-  monthly_document_limit: number;
-  max_document_size_mb: number;
-  monthly_token_limit: number;
-  max_query_words: number;
   lead_generation_enabled: boolean;
   voice_chat_enabled?: boolean;
   multilingual_text_enabled?: boolean;
@@ -266,54 +260,6 @@ export interface OrganizationLimits {
   module_appointments_enabled?: boolean;
   module_products_enabled?: boolean;
   module_users_enabled?: boolean;
-  max_agents?: number;
-  max_campaigns?: number;
-  max_calls?: number;
-}
-
-export interface Plan {
-  id: number;
-  name: string;
-  description?: string;
-  price_inr: number;
-  billing_cycle: 'monthly' | 'yearly';
-  is_active: boolean;
-  monthly_conversation_limit: number;
-  monthly_crawl_pages_limit: number;
-  max_crawl_depth: number;
-  monthly_document_limit: number;
-  max_document_size_mb: number;
-  monthly_token_limit: number;
-  max_query_words: number;
-  lead_generation_enabled: boolean;
-  voice_chat_enabled: boolean;
-  multilingual_text_enabled: boolean;
-  whatsapp_enabled?: boolean;
-  human_handoff_enabled?: boolean;
-  email_campaign_enabled?: boolean;
-  sms_campaign_enabled?: boolean;
-  module_knowledge_enabled?: boolean;
-  module_leads_enabled?: boolean;
-  module_analytics_enabled?: boolean;
-  module_advanced_analytics_enabled?: boolean;
-  module_reports_enabled?: boolean;
-  module_campaigns_enabled?: boolean;
-  module_appointments_enabled?: boolean;
-  module_products_enabled?: boolean;
-  module_users_enabled?: boolean;
-}
-
-export interface Subscription {
-  id: number;
-  organization_id: number;
-  plan_id: number;
-  status: string;
-  billing_cycle: 'monthly' | 'yearly';
-  start_date: string;
-  end_date: string;
-  trial_end?: string;
-  is_active: boolean;
-  days_left: number;
 }
 
 export interface OrganizationUsage {
@@ -332,11 +278,11 @@ export interface SuperAdminOrganization {
   id: number;
   name: string;
   description?: string;
+  joining_date?: string | null;
+  effective_joining_date?: string | null;
   admin_username?: string;
   admin_email?: string;
   limits?: OrganizationLimits;
-  plan?: Plan;
-  subscription?: Subscription;
 }
 
 
@@ -1013,13 +959,10 @@ export interface OrganizationReport {
   organization_name: string;
 
   agents_created: number;
-  agent_limit?: number | null;
 
   campaign_created: number;
-  campaign_limit?: number | null;
 
   calls_done: number;
-  calls_limit?: number | null;
 
   agents: AgentReport[];
   campaigns: CampaignReport[];

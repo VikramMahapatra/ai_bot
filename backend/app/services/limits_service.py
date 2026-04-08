@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.models import (
@@ -6,34 +6,26 @@ from app.models import (
     OrganizationUsage,
     OrganizationSubscription,
     OrganizationSubscriptionUsage,
-    Plan,
 )
 
 
 DEFAULT_LIMITS = {
-    "monthly_conversation_limit": None,
-    "monthly_crawl_pages_limit": None,
-    "max_crawl_depth": None,
-    "monthly_document_limit": None,
-    "max_document_size_mb": None,
-    "monthly_token_limit": None,
-    "max_query_words": None,
-    "lead_generation_enabled": None,
-    "voice_chat_enabled": None,
-    "multilingual_text_enabled": None,
-    "whatsapp_enabled": None,
-    "human_handoff_enabled": None,
-    "email_campaign_enabled": None,
-    "sms_campaign_enabled": None,
-    "module_knowledge_enabled": None,
-    "module_leads_enabled": None,
-    "module_analytics_enabled": None,
-    "module_advanced_analytics_enabled": None,
-    "module_reports_enabled": None,
-    "module_campaigns_enabled": None,
-    "module_appointments_enabled": None,
-    "module_products_enabled": None,
-    "module_users_enabled": None,
+    "lead_generation_enabled": True,
+    "voice_chat_enabled": False,
+    "multilingual_text_enabled": False,
+    "whatsapp_enabled": False,
+    "human_handoff_enabled": False,
+    "email_campaign_enabled": True,
+    "sms_campaign_enabled": True,
+    "module_knowledge_enabled": True,
+    "module_leads_enabled": True,
+    "module_analytics_enabled": True,
+    "module_advanced_analytics_enabled": True,
+    "module_reports_enabled": True,
+    "module_campaigns_enabled": True,
+    "module_appointments_enabled": True,
+    "module_products_enabled": True,
+    "module_users_enabled": True,
 }
 
 
@@ -55,6 +47,17 @@ def get_or_create_limits(db: Session, organization_id: int) -> OrganizationLimit
         db.add(limits)
         db.commit()
         db.refresh(limits)
+        return limits
+
+    changed = False
+    for key, default_value in DEFAULT_LIMITS.items():
+        if hasattr(limits, key) and getattr(limits, key) is None:
+            setattr(limits, key, default_value)
+            changed = True
+
+    if changed:
+        db.commit()
+        db.refresh(limits)
 
     return limits
 
@@ -69,31 +72,24 @@ def update_limits(db: Session, organization_id: int, updates: dict) -> Organizat
     return limits
 
 
-def _build_effective_limits(plan: Plan, limits: OrganizationLimits) -> dict:
+def _build_effective_limits(limits: OrganizationLimits) -> dict:
     return {
-        "monthly_conversation_limit": limits.monthly_conversation_limit if limits.monthly_conversation_limit is not None else plan.monthly_conversation_limit,
-        "monthly_crawl_pages_limit": limits.monthly_crawl_pages_limit if limits.monthly_crawl_pages_limit is not None else plan.monthly_crawl_pages_limit,
-        "max_crawl_depth": limits.max_crawl_depth if limits.max_crawl_depth is not None else plan.max_crawl_depth,
-        "monthly_document_limit": limits.monthly_document_limit if limits.monthly_document_limit is not None else plan.monthly_document_limit,
-        "max_document_size_mb": limits.max_document_size_mb if limits.max_document_size_mb is not None else plan.max_document_size_mb,
-        "monthly_token_limit": limits.monthly_token_limit if limits.monthly_token_limit is not None else plan.monthly_token_limit,
-        "max_query_words": limits.max_query_words if limits.max_query_words is not None else plan.max_query_words,
-        "lead_generation_enabled": limits.lead_generation_enabled if limits.lead_generation_enabled is not None else plan.lead_generation_enabled,
-        "voice_chat_enabled": limits.voice_chat_enabled if limits.voice_chat_enabled is not None else plan.voice_chat_enabled,
-        "multilingual_text_enabled": limits.multilingual_text_enabled if limits.multilingual_text_enabled is not None else plan.multilingual_text_enabled,
-        "whatsapp_enabled": limits.whatsapp_enabled if limits.whatsapp_enabled is not None else plan.whatsapp_enabled,
-        "human_handoff_enabled": limits.human_handoff_enabled if limits.human_handoff_enabled is not None else plan.human_handoff_enabled,
-        "email_campaign_enabled": limits.email_campaign_enabled if limits.email_campaign_enabled is not None else plan.email_campaign_enabled,
-        "sms_campaign_enabled": limits.sms_campaign_enabled if limits.sms_campaign_enabled is not None else plan.sms_campaign_enabled,
-        "module_knowledge_enabled": limits.module_knowledge_enabled if limits.module_knowledge_enabled is not None else plan.module_knowledge_enabled,
-        "module_leads_enabled": limits.module_leads_enabled if limits.module_leads_enabled is not None else plan.module_leads_enabled,
-        "module_analytics_enabled": limits.module_analytics_enabled if limits.module_analytics_enabled is not None else plan.module_analytics_enabled,
-        "module_advanced_analytics_enabled": limits.module_advanced_analytics_enabled if limits.module_advanced_analytics_enabled is not None else plan.module_advanced_analytics_enabled,
-        "module_reports_enabled": limits.module_reports_enabled if limits.module_reports_enabled is not None else plan.module_reports_enabled,
-        "module_campaigns_enabled": limits.module_campaigns_enabled if limits.module_campaigns_enabled is not None else plan.module_campaigns_enabled,
-        "module_appointments_enabled": limits.module_appointments_enabled if limits.module_appointments_enabled is not None else plan.module_appointments_enabled,
-        "module_products_enabled": limits.module_products_enabled if limits.module_products_enabled is not None else plan.module_products_enabled,
-        "module_users_enabled": limits.module_users_enabled if limits.module_users_enabled is not None else plan.module_users_enabled,
+        "lead_generation_enabled": limits.lead_generation_enabled if limits.lead_generation_enabled is not None else DEFAULT_LIMITS["lead_generation_enabled"],
+        "voice_chat_enabled": limits.voice_chat_enabled if limits.voice_chat_enabled is not None else DEFAULT_LIMITS["voice_chat_enabled"],
+        "multilingual_text_enabled": limits.multilingual_text_enabled if limits.multilingual_text_enabled is not None else DEFAULT_LIMITS["multilingual_text_enabled"],
+        "whatsapp_enabled": limits.whatsapp_enabled if limits.whatsapp_enabled is not None else DEFAULT_LIMITS["whatsapp_enabled"],
+        "human_handoff_enabled": limits.human_handoff_enabled if limits.human_handoff_enabled is not None else DEFAULT_LIMITS["human_handoff_enabled"],
+        "email_campaign_enabled": limits.email_campaign_enabled if limits.email_campaign_enabled is not None else DEFAULT_LIMITS["email_campaign_enabled"],
+        "sms_campaign_enabled": limits.sms_campaign_enabled if limits.sms_campaign_enabled is not None else DEFAULT_LIMITS["sms_campaign_enabled"],
+        "module_knowledge_enabled": limits.module_knowledge_enabled if limits.module_knowledge_enabled is not None else DEFAULT_LIMITS["module_knowledge_enabled"],
+        "module_leads_enabled": limits.module_leads_enabled if limits.module_leads_enabled is not None else DEFAULT_LIMITS["module_leads_enabled"],
+        "module_analytics_enabled": limits.module_analytics_enabled if limits.module_analytics_enabled is not None else DEFAULT_LIMITS["module_analytics_enabled"],
+        "module_advanced_analytics_enabled": limits.module_advanced_analytics_enabled if limits.module_advanced_analytics_enabled is not None else DEFAULT_LIMITS["module_advanced_analytics_enabled"],
+        "module_reports_enabled": limits.module_reports_enabled if limits.module_reports_enabled is not None else DEFAULT_LIMITS["module_reports_enabled"],
+        "module_campaigns_enabled": limits.module_campaigns_enabled if limits.module_campaigns_enabled is not None else DEFAULT_LIMITS["module_campaigns_enabled"],
+        "module_appointments_enabled": limits.module_appointments_enabled if limits.module_appointments_enabled is not None else DEFAULT_LIMITS["module_appointments_enabled"],
+        "module_products_enabled": limits.module_products_enabled if limits.module_products_enabled is not None else DEFAULT_LIMITS["module_products_enabled"],
+        "module_users_enabled": limits.module_users_enabled if limits.module_users_enabled is not None else DEFAULT_LIMITS["module_users_enabled"],
     }
 
 
@@ -115,73 +111,11 @@ def get_active_subscription(db: Session, organization_id: int) -> Optional[Organ
 
     return sub
 
-
-def get_subscription_days_left(sub: OrganizationSubscription) -> int:
-    now = datetime.now(timezone.utc)
-    delta = sub.end_date - now
-    return max(0, delta.days)
-
-
-def create_or_renew_subscription(
-    db: Session,
-    organization_id: int,
-    plan_id: int,
-    billing_cycle: str = "monthly",
-    trial_days: Optional[int] = None,
-) -> OrganizationSubscription:
-    now = datetime.utcnow()
-    cycle_days = 30 if billing_cycle == "monthly" else 365
-    start_date = now
-    end_date = now + timedelta(days=cycle_days)
-    trial_end = now + timedelta(days=trial_days) if trial_days else None
-
-    existing = db.query(OrganizationSubscription).filter(
-        OrganizationSubscription.organization_id == organization_id
-    ).first()
-
-    if existing:
-        existing.plan_id = plan_id
-        existing.billing_cycle = billing_cycle
-        existing.status = "trial" if trial_days else "active"
-        existing.is_active = True
-        existing.start_date = start_date
-        existing.end_date = end_date
-        existing.trial_end = trial_end
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    sub = OrganizationSubscription(
-        organization_id=organization_id,
-        plan_id=plan_id,
-        status="trial" if trial_days else "active",
-        billing_cycle=billing_cycle,
-        start_date=start_date,
-        end_date=end_date,
-        trial_end=trial_end,
-        is_active=True,
-    )
-    db.add(sub)
-    db.commit()
-    db.refresh(sub)
-    return sub
-
-
 def get_effective_limits(db: Session, organization_id: int) -> dict:
     limits = get_or_create_limits(db, organization_id)
-    subscription = get_active_subscription(db, organization_id)
-    if not subscription:
-        return {"subscription_active": False}
-
-    plan = db.query(Plan).filter(Plan.id == subscription.plan_id, Plan.is_active == True).first()
-    if not plan:
-        return {"subscription_active": False}
-
-    effective = _build_effective_limits(plan, limits)
+    effective = _build_effective_limits(limits)
     effective["subscription_active"] = True
-    effective["days_left"] = get_subscription_days_left(subscription)
-    effective["plan_id"] = plan.id
-    effective["billing_cycle"] = subscription.billing_cycle
+    effective["days_left"] = None
     return effective
 
 

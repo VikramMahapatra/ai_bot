@@ -1,13 +1,13 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import String, cast, func
-from app.models import ConversationMetrics, Conversation, Lead, Plan
+from app.models import ConversationMetrics, Conversation, Lead
 from app.models.call_campaigns import CallCampaign
 from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog
 from app.models.products import Product
 from app.models.user import Organization
 from app.config import settings
-from app.services.limits_service import get_active_subscription, get_subscription_days_left, get_or_create_subscription_usage, get_effective_limits, get_or_create_usage, get_or_create_limits
+from app.services.limits_service import get_or_create_usage
 from app.services.funnel_category_service import get_funnel_categories
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
@@ -279,33 +279,7 @@ def get_report_summary(
 
 
 def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
-    subscription = get_active_subscription(db, organization_id)
-
-    plan = None
-    start_date = None
-    end_date = None
-    billing_cycle = None
-    days_left = None
-    status = "inactive"
-
-    if subscription:
-        plan = db.query(Plan).filter(Plan.id == subscription.plan_id).first()
-        start_date = subscription.start_date
-        end_date = subscription.end_date
-        billing_cycle = subscription.billing_cycle
-        days_left = get_subscription_days_left(subscription)
-        status = subscription.status
-        usage = get_or_create_subscription_usage(db, organization_id) or get_or_create_usage(db, organization_id)
-        limits = get_effective_limits(db, organization_id)
-    else:
-        usage = get_or_create_usage(db, organization_id)
-        org_limits = get_or_create_limits(db, organization_id)
-        limits = {
-            "monthly_conversation_limit": org_limits.monthly_conversation_limit,
-            "monthly_token_limit": org_limits.monthly_token_limit,
-            "monthly_crawl_pages_limit": org_limits.monthly_crawl_pages_limit,
-            "monthly_document_limit": org_limits.monthly_document_limit,
-        }
+    usage = get_or_create_usage(db, organization_id)
 
     conversations_used = getattr(usage, "conversations_count", 0) if usage else 0
     messages_used = getattr(usage, "messages_count", 0) if usage else 0
@@ -313,27 +287,7 @@ def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
     crawl_pages_used = getattr(usage, "crawl_pages_count", 0) if usage else 0
     documents_used = getattr(usage, "documents_count", 0) if usage else 0
 
-    conversation_limit = limits.get("monthly_conversation_limit")
-    token_limit = limits.get("monthly_token_limit")
-    message_limit = conversation_limit * 2 if conversation_limit is not None else None
-    crawl_pages_limit = limits.get("monthly_crawl_pages_limit")
-    document_limit = limits.get("monthly_document_limit")
-
     return {
-        "plan_id": plan.id if plan else None,
-        "plan_name": plan.name if plan else "No active subscription",
-        "billing_cycle": billing_cycle,
-        "start_date": start_date,
-        "end_date": end_date,
-        "days_left": days_left,
-        "status": status,
-        "limits": {
-            "monthly_conversation_limit": conversation_limit,
-            "monthly_message_limit": message_limit,
-            "monthly_token_limit": token_limit,
-            "monthly_crawl_pages_limit": crawl_pages_limit,
-            "monthly_document_limit": document_limit,
-        },
         "used": {
             "conversations_used": conversations_used,
             "messages_used": messages_used,
@@ -341,13 +295,6 @@ def get_plan_usage_summary(db: Session, organization_id: int) -> Optional[Dict]:
             "crawl_pages_used": crawl_pages_used,
             "documents_used": documents_used,
         },
-        "remaining": {
-            "conversations_remaining": None if conversation_limit is None else max(conversation_limit - conversations_used, 0),
-            "messages_remaining": None if message_limit is None else max(message_limit - messages_used, 0),
-            "tokens_remaining": None if token_limit is None else max(token_limit - tokens_used, 0),
-            "crawl_pages_remaining": None if crawl_pages_limit is None else max(crawl_pages_limit - crawl_pages_used, 0),
-            "documents_remaining": None if document_limit is None else max(document_limit - documents_used, 0),
-        }
     }
 
 
