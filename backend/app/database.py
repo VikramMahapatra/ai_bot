@@ -311,8 +311,14 @@ def init_db():
                     conn.execute(
                         text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}")
                     )
+                    
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_id INTEGER")
+            )
+                    
 
-        except Exception:
+        except Exception as e:
+            print(str(e))
             pass
 
 
@@ -537,6 +543,8 @@ def init_db():
         # ----------------------------
         try:
             conn.commit()
-        except Exception:
+        except Exception as e:
+            print("Error committing database migrations")
+            print(str(e))
             pass
 
