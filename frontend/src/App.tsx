@@ -26,8 +26,7 @@ import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
-import SuperAdminOrganizationCreditManagementPage from './pages/SuperAdminOrganizationCreditManagementPage';
-import SuperAdminBillingPage from './pages/SuperAdminBillingPage';
+import SuperAdminOrgCreditBillingPage from './pages/SuperAdminOrgCreditBillingPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
@@ -455,20 +454,20 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/superadmin/organization-credits"
+        path="/superadmin/org-credit-billing"
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
-            <SuperAdminOrganizationCreditManagementPage />
+            <SuperAdminOrgCreditBillingPage />
           </ProtectedRoute>
         }
       />
       <Route
+        path="/superadmin/organization-credits"
+        element={<Navigate to="/superadmin/org-credit-billing" replace />}
+      />
+      <Route
         path="/superadmin/billing"
-        element={
-          <ProtectedRoute requiredRole="SUPERADMIN">
-            <SuperAdminBillingPage />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/superadmin/org-credit-billing" replace />}
       />
       <Route
         path="/superadmin/organizations"

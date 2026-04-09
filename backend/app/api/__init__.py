@@ -18,6 +18,7 @@ from app.api.funnel_categories import router as funnel_categories_router
 from app.api.twilio_sms import router as twilio_sms_router
 from app.api.products import router as product_router
 from app.api.organization_setting import router as organization_settings_router
+from app.api.org_credit_billing import router as org_credit_billing_router
 
 __all__ = [
     "admin_router",
@@ -37,5 +38,6 @@ __all__ = [
     "twilio_sms_router",
     "funnel_categories_router",
     "product_router",
-    "organization_settings_router"
+    "organization_settings_router",
+    "org_credit_billing_router",
 ]
