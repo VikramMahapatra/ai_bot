@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import os
 import random
+import re
 import shutil
 from typing import List, Optional
 from uuid import UUID, uuid4
@@ -291,7 +292,9 @@ def update_agent(
     
     unique_agent_code = f"ORG{org.id}AG{uuid4().hex[:5]}".upper()
     
-    if not db_agent.external_agent_name:
+    pattern = rf"^ORG{org.id}AG[A-F0-9]{{5}}$"
+    
+    if not db_agent.external_agent_name or not re.match(pattern, db_agent.external_agent_name):
         db_agent.external_agent_name = unique_agent_code
 
     # 🔹 Update Echoleads

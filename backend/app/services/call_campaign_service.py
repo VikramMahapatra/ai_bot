@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import re
 from typing import List, Optional
 from urllib import response
 from uuid import uuid4
@@ -597,8 +598,9 @@ def update_campaign(
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
         
+    pattern = rf"^ORG{org.id}CAM[A-F0-9]{{5}}$"
     unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
-    if not campaign.external_campaign_name:
+    if not campaign.external_campaign_name or not re.match(pattern, campaign.external_campaign_name):
         campaign.external_campaign_name = unique_campaign_code
         
         

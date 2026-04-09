@@ -35,6 +35,23 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
+  const remainingPercent =
+    creditMonthlySummary && creditMonthlySummary?.allocated > 0 ?
+      (creditMonthlySummary?.remaining / creditMonthlySummary?.allocated) * 100 : 100;
+
+  const creditColor =
+    remainingPercent > 70
+      ? "success"
+      : remainingPercent > 20
+        ? "warning"
+        : "error";
+
+  const creditMessage =
+    remainingPercent > 70
+      ? "Credits healthy"
+      : remainingPercent > 20
+        ? "Credits running low"
+        : "Low credits — Please add more credits";
 
   return (
     <Box
@@ -137,21 +154,31 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
               )}
               {credits !== undefined && (
                 <>
-                  <Chip
-                    icon={<AccountBalanceWalletIcon />}
-                    label={`${totalCredits} Credits`}
-                    color={totalCredits < 100 ? "warning" : "success"}
-                    variant="outlined"
-                    onClick={() => setCreditDialogOpen(true)}
-                    sx={{
-                      mr: 0.8,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      borderColor: (theme) => alpha(theme.palette.success.main, 0.35),
-                      backgroundColor: (theme) =>
-                        alpha(theme.palette.background.paper, 0.55),
-                    }}
-                  />
+                  <Tooltip title={creditMessage} arrow>
+                    <Chip
+                      icon={<AccountBalanceWalletIcon />}
+                      label={`${totalCredits} Credits`}
+                      color={creditColor}
+                      variant="outlined"
+                      onClick={() => setCreditDialogOpen(true)}
+                      sx={{
+                        mr: 0.8,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        borderColor: (theme) =>
+                          alpha(
+                            creditColor === "success"
+                              ? theme.palette.success.main
+                              : creditColor === "warning"
+                                ? theme.palette.warning.main
+                                : theme.palette.error.main,
+                            0.35
+                          ),
+                        backgroundColor: (theme) =>
+                          alpha(theme.palette.background.paper, 0.55),
+                      }}
+                    />
+                  </Tooltip>
 
                   <CreditSummaryDialog
                     open={creditDialogOpen}

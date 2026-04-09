@@ -210,6 +210,9 @@ async def list_leads(
         query = query.filter(Lead.funnel_stage == normalized_stage)
     if product_id:
         query = query.filter(Lead.product_id == product_id)
+        
+    if campaign_id:
+        query = query.filter(Lead.campaign_id == campaign_id)
 
     total = query.count()
 
