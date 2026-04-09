@@ -39,7 +39,11 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import LocalAtmIcon from '@mui/icons-material/LocalAtm';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
+import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
+import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import { superadminService } from '../services/superadminService';
 import { orgCreditBillingService } from '../services/orgCreditBillingService';
 import { CreditEstimatorResultListItem, SuperAdminOrganization } from '../types';
@@ -48,12 +52,15 @@ import {
   OrgCreditAutomationRunResponse,
   OrgCreditBalance,
   OrgCreditInvoice,
+  OrgCreditInvoiceDocument,
+  OrgCreditLapseReport,
   OrgCreditPayment,
+  OrgCreditPaymentReceipt,
   OrgCreditPaymentStatus,
   PartialPaymentStrategy,
 } from '../types/orgCreditBilling';
 
-type PageTab = 'credits' | 'invoices' | 'payments' | 'availability';
+type PageTab = 'credits' | 'invoices' | 'payments' | 'availability' | 'lapse';
 type ViewMode = 'table' | 'cards';
 type OrgFilter = 'all' | number;
 
@@ -76,6 +83,7 @@ const parseError = (error: unknown): string => {
 
 const currentMonth = (): string => new Date().toISOString().slice(0, 7);
 const currentDate = (): string => new Date().toISOString().slice(0, 10);
+const paymentModeOptions = ['bank_transfer', 'upi', 'cash', 'card', 'cheque', 'wallet'] as const;
 
 const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const theme = useTheme();
@@ -92,11 +100,16 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const [availability, setAvailability] = useState<OrgCreditBalance | null>(null);
   const [availabilityOrgId, setAvailabilityOrgId] = useState<number | ''>('');
   const [availabilityPeriod, setAvailabilityPeriod] = useState<string>(currentMonth());
+  const [lapsePeriod, setLapsePeriod] = useState<string>(currentMonth());
+  const [lapseMonths, setLapseMonths] = useState<number>(6);
+  const [lapseReport, setLapseReport] = useState<OrgCreditLapseReport | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [commitPopupOpen, setCommitPopupOpen] = useState(false);
+  const [commitPopupMessage, setCommitPopupMessage] = useState('');
   const [automationResult, setAutomationResult] = useState<OrgCreditAutomationRunResponse | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -117,23 +130,57 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentCredit, setPaymentCredit] = useState('');
   const [paymentDate, setPaymentDate] = useState(currentDate());
-  const [paymentDetails, setPaymentDetails] = useState('');
+  const [paymentMode, setPaymentMode] = useState<(typeof paymentModeOptions)[number]>('bank_transfer');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentOtherDetails, setPaymentOtherDetails] = useState('');
   const [paymentStrategy, setPaymentStrategy] = useState<PartialPaymentStrategy>('keep_open');
+  const [markPaidConfirmOpen, setMarkPaidConfirmOpen] = useState(false);
+  const [markPaidOpen, setMarkPaidOpen] = useState(false);
+  const [markPaidTarget, setMarkPaidTarget] = useState<OrgCreditInvoice | null>(null);
+  const [markPaidMode, setMarkPaidMode] = useState<(typeof paymentModeOptions)[number]>('bank_transfer');
+  const [markPaidReference, setMarkPaidReference] = useState('');
+  const [markPaidOtherDetails, setMarkPaidOtherDetails] = useState('');
+  const [markPaidDate, setMarkPaidDate] = useState(currentDate());
 
   const [usageOpen, setUsageOpen] = useState(false);
   const [usageOrgId, setUsageOrgId] = useState<number | ''>('');
   const [usageCredit, setUsageCredit] = useState('');
   const [usagePeriod, setUsagePeriod] = useState(currentMonth());
 
+  const [deleteTarget, setDeleteTarget] = useState<
+    { type: 'credit'; row: OrgCredit } | { type: 'invoice'; row: OrgCreditInvoice } | { type: 'payment'; row: OrgCreditPayment } | null
+  >(null);
+
+  const [invoiceDocumentOpen, setInvoiceDocumentOpen] = useState(false);
+  const [invoiceDocument, setInvoiceDocument] = useState<OrgCreditInvoiceDocument | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptDocument, setReceiptDocument] = useState<OrgCreditPaymentReceipt | null>(null);
+
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailTarget, setEmailTarget] = useState<{ type: 'invoice'; id: number } | { type: 'receipt'; id: number } | null>(null);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
   const orgNameById = useMemo(() => {
     const map = new Map<number, string>();
     organizations.forEach((org) => map.set(org.id, org.name));
     return map;
   }, [organizations]);
+  const orgById = useMemo(() => {
+    const map = new Map<number, SuperAdminOrganization>();
+    organizations.forEach((org) => map.set(org.id, org));
+    return map;
+  }, [organizations]);
 
   const estimatorLabelById = useMemo(() => {
     const map = new Map<number, string>();
-    estimators.forEach((row) => map.set(row.id, `${row.company_name} (${row.estimate.final_recommended_credits_ceiling})`));
+    estimators.forEach((row) =>
+      map.set(
+        row.id,
+        `${row.company_name} | After Buffer: ${row.estimate.recommended_credits} | Payable: ${row.estimate.final_recommended_credits}`
+      )
+    );
     return map;
   }, [estimators]);
 
@@ -164,6 +211,13 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (tab === 'lapse') {
+      handleLoadLapseReport();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, orgFilter]);
 
   const filteredCredits = useMemo(() => {
     const term = searchText.trim().toLowerCase();
@@ -209,6 +263,16 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     setCreateNotes('');
   };
 
+  const showCommitPopup = (message: string) => {
+    setCommitPopupMessage(message);
+    setCommitPopupOpen(true);
+  };
+
+  const markCommitSuccess = (message: string) => {
+    setSuccess(message);
+    showCommitPopup(message);
+  };
+
   const handleCreateOrgCredit = async () => {
     if (!createOrgId || !createEstimatorId) {
       setError('Please choose organization and estimator');
@@ -229,7 +293,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       const result = await orgCreditBillingService.createOrgCredit(payload);
       setCreateOpen(false);
       resetCreate();
-      setSuccess(`Org credit #${result.org_credit.id} created with invoice #${result.invoice.id}`);
+      markCommitSuccess(`Org credit #${result.org_credit.id} created with invoice #${result.invoice.id}`);
       await loadData();
     } catch (createError) {
       setError(parseError(createError));
@@ -263,7 +327,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         notes: topupNotes || undefined,
       });
       setTopupOpen(false);
-      setSuccess(`Top-up created: credit #${result.org_credit.id}, invoice #${result.invoice.id}`);
+      markCommitSuccess(`Top-up created: credit #${result.org_credit.id}, invoice #${result.invoice.id}`);
       await loadData();
     } catch (topupError) {
       setError(parseError(topupError));
@@ -278,7 +342,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await orgCreditBillingService.generateInvoice({ org_credit_id: orgCreditId });
-      setSuccess(`Invoice #${result.id} generated`);
+      markCommitSuccess(`Invoice #${result.id} generated`);
       await loadData();
     } catch (invoiceError) {
       setError(parseError(invoiceError));
@@ -287,15 +351,78 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     }
   };
 
+  const getInvoiceOutstanding = (invoice?: OrgCreditInvoice | null): number => {
+    if (!invoice) return 0;
+    return Math.max(0, (invoice.invoice_amount || 0) - (invoice.paid_amount || 0));
+  };
+
+  const openMarkPaidFlow = (invoice: OrgCreditInvoice) => {
+    setMarkPaidTarget(invoice);
+    setMarkPaidMode('bank_transfer');
+    setMarkPaidReference('');
+    setMarkPaidOtherDetails('');
+    setMarkPaidDate(currentDate());
+    setMarkPaidConfirmOpen(true);
+  };
+
   const handleInvoiceStatusToggle = async (invoice: OrgCreditInvoice) => {
+    if (!invoice.payment_done_flag) {
+      openMarkPaidFlow(invoice);
+      return;
+    }
+
     setBusyAction(true);
     setError('');
     setSuccess('');
     try {
       const updated = await orgCreditBillingService.markInvoicePaymentStatus(invoice.id, {
-        payment_done_flag: !invoice.payment_done_flag,
+        payment_done_flag: false,
       });
-      setSuccess(`Invoice #${updated.id} marked as ${updated.payment_done_flag ? 'paid' : 'unpaid'}`);
+      markCommitSuccess(`Invoice #${updated.id} marked as unpaid`);
+      await loadData();
+    } catch (statusError) {
+      setError(parseError(statusError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleConfirmMarkPaid = () => {
+    if (!markPaidTarget) return;
+    setMarkPaidConfirmOpen(false);
+    setMarkPaidOpen(true);
+  };
+
+  const handleSubmitMarkPaid = async () => {
+    if (!markPaidTarget) return;
+    const outstanding = getInvoiceOutstanding(markPaidTarget);
+    if (outstanding <= 0) {
+      setError('This invoice is already fully paid.');
+      return;
+    }
+    if (!markPaidMode) {
+      setError('Payment type is required');
+      return;
+    }
+    if (!markPaidReference.trim()) {
+      setError('Payment reference number is required');
+      return;
+    }
+
+    setBusyAction(true);
+    setError('');
+    setSuccess('');
+    try {
+      const updated = await orgCreditBillingService.markInvoicePaymentStatus(markPaidTarget.id, {
+        payment_done_flag: true,
+        payment_date: markPaidDate || undefined,
+        payment_mode: markPaidMode,
+        payment_reference: markPaidReference.trim(),
+        payment_other_details: markPaidOtherDetails || undefined,
+      });
+      setMarkPaidOpen(false);
+      setMarkPaidTarget(null);
+      markCommitSuccess(`Invoice #${updated.id} marked as paid with full payment (${toCurrency(outstanding)})`);
       await loadData();
     } catch (statusError) {
       setError(parseError(statusError));
@@ -309,16 +436,35 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     setPaymentAmount('');
     setPaymentCredit('');
     setPaymentDate(currentDate());
-    setPaymentDetails('');
+    setPaymentMode('bank_transfer');
+    setPaymentReference('');
+    setPaymentOtherDetails('');
     setPaymentStrategy('keep_open');
     setPaymentOpen(true);
   };
 
+  const handlePaymentStrategyChange = (strategy: PartialPaymentStrategy) => {
+    setPaymentStrategy(strategy);
+    if (strategy === 'full_payment' && paymentTarget) {
+      const fullAmount = Number(paymentTarget.invoice_amount || 0);
+      setPaymentAmount(fullAmount > 0 ? String(fullAmount) : '');
+    }
+  };
+
   const handleAddPayment = async () => {
     if (!paymentTarget) return;
-    const amount = Number(paymentAmount);
+    const outstanding = getInvoiceOutstanding(paymentTarget);
+    const amount = paymentStrategy === 'full_payment' ? outstanding : Number(paymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Payment amount must be greater than zero');
+      return;
+    }
+    if (!paymentMode) {
+      setError('Mode of payment is required');
+      return;
+    }
+    if (!paymentReference.trim()) {
+      setError('Reference transaction number is required');
       return;
     }
     const credit = paymentCredit.trim() ? Number(paymentCredit) : undefined;
@@ -336,12 +482,15 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         actual_payment: amount,
         actual_credit: credit,
         payment_date: paymentDate || undefined,
-        payment_details: paymentDetails || undefined,
+        payment_mode: paymentMode,
+        payment_reference: paymentReference.trim(),
+        payment_other_details: paymentOtherDetails || undefined,
+        payment_details: paymentOtherDetails || undefined,
         partial_strategy: paymentStrategy,
       });
       setPaymentOpen(false);
       const generatedMsg = result.generated_invoice ? ` and generated invoice #${result.generated_invoice.id}` : '';
-      setSuccess(`Payment #${result.payment.id} recorded${generatedMsg}`);
+      markCommitSuccess(`Payment #${result.payment.id} recorded${generatedMsg}`);
       await loadData();
     } catch (paymentError) {
       setError(parseError(paymentError));
@@ -357,7 +506,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     try {
       const result = await orgCreditBillingService.runAutomation();
       setAutomationResult(result);
-      setSuccess(
+      markCommitSuccess(
         `Automation complete: evaluated ${result.evaluated_entries}, generated ${result.generated_entries} entries, ${result.generated_invoices} invoices`
       );
       await loadData();
@@ -384,6 +533,24 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       setSuccess(`Loaded credit availability for ${data.billing_period}`);
     } catch (availabilityError) {
       setError(parseError(availabilityError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleLoadLapseReport = async () => {
+    setBusyAction(true);
+    setError('');
+    try {
+      const report = await orgCreditBillingService.getLapseReport({
+        billing_period: lapsePeriod || undefined,
+        months: lapseMonths,
+        organization_id: orgFilter === 'all' ? undefined : orgFilter,
+      });
+      setLapseReport(report);
+      setSuccess(`Loaded lapse report with ${report.rows.length} row(s)`);
+    } catch (reportError) {
+      setError(parseError(reportError));
     } finally {
       setBusyAction(false);
     }
@@ -416,10 +583,162 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       });
       setUsageOpen(false);
       setAvailability(updated);
-      setSuccess(`Usage tracked. Remaining credit: ${toCurrency(updated.remaining_credit)}`);
+      markCommitSuccess(`Usage tracked. Remaining credit: ${toCurrency(updated.remaining_credit)}`);
       await loadData();
     } catch (usageError) {
       setError(parseError(usageError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setBusyAction(true);
+    setError('');
+    setSuccess('');
+    try {
+      if (deleteTarget.type === 'credit') {
+        await orgCreditBillingService.deleteOrgCredit(deleteTarget.row.id);
+        markCommitSuccess(`Org credit #${deleteTarget.row.id} deleted`);
+      } else if (deleteTarget.type === 'invoice') {
+        await orgCreditBillingService.deleteInvoice(deleteTarget.row.id);
+        markCommitSuccess(`Invoice #${deleteTarget.row.id} deleted`);
+      } else {
+        await orgCreditBillingService.deletePayment(deleteTarget.row.id);
+        markCommitSuccess(`Payment #${deleteTarget.row.id} deleted`);
+      }
+      setDeleteTarget(null);
+      await loadData();
+    } catch (deleteError) {
+      setError(parseError(deleteError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const openInvoiceDocument = async (invoiceId: number) => {
+    setBusyAction(true);
+    setError('');
+    try {
+      const data = await orgCreditBillingService.getInvoiceDocument(invoiceId);
+      setInvoiceDocument(data);
+      setInvoiceDocumentOpen(true);
+    } catch (viewError) {
+      setError(parseError(viewError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const openPaymentReceipt = async (paymentId: number) => {
+    setBusyAction(true);
+    setError('');
+    try {
+      const data = await orgCreditBillingService.getPaymentReceipt(paymentId);
+      setReceiptDocument(data);
+      setReceiptOpen(true);
+    } catch (viewError) {
+      setError(parseError(viewError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const openEmailDialog = async (target: { type: 'invoice'; id: number } | { type: 'receipt'; id: number }) => {
+    setBusyAction(true);
+    setError('');
+    try {
+      if (target.type === 'invoice') {
+        const doc = await orgCreditBillingService.getInvoiceDocument(target.id);
+        const invoice = doc.invoice;
+        const orgEmail = doc.organization_admin_email || orgById.get(invoice.organization_id)?.admin_email || '';
+        const outstanding = Math.max(0, doc.outstanding_amount ?? getInvoiceOutstanding(invoice));
+
+        setEmailTo(orgEmail || '');
+        setEmailSubject(`Invoice #${invoice.id} - ${doc.organization_name}`);
+        setEmailBody(
+          [
+            `Hello ${doc.organization_name} Team,`,
+            '',
+            'Please find your invoice details below:',
+            `Invoice ID: #${invoice.id}`,
+            `Billing Month: ${invoice.billing_month}`,
+            `Billing Cycle: ${dateLabel(doc.billing_start_date)} to ${dateLabel(doc.billing_end_date)}`,
+            `Amount Payable: ${toCurrency(invoice.invoice_amount)}`,
+            `Paid Amount: ${toCurrency(invoice.paid_amount)}`,
+            `Outstanding: ${toCurrency(outstanding)}`,
+            `Status: ${invoice.payment_done_flag ? 'Paid' : 'Unpaid'}`,
+            '',
+            'Regards,',
+            'Billing Team',
+          ].join('\n')
+        );
+      } else {
+        const receipt = await orgCreditBillingService.getPaymentReceipt(target.id);
+        const payment = receipt.payment;
+        const invoice = receipt.invoice;
+        const orgEmail = receipt.organization_admin_email || orgById.get(invoice.organization_id)?.admin_email || '';
+
+        setEmailTo(orgEmail || '');
+        setEmailSubject(`Receipt #${payment.id} for Invoice #${invoice.id}`);
+        setEmailBody(
+          [
+            `Hello ${receipt.organization_name} Team,`,
+            '',
+            'Payment receipt details:',
+            `Receipt ID: #${payment.id}`,
+            `Invoice ID: #${invoice.id}`,
+            `Payment Date: ${dateLabel(payment.payment_date)}`,
+            `Payment Type: ${payment.full_partial}`,
+            `Mode of Payment: ${payment.payment_mode || '-'}`,
+            `Reference Number: ${payment.payment_reference || '-'}`,
+            `Amount Paid: ${toCurrency(payment.actual_payment)}`,
+            `Credit Applied: ${toCurrency(payment.actual_credit)}`,
+            `Other Details: ${payment.payment_other_details || payment.payment_details || '-'}`,
+            '',
+            'Regards,',
+            'Billing Team',
+          ].join('\n')
+        );
+      }
+      setEmailTarget(target);
+      setEmailDialogOpen(true);
+    } catch (mailError) {
+      setError(parseError(mailError));
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleSendDocumentEmail = async () => {
+    if (!emailTarget) return;
+    if (!emailTo.trim()) {
+      setError('Recipient email is required');
+      return;
+    }
+    setBusyAction(true);
+    setError('');
+    setSuccess('');
+    try {
+      if (emailTarget.type === 'invoice') {
+        const response = await orgCreditBillingService.sendInvoiceEmail(emailTarget.id, {
+          to_email: emailTo.trim(),
+          subject: emailSubject || undefined,
+          body: emailBody || undefined,
+        });
+        markCommitSuccess(response.message);
+      } else {
+        const response = await orgCreditBillingService.sendPaymentReceiptEmail(emailTarget.id, {
+          to_email: emailTo.trim(),
+          subject: emailSubject || undefined,
+          body: emailBody || undefined,
+        });
+        markCommitSuccess(response.message);
+      }
+      setEmailDialogOpen(false);
+    } catch (mailError) {
+      setError(parseError(mailError));
     } finally {
       setBusyAction(false);
     }
@@ -586,6 +905,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
           <Tab value="invoices" label={`Invoices (${filteredInvoices.length})`} />
           <Tab value="payments" label={`Payments (${filteredPayments.length})`} />
           <Tab value="availability" label="Credit Availability" />
+          <Tab value="lapse" label={`Lapse (${lapseReport?.rows.length || 0})`} />
         </Tabs>
 
         <Box sx={{ p: 2 }}>
@@ -628,6 +948,15 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                         <Button size="small" variant="text" onClick={() => handleGenerateInvoice(row.id)} disabled={busyAction}>
                           Generate Invoice
                         </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="text"
+                          onClick={() => setDeleteTarget({ type: 'credit', row })}
+                          disabled={busyAction}
+                        >
+                          Delete
+                        </Button>
                       </Stack>
                     </CardContent>
                   </Card>
@@ -667,6 +996,9 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                         </Button>
                         <Button size="small" onClick={() => handleGenerateInvoice(row.id)} disabled={busyAction}>
                           Invoice
+                        </Button>
+                        <Button size="small" color="error" onClick={() => setDeleteTarget({ type: 'credit', row })} disabled={busyAction}>
+                          Delete
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -721,6 +1053,15 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           <Button size="small" variant="outlined" onClick={() => openPaymentDialog(row)} disabled={busyAction}>
                             Add Payment
                           </Button>
+                          <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openInvoiceDocument(row.id)} disabled={busyAction}>
+                            View
+                          </Button>
+                          <Button size="small" startIcon={<EmailOutlinedIcon />} onClick={() => openEmailDialog({ type: 'invoice', id: row.id })} disabled={busyAction}>
+                            Email
+                          </Button>
+                          <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteTarget({ type: 'invoice', row })} disabled={busyAction}>
+                            Delete
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
@@ -748,10 +1089,13 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                     <TableCell>Organization</TableCell>
                     <TableCell>Invoice ID</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>Mode</TableCell>
+                    <TableCell>Reference</TableCell>
                     <TableCell>Actual Payment</TableCell>
                     <TableCell>Actual Credit</TableCell>
                     <TableCell>Date</TableCell>
                     <TableCell>Details</TableCell>
+                    <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -761,15 +1105,28 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       <TableCell>{orgNameById.get(row.organization_id) || `Org #${row.organization_id}`}</TableCell>
                       <TableCell>#{row.invoice_id}</TableCell>
                       <TableCell>{row.full_partial}</TableCell>
+                      <TableCell>{row.payment_mode || '-'}</TableCell>
+                      <TableCell>{row.payment_reference || '-'}</TableCell>
                       <TableCell>{toCurrency(row.actual_payment)}</TableCell>
                       <TableCell>{toCurrency(row.actual_credit)}</TableCell>
                       <TableCell>{dateLabel(row.payment_date)}</TableCell>
-                      <TableCell>{row.payment_details || '-'}</TableCell>
+                      <TableCell>{row.payment_other_details || row.payment_details || '-'}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" startIcon={<VisibilityIcon />} onClick={() => openPaymentReceipt(row.id)} disabled={busyAction}>
+                          View
+                        </Button>
+                        <Button size="small" startIcon={<EmailOutlinedIcon />} onClick={() => openEmailDialog({ type: 'receipt', id: row.id })} disabled={busyAction}>
+                          Email
+                        </Button>
+                        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteTarget({ type: 'payment', row })} disabled={busyAction}>
+                          Delete
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!filteredPayments.length ? (
                     <TableRow>
-                      <TableCell colSpan={8}>
+                      <TableCell colSpan={11}>
                         <Typography variant="body2" sx={{ py: 1 }}>
                           No payments found.
                         </Typography>
@@ -863,6 +1220,127 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
               )}
             </Stack>
           ) : null}
+
+          {tab === 'lapse' ? (
+            <Stack spacing={2}>
+              <Grid container spacing={1.2}>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    type="month"
+                    label="End Period"
+                    InputLabelProps={{ shrink: true }}
+                    value={lapsePeriod}
+                    onChange={(event) => setLapsePeriod(event.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    type="number"
+                    label="Months"
+                    inputProps={{ min: 1, max: 24 }}
+                    value={lapseMonths}
+                    onChange={(event) => setLapseMonths(Math.max(1, Math.min(24, Number(event.target.value) || 1)))}
+                  />
+                </Grid>
+                <Grid item xs={12} md={5}>
+                  <Stack direction="row" spacing={1}>
+                    <Button variant="contained" onClick={handleLoadLapseReport} disabled={busyAction}>
+                      Load Lapse Report
+                    </Button>
+                  </Stack>
+                </Grid>
+              </Grid>
+
+              <Typography variant="body2" color="text.secondary">
+                Unused credit is treated as lapsed after month end. No rollover is applied to next month.
+              </Typography>
+
+              {lapseReport ? (
+                <>
+                  <Grid container spacing={1.2}>
+                    <Grid item xs={12} md={4}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="caption">Total Lapsed Credit</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 800, color: 'warning.main' }}>
+                            {toCurrency(lapseReport.total_lapsed_credit)}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="caption">Periods Covered</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                            {lapseReport.months}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="caption">End Period</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                            {lapseReport.end_period}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Organization</TableCell>
+                          <TableCell>Period</TableCell>
+                          <TableCell>Total Credit</TableCell>
+                          <TableCell>Used Credit</TableCell>
+                          <TableCell>Remaining</TableCell>
+                          <TableCell>Lapsed</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {lapseReport.rows.map((row, idx) => (
+                          <TableRow key={`${row.organization_id}-${row.billing_period}-${idx}`}>
+                            <TableCell>{row.organization_name || `Org #${row.organization_id}`}</TableCell>
+                            <TableCell>{row.billing_period}</TableCell>
+                            <TableCell>{toCurrency(row.total_credit)}</TableCell>
+                            <TableCell>{toCurrency(row.used_credit)}</TableCell>
+                            <TableCell>{toCurrency(row.remaining_credit)}</TableCell>
+                            <TableCell>
+                              <Typography component="span" sx={{ color: row.lapsed_credit > 0 ? 'warning.main' : 'text.primary', fontWeight: 700 }}>
+                                {toCurrency(row.lapsed_credit)}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {!lapseReport.rows.length ? (
+                          <TableRow>
+                            <TableCell colSpan={6}>
+                              <Typography variant="body2" sx={{ py: 1 }}>
+                                No lapse data found for selected period range.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Click "Load Lapse Report" to view organization-wise monthly credit lapse.
+                </Typography>
+              )}
+            </Stack>
+          ) : null}
         </Box>
       </Paper>
 
@@ -888,7 +1366,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 <Select value={createEstimatorId} label="Estimator" onChange={(event) => setCreateEstimatorId(Number(event.target.value))}>
                   {estimators.map((est) => (
                     <MenuItem key={est.id} value={est.id}>
-                      {est.company_name} - Recommended {est.estimate.final_recommended_credits_ceiling}
+                      {est.company_name} - After Buffer {est.estimate.recommended_credits} - Payable {est.estimate.final_recommended_credits}
                     </MenuItem>
                   ))}
                 </Select>
@@ -984,7 +1462,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 1.3 }}>
             Invoice #{paymentTarget?.id} | Amount {paymentTarget ? toCurrency(paymentTarget.invoice_amount) : '-'} | Outstanding{' '}
-            {paymentTarget ? toCurrency(Math.max(0, paymentTarget.invoice_amount - paymentTarget.paid_amount)) : '-'}
+            {paymentTarget ? toCurrency(getInvoiceOutstanding(paymentTarget)) : '-'}
           </Typography>
           <Grid container spacing={1.2}>
             <Grid item xs={12} md={6}>
@@ -995,6 +1473,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 label="Actual Payment"
                 value={paymentAmount}
                 onChange={(event) => setPaymentAmount(event.target.value)}
+                disabled={paymentStrategy === 'full_payment'}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -1020,14 +1499,31 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth size="small">
-                <InputLabel>Partial Strategy</InputLabel>
+                <InputLabel>Payment Strategy</InputLabel>
                 <Select
                   value={paymentStrategy}
-                  label="Partial Strategy"
-                  onChange={(event) => setPaymentStrategy(event.target.value as PartialPaymentStrategy)}
+                  label="Payment Strategy"
+                  onChange={(event) => handlePaymentStrategyChange(event.target.value as PartialPaymentStrategy)}
                 >
+                  <MenuItem value="full_payment">Full Payment</MenuItem>
                   <MenuItem value="keep_open">Keep Invoice Open</MenuItem>
                   <MenuItem value="create_invoice">Create New Remaining Invoice</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Mode of Payment</InputLabel>
+                <Select
+                  value={paymentMode}
+                  label="Mode of Payment"
+                  onChange={(event) => setPaymentMode(event.target.value as (typeof paymentModeOptions)[number])}
+                >
+                  {paymentModeOptions.map((mode) => (
+                    <MenuItem key={mode} value={mode}>
+                      {mode.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -1035,9 +1531,18 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
               <TextField
                 size="small"
                 fullWidth
-                label="Payment Details"
-                value={paymentDetails}
-                onChange={(event) => setPaymentDetails(event.target.value)}
+                label="Reference Transaction Number"
+                value={paymentReference}
+                onChange={(event) => setPaymentReference(event.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                size="small"
+                fullWidth
+                label="Other Details"
+                value={paymentOtherDetails}
+                onChange={(event) => setPaymentOtherDetails(event.target.value)}
               />
             </Grid>
           </Grid>
@@ -1046,6 +1551,113 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
           <Button onClick={() => setPaymentOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleAddPayment} disabled={busyAction}>
             Save Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={markPaidConfirmOpen}
+        onClose={() => {
+          setMarkPaidConfirmOpen(false);
+          setMarkPaidTarget(null);
+        }}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Confirm Full Payment</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 0.8 }}>
+            This option only work for full payment of invoice, are you sure full payment of invoice is done?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setMarkPaidConfirmOpen(false);
+              setMarkPaidTarget(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmMarkPaid} disabled={busyAction}>
+            Yes, Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={markPaidOpen}
+        onClose={() => {
+          setMarkPaidOpen(false);
+          setMarkPaidTarget(null);
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Mark Invoice Paid</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.3 }}>
+            Invoice #{markPaidTarget?.id} | Full payment amount {toCurrency(getInvoiceOutstanding(markPaidTarget))}
+          </Typography>
+          <Grid container spacing={1.2}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Payment Type</InputLabel>
+                <Select
+                  value={markPaidMode}
+                  label="Payment Type"
+                  onChange={(event) => setMarkPaidMode(event.target.value as (typeof paymentModeOptions)[number])}
+                >
+                  {paymentModeOptions.map((mode) => (
+                    <MenuItem key={mode} value={mode}>
+                      {mode.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                size="small"
+                fullWidth
+                type="date"
+                label="Payment Date"
+                InputLabelProps={{ shrink: true }}
+                value={markPaidDate}
+                onChange={(event) => setMarkPaidDate(event.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                size="small"
+                fullWidth
+                label="Payment Reference Number"
+                value={markPaidReference}
+                onChange={(event) => setMarkPaidReference(event.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                size="small"
+                fullWidth
+                label="Other Details"
+                value={markPaidOtherDetails}
+                onChange={(event) => setMarkPaidOtherDetails(event.target.value)}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setMarkPaidOpen(false);
+              setMarkPaidTarget(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSubmitMarkPaid} disabled={busyAction}>
+            Mark Paid
           </Button>
         </DialogActions>
       </Dialog>
@@ -1096,6 +1708,295 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={invoiceDocumentOpen} onClose={() => setInvoiceDocumentOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Invoice Document</DialogTitle>
+        <DialogContent>
+          {invoiceDocument ? (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: { xs: 1.6, md: 2.4 },
+                borderRadius: '14px',
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                background: '#fff',
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5} sx={{ pb: 1.8, borderBottom: `1px solid ${alpha(theme.palette.divider, 0.8)}` }}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    TAX INVOICE
+                  </Typography>
+                  <Typography variant="body2">Invoice #{invoiceDocument.invoice.id}</Typography>
+                  <Typography variant="body2">Date: {dateLabel(invoiceDocument.invoice.invoice_date)}</Typography>
+                </Box>
+                <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Zentrixel Billing
+                  </Typography>
+                  <Typography variant="body2">{invoiceDocument.organization_name}</Typography>
+                  <Typography variant="body2">{invoiceDocument.organization_admin_email || '-'}</Typography>
+                </Box>
+              </Stack>
+
+              <Grid container spacing={1.6} sx={{ mt: 0.8 }}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4 }}>
+                    Bill To
+                  </Typography>
+                  <Typography variant="body2">{invoiceDocument.organization_name}</Typography>
+                  <Typography variant="body2">Estimator: {invoiceDocument.estimator_name || '-'}</Typography>
+                  <Typography variant="body2">Billing Month: {invoiceDocument.invoice.billing_month}</Typography>
+                  <Typography variant="body2">
+                    Cycle: {dateLabel(invoiceDocument.billing_start_date)} to {dateLabel(invoiceDocument.billing_end_date)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4 }}>
+                    Payment Summary
+                  </Typography>
+                  <Typography variant="body2">Status: {invoiceDocument.invoice.payment_done_flag ? 'Paid' : 'Unpaid'}</Typography>
+                  <Typography variant="body2">Total Credit (After Buffer): {toCurrency(invoiceDocument.invoice.total_credit)}</Typography>
+                  <Typography variant="body2">Amount Payable: {toCurrency(invoiceDocument.invoice.invoice_amount)}</Typography>
+                  <Typography variant="body2">Paid Amount: {toCurrency(invoiceDocument.invoice.paid_amount)}</Typography>
+                  <Typography variant="body2">Outstanding: {toCurrency(invoiceDocument.outstanding_amount)}</Typography>
+                </Grid>
+              </Grid>
+
+              <TableContainer sx={{ mt: 2, border: `1px solid ${alpha(theme.palette.divider, 0.8)}`, borderRadius: '10px' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Payment #</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Mode</TableCell>
+                      <TableCell>Reference</TableCell>
+                      <TableCell align="right">Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {invoiceDocument.payments.map((paymentRow) => (
+                      <TableRow key={paymentRow.id}>
+                        <TableCell>#{paymentRow.id}</TableCell>
+                        <TableCell>{dateLabel(paymentRow.payment_date)}</TableCell>
+                        <TableCell>{paymentRow.payment_mode || '-'}</TableCell>
+                        <TableCell>{paymentRow.payment_reference || '-'}</TableCell>
+                        <TableCell align="right">{toCurrency(paymentRow.actual_payment)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!invoiceDocument.payments.length ? (
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <Typography variant="body2" sx={{ py: 0.6 }}>
+                            No payments recorded for this invoice.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Typography variant="caption" sx={{ display: 'block', mt: 1.4, color: 'text.secondary' }}>
+                Generated: {new Date(invoiceDocument.generated_at).toLocaleString()}
+              </Typography>
+            </Paper>
+          ) : (
+            <Typography variant="body2">No invoice data.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInvoiceDocumentOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={receiptOpen} onClose={() => setReceiptOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Payment Receipt</DialogTitle>
+        <DialogContent>
+          {receiptDocument ? (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: { xs: 1.6, md: 2.4 },
+                borderRadius: '14px',
+                border: `1px solid ${alpha(theme.palette.success.main, 0.28)}`,
+                background: '#fff',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                justifyContent="space-between"
+                spacing={1.5}
+                sx={{ pb: 1.8, borderBottom: `1px solid ${alpha(theme.palette.divider, 0.8)}` }}
+              >
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    PAYMENT RECEIPT
+                  </Typography>
+                  <Typography variant="body2">Receipt #{receiptDocument.payment.id}</Typography>
+                  <Typography variant="body2">Date: {dateLabel(receiptDocument.payment.payment_date)}</Typography>
+                </Box>
+                <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Zentrixel Billing
+                  </Typography>
+                  <Typography variant="body2">Reference Invoice #{receiptDocument.invoice.id}</Typography>
+                  <Typography variant="body2">{receiptDocument.organization_admin_email || '-'}</Typography>
+                </Box>
+              </Stack>
+
+              <Grid container spacing={1.6} sx={{ mt: 0.8 }}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4 }}>
+                    Received From
+                  </Typography>
+                  <Typography variant="body2">{receiptDocument.organization_name}</Typography>
+                  <Typography variant="body2">Estimator: {receiptDocument.estimator_name || '-'}</Typography>
+                  <Typography variant="body2">
+                    Billing Cycle: {dateLabel(receiptDocument.billing_start_date)} to {dateLabel(receiptDocument.billing_end_date)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4 }}>
+                    Payment Method
+                  </Typography>
+                  <Typography variant="body2">Type: {receiptDocument.payment.full_partial}</Typography>
+                  <Typography variant="body2">Mode: {receiptDocument.payment.payment_mode || '-'}</Typography>
+                  <Typography variant="body2">Reference: {receiptDocument.payment.payment_reference || '-'}</Typography>
+                </Grid>
+              </Grid>
+
+              <TableContainer sx={{ mt: 2, border: `1px solid ${alpha(theme.palette.divider, 0.8)}`, borderRadius: '10px' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Description</TableCell>
+                      <TableCell align="right">Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Invoice Amount (Invoice #{receiptDocument.invoice.id})</TableCell>
+                      <TableCell align="right">{toCurrency(receiptDocument.invoice.invoice_amount)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Actual Payment Received</TableCell>
+                      <TableCell align="right">{toCurrency(receiptDocument.payment.actual_payment)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Actual Credit Applied</TableCell>
+                      <TableCell align="right">{toCurrency(receiptDocument.payment.actual_credit)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 800 }}>Outstanding After Receipt</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 800 }}>
+                        {toCurrency(Math.max(0, receiptDocument.invoice.invoice_amount - receiptDocument.invoice.paid_amount))}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Box sx={{ mt: 1.5, p: 1.2, borderRadius: '10px', backgroundColor: alpha(theme.palette.success.light, 0.12) }}>
+                <Typography variant="body2">
+                  <strong>Other Details:</strong> {receiptDocument.payment.payment_other_details || receiptDocument.payment.payment_details || '-'}
+                </Typography>
+              </Box>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Generated: {new Date(receiptDocument.generated_at).toLocaleString()}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Authorized Billing Receipt
+                </Typography>
+              </Stack>
+            </Paper>
+          ) : (
+            <Typography variant="body2">No receipt data.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReceiptOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={emailDialogOpen} onClose={() => setEmailDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Send Document by Email</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            size="small"
+            label="To Email"
+            value={emailTo}
+            onChange={(event) => setEmailTo(event.target.value)}
+            sx={{ mt: 1, mb: 1.3 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            label="Subject (optional)"
+            value={emailSubject}
+            onChange={(event) => setEmailSubject(event.target.value)}
+            sx={{ mb: 1.3 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            multiline
+            minRows={3}
+            label="Message (optional)"
+            value={emailBody}
+            onChange={(event) => setEmailBody(event.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEmailDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSendDocumentEmail} disabled={busyAction}>
+            Send Email
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={commitPopupOpen} onClose={() => setCommitPopupOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Commit Successful</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 0.8 }}>
+            {commitPopupMessage}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setCommitPopupOpen(false)}>
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={
+          deleteTarget?.type === 'credit'
+            ? 'Delete org credit entry?'
+            : deleteTarget?.type === 'invoice'
+              ? 'Delete invoice?'
+              : 'Delete payment?'
+        }
+        description={
+          deleteTarget?.type === 'credit'
+            ? `This will delete org credit #${deleteTarget.row.id} and related invoices/payments.`
+            : deleteTarget?.type === 'invoice'
+              ? `This will delete invoice #${deleteTarget.row.id} and related payments.`
+              : deleteTarget
+                ? `This will delete payment #${deleteTarget.row.id}.`
+                : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={busyAction}
+        onCancel={() => !busyAction && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
 
       {loading ? (
         <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>

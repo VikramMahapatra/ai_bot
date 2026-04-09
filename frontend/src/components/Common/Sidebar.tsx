@@ -36,6 +36,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { chatService } from '../../services/chatService';
 import ContactsIcon from '@mui/icons-material/Contacts';
 import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
 const drawerWidth = 280;
 
@@ -78,6 +79,7 @@ const allMenuItems: MenuItem[] = [
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },
   { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF', featureKey: 'human_handoff_enabled' },
   { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN', featureKey: 'module_products_enabled' },
+  { text: 'Credit Usage', icon: <AccountBalanceWalletIcon />, path: '/credits/monthly', requiredRole: 'ADMIN' },
   { text: 'User Management', icon: <GroupIcon />, path: '/users', requiredRole: 'ADMIN', featureKey: 'module_users_enabled' },
 ];
 

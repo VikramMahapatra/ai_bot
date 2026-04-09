@@ -18,6 +18,9 @@ class OrgCreditPayment(Base):
 
     payment_date = Column(Date, nullable=False, index=True)
     payment_details = Column(Text, nullable=True)
+    payment_mode = Column(String(64), nullable=True)
+    payment_reference = Column(String(120), nullable=True)
+    payment_other_details = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

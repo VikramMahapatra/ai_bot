@@ -35,6 +35,7 @@ import SuperAdminOrgCallAnalyticsReport from './pages/SuperAdminOrgCallAnalytics
 import ContactBookPage from './pages/ContactBookPage.tsx';
 import CreditEstimatorSharePage from './pages/CreditEstimatorSharePage';
 import CreditsLayout from './components/Layout/CreditsLayout.tsx';
+import AdminCreditUsagePage from './pages/AdminCreditUsagePage';
 
 type ColorMode = 'light' | 'dark';
 
@@ -643,6 +644,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="ADMIN">
               <ContactBookPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/credits/monthly"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminCreditUsagePage />
             </ProtectedRoute>
           }
         />

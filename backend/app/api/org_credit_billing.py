@@ -11,11 +11,18 @@ from app.schemas.org_credit_billing import (
     OrgCreditBalanceResponse,
     OrgCreditCreateRequest,
     OrgCreditCreateResponse,
+    OrgCreditDeleteResponse,
+    OrgCreditDocumentEmailRequest,
     OrgCreditInvoiceGenerateRequest,
+    OrgCreditInvoiceDeleteResponse,
+    OrgCreditInvoiceDocumentResponse,
     OrgCreditInvoicePaymentStatusRequest,
     OrgCreditInvoiceResponse,
+    OrgCreditLapseReportResponse,
+    OrgCreditPaymentDeleteResponse,
     OrgCreditPaymentCreateRequest,
     OrgCreditPaymentCreateResponse,
+    OrgCreditPaymentReceiptResponse,
     OrgCreditPaymentResponse,
     OrgCreditResponse,
     OrgCreditTopupRequest,
@@ -54,6 +61,16 @@ async def list_org_credit_entries(
         db=db,
         organization_id=organization_id,
     )
+
+
+@router.delete("/org-credits/{org_credit_id}", response_model=OrgCreditDeleteResponse)
+async def delete_org_credit_entry(
+    org_credit_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    deleted_id = org_credit_billing_service.delete_org_credit_entry(db=db, org_credit_id=org_credit_id)
+    return OrgCreditDeleteResponse(deleted_org_credit_id=deleted_id)
 
 
 @router.post("/org-credits/{org_credit_id}/topups", response_model=OrgCreditCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -101,6 +118,42 @@ async def list_org_credit_invoices(
     )
 
 
+@router.delete("/invoices/{invoice_id}", response_model=OrgCreditInvoiceDeleteResponse)
+async def delete_org_credit_invoice(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    deleted_id = org_credit_billing_service.delete_invoice(db=db, invoice_id=invoice_id)
+    return OrgCreditInvoiceDeleteResponse(deleted_invoice_id=deleted_id)
+
+
+@router.get("/invoices/{invoice_id}/document", response_model=OrgCreditInvoiceDocumentResponse)
+async def get_org_credit_invoice_document(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    payload = org_credit_billing_service.get_invoice_document(db=db, invoice_id=invoice_id)
+    return OrgCreditInvoiceDocumentResponse(**payload)
+
+
+@router.post("/invoices/{invoice_id}/email")
+async def send_org_credit_invoice_email(
+    invoice_id: int,
+    payload: OrgCreditDocumentEmailRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    return org_credit_billing_service.send_invoice_email(
+        db=db,
+        invoice_id=invoice_id,
+        to_email=str(payload.to_email),
+        subject=payload.subject,
+        body=payload.body,
+    )
+
+
 @router.put("/invoices/{invoice_id}/payment-status", response_model=OrgCreditInvoiceResponse)
 async def mark_org_credit_invoice_payment_status(
     invoice_id: int,
@@ -112,6 +165,10 @@ async def mark_org_credit_invoice_payment_status(
         db=db,
         invoice_id=invoice_id,
         payment_done_flag=payload.payment_done_flag,
+        payment_date=payload.payment_date,
+        payment_mode=payload.payment_mode,
+        payment_reference=payload.payment_reference,
+        payment_other_details=payload.payment_other_details,
     )
 
 
@@ -128,6 +185,9 @@ async def add_org_credit_payment(
         actual_credit=payload.actual_credit,
         payment_date=payload.payment_date,
         payment_details=payload.payment_details,
+        payment_mode=payload.payment_mode,
+        payment_reference=payload.payment_reference,
+        payment_other_details=payload.payment_other_details,
         partial_strategy=payload.partial_strategy,
     )
     return OrgCreditPaymentCreateResponse(
@@ -148,6 +208,42 @@ async def list_org_credit_payments(
         db=db,
         organization_id=organization_id,
         invoice_id=invoice_id,
+    )
+
+
+@router.delete("/payments/{payment_id}", response_model=OrgCreditPaymentDeleteResponse)
+async def delete_org_credit_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    deleted_id = org_credit_billing_service.delete_payment(db=db, payment_id=payment_id)
+    return OrgCreditPaymentDeleteResponse(deleted_payment_id=deleted_id)
+
+
+@router.get("/payments/{payment_id}/receipt", response_model=OrgCreditPaymentReceiptResponse)
+async def get_org_credit_payment_receipt(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    payload = org_credit_billing_service.get_payment_receipt(db=db, payment_id=payment_id)
+    return OrgCreditPaymentReceiptResponse(**payload)
+
+
+@router.post("/payments/{payment_id}/email")
+async def send_org_credit_payment_receipt_email(
+    payment_id: int,
+    payload: OrgCreditDocumentEmailRequest,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    return org_credit_billing_service.send_payment_receipt_email(
+        db=db,
+        payment_id=payment_id,
+        to_email=str(payload.to_email),
+        subject=payload.subject,
+        body=payload.body,
     )
 
 
@@ -186,3 +282,20 @@ async def run_org_credit_automation(
 ):
     result = org_credit_billing_service.run_billing_automation(db=db)
     return OrgCreditAutomationRunResponse(**result)
+
+
+@router.get("/reports/lapse", response_model=OrgCreditLapseReportResponse)
+async def get_org_credit_lapse_report(
+    billing_period: Optional[str] = Query(default=None),
+    months: int = Query(default=6, ge=1, le=24),
+    organization_id: Optional[int] = Query(default=None),
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    payload = org_credit_billing_service.get_lapse_report(
+        db=db,
+        billing_period=billing_period,
+        months=months,
+        organization_id=organization_id,
+    )
+    return OrgCreditLapseReportResponse(**payload)

@@ -17,6 +17,8 @@ from app.services.email_service import (
 )
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
+from app.services import org_credit_billing_service
+from app.schemas.org_credit_billing import OrgCreditAdminMonthSummaryResponse
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -364,6 +366,20 @@ async def get_feature_flags(
         "module_products_enabled": limits.get("module_products_enabled", False),
         "module_users_enabled": limits.get("module_users_enabled", False),
     }
+
+
+@router.get("/org-credit/current-month", response_model=OrgCreditAdminMonthSummaryResponse)
+async def get_admin_org_credit_current_month_summary(
+    billing_period: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    payload = org_credit_billing_service.get_admin_month_summary(
+        db=db,
+        organization_id=current_user.organization_id,
+        billing_period=billing_period,
+    )
+    return OrgCreditAdminMonthSummaryResponse(**payload)
 
 
 @router.get("/widget/config/{widget_id}")

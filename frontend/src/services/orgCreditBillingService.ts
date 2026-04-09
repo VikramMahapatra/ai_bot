@@ -5,12 +5,19 @@ import {
   OrgCreditBalance,
   OrgCreditCreateRequest,
   OrgCreditCreateResponse,
+  OrgCreditDeleteResponse,
+  OrgCreditDocumentEmailRequest,
   OrgCreditInvoice,
+  OrgCreditInvoiceDeleteResponse,
+  OrgCreditInvoiceDocument,
   OrgCreditInvoiceGenerateRequest,
   OrgCreditInvoicePaymentStatusRequest,
+  OrgCreditLapseReport,
   OrgCreditPayment,
+  OrgCreditPaymentDeleteResponse,
   OrgCreditPaymentCreateRequest,
   OrgCreditPaymentCreateResponse,
+  OrgCreditPaymentReceipt,
   OrgCreditTopupRequest,
   OrgCreditUsageTrackRequest,
 } from '../types/orgCreditBilling';
@@ -25,6 +32,11 @@ export const orgCreditBillingService = {
 
   async listOrgCredits(params?: { organization_id?: number }): Promise<OrgCredit[]> {
     const response = await api.get<OrgCredit[]>(`${basePath}/org-credits`, { params });
+    return response.data;
+  },
+
+  async deleteOrgCredit(orgCreditId: number): Promise<OrgCreditDeleteResponse> {
+    const response = await api.delete<OrgCreditDeleteResponse>(`${basePath}/org-credits/${orgCreditId}`);
     return response.data;
   },
 
@@ -43,6 +55,21 @@ export const orgCreditBillingService = {
     return response.data;
   },
 
+  async deleteInvoice(invoiceId: number): Promise<OrgCreditInvoiceDeleteResponse> {
+    const response = await api.delete<OrgCreditInvoiceDeleteResponse>(`${basePath}/invoices/${invoiceId}`);
+    return response.data;
+  },
+
+  async getInvoiceDocument(invoiceId: number): Promise<OrgCreditInvoiceDocument> {
+    const response = await api.get<OrgCreditInvoiceDocument>(`${basePath}/invoices/${invoiceId}/document`);
+    return response.data;
+  },
+
+  async sendInvoiceEmail(invoiceId: number, payload: OrgCreditDocumentEmailRequest): Promise<{ message: string }> {
+    const response = await api.post<{ message: string }>(`${basePath}/invoices/${invoiceId}/email`, payload);
+    return response.data;
+  },
+
   async markInvoicePaymentStatus(invoiceId: number, payload: OrgCreditInvoicePaymentStatusRequest): Promise<OrgCreditInvoice> {
     const response = await api.put<OrgCreditInvoice>(`${basePath}/invoices/${invoiceId}/payment-status`, payload);
     return response.data;
@@ -55,6 +82,21 @@ export const orgCreditBillingService = {
 
   async listPayments(params?: { organization_id?: number; invoice_id?: number }): Promise<OrgCreditPayment[]> {
     const response = await api.get<OrgCreditPayment[]>(`${basePath}/payments`, { params });
+    return response.data;
+  },
+
+  async deletePayment(paymentId: number): Promise<OrgCreditPaymentDeleteResponse> {
+    const response = await api.delete<OrgCreditPaymentDeleteResponse>(`${basePath}/payments/${paymentId}`);
+    return response.data;
+  },
+
+  async getPaymentReceipt(paymentId: number): Promise<OrgCreditPaymentReceipt> {
+    const response = await api.get<OrgCreditPaymentReceipt>(`${basePath}/payments/${paymentId}/receipt`);
+    return response.data;
+  },
+
+  async sendPaymentReceiptEmail(paymentId: number, payload: OrgCreditDocumentEmailRequest): Promise<{ message: string }> {
+    const response = await api.post<{ message: string }>(`${basePath}/payments/${paymentId}/email`, payload);
     return response.data;
   },
 
@@ -72,5 +114,9 @@ export const orgCreditBillingService = {
     const response = await api.post<OrgCreditAutomationRunResponse>(`${basePath}/automation/run`);
     return response.data;
   },
-};
 
+  async getLapseReport(params?: { billing_period?: string; months?: number; organization_id?: number }): Promise<OrgCreditLapseReport> {
+    const response = await api.get<OrgCreditLapseReport>(`${basePath}/reports/lapse`, { params });
+    return response.data;
+  },
+};

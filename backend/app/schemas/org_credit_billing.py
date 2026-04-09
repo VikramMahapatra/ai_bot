@@ -1,12 +1,12 @@
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 PaymentStatus = Literal["paid", "unpaid"]
 BillingCycle = Literal["monthly"]
-PartialPaymentStrategy = Literal["keep_open", "create_invoice"]
+PartialPaymentStrategy = Literal["keep_open", "create_invoice", "full_payment"]
 
 
 class OrgCreditCreateRequest(BaseModel):
@@ -54,6 +54,10 @@ class OrgCreditInvoiceGenerateRequest(BaseModel):
 
 class OrgCreditInvoicePaymentStatusRequest(BaseModel):
     payment_done_flag: bool
+    payment_date: Optional[date] = None
+    payment_mode: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_other_details: Optional[str] = None
 
 
 class OrgCreditInvoiceResponse(BaseModel):
@@ -81,6 +85,9 @@ class OrgCreditPaymentCreateRequest(BaseModel):
     actual_credit: Optional[float] = Field(default=None, gt=0)
     payment_date: Optional[date] = None
     payment_details: Optional[str] = None
+    payment_mode: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_other_details: Optional[str] = None
     partial_strategy: PartialPaymentStrategy = "keep_open"
 
 
@@ -94,6 +101,9 @@ class OrgCreditPaymentResponse(BaseModel):
     actual_credit: float
     payment_date: date
     payment_details: Optional[str] = None
+    payment_mode: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_other_details: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -136,3 +146,83 @@ class OrgCreditPaymentCreateResponse(BaseModel):
     payment: OrgCreditPaymentResponse
     invoice: OrgCreditInvoiceResponse
     generated_invoice: Optional[OrgCreditInvoiceResponse] = None
+
+
+class OrgCreditDeleteResponse(BaseModel):
+    success: bool = True
+    deleted_org_credit_id: int
+
+
+class OrgCreditInvoiceDeleteResponse(BaseModel):
+    success: bool = True
+    deleted_invoice_id: int
+
+
+class OrgCreditPaymentDeleteResponse(BaseModel):
+    success: bool = True
+    deleted_payment_id: int
+
+
+class OrgCreditInvoiceDocumentResponse(BaseModel):
+    invoice: OrgCreditInvoiceResponse
+    organization_name: str
+    organization_admin_email: Optional[str] = None
+    estimator_name: Optional[str] = None
+    billing_start_date: date
+    billing_end_date: date
+    billing_cycle: str
+    payment_status: str
+    outstanding_amount: float = 0
+    payments: List[OrgCreditPaymentResponse] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class OrgCreditPaymentReceiptResponse(BaseModel):
+    payment: OrgCreditPaymentResponse
+    invoice: OrgCreditInvoiceResponse
+    organization_name: str
+    organization_admin_email: Optional[str] = None
+    estimator_name: Optional[str] = None
+    billing_start_date: date
+    billing_end_date: date
+    generated_at: datetime
+
+
+class OrgCreditDocumentEmailRequest(BaseModel):
+    to_email: EmailStr
+    subject: Optional[str] = None
+    body: Optional[str] = None
+
+
+class OrgCreditAdminMonthSummaryResponse(BaseModel):
+    organization_id: int
+    organization_name: str
+    billing_period: str
+    total_credit: float
+    used_credit: float
+    remaining_credit: float
+    lapsed_previous_month: float
+    invoices_count: int
+    paid_invoices_count: int
+    open_invoices_count: int
+    payments_collected: float
+    no_rollover_policy: bool = True
+    generated_at: datetime
+
+
+class OrgCreditLapseRowResponse(BaseModel):
+    organization_id: int
+    organization_name: str
+    billing_period: str
+    total_credit: float
+    used_credit: float
+    remaining_credit: float
+    lapsed_credit: float
+
+
+class OrgCreditLapseReportResponse(BaseModel):
+    rows: List[OrgCreditLapseRowResponse] = Field(default_factory=list)
+    total_lapsed_credit: float = 0
+    months: int = 0
+    end_period: str
+    generated_at: datetime

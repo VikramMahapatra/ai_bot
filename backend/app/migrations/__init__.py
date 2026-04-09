@@ -18,6 +18,10 @@ from app.migrations.m2026_04_09_create_org_credit_billing_tables import (
     MIGRATION_ID as CREATE_ORG_CREDIT_BILLING_TABLES_ID,
     upgrade as create_org_credit_billing_tables_upgrade,
 )
+from app.migrations.m2026_04_10_add_org_credit_payment_metadata import (
+    MIGRATION_ID as ADD_ORG_CREDIT_PAYMENT_METADATA_ID,
+    upgrade as add_org_credit_payment_metadata_upgrade,
+)
 
 
 MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
@@ -25,6 +29,7 @@ MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
     (DROP_ORG_NUMERIC_LIMITS_ID, drop_org_numeric_limits_upgrade),
     (ADD_ORG_JOINING_DATES_ID, add_org_joining_dates_upgrade),
     (CREATE_ORG_CREDIT_BILLING_TABLES_ID, create_org_credit_billing_tables_upgrade),
+    (ADD_ORG_CREDIT_PAYMENT_METADATA_ID, add_org_credit_payment_metadata_upgrade),
 ]
 
 
