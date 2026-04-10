@@ -13,6 +13,10 @@ from app.models.billing_invoice_item import BillingInvoiceItem
 from app.models.billing_bill import BillingBill
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_subscription_usage import OrganizationSubscriptionUsage
+from app.models.org_credit import OrgCredit
+from app.models.org_credit_invoice import OrgCreditInvoice
+from app.models.org_credit_payment import OrgCreditPayment
+from app.models.org_credit_balance import OrgCreditBalance
 from app.models.knowledge_source import KnowledgeSource, SourceType
 from app.models.conversation import Conversation
 from app.models.lead import Lead
@@ -54,6 +58,10 @@ __all__ = [
     "BillingBill",
     "OrganizationSubscription",
     "OrganizationSubscriptionUsage",
+    "OrgCredit",
+    "OrgCreditInvoice",
+    "OrgCreditPayment",
+    "OrgCreditBalance",
     "KnowledgeSource",
     "SourceType",
     "Conversation",

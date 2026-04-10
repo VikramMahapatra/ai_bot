@@ -21,11 +21,13 @@ from app.api import (
     calls_router,
     funnel_categories_router,
     product_router,
-    organization_settings_router
+    organization_settings_router,
+    org_credit_billing_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
 from app.services.conversation_outcome_service import run_daily_call_campaign_daemon, run_daily_outcome_daemon
+from app.services.org_credit_billing_service import run_daily_org_credit_billing_daemon
 import logging
 import asyncio
 
@@ -42,6 +44,9 @@ outcome_daemon_stop_event = asyncio.Event()
 
 call_campaign_daemon_task = None
 call_campaign_daemon_stop_event = asyncio.Event()
+
+org_credit_billing_daemon_task = None
+org_credit_billing_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -82,6 +87,7 @@ app.include_router(calls_router)
 app.include_router(funnel_categories_router)
 app.include_router(product_router)
 app.include_router(organization_settings_router)
+app.include_router(org_credit_billing_router)
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")
@@ -93,6 +99,8 @@ async def options_handler(full_path: str):
 async def startup_event():
     """Initialize database on startup"""
     global outcome_daemon_task
+    global call_campaign_daemon_task
+    global org_credit_billing_daemon_task
     # global call_campaign_daemon_task
     logger.info("Initializing database...")
     init_db()
@@ -106,6 +114,12 @@ async def startup_event():
     call_campaign_daemon_task = asyncio.create_task(run_daily_call_campaign_daemon(call_campaign_daemon_stop_event))
     logger.info("Call campaign daemon started")
 
+    org_credit_billing_daemon_stop_event.clear()
+    org_credit_billing_daemon_task = asyncio.create_task(
+        run_daily_org_credit_billing_daemon(org_credit_billing_daemon_stop_event)
+    )
+    logger.info("Org-credit billing daemon started")
+
     logger.info("✅ Backend is ready!")
 
 
@@ -114,8 +128,10 @@ async def shutdown_event():
     """Gracefully stop background tasks"""
     global outcome_daemon_task
     global call_campaign_daemon_task
+    global org_credit_billing_daemon_task
     outcome_daemon_stop_event.set()
     call_campaign_daemon_stop_event.set()
+    org_credit_billing_daemon_stop_event.set()
     if outcome_daemon_task:
         try:
             await outcome_daemon_task
@@ -127,6 +143,12 @@ async def shutdown_event():
             await call_campaign_daemon_task
         except Exception:
             logger.exception("Error while stopping call campaign daemon")
+
+    if org_credit_billing_daemon_task:
+        try:
+            await org_credit_billing_daemon_task
+        except Exception:
+            logger.exception("Error while stopping org-credit billing daemon")
 
 
 @app.get("/")
