@@ -6,9 +6,8 @@ from app.models.organization_credit_allocation import OrganizationCreditAllocati
 from app.models.organization_credit_profile import OrganizationCreditProfile
 from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.models.price_matrix_item import PriceMatrixItem
+from app.models.org_credit_balance import OrgCreditBalance
 
-
-   
 def get_price_item(
     db,
     category,
@@ -21,24 +20,57 @@ def get_price_item(
         PriceMatrixItem.sub_module == sub_module,
         PriceMatrixItem.is_active == True
     ).first()
-    
-    from sqlalchemy import func, case
-
 
 def get_credit_summary(
     db: Session,
     organization_id: int,
 ):
 
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
+
     # -------------------------
-    # Feature Summary (Existing)
+    # Get Balance (Monthly)
+    # -------------------------
+
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).first()
+
+    total_allocated = balance.total_credit if balance else 0
+    total_used = balance.used_credit if balance else 0
+    total_remaining = balance.remaining_credit if balance else 0
+
+
+    # -------------------------
+    # Reserved (From Usage Table)
+    # -------------------------
+
+    current_month = func.date_trunc("month", func.now())
+
+    reserved = db.query(
+        func.coalesce(
+            func.sum(OrganizationCreditUsage.credits_used),
+            0
+        )
+    ).filter(
+        OrganizationCreditUsage.organization_id == organization_id,
+        OrganizationCreditUsage.status == "reserved",
+        func.date_trunc(
+            "month",
+            OrganizationCreditUsage.created_at
+        ) == current_month
+    ).scalar()
+
+
+    # -------------------------
+    # Feature Summary
     # -------------------------
 
     feature_summary = db.query(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
         PriceMatrixItem.feature_code,
-        OrganizationCreditAllocation.allocated_credits,
 
         func.coalesce(
             func.sum(
@@ -62,77 +94,22 @@ def get_credit_summary(
             0
         ).label("used")
 
-    ).join(
-        OrganizationCreditAllocation,
-        OrganizationCreditAllocation.price_matrix_item_id == PriceMatrixItem.id
     ).outerjoin(
         OrganizationCreditUsage,
         OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id
     ).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.is_active == True
+        OrganizationCreditUsage.organization_id == organization_id
     ).group_by(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
-        PriceMatrixItem.feature_code,
-        OrganizationCreditAllocation.allocated_credits
+        PriceMatrixItem.feature_code
     ).all()
 
 
     # -------------------------
-    # Monthly Summary
+    # Price Matrix
     # -------------------------
 
-    current_month = func.date_trunc("month", func.now())
-
-    # Allocated (always exists)
-    allocated_summary = db.query(
-        func.coalesce(
-            func.sum(OrganizationCreditAllocation.allocated_credits),
-            0
-        )
-    ).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.is_active == True
-    ).scalar()
-
-
-    # Monthly Usage
-    usage_summary = db.query(
-
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status == "reserved",
-                    OrganizationCreditUsage.credits_used),
-                    else_=0
-                )
-            ),
-            0
-        ).label("reserved"),
-
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status == "consumed",
-                    OrganizationCreditUsage.credits_used),
-                    else_=0
-                )
-            ),
-            0
-        ).label("used")
-
-    ).filter(
-
-        OrganizationCreditUsage.organization_id == organization_id,
-
-        func.date_trunc(
-            "month",
-            OrganizationCreditUsage.created_at
-        ) == current_month
-
-    ).first()
-    
     price_matrix = db.query(
         PriceMatrixItem.id,
         PriceMatrixItem.category,
@@ -152,31 +129,27 @@ def get_credit_summary(
         PriceMatrixItem.sort_order.asc()
     ).all()
 
+
     return {
         "credits": [
             {
                 "module": row.module,
                 "sub_module": row.sub_module,
                 "feature_code": row.feature_code,
-                "allocated": row.allocated_credits,
                 "reserved": row.reserved,
-                "used": row.used,
-                "remaining": row.allocated_credits - row.reserved - row.used
+                "used": row.used
             }
             for row in feature_summary
         ],
 
         "monthly_summary": {
             "month": datetime.utcnow().strftime("%B %Y"),
-            "allocated": allocated_summary,
-            "reserved": usage_summary.reserved if usage_summary else 0,
-            "used": usage_summary.used if usage_summary else 0,
-            "remaining": (
-                allocated_summary -
-                (usage_summary.reserved if usage_summary else 0) -
-                (usage_summary.used if usage_summary else 0)
-            )
+            "allocated": total_allocated,
+            "reserved": reserved,
+            "used": total_used,
+            "remaining": total_remaining
         },
+
         "price_matrix": [
             {
                 "id": row.id,
@@ -238,25 +211,14 @@ def validate_feature_usage(
     )
 
     return valid
-    
+
+
 def validate_credits(
     db,
     organization_id: int,
     feature_code: str,
     required_credits: float
 ):
-    # Check credit profile
-    profile = db.query(OrganizationCreditProfile).filter(
-        OrganizationCreditProfile.organization_id == organization_id
-    ).first()
-
-    if not profile:
-        return False, "No credit profile found"
-
-    if profile.end_date and profile.end_date < datetime.now(timezone.utc):
-        return False, "Credits expired"
-
-    # Resolve PriceMatrixItem
     item = db.query(PriceMatrixItem).filter(
         PriceMatrixItem.feature_code == feature_code,
         PriceMatrixItem.is_active == True
@@ -265,33 +227,23 @@ def validate_credits(
     if not item:
         return False, "Invalid feature"
 
-    # Get allocation
-    allocated_credits = db.query(
-        func.coalesce(
-            func.sum(OrganizationCreditAllocation.allocated_credits),
-            0
-        )
-    ).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.is_active == True
-    ).scalar()
+    # Get current billing period
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
 
+    # Fetch balance
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).first()
 
-    # Get used credits
-    used = db.query(
-        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.status == "consumed"
-    ).scalar()
+    if not balance:
+        return False, "No credit balance found"
 
-    remaining = allocated_credits - used
-
-    # Validate remaining
-    if remaining < required_credits:
+    # Validate remaining credits
+    if balance.remaining_credit < required_credits:
         return False, "Insufficient credits"
 
-    return True, remaining
+    return True, balance.remaining_credit
 
 def deduct_credits(
     db,
@@ -301,30 +253,17 @@ def deduct_credits(
     reference_type: str | None = None,
     reference_id: int | None = None
 ):
-  
-    # 1️⃣ Resolve PriceMatrixItem
+
     item = db.query(PriceMatrixItem).filter(
         PriceMatrixItem.feature_code == feature_code,
         PriceMatrixItem.is_active == True
     ).first()
 
     if not item:
-        raise Exception("Invalid module/sub_module")
+        raise Exception("Invalid feature")
 
-    # 2️⃣ Get allocation
-    allocation = db.query(OrganizationCreditAllocation).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.price_matrix_item_id == item.id,
-        OrganizationCreditAllocation.is_active == True
-    ).first()
-
-    if not allocation:
-        raise Exception("No credit allocation found")
-
-    # 3️⃣ Compute credits required
     credits_required = quantity * item.credits_per_unit
 
-    # 4️⃣ Validate remaining credits
     valid, remaining = validate_credits(
         db,
         organization_id,
@@ -335,7 +274,6 @@ def deduct_credits(
     if not valid:
         raise Exception("Insufficient credits. Please add more credits to continue.")
 
-    # 5️⃣ Deduct usage
     usage = OrganizationCreditUsage(
         organization_id=organization_id,
         price_matrix_item_id=item.id,
@@ -343,12 +281,25 @@ def deduct_credits(
         credits_used=credits_required,
         reference_type=reference_type,
         reference_id=reference_id,
-        status="consumed"        
+        status="consumed"
     )
 
     db.add(usage)
-    db.commit()
 
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).with_for_update().first()   # prevents race conditions
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    balance.used_credit += credits_required
+    balance.remaining_credit = balance.total_credit - balance.used_credit
+
+    db.flush()
     return True
     
 def reserve_credits(

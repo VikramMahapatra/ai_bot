@@ -291,8 +291,8 @@ const AppointmentsPage: React.FC = () => {
     setRescheduleDateTime(toDateTimeLocalValue(targetDate));
     setRescheduleTimezone(
       item.timezone ||
-        Intl.DateTimeFormat().resolvedOptions().timeZone ||
-        "UTC",
+      Intl.DateTimeFormat().resolvedOptions().timeZone ||
+      "UTC",
     );
     setRescheduleMeetLink(defaultMeetLink || DEFAULT_MEET_LINK);
     setRescheduleNotes(item.notes || "");
@@ -324,7 +324,7 @@ const AppointmentsPage: React.FC = () => {
     } catch (err: any) {
       setError(
         err?.response?.data?.detail ||
-          "Failed to update organization default Meet URL",
+        "Failed to update organization default Meet URL",
       );
     } finally {
       setSavingDefaultMeetLink(false);
@@ -364,12 +364,12 @@ const AppointmentsPage: React.FC = () => {
         prev.map((item) =>
           item.id === rescheduleTarget.id
             ? {
-                ...item,
-                appointment_at: response.appointment_at,
-                timezone: response.timezone || item.timezone,
-                status: response.status,
-                notes: rescheduleNotes || item.notes,
-              }
+              ...item,
+              appointment_at: response.appointment_at,
+              timezone: response.timezone || item.timezone,
+              status: response.status,
+              notes: rescheduleNotes || item.notes,
+            }
             : item,
         ),
       );
@@ -377,12 +377,12 @@ const AppointmentsPage: React.FC = () => {
       setSelectedAppointment((prev) =>
         prev && prev.id === rescheduleTarget.id
           ? {
-              ...prev,
-              appointment_at: response.appointment_at,
-              timezone: response.timezone || prev.timezone,
-              status: response.status,
-              notes: rescheduleNotes || prev.notes,
-            }
+            ...prev,
+            appointment_at: response.appointment_at,
+            timezone: response.timezone || prev.timezone,
+            status: response.status,
+            notes: rescheduleNotes || prev.notes,
+          }
           : prev,
       );
 
@@ -523,7 +523,7 @@ const AppointmentsPage: React.FC = () => {
       loadAppointments();
     } catch (err: any) {
       setError(
-        err?.response?.data?.detail || "Failed to sync appointments from calls",
+        err?.response?.data?.detail || err?.detail || "Failed to sync appointments from calls",
       );
     } finally {
       setSyncing(false);
@@ -1104,14 +1104,14 @@ const AppointmentsPage: React.FC = () => {
                                   {item.widget_name}
                                 </Typography>
                                 <Chip
-                                    sx={{
+                                  sx={{
                                     fontSize: 10
-                                    }}
-                                    size="small"
-                                    label={statusLabel(item.status)}
-                                    color={statusColor(item.status)}
-                                    variant="outlined"
-                                  />
+                                  }}
+                                  size="small"
+                                  label={statusLabel(item.status)}
+                                  color={statusColor(item.status)}
+                                  variant="outlined"
+                                />
                                 <Stack
                                   direction="row"
                                   spacing={0.4}
@@ -1235,9 +1235,9 @@ const AppointmentsPage: React.FC = () => {
                               backgroundColor: inCurrentMonth
                                 ? alpha(theme.palette.background.paper, 0.7)
                                 : alpha(
-                                    theme.palette.action.disabledBackground,
-                                    0.35,
-                                  ),
+                                  theme.palette.action.disabledBackground,
+                                  0.35,
+                                ),
                               p: 0.8,
                               outline: draggedAppointmentId
                                 ? `1px dashed ${alpha(theme.palette.primary.main, 0.3)}`
@@ -1291,18 +1291,18 @@ const AppointmentsPage: React.FC = () => {
                                     {formatTime(item.appointment_at)}{" "}
                                     {item.name}
                                   </Typography>
-                                
-                                    <Chip
+
+                                  <Chip
                                     sx={{
-                                    fontSize: 10
+                                      fontSize: 10
                                     }}
                                     size="small"
                                     label={statusLabel(item.status)}
                                     color={statusColor(item.status)}
                                     variant="outlined"
                                   />
-                                
-                                  
+
+
                                 </Box>
                               ))}
                               {dayItems.length > 3 && (

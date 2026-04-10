@@ -264,6 +264,7 @@ export const CallingAgentTab: React.FC = () => {
         setError('');
         setSuccess('');
         setDeleteSubmitting(true);
+        setLoading(true);
         try {
             await callingAgentService.deleteAgent(agentToDelete.id);
             setAgentToDelete(null);
@@ -272,6 +273,7 @@ export const CallingAgentTab: React.FC = () => {
             showError(`Failed to delete the agent`);
         } finally {
             setDeleteSubmitting(false);
+            setLoading(false);
         }
     };
 

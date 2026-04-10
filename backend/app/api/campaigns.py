@@ -598,6 +598,17 @@ def _execute_campaign_now(
     campaign.number_sent = sent_count
     campaign.number_failed = failed_count
     campaign.status = "completed" if sent_count > 0 else "failed"
+    db.flush()
+    
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=campaign.organization_id,
+        feature_code=get_feature_code_for_campaign_type(campaign.campaign_type),
+        quantity=sent_count,
+        reference_type="campaign",
+        reference_id=campaign.id
+    )
+    
     db.commit()
     db.refresh(campaign)
 
@@ -617,14 +628,7 @@ def _execute_campaign_now(
         # Never fail campaign execution because of rule-engine post-processing.
         pass
     
-    organization_credit_service.deduct_credits(
-            db=db,
-            organization_id=campaign.organization_id,
-            feature_code=get_feature_code_for_campaign_type(campaign.campaign_type),
-            quantity=sent_count,
-            reference_type="campaign",
-            reference_id=campaign.id
-        )
+   
 
     return {
         "campaign_id": campaign.id,
@@ -1109,6 +1113,8 @@ async def generate_email_variants(
             reference_type="campaign_email_variant_generation"
         )
         
+        db.commit()
+        
         return {
             "subjects": data["subjects"],
             "bodies": data["bodies"],
@@ -1156,6 +1162,7 @@ async def score_email_variants_for_spam(
             reference_type="campaign_email_spam_score"
         )
         
+        db.commit()
         return data
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

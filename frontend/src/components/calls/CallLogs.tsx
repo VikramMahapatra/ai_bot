@@ -62,7 +62,7 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSize="small" color='primary' /> : <CallReceivedIcon fontSize="small" color='primary' />;
+const getTypeIcon = (type: string) => type === 'outbound' ? <CallMadeIcon fontSize="small" color='primary' /> : <CallReceivedIcon fontSize="small" color='primary' />;
 const getModeIcon = (mode: string) => mode === 'Voice' ? <PhoneIcon fontSize="small" /> : <VideocamIcon fontSize="small" />;
 
 export const CallLogsTab = () => {

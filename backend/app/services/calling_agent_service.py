@@ -49,7 +49,7 @@ def create_agent(
     
     valid = organization_credit_service.validate_feature_usage(
         db,
-        agent.organization_id,
+        org.id,
         get_agent_feature_code(agent.type),
         1
     )
@@ -236,9 +236,7 @@ def create_agent(
     db_agent.status = "testing" if external_agent_status == "draft" else external_agent_status
     db_agent.external_agent_id = external_agent_id
     db_agent.external_agent_a_id = external_agent_a_id
-    
-    db.commit()
-    db.refresh(db_agent)
+    db.flush()
     
     if echo_failed:
         message = "Agent created successfully, but sync failed. Please reload the page to sync the agent."
@@ -248,7 +246,7 @@ def create_agent(
     if echo_failed:
         organization_credit_service.reserve_credits(
             db=db,
-            organization_id=agent.organization_id,
+            organization_id=org.id,
             feature_code=get_agent_feature_code(agent.type),
             quantity=1,
             reference_type="agent",
@@ -257,12 +255,15 @@ def create_agent(
     else:
         organization_credit_service.deduct_credits(
             db=db,
-            organization_id=agent.organization_id,
+            organization_id=org.id,
             feature_code=get_agent_feature_code(agent.type),
             quantity=1,
             reference_type="agent",
             reference_id=db_agent.id
         )
+        
+    db.commit()
+    db.refresh(db_agent)
     
     return {
         "message": message,

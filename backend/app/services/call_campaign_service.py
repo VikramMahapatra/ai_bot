@@ -448,9 +448,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         
     campaign.status = echoleads_campaign_status
     campaign.external_campaign_id = echoleads_campaign_id
-    
     db.flush() 
-    db.commit()    
     
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
@@ -474,6 +472,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             reference_type="call_campaign",
             reference_id=campaign.id
         )
+        
+    db.commit()    
 
     return {
         "message": message,

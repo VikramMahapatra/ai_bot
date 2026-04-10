@@ -56,10 +56,7 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
             setCreditMonthlySummary(data.monthly_summary || {})
             setPriceMatrix(data.price_matrix || [])
 
-            const total = (data.credits || []).reduce(
-                (sum: number, item: CreditItem) => sum + (item.remaining || 0),
-                0
-            );
+            const total = data.monthly_summary?.remaining || 0;
 
             setTotalCredits(total);
 
