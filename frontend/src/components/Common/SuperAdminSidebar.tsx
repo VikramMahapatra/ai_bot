@@ -20,7 +20,6 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import BusinessIcon from '@mui/icons-material/Business';
 import InsightsIcon from '@mui/icons-material/Insights';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CalculateIcon from '@mui/icons-material/Calculate';
@@ -42,7 +41,6 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { text: 'Overview', icon: <DashboardIcon />, path: '/superadmin' },
-  { text: 'Plans', icon: <LocalOfferIcon />, path: '/superadmin/plans' },
   { text: 'Price Matrix', icon: <TableChartIcon />, path: '/superadmin/price-matrix' },
   { text: 'Credit Estimator', icon: <CalculateIcon />, path: '/superadmin/credit-estimator' },
   { text: 'Org Credits', icon: <AccountBalanceWalletIcon />, path: '/superadmin/organization-credits' },

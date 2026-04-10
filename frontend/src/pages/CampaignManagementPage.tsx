@@ -67,6 +67,8 @@ import {
   DashboardStats,
 } from '../services/campaignService';
 import { Product, productService } from '../services/productService';
+import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
+import { useCredits } from "../context/CreditsContext";
 
 const IST_TIME_ZONE = 'Asia/Kolkata';
 
@@ -207,6 +209,7 @@ const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
 
 const CampaignManagementPage: React.FC = () => {
   const theme = useTheme();
+  const { getRequiredCredits, totalCredits, refreshCredits } = useCredits();
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -708,6 +711,15 @@ const CampaignManagementPage: React.FC = () => {
     setSuccess('HTML starter template loaded');
   };
 
+  const validateCreditsForGeneration = (featureCode: string, quantity?: number): boolean => {
+    const credits = getRequiredCredits(featureCode) * (quantity || 1);
+    if (totalCredits < credits) {
+      setError(CREDIT_ERRORS.INSUFFICIENT_CREDITS);
+      return false;
+    }
+    return true;
+  }
+
   const handleGeneratePromptEmailVariants = async () => {
     if (!emailPromptContext.trim()) {
       showError('Prompt context is required to generate email variants');
@@ -716,6 +728,11 @@ const CampaignManagementPage: React.FC = () => {
 
     setGeneratingEmailVariants(true);
     setError('');
+
+    if (!validateCreditsForGeneration(FEATURE_CODES.CMP_AI_CONTENT_GEN)) {
+      return;
+    }
+
     try {
       const result = await campaignService.generateEmailVariants({
         campaign_name: createCampaignName || 'Campaign',
@@ -765,6 +782,12 @@ const CampaignManagementPage: React.FC = () => {
 
     setSpamScoreLoading(true);
     setError('');
+
+    if (!validateCreditsForGeneration(FEATURE_CODES.CMP_AI_SPAM_CHECK)) {
+      return;
+    }
+
+
     try {
       const result = await campaignService.scoreEmailSpamRisk({
         campaign_name: createCampaignName || 'Campaign',
@@ -825,6 +848,15 @@ const CampaignManagementPage: React.FC = () => {
     });
   };
 
+  const getFeatureCodeForCampaignType = (type: string): string => {
+    switch (type) {
+      case 'email': return "CMP_EMAIL_SEND";
+      case 'whatsapp': return "CMP_WA_CONVERSATION";
+      case 'sms': return "CMP_SMS_SEGMENT";
+      default: return "CMP_EMAIL_SEND";
+    }
+  }
+
   const handleCreateCampaign = async () => {
     const nextErrors: CreateCampaignFieldErrors = {
       campaignName: !createCampaignName.trim(),
@@ -862,6 +894,12 @@ const CampaignManagementPage: React.FC = () => {
         showError('Generate all 5 subjects and 5 bodies in prompt mode before creating campaign');
         return;
       }
+    }
+
+
+    const quantity = previewContacts.length || 1;
+    if (!validateCreditsForGeneration(getFeatureCodeForCampaignType(createCampaignType), quantity)) {
+      return;
     }
 
     setLoading(true);
@@ -1090,8 +1128,6 @@ const CampaignManagementPage: React.FC = () => {
               <Tab label="Dashboard" icon={<ListAltIcon />} iconPosition="start" />
               <Tab label="Create Campaign" icon={<AddIcon />} iconPosition="start" />
               <Tab label="Run Campaign" icon={<PlayArrowIcon />} iconPosition="start" />
-              {/* <Tab label="Contact Lists" icon={<ListAltIcon />} iconPosition="start" />
-            <Tab label="Upload Contacts" icon={<UploadFileIcon />} iconPosition="start" /> */}
               <Tab label="Campaign Logs" icon={<VisibilityIcon />} iconPosition="start" />
               <Tab label="Reports" icon={<ListAltIcon />} iconPosition="start" />
               <Tab label="C2L" icon={<AutoAwesomeIcon />} iconPosition="start" />

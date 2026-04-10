@@ -1375,9 +1375,6 @@ async def chat(
                 limits = {
                     **limits,
                     "subscription_active": True,
-                    "monthly_conversation_limit": None,
-                    "monthly_token_limit": None,
-                    "max_query_words": None,
                 }
             else:
                 raise HTTPException(status_code=403, detail="Subscription inactive or expired")
@@ -1396,37 +1393,6 @@ async def chat(
             usage.conversations_count = actual_sessions_used
             db.commit()
             db.refresh(usage)
-
-        word_count = len(message.message.split())
-        if limits.get("max_query_words") and word_count > limits["max_query_words"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Query exceeds max word limit of {limits['max_query_words']}",
-            )
-
-        if (
-            limits.get("monthly_conversation_limit")
-            and is_new_session
-            and actual_sessions_used >= limits["monthly_conversation_limit"]
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Monthly conversation limit exceeded",
-                    "conversations_used": actual_sessions_used,
-                    "conversation_limit": limits["monthly_conversation_limit"],
-                },
-            )
-
-        if limits.get("monthly_token_limit") and usage.tokens_used >= limits["monthly_token_limit"]:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Monthly token limit exceeded",
-                    "tokens_used": usage.tokens_used,
-                    "token_limit": limits["monthly_token_limit"],
-                },
-            )
 
         if limits.get("human_handoff_enabled"):
             active_handoff = _route_user_message_to_handoff_if_active(
@@ -1732,9 +1698,6 @@ async def chat_stream(
                 limits = {
                     **limits,
                     "subscription_active": True,
-                    "monthly_conversation_limit": None,
-                    "monthly_token_limit": None,
-                    "max_query_words": None,
                 }
             else:
                 raise HTTPException(status_code=403, detail="Subscription inactive or expired")
@@ -1753,37 +1716,6 @@ async def chat_stream(
             usage.conversations_count = actual_sessions_used
             db.commit()
             db.refresh(usage)
-
-        word_count = len(message.message.split())
-        if limits.get("max_query_words") and word_count > limits["max_query_words"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Query exceeds max word limit of {limits['max_query_words']}",
-            )
-
-        if (
-            limits.get("monthly_conversation_limit")
-            and is_new_session
-            and actual_sessions_used >= limits["monthly_conversation_limit"]
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Monthly conversation limit exceeded",
-                    "conversations_used": actual_sessions_used,
-                    "conversation_limit": limits["monthly_conversation_limit"],
-                },
-            )
-
-        if limits.get("monthly_token_limit") and usage.tokens_used >= limits["monthly_token_limit"]:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Monthly token limit exceeded",
-                    "tokens_used": usage.tokens_used,
-                    "token_limit": limits["monthly_token_limit"],
-                },
-            )
 
         if limits.get("human_handoff_enabled"):
             active_handoff = _route_user_message_to_handoff_if_active(

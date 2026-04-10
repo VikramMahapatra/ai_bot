@@ -24,7 +24,6 @@ import AgentTestPage from './pages/AgentTestPage.tsx';
 import SuperAdminLoginPage from './pages/SuperAdminLoginPage';
 import SuperAdminBootstrapPage from './pages/SuperAdminBootstrapPage';
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
-import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
 import SuperAdminOrganizationCreditManagementPage from './pages/SuperAdminOrganizationCreditManagementPage';
@@ -436,14 +435,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminDashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/superadmin/plans"
-        element={
-          <ProtectedRoute requiredRole="SUPERADMIN">
-            <SuperAdminPlansPage />
           </ProtectedRoute>
         }
       />

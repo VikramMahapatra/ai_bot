@@ -163,8 +163,8 @@ def get_call_logs(
         )
 
         # duration in seconds
-        duration = None
-        if log.start_time and log.end_time:
+        duration = log.duration
+        if not log.duration and log.start_time and log.end_time:
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid

@@ -23,8 +23,8 @@ import { CallCampaign, callCampaignService, Contact } from "../../services/callC
 import CampaignDetails from "./CampaignDetails";
 import moment from "moment-timezone";
 import CampaignContacts from "./CampaignContacts";
-import { FEATURE_CODES } from "../../types/creditModules";
-import { CREDIT_ERRORS, useCredits } from "../../context/CreditsContext";
+import { FEATURE_CODES, CREDIT_ERRORS } from "../../types/creditModules";
+import { useCredits } from "../../context/CreditsContext";
 
 
 const steps = [

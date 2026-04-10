@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Identity, Integer, String, DateTime, Enum as SQLEnum, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Identity, Integer, String, Date, DateTime, Enum as SQLEnum, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -17,6 +17,8 @@ class Organization(Base):
     id = Column(Integer, Identity(), primary_key=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
+    joining_date = Column(Date, nullable=True)
+    effective_joining_date = Column(Date, nullable=True)
     default_meet_link = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

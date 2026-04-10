@@ -961,39 +961,8 @@ async def get_advanced_analytics(
             "share": peak_share,
         }
 
-        # Token forecast
-        plan_usage = get_plan_usage_summary(db, org_id)
+        # Token limit forecast removed because organization numeric limit columns are deprecated.
         forecast = None
-        if plan_usage and plan_usage.get("limits", {}).get("monthly_token_limit"):
-            token_limit = plan_usage["limits"]["monthly_token_limit"]
-            tokens_used = plan_usage["used"]["tokens_used"]
-            remaining = plan_usage["remaining"]["tokens_remaining"]
-
-            # Average daily tokens (last 7 days)
-            last_7_start = datetime.utcnow().date() - timedelta(days=6)
-            tokens_by_date = {}
-            for m in metrics:
-                if not m.conversation_start:
-                    continue
-                if m.conversation_start.date() < last_7_start:
-                    continue
-                date_key = m.conversation_start.date().isoformat()
-                tokens_by_date[date_key] = tokens_by_date.get(date_key, 0) + (m.total_tokens or 0)
-
-            avg_daily_tokens = round(sum(tokens_by_date.values()) / len(tokens_by_date), 2) if tokens_by_date else 0
-            days_to_exhaust = round(remaining / avg_daily_tokens, 1) if avg_daily_tokens > 0 and remaining is not None else None
-            forecast_date = None
-            if days_to_exhaust is not None:
-                forecast_date = (datetime.utcnow() + timedelta(days=days_to_exhaust)).date().isoformat()
-
-            forecast = {
-                "token_limit": token_limit,
-                "tokens_used": tokens_used,
-                "tokens_remaining": remaining,
-                "avg_daily_tokens": avg_daily_tokens,
-                "days_to_exhaust": days_to_exhaust,
-                "estimated_exhaust_date": forecast_date,
-            }
 
         # Token forecast band (based on daily token variability)
         tokens_by_date = {}

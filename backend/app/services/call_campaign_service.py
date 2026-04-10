@@ -19,7 +19,6 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import process_call, save_transcripts
 from app.models.user import Organization
-from app.models.organization_limits import OrganizationLimits
 from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 from app.models.products import Product
 from app.services import organization_credit_service
@@ -306,10 +305,6 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         Organization.id == organization_id
     ).first()
     
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == organization_id
-    ).first()
-    
     contacts_count = len(data.contacts)
     retries = data.max_retry_attempts or 0
 
@@ -390,19 +385,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         Contact.id.in_(data.contacts)
     ).all()
     
-    contacts_payload = [
-        {
-            "id": contact.external_contact_id,
-            "other_fields": [
-                {
-                    "field": "name",
-                    "value": contact.name.split()[0] if contact.name else "",
-                    "mergeField": "name"
-                }
-            ]
-        }
-        for contact in contacts
-    ]
+    contacts_payload = build_contacts_payload(contacts, agent)
     
     dialer_start_date = None
     dialer_end_date = None
@@ -560,19 +543,7 @@ def update_campaign(
         Contact.id.in_(data.contacts)
     ).all()
     
-    contacts_payload = [
-        {
-            "id": contact.external_contact_id,
-            "other_fields": [
-                {
-                    "field": "name",
-                    "value": contact.name,
-                    "mergeField": "name"
-                }
-            ]
-        }
-        for contact in contacts
-    ]
+    contacts_payload = build_contacts_payload(contacts, agent)
     
     dialer_start_date = None
     dialer_end_date = None
@@ -792,7 +763,43 @@ def delete_campaign(
 
     return {"message": "Campaign deleted"}
 
+def build_contacts_payload(contacts, agent):
+    import re
 
+    def extract(text):
+        return set(re.findall(r"\{\{(.*?)\}\}", text or ""))
+
+    placeholders = extract(agent.greetings) | extract(agent.prompt)
+
+    payload = []
+
+    for contact in contacts:
+        other_fields = []
+
+        for field in placeholders:
+            if hasattr(contact, field):
+                value = getattr(contact, field)
+
+                if field == "name" and value:
+                    value = value.split()[0]
+
+                other_fields.append({
+                    "field": field,
+                    "value": value or "",
+                    "mergeField": field
+                })
+
+        payload.append({
+            "id": contact.external_contact_id,
+            "other_fields": other_fields
+        })
+
+    return payload
+
+def extract_placeholders(text):
+    if not text:
+        return set()
+    return set(re.findall(r"\{\{(.*?)\}\}", text))
 #### Campaign Contacts
 
 def get_contacts_by_ids(db: Session, ids: list[int]):

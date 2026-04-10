@@ -15,7 +15,6 @@ from app.models import (
     SuperAdmin,
     OrganizationLimits,
     OrganizationSubscriptionUsage,
-    Plan,
     PriceMatrixItem,
     CreditEstimatorShare,
     OrganizationCreditAllocation,
@@ -38,11 +37,6 @@ from app.schemas.superadmin import (
     OrganizationLimitsUpdate,
     OrganizationLimitsResponse,
     SuperAdminOverviewResponse,
-    PlanCreate,
-    PlanUpdate,
-    PlanResponse,
-    SubscriptionCreate,
-    SubscriptionResponse,
     PriceMatrixItemCreate,
     PriceMatrixItemUpdate,
     PriceMatrixItemResponse,
@@ -76,9 +70,6 @@ from app.schemas.superadmin import (
 from app.services.limits_service import (
     get_or_create_limits,
     update_limits,
-    create_or_renew_subscription,
-    get_active_subscription,
-    get_subscription_days_left,
 )
 from sqlalchemy import func, or_, text
 from app.config import settings
@@ -87,7 +78,6 @@ from app.services.email_service import send_widget_test_link_email
 import logging
 from sqlalchemy.exc import IntegrityError
 
-from app.models.organization_subscription import OrganizationSubscription
 from app.models.organization_calling_numbers import OrganizationCallingNumber
 from app.models.call_campaigns import CallCampaign
 from app.models.call_logs import CallLog
@@ -145,29 +135,16 @@ def _build_org_response(db: Session, org: Organization, admin_user: Optional[Use
             User.role == UserRole.ADMIN,
         ).first()
     limits = get_or_create_limits(db, org.id)
-    subscription = get_active_subscription(db, org.id)
-    plan = db.query(Plan).filter(Plan.id == limits.plan_id).first() if limits.plan_id else None
 
     return SuperAdminOrganizationResponse(
         id=org.id,
         name=org.name,
         description=org.description,
+        joining_date=org.joining_date,
+        effective_joining_date=org.effective_joining_date,
         admin_username=admin_user.username if admin_user else None,
         admin_email=admin_user.email if admin_user else None,
         limits=limits,
-        plan=plan,
-        subscription={
-            "id": subscription.id,
-            "organization_id": subscription.organization_id,
-            "plan_id": subscription.plan_id,
-            "status": subscription.status,
-            "billing_cycle": subscription.billing_cycle,
-            "start_date": subscription.start_date,
-            "end_date": subscription.end_date,
-            "trial_end": subscription.trial_end,
-            "is_active": subscription.is_active,
-            "days_left": get_subscription_days_left(subscription),
-        } if subscription else None,
     )
 
 
@@ -787,13 +764,11 @@ async def create_organization_with_admin(
     if existing_org:
         raise HTTPException(status_code=400, detail="Organization already exists")
 
-    plan = db.query(Plan).filter(Plan.id == request.plan_id, Plan.is_active == True).first()
-    if not plan:
-        raise HTTPException(status_code=400, detail="Selected plan is invalid or inactive")
-
     org = Organization(
         name=org_name,
         description=request.description,
+        joining_date=request.joining_date,
+        effective_joining_date=request.effective_joining_date,
         org_domain=_build_org_domain(org_name),
         access_token=secrets.token_urlsafe(32),
     )
@@ -823,40 +798,17 @@ async def create_organization_with_admin(
         )
 
     limits_payload = request.limits.dict(exclude_unset=True) if request.limits else {}
-    
     limits = update_limits(db, org.id, limits_payload)
-    limits.plan_id = request.plan_id
-    db.commit()
-    db.refresh(limits)
-
-    subscription = create_or_renew_subscription(
-        db,
-        organization_id=org.id,
-        plan_id=request.plan_id,
-        billing_cycle=request.billing_cycle,
-        trial_days=request.trial_days,
-    )
 
     return SuperAdminOrganizationResponse(
         id=org.id,
         name=org.name,
         description=org.description,
+        joining_date=org.joining_date,
+        effective_joining_date=org.effective_joining_date,
         admin_username=admin_user.username,
         admin_email=admin_user.email,
         limits=limits,
-        plan=plan,
-        subscription={
-            "id": subscription.id,
-            "organization_id": subscription.organization_id,
-            "plan_id": subscription.plan_id,
-            "status": subscription.status,
-            "billing_cycle": subscription.billing_cycle,
-            "start_date": subscription.start_date,
-            "end_date": subscription.end_date,
-            "trial_end": subscription.trial_end,
-            "is_active": subscription.is_active,
-            "days_left": get_subscription_days_left(subscription),
-        },
     )
 
 
@@ -899,6 +851,10 @@ async def update_organization_with_admin(
 
     if request.description is not None:
         org.description = request.description
+    if request.joining_date is not None:
+        org.joining_date = request.joining_date
+    if request.effective_joining_date is not None:
+        org.effective_joining_date = request.effective_joining_date
 
     admin_username = request.admin_username.strip() if request.admin_username is not None else None
     admin_email = str(request.admin_email).strip() if request.admin_email is not None else None
@@ -999,134 +955,6 @@ async def update_organization_limits(
     update_data = updates.dict(exclude_unset=True)   
     limits = update_limits(db, org_id, update_data)
     return limits
-
-
-@router.post("/organizations/{org_id}/subscription", response_model=SubscriptionResponse)
-async def assign_subscription(
-    org_id: int,
-    payload: SubscriptionCreate,
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    plan = db.query(Plan).filter(Plan.id == payload.plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
-
-    sub = create_or_renew_subscription(
-        db,
-        organization_id=org_id,
-        plan_id=payload.plan_id,
-        billing_cycle=payload.billing_cycle,
-        trial_days=payload.trial_days,
-    )
-
-    limits = get_or_create_limits(db, org_id)
-    limits.plan_id = payload.plan_id
-        
-    db.commit()
-
-    return SubscriptionResponse(
-        id=sub.id,
-        organization_id=sub.organization_id,
-        plan_id=sub.plan_id,
-        status=sub.status,
-        billing_cycle=sub.billing_cycle,
-        start_date=sub.start_date,
-        end_date=sub.end_date,
-        trial_end=sub.trial_end,
-        is_active=sub.is_active,
-        days_left=get_subscription_days_left(sub),
-    )
-
-
-@router.get("/organizations/{org_id}/subscription", response_model=SubscriptionResponse)
-async def get_subscription(
-    org_id: int,
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    sub = get_active_subscription(db, org_id)
-    if not sub:
-        raise HTTPException(status_code=404, detail="No active subscription")
-    return SubscriptionResponse(
-        id=sub.id,
-        organization_id=sub.organization_id,
-        plan_id=sub.plan_id,
-        status=sub.status,
-        billing_cycle=sub.billing_cycle,
-        start_date=sub.start_date,
-        end_date=sub.end_date,
-        trial_end=sub.trial_end,
-        is_active=sub.is_active,
-        days_left=get_subscription_days_left(sub),
-    )
-
-
-@router.post("/plans", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
-async def create_plan(
-    payload: PlanCreate,
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    existing = db.query(Plan).filter(Plan.name == payload.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Plan name already exists")
-
-    plan = Plan(**payload.dict())
-    db.add(plan)
-    db.commit()
-    db.refresh(plan)
-    return plan
-
-
-@router.get("/plans", response_model=List[PlanResponse])
-async def list_plans(
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    return db.query(Plan).all()
-
-
-@router.put("/plans/{plan_id}", response_model=PlanResponse)
-async def update_plan(
-    plan_id: int,
-    payload: PlanUpdate,
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
-
-    for key, value in payload.dict(exclude_unset=True).items():
-        if hasattr(plan, key):
-            setattr(plan, key, value)
-    db.commit()
-    db.refresh(plan)
-    return plan
-
-
-@router.delete("/plans/{plan_id}")
-async def delete_plan(
-    plan_id: int,
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
-):
-    plan = db.query(Plan).filter(Plan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
-
-    limits_usage = db.query(OrganizationLimits).filter(OrganizationLimits.plan_id == plan_id).count()
-    subscription_usage = db.query(OrganizationSubscription).filter(OrganizationSubscription.plan_id == plan_id).count()
-    if limits_usage > 0 or subscription_usage > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete plan because it is used by one or more organizations",
-        )
-
-    db.delete(plan)
-    db.commit()
-    return {"success": True, "deleted_plan_id": plan_id}
 
 
 @router.get("/price-matrix", response_model=List[PriceMatrixItemResponse])
@@ -2563,8 +2391,6 @@ async def superadmin_organization_analytics(
     usage = db.query(OrganizationSubscriptionUsage).filter(
         OrganizationSubscriptionUsage.organization_id == org_id
     ).order_by(OrganizationSubscriptionUsage.period_start.desc()).first()
-    subscription = get_active_subscription(db, org_id)
-    plan = db.query(Plan).filter(Plan.id == limits.plan_id).first() if limits.plan_id else None
 
     return {
         "organization": {
@@ -2573,19 +2399,6 @@ async def superadmin_organization_analytics(
             "description": org.description,
         },
         "limits": limits,
-        "plan": plan,
-        "subscription": {
-            "id": subscription.id,
-            "organization_id": subscription.organization_id,
-            "plan_id": subscription.plan_id,
-            "status": subscription.status,
-            "billing_cycle": subscription.billing_cycle,
-            "start_date": subscription.start_date,
-            "end_date": subscription.end_date,
-            "trial_end": subscription.trial_end,
-            "is_active": subscription.is_active,
-            "days_left": get_subscription_days_left(subscription),
-        } if subscription else None,
         "usage": usage,
     }
 
@@ -2761,11 +2574,6 @@ def organization_calling_report(
     report = []
 
     for org in organizations:
-
-        limits = db.query(OrganizationLimits).filter(
-            OrganizationLimits.organization_id == org.id
-        ).first()
-
         agent_count = db.query(CallingAgent).filter(
             CallingAgent.organization_id == org.id,
             or_(
@@ -2798,13 +2606,8 @@ def organization_calling_report(
             "organization_name": org.name,
 
             "agents_created": agent_count,
-            "agent_limit": limits.max_agents if limits else None,
-
             "campaign_created": campaign_count,
-            "campaign_limit": limits.max_campaigns if limits else None,
-
             "calls_done": call_count,
-            "calls_limit": limits.max_calls if limits else None,
 
             "agents": [
                 {

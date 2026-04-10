@@ -20,7 +20,6 @@ from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
-from app.models.organization_limits import OrganizationLimits
 from app.services.call_log_service import process_call, sync_call_logs
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
@@ -188,7 +187,6 @@ def create_agent(
         "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
         "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
         "analysis_plan": None,
-        "plan_id": None,
         "transaction_id": None,
         "prompt_timezone": None,
         "tool_ids": [],
@@ -733,7 +731,6 @@ def publish_agent(
         "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
         "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
         "analysis_plan": None,
-        "plan_id": 1,
         "transaction_id": f"{agent.external_agent_a_id}",
         "prompt_timezone": None,
         "tool_ids": [],

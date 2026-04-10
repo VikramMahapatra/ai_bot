@@ -27,7 +27,6 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import WidgetsIcon from '@mui/icons-material/Widgets';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
-import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 import {
   ResponsiveContainer,
   LineChart,
@@ -46,23 +45,11 @@ import {
 import { dashboardService } from '../services/dashboardService';
 
 interface PlanUsage {
-  limits: {
-    monthly_message_limit: number | null;
-    monthly_token_limit: number | null;
-    monthly_crawl_pages_limit: number | null;
-    monthly_document_limit: number | null;
-  };
   used: {
     messages_used: number;
     tokens_used: number;
     crawl_pages_used: number;
     documents_used: number;
-  };
-  remaining: {
-    messages_remaining: number | null;
-    tokens_remaining: number | null;
-    crawl_pages_remaining: number | null;
-    documents_remaining: number | null;
   };
 }
 
@@ -174,11 +161,6 @@ const formatDateTime = (value?: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString();
-};
-
-const percent = (used: number, limit: number | null): number => {
-  if (!limit || limit <= 0) return 0;
-  return Math.min((used / limit) * 100, 100);
 };
 
 const safeHexColor = (value?: string): string => {
@@ -395,39 +377,6 @@ const AdminDashboard: React.FC = () => {
     },
   ];
 
-  const planUsageItems = stats?.plan_usage
-    ? [
-        {
-          label: 'Messages',
-          used: numberOrZero(stats.plan_usage.used.messages_used),
-          limit: stats.plan_usage.limits.monthly_message_limit,
-          remaining: stats.plan_usage.remaining.messages_remaining,
-          color: '#4e89d5',
-        },
-        {
-          label: 'Tokens',
-          used: numberOrZero(stats.plan_usage.used.tokens_used),
-          limit: stats.plan_usage.limits.monthly_token_limit,
-          remaining: stats.plan_usage.remaining.tokens_remaining,
-          color: '#56a8d6',
-        },
-        {
-          label: 'Crawl Pages',
-          used: numberOrZero(stats.plan_usage.used.crawl_pages_used),
-          limit: stats.plan_usage.limits.monthly_crawl_pages_limit,
-          remaining: stats.plan_usage.remaining.crawl_pages_remaining,
-          color: '#4f83cf',
-        },
-        {
-          label: 'Documents',
-          used: numberOrZero(stats.plan_usage.used.documents_used),
-          limit: stats.plan_usage.limits.monthly_document_limit,
-          remaining: stats.plan_usage.remaining.documents_remaining,
-          color: '#5e9bd9',
-        },
-      ]
-    : [];
-
   const funnelData = useMemo(
     () =>
       leadsFunnel
@@ -557,72 +506,6 @@ const AdminDashboard: React.FC = () => {
             </Grid>
           ))}
         </Grid>
-
-        {stats?.plan_usage && (
-          <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-              <AutoGraphIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Plan Usage
-              </Typography>
-            </Box>
-            <Grid container spacing={2}>
-              {planUsageItems.map((item) => {
-                const progress = percent(item.used, item.limit);
-                return (
-                  <Grid item xs={12} md={6} key={item.label}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: '12px',
-                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                        background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.74)} 0%, ${alpha(
-                          '#deebfb',
-                          0.62
-                        )} 100%)`,
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.6 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                          {item.label}
-                        </Typography>
-                        <Chip
-                          size="small"
-                          label={`${progress.toFixed(1)}%`}
-                          sx={{
-                            fontWeight: 700,
-                            bgcolor: alpha(item.color, 0.14),
-                            color: item.color,
-                            border: `1px solid ${alpha(item.color, 0.25)}`,
-                          }}
-                        />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.8 }}>
-                        {item.used.toLocaleString()} / {formatLimitValue(item.limit)}
-                        {item.remaining !== null ? ` (remaining ${numberOrZero(item.remaining).toLocaleString()})` : ''}
-                      </Typography>
-                      <LinearProgress
-                        variant="determinate"
-                        value={progress}
-                        sx={{
-                          height: 8,
-                          borderRadius: 999,
-                          overflow: 'hidden',
-                          bgcolor: alpha(item.color, 0.18),
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 999,
-                            background: `linear-gradient(90deg, ${alpha(item.color, 0.85)} 0%, ${item.color} 100%)`,
-                          },
-                        }}
-                      />
-                    </Paper>
-                  </Grid>
-                );
-              })}
-            </Grid>
-          </Paper>
-        )}
 
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
           <Grid item xs={12} lg={8}>

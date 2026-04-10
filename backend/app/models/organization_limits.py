@@ -8,16 +8,7 @@ class OrganizationLimits(Base):
 
     id = Column(Integer, Identity(), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
-    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=True, index=True)
 
-    # Overrides (nullable => use plan defaults)
-    monthly_conversation_limit = Column(Integer, nullable=True)
-    monthly_crawl_pages_limit = Column(Integer, nullable=True)
-    max_crawl_depth = Column(Integer, nullable=True)
-    monthly_document_limit = Column(Integer, nullable=True)
-    max_document_size_mb = Column(Integer, nullable=True)
-    monthly_token_limit = Column(Integer, nullable=True)
-    max_query_words = Column(Integer, nullable=True)
     lead_generation_enabled = Column(Boolean, nullable=True)
     voice_chat_enabled = Column(Boolean, nullable=True)
     multilingual_text_enabled = Column(Boolean, nullable=True)
@@ -35,10 +26,6 @@ class OrganizationLimits(Base):
     module_appointments_enabled = Column(Boolean, nullable=True)
     module_products_enabled = Column(Boolean, nullable=True)
     module_users_enabled = Column(Boolean, nullable=True)
-    
-    max_agents = Column(Integer, nullable=True)       # max number of agents
-    max_campaigns = Column(Integer, nullable=True)    # max number of campaigns
-    max_calls = Column(Integer, nullable=True)        # max number of calls
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

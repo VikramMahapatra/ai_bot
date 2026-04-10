@@ -1,17 +1,21 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import date, datetime
 from app.models.user import UserRole
 
 
 class OrganizationCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
 
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
     default_meet_link: Optional[str] = None
 
 
@@ -19,6 +23,8 @@ class OrganizationResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    joining_date: Optional[date] = None
+    effective_joining_date: Optional[date] = None
     default_meet_link: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -91,13 +97,8 @@ class OrganizationReport(BaseModel):
     organization_name: str
 
     agents_created: int
-    agent_limit: Optional[int]
-
     campaign_created: int
-    campaign_limit: Optional[int]
-
     calls_done: int
-    calls_limit: Optional[int]
 
     agents: List[AgentReport]
     campaigns: List[CampaignReport]

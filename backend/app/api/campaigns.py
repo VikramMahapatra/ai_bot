@@ -39,6 +39,8 @@ from app.services.campaign_to_lead_rule_engine import (
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 from app.services.limits_service import get_effective_limits
 from app.services.organization_setting_service import get_org_settings
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -509,6 +511,16 @@ def _send_campaign_message(
 
     return False, "Unsupported campaign type", None
 
+def get_feature_code_for_campaign_type(campaign_type: str) -> str:
+    if campaign_type == "email":
+        return FeatureCodes.CMP_EMAIL_SEND
+    elif campaign_type == "whatsapp":
+        return FeatureCodes.CMP_WA_CONVERSATION
+    elif campaign_type == "sms":
+        return FeatureCodes.CMP_SMS_SEGMENT
+    else:
+        return FeatureCodes.CMP_EMAIL_SEND
+
 
 def _execute_campaign_now(
     db: Session,
@@ -516,6 +528,20 @@ def _execute_campaign_now(
     contacts: List[Contact],
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> dict:
+    
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        campaign.organization_id,
+        get_feature_code_for_campaign_type(campaign.campaign_type),
+        len(contacts)
+    )
+    
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )
+    
     run_sequence = int(
         db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0)).filter(CampaignLog.campaign_id == campaign.id).scalar()
         or 0
@@ -590,6 +616,15 @@ def _execute_campaign_now(
     except Exception:
         # Never fail campaign execution because of rule-engine post-processing.
         pass
+    
+    organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=campaign.organization_id,
+            feature_code=get_feature_code_for_campaign_type(campaign.campaign_type),
+            quantity=sent_count,
+            reference_type="campaign",
+            reference_id=campaign.id
+        )
 
     return {
         "campaign_id": campaign.id,
@@ -1041,14 +1076,39 @@ async def campaign_email_tracking_webhook(
 @router.post("/email/generate-variants")
 async def generate_email_variants(
     payload: EmailVariantGenerateRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     del current_user
     try:
+        
+        valid = organization_credit_service.validate_feature_usage(
+            db,
+            current_user.organization_id,
+            FeatureCodes.CMP_AI_CONTENT_GEN,
+            1
+        )
+        
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue."
+            )
+        
         data = generate_email_variants_from_prompt(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
         )
+        
+        
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=FeatureCodes.CMP_AI_CONTENT_GEN,
+            quantity=1,
+            reference_type="campaign_email_variant_generation"
+        )
+        
         return {
             "subjects": data["subjects"],
             "bodies": data["bodies"],
@@ -1063,16 +1123,39 @@ async def generate_email_variants(
 @router.post("/email/spam-score")
 async def score_email_variants_for_spam(
     payload: EmailSpamScoreRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     del current_user
     try:
+        valid = organization_credit_service.validate_feature_usage(
+            db,
+            current_user.organization_id,
+            FeatureCodes.CMP_AI_SPAM_CHECK,
+            1
+        )
+        
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue."
+            )
+            
         data = evaluate_email_spam_score(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
             subjects=payload.subjects,
             bodies=payload.bodies,
         )
+        
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=FeatureCodes.CMP_AI_SPAM_CHECK,
+            quantity=1,
+            reference_type="campaign_email_spam_score"
+        )
+        
         return data
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -2,7 +2,6 @@ from app.models.user import User, UserRole, Organization
 from app.models.super_admin import SuperAdmin
 from app.models.organization_limits import OrganizationLimits
 from app.models.organization_usage import OrganizationUsage
-from app.models.plan import Plan
 from app.models.price_matrix_item import PriceMatrixItem
 from app.models.credit_estimator_share import CreditEstimatorShare
 from app.models.organization_credit_allocation import OrganizationCreditAllocation
@@ -44,7 +43,6 @@ __all__ = [
     "SuperAdmin",
     "OrganizationLimits",
     "OrganizationUsage",
-    "Plan",
     "PriceMatrixItem",
     "CreditEstimatorShare",
     "OrganizationCreditAllocation",

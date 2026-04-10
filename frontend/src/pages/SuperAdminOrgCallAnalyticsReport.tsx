@@ -164,21 +164,21 @@ export default function SuperAdminOrgCallAnalyticsReport() {
 
                                         <TableCell>
                                             <Chip
-                                                label={`${row.agents_created} / ${row.agent_limit ?? '-'}`}
+                                                label={row.agents_created}
                                                 color="primary"
                                             />
                                         </TableCell>
 
                                         <TableCell>
                                             <Chip
-                                                label={`${row.campaign_created} / ${row.campaign_limit ?? '-'}`}
+                                                label={row.campaign_created}
                                                 color="secondary"
                                             />
                                         </TableCell>
 
                                         <TableCell>
                                             <Chip
-                                                label={`${row.calls_done} / ${row.calls_limit ?? '-'}`}
+                                                label={row.calls_done}
                                                 color="success"
                                             />
                                         </TableCell>

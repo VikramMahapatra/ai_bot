@@ -56,6 +56,16 @@ export const CREDIT_MODULES = {
     },
 };
 
+export const CREDIT_ERRORS = {
+    INSUFFICIENT_CREDITS: "Insufficient credit. Please add more credits to continue.",
+    BELOW_MIN_RESERVED: "You don’t have enough credits to start this campaign. Please add more credits to continue.",
+    RESERVE_FAILED: "Unable to reserve credits. Please try again.",
+    CONSUME_FAILED: "Unable to consume credits. Please try again.",
+    FETCH_FAILED: "Unable to fetch credit details.",
+    GENERIC: "Something went wrong with credit validation."
+};
+
+
 export const FEATURE_CODES = {
     CORE_CHATBOT_WEB_MESSAGE: "CORE_CHATBOT_WEB_MESSAGE",
     CORE_CHATBOT_WA_MESSAGE: "CORE_CHATBOT_WA_MESSAGE",

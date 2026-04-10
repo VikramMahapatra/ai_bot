@@ -52,33 +52,12 @@ export interface AnalyticsMetrics {
   avg_response_time: number;
   total_leads: number;
   plan_usage?: {
-    plan_id: number | null;
-    plan_name: string | null;
-    billing_cycle: string | null;
-    start_date: string | null;
-    end_date: string | null;
-    days_left: number | null;
-    status: string | null;
-    limits: {
-      monthly_conversation_limit: number | null;
-      monthly_message_limit: number | null;
-      monthly_token_limit: number | null;
-      monthly_crawl_pages_limit: number | null;
-      monthly_document_limit: number | null;
-    };
     used: {
       conversations_used: number;
       messages_used: number;
       tokens_used: number;
       crawl_pages_used: number;
       documents_used: number;
-    };
-    remaining: {
-      conversations_remaining: number | null;
-      messages_remaining: number | null;
-      tokens_remaining: number | null;
-      crawl_pages_remaining: number | null;
-      documents_remaining: number | null;
     };
   } | null;
 }

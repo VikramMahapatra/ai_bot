@@ -70,6 +70,8 @@ def create_organization(
     new_org = Organization(
         name=org_data.name,
         description=org_data.description,
+        joining_date=org_data.joining_date,
+        effective_joining_date=org_data.effective_joining_date,
     )
     db.add(new_org)
     db.commit()

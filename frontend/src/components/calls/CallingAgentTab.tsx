@@ -58,8 +58,8 @@ import {
 import TestCallDialog from './TestCallDialog';
 import { formatDateTime } from "../../utils/dateUtils";
 import { ConfirmDialog } from '../Common/ConfirmDialog';
-import { CREDIT_ERRORS, useCredits } from '../../context/CreditsContext';
-import { FEATURE_CODES } from '../../types/creditModules';
+import { useCredits } from '../../context/CreditsContext';
+import { FEATURE_CODES, CREDIT_ERRORS } from '../../types/creditModules';
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
