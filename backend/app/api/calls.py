@@ -22,6 +22,9 @@ from app.models.organization_calling_numbers import OrganizationCallingNumber
 from app.models.campaign import Contact
 from app.schemas.calling_agent import CallingNumberRequest
 from app.models.lead import Lead
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
+from app.services.calling_agent_service import test_call
 
 logger = logging.getLogger(__name__)
 
@@ -335,11 +338,19 @@ def sync_bookings(
 
         db.add(appointment)
         inserted_records.append(appointment)
+        db.flush() 
+                
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=FeatureCodes.AI_BOOKING,
+            quantity=1,
+            reference_type="call_log_bookings",
+            reference_id=appointment.id
+        )
 
     db.commit()
-
     return inserted_records
-
 
 @router.get("/org/calling-numbers")
 def get_calling_numbers(

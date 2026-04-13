@@ -64,7 +64,7 @@ def init_db():
         # schema migrations
         # ----------------------------
         apply_db_migrations(conn)
-
+      
         # ----------------------------
         # organization_limits
         # ----------------------------
@@ -287,8 +287,14 @@ def init_db():
                     conn.execute(
                         text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}")
                     )
+                    
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_id INTEGER")
+            )
+                    
 
-        except Exception:
+        except Exception as e:
+            print(str(e))
             pass
 
 
@@ -430,7 +436,8 @@ def init_db():
         try:
             conn.execute(text("""
                 ALTER TABLE price_matrix_items
-                ADD COLUMN IF NOT EXISTS feature_code TEXT
+                ADD COLUMN IF NOT EXISTS feature_code TEXT,
+                ADD COLUMN IF NOT EXISTS min_reserved_credits FLOAT
             """))
 
             conn.execute(text("""
@@ -438,9 +445,73 @@ def init_db():
                 ON price_matrix_items(feature_code)
             """))
 
-        except Exception:
+        except Exception as e:
             pass
+        
+        #--------------------------------------------------
+        # contacts (Add Missing Fields)
+        # --------------------------------------------------
+        try:
+            conn.execute(text("""
+                ALTER TABLE contacts
+                ADD COLUMN IF NOT EXISTS whatsapp_number TEXT,
+                ADD COLUMN IF NOT EXISTS gender TEXT,
+                ADD COLUMN IF NOT EXISTS designation TEXT,
 
+                ADD COLUMN IF NOT EXISTS item_name TEXT,
+                ADD COLUMN IF NOT EXISTS item_type TEXT,
+                ADD COLUMN IF NOT EXISTS interest_stage TEXT,
+                ADD COLUMN IF NOT EXISTS item_category TEXT,
+                ADD COLUMN IF NOT EXISTS amount FLOAT,
+                ADD COLUMN IF NOT EXISTS offer_value TEXT,
+
+                ADD COLUMN IF NOT EXISTS city TEXT,
+                ADD COLUMN IF NOT EXISTS state TEXT,
+                ADD COLUMN IF NOT EXISTS country TEXT,
+
+                ADD COLUMN IF NOT EXISTS source TEXT,
+                ADD COLUMN IF NOT EXISTS lifecycle_stage TEXT,
+
+                ADD COLUMN IF NOT EXISTS tags TEXT
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_contacts_phone
+                ON contacts(phone)
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_contacts_email
+                ON contacts(email)
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_contacts_source
+                ON contacts(source)
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_contacts_interest_stage
+                ON contacts(interest_stage)
+            """))
+
+        except Exception as e:
+            pass
+        
+        
+        # --------------------------------------------------
+        # camapaign_schedules
+        # --------------------------------------------------
+        try:
+            conn.execute(text("""
+                ALTER TABLE campaign_schedules
+                ALTER COLUMN retry_no_answer TYPE BOOLEAN USING retry_no_answer != 0,
+                ALTER COLUMN retry_busy TYPE BOOLEAN USING retry_busy != 0,
+                ALTER COLUMN retry_voicemail TYPE BOOLEAN USING retry_voicemail != 0;
+            """))
+
+        except Exception as e:
+            pass
 
 
         # ----------------------------
@@ -448,6 +519,8 @@ def init_db():
         # ----------------------------
         try:
             conn.commit()
-        except Exception:
+        except Exception as e:
+            print("Error committing database migrations")
+            print(str(e))
             pass
 

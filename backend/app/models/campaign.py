@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Identity, Index, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Identity, Index, Integer, Numeric, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
@@ -22,15 +22,44 @@ class Contact(Base):
 
     id = Column(Integer, Identity(), primary_key=True)
     contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
+
+    # Basic Info
     name = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True, index=True)
+    whatsapp_number = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
+
+    # Company Info
     company = Column(String, nullable=True)
+    designation = Column(String, nullable=True)
+
+    # Product Info
+    item_name = Column(String, nullable=True)
+    item_type = Column(String, nullable=True)
+    interest_stage = Column(String, nullable=True)
+    item_category = Column(String, nullable=True)
+    amount = Column(Numeric, nullable=True)
+    offer_value = Column(String, nullable=True)
+
+    # Location
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+
+    # Source / Lifecycle
+    source = Column(String, nullable=True)
+    lifecycle_stage = Column(String, nullable=True)
+
+    # Tags
+    tags = Column(String, nullable=True)  # comma separated OR JSON
+
+    # System Fields
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    external_contact_id = Column(Integer, nullable=True) 
-    
+    external_contact_id = Column(Integer, nullable=True)
+
     contact_list = relationship("ContactList", back_populates="contacts")
-    
+
     __table_args__ = (
         Index("idx_contact_external_id", "external_contact_id"),
     )

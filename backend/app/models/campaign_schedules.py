@@ -25,8 +25,8 @@ class CampaignSchedule(Base):
     max_retry_attempts = Column(Integer)
     retry_interval = Column(Integer)
 
-    retry_no_answer = Column(Integer)
-    retry_busy = Column(Integer)
-    retry_voicemail = Column(Integer)
+    retry_no_answer = Column(Boolean)
+    retry_busy = Column(Boolean)
+    retry_voicemail = Column(Boolean)
 
     campaign = relationship("CallCampaign", back_populates="schedule")

@@ -32,7 +32,8 @@ import {
     FormControl,
     InputLabel,
     Select,
-    Autocomplete
+    Autocomplete,
+    Drawer
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
@@ -53,6 +54,10 @@ import InfoIcon from "@mui/icons-material/Info";
 import ErrorIcon from "@mui/icons-material/Error";
 import EllipsisCell from "./EllipsisCell";
 import GroupIcon from "@mui/icons-material/Group";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import Field from "./Common/Field";
 
 type ContactForm = Omit<ContactItem, 'id' | 'created_at'>;
 
@@ -112,6 +117,19 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     const [uploadCountryCode, setUploadCountryCode] = useState("IN");
     const [uploadResult, setUploadResult] = useState<any>(null);
     const [editingListId, setEditingListId] = useState<number | null>(null);
+    const [showFormat, setShowFormat] = useState(false);
+    const [selectedContact, setSelectedContact] = useState<ContactItem | null>(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+    const handleView = (contact: any) => {
+        setSelectedContact(contact);
+        setDrawerOpen(true);
+    };
+
+    const handleCloseDrawer = () => {
+        setDrawerOpen(false);
+        setSelectedContact(null);
+    };
 
     const handleEditList = (list: ContactListItem) => {
         setEditingListId(list.id);
@@ -495,13 +513,20 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     };
 
     const handleDownloadCsvTemplate = () => {
-        const template = 'name,email,phone,company\nJohn Doe,john@example.com,+15551234567,Acme Corp\n';
+        const template =
+            `name,email,phone,whatsapp_number,gender,company,designation,item_name,item_type,interest_stage,item_category,amount,offer_value,city,state,country,source,lifecycle_stage,tags
+            Riya Sharma,riya.sharma@gmail.com,9876543210,9876543210,FEMALE,Apollo Hospital,Doctor,Maternity Dress,PRODUCT,ENQUIRED,Clothing,2499,10% Discount,Mumbai,Maharashtra,India,website,new lead,high_value
+            Amit Patel,amit@gmail.com,9123456789,9123456789,MALE,Sun Solar,Manager,Solar Installation,SERVICE,INTERESTED,Solar,4500,Free consultation,Ahmedabad,Gujarat,India,google_ads,new lead,repeat_customer
+            `;
+
         const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
+
         const anchor = document.createElement('a');
         anchor.href = url;
         anchor.download = 'contacts_template.csv';
         anchor.click();
+
         URL.revokeObjectURL(url);
     };
 
@@ -821,6 +846,13 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                                     <TableCell>{contact.company || '-'}</TableCell>
                                                     <TableCell>{formatDate(contact.created_at)}</TableCell>
                                                     <TableCell>
+                                                        <Button
+                                                            size="small"
+                                                            color="info"
+                                                            startIcon={<VisibilityIcon />}
+                                                            onClick={() => handleView(contact)}>
+                                                            View
+                                                        </Button>
                                                         <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => handleEdit(contact)}>
                                                             Edit
                                                         </Button>
@@ -984,26 +1016,46 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                         </Box>
                         <Alert
                             severity="info"
-                            sx={{
-                                mb: 2,
-                                py: 0.5,
-                                alignItems: "flex-start"
-                            }}
+                            sx={{ mb: 2, py: 0.5 }}
+                            action={
+                                <Button
+                                    size="small"
+                                    onClick={() => setShowFormat(!showFormat)}
+                                    endIcon={showFormat ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                >
+                                    {showFormat ? "Hide" : "View Format"}
+                                </Button>
+                            }
                         >
-                            <Box>
-                                <Typography variant="body2" fontWeight={600}>
-                                    Excel/CSV Format
-                                </Typography>
-                                <Typography variant="body2">
-                                    • name, email, phone, company
-                                </Typography>
-                                <Typography variant="body2">
-                                    • Enter phone <strong>without country code</strong>.
-                                </Typography>
-                                <Typography variant="body2">
-                                    • Selected country code will be added automatically
-                                </Typography>
-                            </Box>
+                            <Typography variant="body2" fontWeight={600}>
+                                Upload contacts using CSV / Excel
+                            </Typography>
+
+                            {showFormat && (
+                                <Box mt={1}>
+                                    <Typography variant="caption" display="block">
+                                        <strong>Basic:</strong> name, email, phone, whatsapp_number, company, designation
+                                    </Typography>
+
+                                    <Typography variant="caption" display="block">
+                                        <strong>Product:</strong> item_name, item_type, interest_stage, item_category
+                                    </Typography>
+
+                                    <Typography variant="caption" display="block">
+                                        <strong>Other:</strong> amount, offer_value, city, state, country, source, lifecycle_stage, tags
+                                    </Typography>
+
+                                    <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                        • At least one of <strong>name, email, phone </strong> is required
+                                    </Typography>
+                                    <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                        • Enter phone <strong>without country code</strong>
+                                    </Typography>
+                                    <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                        • Selected country code will be added automatically
+                                    </Typography>
+                                </Box>
+                            )}
                         </Alert>
                         <Stack
                             direction={{ xs: 'column', sm: 'row' }}
@@ -1264,6 +1316,13 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                                 <Box display="flex" gap={1}>
                                                     <Button
                                                         size="small"
+                                                        color="info"
+                                                        startIcon={<VisibilityIcon />}
+                                                        onClick={() => handleView(contact)}>
+                                                        View
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
                                                         color="primary"
                                                         startIcon={<EditIcon />}
                                                         onClick={() => handleEdit(contact)}
@@ -1422,6 +1481,112 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
                 </Dialog>
             </Box>
+            <Drawer
+                anchor="right"
+                open={drawerOpen}
+                onClose={handleCloseDrawer}
+                PaperProps={{
+                    sx: {
+                        width: { xs: '90%', sm: 550 },
+                        height: '100vh',
+                        maxHeight: '100vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        bgcolor: '#f9faff',
+                    },
+                }}
+            >
+                {/* --- Sticky Header --- */}
+                <Box
+                    sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        p: 3,
+                        borderBottom: '1px solid #e0e0e0',
+                        flexShrink: 0,
+                        bgcolor: '#f9faff',
+                    }}
+                >
+                    <Typography variant="h6" fontWeight={700}>
+                        Contact Details
+                    </Typography>
+                    <IconButton onClick={handleCloseDrawer}>
+                        <CloseIcon />
+                    </IconButton>
+                </Box>
+
+                {/* --- Scrollable Content --- */}
+                <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+                    {selectedContact ? (
+                        <Stack spacing={3}>
+
+                            {/* --- Basic Info --- */}
+                            <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                                Basic Info
+                            </Typography>
+                            <Grid container spacing={2}>
+                                <Grid item xs={6}>
+                                    <Field label="Name" value={selectedContact.name} />
+                                    <Field label="Phone" value={selectedContact.phone} />
+                                    <Field label="Company" value={selectedContact.company} />
+                                    <Field label="Gender" value={selectedContact.gender} />
+                                </Grid>
+                                <Grid item xs={6}>
+                                    <Field label="Email" value={selectedContact.email} />
+                                    <Field label="WhatsApp" value={selectedContact.whatsapp_number} />
+                                    <Field label="Designation" value={selectedContact.designation} />
+                                    <Field label="Created At" value={formatDate(selectedContact.created_at)} />
+                                </Grid>
+                            </Grid>
+
+                            {/* --- Product Info --- */}
+                            <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                                Product Info
+                            </Typography>
+                            <Grid container spacing={2}>
+                                <Grid item xs={6}>
+                                    <Field label="Item Name" value={selectedContact.item_name} />
+                                    <Field label="Item Type" value={selectedContact.item_type} />
+                                    <Field label="Interest Stage" value={selectedContact.interest_stage} badge />
+                                </Grid>
+                                <Grid item xs={6}>
+                                    <Field label="Item Category" value={selectedContact.item_category} />
+                                    <Field label="Amount" value={selectedContact.amount} />
+                                    <Field label="Offer Value" value={selectedContact.offer_value} />
+                                </Grid>
+                            </Grid>
+
+                            {/* --- Location --- */}
+                            <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                                Location
+                            </Typography>
+                            <Grid container spacing={2}>
+                                <Grid item xs={12}>
+                                    <Field
+                                        label="City / State / Country"
+                                        value={[selectedContact.city, selectedContact.state, selectedContact.country].filter(Boolean).join(', ')}
+                                    />
+                                </Grid>
+                            </Grid>
+
+                            {/* --- Tracking --- */}
+                            <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                                Tracking
+                            </Typography>
+                            <Grid container spacing={2}>
+                                <Grid item xs={12}>
+                                    <Field label="Source" value={selectedContact.source} />
+                                    <Field label="Lifecycle Stage" value={selectedContact.lifecycle_stage} badge />
+                                    <Field label="Tags" value={selectedContact.tags} badges />
+                                </Grid>
+                            </Grid>
+                        </Stack>
+                    ) : (
+                        <Typography>No contact selected</Typography>
+                    )}
+                </Box>
+            </Drawer>
         </>
 
     );

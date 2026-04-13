@@ -7,24 +7,27 @@ import React, {
     ReactNode,
 } from "react";
 import axios from "axios";
-import { organizationCreditService } from "../services/organizationCreditService";
+import { CreditItem, CreditMonthlySummary, organizationCreditService, PriceMatrixItem } from "../services/organizationCreditService";
 
 // Types
-export interface CreditItem {
-    feature_code: string;
-    allocated: number;
-    used: number;
-    remaining: number;
-}
+type CreditInfo = {
+    creditsPerUnit: number;
+    minReservedCredits?: number;
+};
+
+
 
 interface CreditsContextType {
     credits: CreditItem[];
+    creditMonthlySummary: CreditMonthlySummary | null;
+    priceMatrix: PriceMatrixItem[];
     totalCredits: number;
     loading: boolean;
     refreshCredits: () => Promise<void>;
+    getRequiredCredits: (featureCode: string) => number;
+    getRequiredCreditInfo: (featureCode: string) => CreditInfo;
     reserveCredits: (feature_code: string, referenceType: string, referenceId: string, requiredCredits: number) => Promise<void>;
     consumeCredits: (feature_code: string, referenceType: string, referenceId: string, quantity: number) => Promise<void>;
-    useCreditAction: (feature_code: string, requiredCredits: number) => Promise<boolean>;
 }
 
 // Context
@@ -38,8 +41,10 @@ interface CreditsProviderProps {
 // Provider
 export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) => {
     const [credits, setCredits] = useState<CreditItem[]>([]);
+    const [creditMonthlySummary, setCreditMonthlySummary] = useState<CreditMonthlySummary | null>(null);
     const [totalCredits, setTotalCredits] = useState<number>(0);
     const [loading, setLoading] = useState<boolean>(false);
+    const [priceMatrix, setPriceMatrix] = useState<PriceMatrixItem[]>([]);
 
     const fetchCredits = useCallback(async () => {
         try {
@@ -47,12 +52,11 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
 
             const data = await organizationCreditService.getOrgCredits();
 
-            setCredits(data);
+            setCredits(data.credits || []);
+            setCreditMonthlySummary(data.monthly_summary || {})
+            setPriceMatrix(data.price_matrix || [])
 
-            const total = data.reduce(
-                (sum: number, item: CreditItem) => sum + (item.remaining || 0),
-                0
-            );
+            const total = data.monthly_summary?.remaining || 0;
 
             setTotalCredits(total);
 
@@ -67,6 +71,29 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
     useEffect(() => {
         fetchCredits();
     }, [fetchCredits]);
+
+    const getRequiredCreditInfo = useCallback(
+        (featureCode: string) => {
+
+            const item = priceMatrix.find(
+                p => p.feature_code === featureCode
+            );
+
+            return {
+                creditsPerUnit: item?.credits_per_unit || 1,
+                minReservedCredits: item?.min_reserved_credits || 0
+            };
+        },
+        [priceMatrix]
+    );
+
+
+    const getRequiredCredits = useCallback(
+        (featureCode: string) => {
+            return getRequiredCreditInfo(featureCode).creditsPerUnit;
+        },
+        [getRequiredCreditInfo]
+    );
 
     const reserveCredits = async (
         featureCode: string,
@@ -130,44 +157,19 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
         }
     };
 
-    const useCreditAction = async (
-        featureCode: string,
-        quantity: number
-    ) => {
-
-        const credit = credits.find(c => c.feature_code === featureCode);
-
-        if (!credit || credit.remaining < quantity) {
-            return false;
-        }
-
-        try {
-            const success = await organizationCreditService.deductCredits(
-                featureCode,
-                quantity
-            );
-
-            if (success) {
-                await fetchCredits();
-            }
-
-            return success;
-
-        } catch (err) {
-            console.error("Credit deduction failed", err);
-            return false;
-        }
-    };
     return (
         <CreditsContext.Provider
             value={{
                 credits,
+                creditMonthlySummary,
+                priceMatrix,
                 totalCredits,
                 loading,
                 refreshCredits: fetchCredits,
+                getRequiredCredits,
+                getRequiredCreditInfo,
                 reserveCredits,
                 consumeCredits,
-                useCreditAction
             }}
         >
             {children}

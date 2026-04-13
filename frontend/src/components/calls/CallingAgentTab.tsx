@@ -58,6 +58,8 @@ import {
 import TestCallDialog from './TestCallDialog';
 import { formatDateTime } from "../../utils/dateUtils";
 import { ConfirmDialog } from '../Common/ConfirmDialog';
+import { useCredits } from '../../context/CreditsContext';
+import { FEATURE_CODES, CREDIT_ERRORS } from '../../types/creditModules';
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
@@ -82,6 +84,8 @@ export const CallingAgentTab: React.FC = () => {
     const [openTestDialog, setOpenTestDialog] = useState(false);
     const [agentToDelete, setAgentToDelete] = useState<CallingAgent | null>(null);
     const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+    const { getRequiredCredits, totalCredits, refreshCredits } = useCredits();
 
     const showError = (message: string) => {
         setSuccess('');
@@ -116,7 +120,7 @@ export const CallingAgentTab: React.FC = () => {
             }
         };
         run();
-    }, [search, agentPage, agentRowsPerPage]);
+    }, [search, agentPage, agentRowsPerPage, sortBy]);
 
     useEffect(() => {
         if (loading) {
@@ -150,6 +154,7 @@ export const CallingAgentTab: React.FC = () => {
             setShowForm(false);
             setSelectedAgent(null);
             loadCallingAgents();
+            refreshCredits();
 
             return response;
 
@@ -189,6 +194,11 @@ export const CallingAgentTab: React.FC = () => {
     };
 
     const handleTestCall = (agent: CallingAgent) => {
+        const featureCode = agent.type == "outbound" ? FEATURE_CODES.CORE_CALL_OUT_ATTEMPT : FEATURE_CODES.CORE_CALL_IN_ATTEMPT;
+
+        if (!validateAgentCredits(featureCode)) {
+            return
+        }
         setSelectedAgent(agent);
         setOpenTestDialog(true);
     };
@@ -222,11 +232,39 @@ export const CallingAgentTab: React.FC = () => {
         setSuccess('');
     }
 
+    const validateAgentCredits = (featureCode: string) => {
+        const required = getRequiredCredits(featureCode);
+
+        if (totalCredits < required) {
+            showError(CREDIT_ERRORS.INSUFFICIENT_CREDITS);
+            return false;
+        }
+
+        return true;
+    };
+
+    const handleAgentTypeSelect = (
+        type: "inbound" | "outbound",
+        featureCode: string
+    ) => {
+
+        if (!validateAgentCredits(featureCode)) {
+            setShowTypeDialog(false);
+            return;
+        }
+
+        setAgentType(type);
+        setShowTypeDialog(false);
+        setSelectedAgent(null);
+        setShowForm(true);
+    };
+
     const handleConfirmDelete = async () => {
         if (!agentToDelete?.id) return;
         setError('');
         setSuccess('');
         setDeleteSubmitting(true);
+        setLoading(true);
         try {
             await callingAgentService.deleteAgent(agentToDelete.id);
             setAgentToDelete(null);
@@ -235,6 +273,7 @@ export const CallingAgentTab: React.FC = () => {
             showError(`Failed to delete the agent`);
         } finally {
             setDeleteSubmitting(false);
+            setLoading(false);
         }
     };
 
@@ -683,12 +722,12 @@ export const CallingAgentTab: React.FC = () => {
                             >
                                 <CardActionArea
                                     sx={{ flex: 1 }}
-                                    onClick={() => {
-                                        setAgentType("inbound");
-                                        setShowTypeDialog(false);
-                                        setSelectedAgent(null);
-                                        setShowForm(true);
-                                    }}
+                                    onClick={() =>
+                                        handleAgentTypeSelect(
+                                            "inbound",
+                                            FEATURE_CODES.CORE_CALL_AGENT_IN
+                                        )
+                                    }
                                 >
                                     <CardContent>
                                         <Stack spacing={1} alignItems="center" textAlign="center">
@@ -718,12 +757,12 @@ export const CallingAgentTab: React.FC = () => {
                             >
                                 <CardActionArea
                                     sx={{ flex: 1 }}
-                                    onClick={() => {
-                                        setAgentType("outbound");
-                                        setShowTypeDialog(false);
-                                        setSelectedAgent(null);
-                                        setShowForm(true);
-                                    }}
+                                    onClick={() =>
+                                        handleAgentTypeSelect(
+                                            "outbound",
+                                            FEATURE_CODES.CORE_CALL_AGENT_OUT
+                                        )
+                                    }
                                 >
                                     <CardContent>
                                         <Stack spacing={1} alignItems="center" textAlign="center">
@@ -773,8 +812,10 @@ export const CallingAgentTab: React.FC = () => {
                         setOpenTestDialog(false)
                         if (response.status == "failed")
                             showError(response.message)
-                        else
+                        else {
                             showSuccess(response.message)
+                            refreshCredits();
+                        }
                     }}
                     agent={selectedAgent}
                 />

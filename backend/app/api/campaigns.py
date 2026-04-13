@@ -39,6 +39,8 @@ from app.services.campaign_to_lead_rule_engine import (
 from app.services.twilio_sms_service import render_sms_template, send_twilio_sms
 from app.services.limits_service import get_effective_limits
 from app.services.organization_setting_service import get_org_settings
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -509,6 +511,16 @@ def _send_campaign_message(
 
     return False, "Unsupported campaign type", None
 
+def get_feature_code_for_campaign_type(campaign_type: str) -> str:
+    if campaign_type == "email":
+        return FeatureCodes.CMP_EMAIL_SEND
+    elif campaign_type == "whatsapp":
+        return FeatureCodes.CMP_WA_CONVERSATION
+    elif campaign_type == "sms":
+        return FeatureCodes.CMP_SMS_SEGMENT
+    else:
+        return FeatureCodes.CMP_EMAIL_SEND
+
 
 def _execute_campaign_now(
     db: Session,
@@ -516,6 +528,20 @@ def _execute_campaign_now(
     contacts: List[Contact],
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> dict:
+    
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        campaign.organization_id,
+        get_feature_code_for_campaign_type(campaign.campaign_type),
+        len(contacts)
+    )
+    
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )
+    
     run_sequence = int(
         db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0)).filter(CampaignLog.campaign_id == campaign.id).scalar()
         or 0
@@ -572,6 +598,17 @@ def _execute_campaign_now(
     campaign.number_sent = sent_count
     campaign.number_failed = failed_count
     campaign.status = "completed" if sent_count > 0 else "failed"
+    db.flush()
+    
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=campaign.organization_id,
+        feature_code=get_feature_code_for_campaign_type(campaign.campaign_type),
+        quantity=sent_count,
+        reference_type="campaign",
+        reference_id=campaign.id
+    )
+    
     db.commit()
     db.refresh(campaign)
 
@@ -590,6 +627,8 @@ def _execute_campaign_now(
     except Exception:
         # Never fail campaign execution because of rule-engine post-processing.
         pass
+    
+   
 
     return {
         "campaign_id": campaign.id,
@@ -1041,14 +1080,41 @@ async def campaign_email_tracking_webhook(
 @router.post("/email/generate-variants")
 async def generate_email_variants(
     payload: EmailVariantGenerateRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     del current_user
     try:
+        
+        valid = organization_credit_service.validate_feature_usage(
+            db,
+            current_user.organization_id,
+            FeatureCodes.CMP_AI_CONTENT_GEN,
+            1
+        )
+        
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue."
+            )
+        
         data = generate_email_variants_from_prompt(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
         )
+        
+        
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=FeatureCodes.CMP_AI_CONTENT_GEN,
+            quantity=1,
+            reference_type="campaign_email_variant_generation"
+        )
+        
+        db.commit()
+        
         return {
             "subjects": data["subjects"],
             "bodies": data["bodies"],
@@ -1063,16 +1129,40 @@ async def generate_email_variants(
 @router.post("/email/spam-score")
 async def score_email_variants_for_spam(
     payload: EmailSpamScoreRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     del current_user
     try:
+        valid = organization_credit_service.validate_feature_usage(
+            db,
+            current_user.organization_id,
+            FeatureCodes.CMP_AI_SPAM_CHECK,
+            1
+        )
+        
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue."
+            )
+            
         data = evaluate_email_spam_score(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
             subjects=payload.subjects,
             bodies=payload.bodies,
         )
+        
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=FeatureCodes.CMP_AI_SPAM_CHECK,
+            quantity=1,
+            reference_type="campaign_email_spam_score"
+        )
+        
+        db.commit()
         return data
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1258,6 +1348,7 @@ async def list_contacts(
 ):
     limit = max(1, min(limit, 500))
 
+    # Fetch contact list
     contact_list = db.query(ContactList).filter(
         ContactList.id == contact_list_id,
         ContactList.organization_id == current_user.organization_id,
@@ -1265,6 +1356,7 @@ async def list_contacts(
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
+    # Build query
     query = db.query(Contact).filter(Contact.contact_list_id == contact_list_id)
     if search:
         search_term = f"%{search.strip()}%"
@@ -1272,21 +1364,42 @@ async def list_contacts(
             Contact.name.ilike(search_term) |
             Contact.email.ilike(search_term) |
             Contact.phone.ilike(search_term) |
-            Contact.company.ilike(search_term)
+            Contact.company.ilike(search_term) |
+            Contact.whatsapp_number.ilike(search_term) |
+            Contact.designation.ilike(search_term) |
+            Contact.item_name.ilike(search_term) |
+            Contact.item_category.ilike(search_term)
         )
 
     total = query.count()
     rows = query.order_by(Contact.created_at.desc()).offset(skip).limit(limit).all()
 
+    # Return all fields
     return {
         "items": [
             {
                 "id": row.id,
+                "contact_list_id": row.contact_list_id,
+                "label": f"{row.name} ({row.phone})",
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
+                "whatsapp_number": row.whatsapp_number,
+                "gender": row.gender,
                 "company": row.company,
-                "contact_list_id": row.contact_list_id,
+                "designation": row.designation,
+                "item_name": row.item_name,
+                "item_type": row.item_type,
+                "interest_stage": row.interest_stage,
+                "item_category": row.item_category,
+                "amount": row.amount,
+                "offer_value": row.offer_value,
+                "city": row.city,
+                "state": row.state,
+                "country": row.country,
+                "source": row.source,
+                "lifecycle_stage": row.lifecycle_stage,
+                "tags": row.tags,
                 "created_at": row.created_at,
             }
             for row in rows
@@ -1368,6 +1481,7 @@ async def upload_contacts_csv(
         ContactList.id == contact_list_id,
         ContactList.organization_id == current_user.organization_id,
     ).first()
+
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
@@ -1379,6 +1493,9 @@ async def upload_contacts_csv(
     rows_iter = []
     normalized_headers = set()
 
+    # -------------------------
+    # File Parsing
+    # -------------------------
     if filename.endswith(".xlsx") or filename.endswith(".xls"):
         try:
             dataframe = pd.read_excel(BytesIO(raw))
@@ -1388,6 +1505,7 @@ async def upload_contacts_csv(
         dataframe.columns = [str(col).strip().lower() for col in dataframe.columns]
         normalized_headers = set(dataframe.columns)
         rows_iter = dataframe.fillna("").to_dict(orient="records")
+
     else:
         try:
             content = raw.decode("utf-8-sig")
@@ -1395,31 +1513,44 @@ async def upload_contacts_csv(
             raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded")
 
         reader = csv.DictReader(StringIO(content))
+
         if not reader.fieldnames:
             raise HTTPException(status_code=400, detail="CSV headers are missing")
 
         normalized_headers = {header.strip().lower() for header in reader.fieldnames if header}
+
         rows_iter = [
             {str(key or "").strip().lower(): value for key, value in row.items()}
             for row in reader
         ]
 
     required_headers = {"name", "email", "phone"}
+
     if not (required_headers & normalized_headers):
-        raise HTTPException(status_code=400, detail="File must include at least one of: name, email, phone")
+        raise HTTPException(
+            status_code=400,
+            detail="File must include at least one of: name, email, phone"
+        )
 
     created = 0
     errors = []
     added_contacts = []
     updated_contacts = []
 
+    # -------------------------
+    # Process Rows
+    # -------------------------
     for index, row in enumerate(rows_iter, start=2):
+        
+        if not any(str(v).strip() for v in row.values() if v):
+            continue
+    
         try:
             phone = format_phone_number(
                 row.get("phone"),
                 country_code
             )
-            
+
             name, email, phone, company = _validate_contact_payload(
                 row.get("name"),
                 row.get("email"),
@@ -1427,7 +1558,40 @@ async def upload_contacts_csv(
                 row.get("company"),
             )
 
-            # 🔍 Check existing contact
+            # -------------------------
+            # Additional Fields
+            # -------------------------
+
+            whatsapp_number = format_phone_number(
+                row.get("whatsapp_number"),
+                country_code
+            )
+
+            gender = row.get("gender")
+            designation = row.get("designation")
+
+            item_name = row.get("item_name")
+            item_type = row.get("item_type")
+            interest_stage = row.get("interest_stage")
+            item_category = row.get("item_category")
+
+            amount = row.get("amount")
+            amount = float(amount) if amount else None
+
+            offer_value = row.get("offer_value")
+
+            city = row.get("city")
+            state = row.get("state")
+            country = row.get("country")
+
+            source = row.get("source")
+            lifecycle_stage = row.get("lifecycle_stage")
+            tags = row.get("tags")
+
+            # -------------------------
+            # Check Existing Contact
+            # -------------------------
+
             existing = None
 
             if phone:
@@ -1442,45 +1606,88 @@ async def upload_contacts_csv(
                     Contact.email == email
                 ).first()
 
+            # -------------------------
+            # UPDATE
+            # -------------------------
+
             if existing:
-                # ✏️ UPDATE
                 existing.name = name or existing.name
                 existing.email = email or existing.email
                 existing.phone = phone or existing.phone
                 existing.company = company or existing.company
 
+                existing.whatsapp_number = whatsapp_number or existing.whatsapp_number
+                existing.gender = gender or existing.gender
+                existing.designation = designation or existing.designation
+
+                existing.item_name = item_name or existing.item_name
+                existing.item_type = item_type or existing.item_type
+                existing.interest_stage = interest_stage or existing.interest_stage
+                existing.item_category = item_category or existing.item_category
+
+                existing.amount = amount if amount is not None else existing.amount
+                existing.offer_value = offer_value or existing.offer_value
+
+                existing.city = city or existing.city
+                existing.state = state or existing.state
+                existing.country = country or existing.country
+
+                existing.source = source or existing.source
+                existing.lifecycle_stage = lifecycle_stage or existing.lifecycle_stage
+                existing.tags = tags or existing.tags
+
                 updated_contacts.append({
                     "id": existing.id,
-                    "label": f"{existing.name} ({existing.phone})",
-                    "name": existing.name,
-                    "email": existing.email,
-                    "phone": existing.phone,
-                    "company": existing.company,
+                    "label": f"{existing.name} ({existing.phone})"
                 })
 
+            # -------------------------
+            # CREATE
+            # -------------------------
+
             else:
-                # ➕ CREATE
                 new_contact = Contact(
                     contact_list_id=contact_list.id,
+
                     name=name or None,
                     email=email or None,
                     phone=phone or None,
                     company=company or None,
+
+                    whatsapp_number=whatsapp_number,
+                    gender=gender,
+                    designation=designation,
+
+                    item_name=item_name,
+                    item_type=item_type,
+                    interest_stage=interest_stage,
+                    item_category=item_category,
+
+                    amount=amount,
+                    offer_value=offer_value,
+
+                    city=city,
+                    state=state,
+                    country=country,
+
+                    source=source,
+                    lifecycle_stage=lifecycle_stage,
+                    tags=tags,
                 )
+
                 db.add(new_contact)
-                db.flush()  # get ID without commit
+                db.flush()
 
                 added_contacts.append({
                     "id": new_contact.id,
-                    "label": f"{new_contact.name} ({new_contact.phone})",
-                    "name": new_contact.name,
-                    "email": new_contact.email,
-                    "phone": new_contact.phone,
-                    "company": new_contact.company,
+                    "label": f"{new_contact.name} ({new_contact.phone})"
                 })
 
         except ValueError as exc:
-            errors.append({"row": index, "error": str(exc)})
+            errors.append({
+                "row": index,
+                "error": str(exc)
+            })
 
     db.commit()
 

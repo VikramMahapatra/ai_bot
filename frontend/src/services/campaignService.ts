@@ -220,10 +220,30 @@ export interface ContactItem {
   name: string;
   email: string;
   phone: string;
-  company?: string;
+  company?: string | null;
   contact_list_id: number | null;
-  contact_list_name?: string;
+  contact_list_name?: string | null;
   created_at: string;
+
+  // Additional fields
+  whatsapp_number?: string | null;
+  gender?: string | null;
+  designation?: string | null;
+
+  item_name?: string | null;
+  item_type?: string | null;
+  interest_stage?: string | null;
+  item_category?: string | null;
+  amount?: number | null;
+  offer_value?: string | null;
+
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+
+  source?: string | null;
+  lifecycle_stage?: string | null;
+  tags?: string | null;
 }
 
 export interface ContactResponse {

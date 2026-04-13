@@ -60,8 +60,17 @@ const DEFAULT_MEET_LINK = "https://meet.google.com/new";
 const statusColor = (status: AppointmentItem["status"]) => {
   if (status === "booked") return "primary";
   if (status === "completed") return "success";
+  if (status === "overdue") return "error";
   if (status === "cancelled") return "default";
   return "warning";
+};
+
+const statusLabel = (status: AppointmentItem["status"]) => {
+  if (status === "booked") return "Booked";
+  if (status === "completed") return "Completed";
+  if (status === "overdue") return "Overdue";
+  if (status === "cancelled") return "Cancelled";
+  return "No Show";
 };
 
 const formatDateTime = (value?: string) => {
@@ -140,6 +149,7 @@ const statusLegend: Array<{ value: AppointmentItem["status"]; label: string }> =
     { value: "booked", label: "Booked" },
     { value: "completed", label: "Completed" },
     { value: "cancelled", label: "Cancelled" },
+    { value: "overdue", label: "Overdue" },
     { value: "no_show", label: "No Show" },
   ];
 
@@ -210,8 +220,8 @@ const AppointmentsPage: React.FC = () => {
       setError("");
       setSuccess("");
       const data = await appointmentService.list({
-        widget_id: widgetId || undefined,
-        status: status || undefined,
+        widget_id: widgetId != "all" ? widgetId : undefined,
+        status: status !== "all" ? status : undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
         upcoming_only: upcomingOnly,
@@ -281,8 +291,8 @@ const AppointmentsPage: React.FC = () => {
     setRescheduleDateTime(toDateTimeLocalValue(targetDate));
     setRescheduleTimezone(
       item.timezone ||
-        Intl.DateTimeFormat().resolvedOptions().timeZone ||
-        "UTC",
+      Intl.DateTimeFormat().resolvedOptions().timeZone ||
+      "UTC",
     );
     setRescheduleMeetLink(defaultMeetLink || DEFAULT_MEET_LINK);
     setRescheduleNotes(item.notes || "");
@@ -314,7 +324,7 @@ const AppointmentsPage: React.FC = () => {
     } catch (err: any) {
       setError(
         err?.response?.data?.detail ||
-          "Failed to update organization default Meet URL",
+        "Failed to update organization default Meet URL",
       );
     } finally {
       setSavingDefaultMeetLink(false);
@@ -354,12 +364,12 @@ const AppointmentsPage: React.FC = () => {
         prev.map((item) =>
           item.id === rescheduleTarget.id
             ? {
-                ...item,
-                appointment_at: response.appointment_at,
-                timezone: response.timezone || item.timezone,
-                status: response.status,
-                notes: rescheduleNotes || item.notes,
-              }
+              ...item,
+              appointment_at: response.appointment_at,
+              timezone: response.timezone || item.timezone,
+              status: response.status,
+              notes: rescheduleNotes || item.notes,
+            }
             : item,
         ),
       );
@@ -367,12 +377,12 @@ const AppointmentsPage: React.FC = () => {
       setSelectedAppointment((prev) =>
         prev && prev.id === rescheduleTarget.id
           ? {
-              ...prev,
-              appointment_at: response.appointment_at,
-              timezone: response.timezone || prev.timezone,
-              status: response.status,
-              notes: rescheduleNotes || prev.notes,
-            }
+            ...prev,
+            appointment_at: response.appointment_at,
+            timezone: response.timezone || prev.timezone,
+            status: response.status,
+            notes: rescheduleNotes || prev.notes,
+          }
           : prev,
       );
 
@@ -513,7 +523,7 @@ const AppointmentsPage: React.FC = () => {
       loadAppointments();
     } catch (err: any) {
       setError(
-        err?.response?.data?.detail || "Failed to sync appointments from calls",
+        err?.response?.data?.detail || err?.detail || "Failed to sync appointments from calls",
       );
     } finally {
       setSyncing(false);
@@ -586,7 +596,7 @@ const AppointmentsPage: React.FC = () => {
                   label="Agent"
                   onChange={(e) => setWidgetId(e.target.value)}
                 >
-                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="all">All</MenuItem>
                   {widgets.map((widget) => (
                     <MenuItem key={widget.widget_id} value={widget.widget_id}>
                       {widget.name}
@@ -603,10 +613,11 @@ const AppointmentsPage: React.FC = () => {
                   label="Status"
                   onChange={(e) => setStatus(e.target.value)}
                 >
-                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="all">All</MenuItem>
                   <MenuItem value="booked">Booked</MenuItem>
                   <MenuItem value="completed">Completed</MenuItem>
                   <MenuItem value="cancelled">Cancelled</MenuItem>
+                  <MenuItem value="overdue">Overdue</MenuItem>
                   <MenuItem value="no_show">No Show</MenuItem>
                 </Select>
               </FormControl>
@@ -701,7 +712,9 @@ const AppointmentsPage: React.FC = () => {
           {tab === 0 && (
             <>
               {/* Search Box */}
-              <Box sx={{ display: "flex", justifyContent: "flex-start", mt: 2 }}>
+              <Box
+                sx={{ display: "flex", justifyContent: "flex-start", mt: 2 }}
+              >
                 <TextField
                   size="small"
                   label="Search"
@@ -757,7 +770,7 @@ const AppointmentsPage: React.FC = () => {
                           <TableCell>
                             <Chip
                               size="small"
-                              label={item.status}
+                              label={statusLabel(item.status)}
                               color={statusColor(item.status)}
                               variant="outlined"
                             />
@@ -960,7 +973,7 @@ const AppointmentsPage: React.FC = () => {
                           >
                             <Chip
                               size="small"
-                              label={item.status}
+                              label={statusLabel(item.status)}
                               color={statusColor(item.status)}
                               variant="outlined"
                             />
@@ -1090,6 +1103,15 @@ const AppointmentsPage: React.FC = () => {
                                 >
                                   {item.widget_name}
                                 </Typography>
+                                <Chip
+                                  sx={{
+                                    fontSize: 10
+                                  }}
+                                  size="small"
+                                  label={statusLabel(item.status)}
+                                  color={statusColor(item.status)}
+                                  variant="outlined"
+                                />
                                 <Stack
                                   direction="row"
                                   spacing={0.4}
@@ -1213,9 +1235,9 @@ const AppointmentsPage: React.FC = () => {
                               backgroundColor: inCurrentMonth
                                 ? alpha(theme.palette.background.paper, 0.7)
                                 : alpha(
-                                    theme.palette.action.disabledBackground,
-                                    0.35,
-                                  ),
+                                  theme.palette.action.disabledBackground,
+                                  0.35,
+                                ),
                               p: 0.8,
                               outline: draggedAppointmentId
                                 ? `1px dashed ${alpha(theme.palette.primary.main, 0.3)}`
@@ -1269,6 +1291,18 @@ const AppointmentsPage: React.FC = () => {
                                     {formatTime(item.appointment_at)}{" "}
                                     {item.name}
                                   </Typography>
+
+                                  <Chip
+                                    sx={{
+                                      fontSize: 10
+                                    }}
+                                    size="small"
+                                    label={statusLabel(item.status)}
+                                    color={statusColor(item.status)}
+                                    variant="outlined"
+                                  />
+
+
                                 </Box>
                               ))}
                               {dayItems.length > 3 && (

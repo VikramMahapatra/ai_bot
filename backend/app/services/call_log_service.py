@@ -18,6 +18,9 @@ from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Contact
 from app.config import settings
 from app.models.conversation import Conversation
+from app.enums.credit_feature_codes import FeatureCodes
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -163,8 +166,8 @@ def get_call_logs(
         )
 
         # duration in seconds
-        duration = None
-        if log.start_time and log.end_time:
+        duration = log.duration
+        if not log.duration and log.start_time and log.end_time:
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid
@@ -437,7 +440,7 @@ def process_call(db, call, agent):
                 type=agent.type,
                 mode="Voice",
                 phone=call.get("phone"),
-                status=call.get("status").lower() if call.get("status") else "queued",
+                status=call.get("status").lower() if call.get("status") else "calling fail",
 
                 start_time=call_start,
                 end_time=parse_datetime(call.get("call_ended_at")),
@@ -457,14 +460,22 @@ def process_call(db, call, agent):
 
             try:
                 db.add(call_log)
-                db.flush()
+                db.flush()   
+                
+                if call_log.type == "inbound":
+                    organization_credit_service.deduct_credits(
+                        db=db,
+                        organization_id=call_log.organization_id,
+                        feature_code=FeatureCodes.CORE_CALL_IN_ATTEMPT,
+                        quantity=1,
+                        reference_type="call_log",
+                        reference_id=call_log.id
+                    )   
+                    
+                save_transcripts(db, call_log.id, call.get("transcript"))                        
+                
             except IntegrityError:
-                db.rollback()
-                call_log = db.query(CallLog).filter(
-                    CallLog.external_call_id == call["id"]
-                ).first()
-            
-            save_transcripts(db, call_log.id, call.get("transcript"))
+                db.rollback()                      
     else: 
         # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
         call_log = existing  
@@ -493,7 +504,7 @@ def process_call(db, call, agent):
     
 def save_transcripts(db: Session, call_log_id: int, transcript):
 
-    if not transcript:
+    if not transcript or not call_log_id    :
         return
 
     db.query(CallTranscript).filter(

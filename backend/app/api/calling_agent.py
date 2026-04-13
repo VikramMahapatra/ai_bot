@@ -48,11 +48,11 @@ def read_agents(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
-    sort_by: str = "newest",
+    sortBy: str = "newest",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return service.read_agents(db, current_user.organization_id, search, skip, limit, sort_by)
+    return service.read_agents(db, current_user.organization_id, search, skip, limit, sortBy)
     
 @router.get("/{agent_id:int}", response_model=CallingAgentRead)
 def get_agent(agent_id: int, db: Session = Depends(get_db)):

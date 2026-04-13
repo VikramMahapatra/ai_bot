@@ -44,7 +44,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import CloseIcon from "@mui/icons-material/Close";
 
 interface Props {
-    onAddCampaign: () => void;
+    onAddCampaign: (showError: (message: string) => void) => void;
     onEditCampaign: (id?: number) => void;
     onViewCampaign: (id?: number) => void;
     onDeleteCampaign: (id?: number) => void;
@@ -361,7 +361,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                         variant="contained"
                         color="primary"
                         startIcon={<AddIcon />}
-                        onClick={onAddCampaign}
+                        onClick={() => onAddCampaign(setError)}
                     >
                         Create Campaign
                     </Button>

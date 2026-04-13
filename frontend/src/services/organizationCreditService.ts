@@ -2,6 +2,42 @@ import api from './api';
 
 
 
+
+export interface CreditItem {
+    module: string;
+    sub_module: string;
+    feature_code: string;
+    allocated: number;
+    used: number;
+    remaining: number;
+    reserved: number;
+}
+
+export interface CreditMonthlySummary {
+    feature_code: string;
+    allocated: number;
+    used: number;
+    remaining: number;
+    reserver: number;
+}
+
+export interface PriceMatrixItem {
+    id: number;
+    category: string;
+    module: string;
+    sub_module?: string;
+    feature_code?: string;
+    min_reserved_credits?: number;
+    billing_unit?: string;
+    credits_per_unit?: number;
+    credit_formula?: string;
+    definition?: string;
+    overage_handling?: string;
+    sort_order: number;
+    is_active: boolean;
+}
+
+
 export const organizationCreditService = {
 
     async getOrgCredits() {
