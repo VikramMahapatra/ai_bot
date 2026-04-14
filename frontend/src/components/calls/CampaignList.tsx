@@ -47,7 +47,7 @@ interface Props {
     onAddCampaign: (showError: (message: string) => void) => void;
     onEditCampaign: (id?: number) => void;
     onViewCampaign: (id?: number) => void;
-    onDeleteCampaign: (id?: number) => void;
+    onDeleteCampaign: (id: number) => void;
 }
 
 const getStatusColor = (status: string) => {
@@ -568,15 +568,21 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 <EditIcon />
                                             </IconButton>
                                         )}
-                                        {/* {["completed", "pending"].includes(campaign.status) && (
+                                        {["draft"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 color="error"
-                                                onClick={() => onDeleteCampaign(campaign.id)}
+                                                onClick={async () => {
+                                                    if (campaign.id)
+                                                        onDeleteCampaign(campaign.id);
+
+                                                    await loadCampaigns();
+                                                    await loadCampaignStats();
+                                                }}
                                             >
                                                 <DeleteIcon />
                                             </IconButton>
-                                        )} */}
+                                        )}
                                     </TableCell>
 
                                 </TableRow>

@@ -71,7 +71,18 @@ const emptyCampaignForm: CallCampaign = {
 
     retry_on_no_answer: false,
     retry_on_busy: false,
-    retry_on_voicemail: false
+    retry_on_voicemail: false,
+
+    instant_reply: false,
+    instant_reply_modes: [],
+    instant_reply_templates: {
+        whatsapp: "",
+        sms: "",
+        email: {
+            subject: "",
+            body: ""
+        }
+    }
 };
 
 const CampaignBuilder = () => {
@@ -172,7 +183,11 @@ const CampaignBuilder = () => {
 
                 retry_on_no_answer: data.retry_on_no_answer,
                 retry_on_busy: data.retry_on_busy,
-                retry_on_voicemail: data.retry_on_voicemail
+                retry_on_voicemail: data.retry_on_voicemail,
+
+                instant_reply: data.instant_reply,
+                instant_reply_modes: data.instant_reply_modes,
+                instant_reply_templates: data.instant_reply_templates
             });
 
             if (data.contacts && data.contacts.length > 0) {
@@ -262,12 +277,17 @@ const CampaignBuilder = () => {
         }
     };
 
-    const handleDeleteCampaign = async () => {
+    const handleDeleteCampaign = async (campaignId: number) => {
         setError('');
         setSuccess('');
         setLoading(true);
+
+        if (!campaignId) {
+            showError('Invalid campaign ID');
+        }
+
         try {
-            await callCampaignService.createCampaign(campaignForm);
+            await callCampaignService.deleteCampaign(campaignId);
             showSuccess("Campaign delete successfully")
             setView("list");
         }
@@ -417,7 +437,7 @@ const CampaignBuilder = () => {
                 onAddCampaign={handleAddCampaign}
                 onEditCampaign={handleEditCampaign}
                 onViewCampaign={handleViewCampaign}
-                onDeleteCampaign={handleViewCampaign}
+                onDeleteCampaign={handleDeleteCampaign}
             />
         );
     }

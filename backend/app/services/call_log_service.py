@@ -478,7 +478,12 @@ def process_call(db, call, agent):
                 db.rollback()                      
     else: 
         # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
-        call_log = existing  
+        call_log = existing
+        
+        if call_log.campaign_id:
+            campaign = db.query(CallCampaign).filter(
+                    CallCampaign.id == existing.campaign_id
+                ).first()  
 
     # Only create lead for Campaign calls, not for test calls.
     if campaign:
@@ -501,6 +506,8 @@ def process_call(db, call, agent):
 
     if test_call:
         test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
+        
+    db.commit()
     
 def save_transcripts(db: Session, call_log_id: int, transcript):
 
@@ -548,6 +555,19 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
     
     existing = query.first()
     
+    contact_fields = {}
+    if contact:
+        contact_fields = {
+            "whatsapp_number": contact.whatsapp_number,
+            "gender": contact.gender,
+            "designation": contact.designation,
+            "city": contact.city,
+            "state": contact.state,
+            "country": contact.country,
+            "source": contact.source,
+            "tags": contact.tags
+        }
+    
     if not existing:
         lead = Lead(
             source="voice",
@@ -561,7 +581,8 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
             company=contact.company if contact else None,
             custom_fields=json.dumps({
                 "lead_info": call.get("lead_info"),
-                "external_call_id": call.get("id")
+                "external_call_id": call.get("id"),
+                **contact_fields
             })
         )
 

@@ -24,7 +24,7 @@ class CallCampaign(Base):
     
     success_rate = Column(Float, default=0.0)
     response_rate = Column(Float, default=0.0)
-
+    instant_reply = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
     external_campaign_name = Column(String, nullable=True) 
@@ -47,6 +47,12 @@ class CallCampaign(Base):
 
     ai_recommendations = relationship(
         "CampaignAIRecommendation",
+        back_populates="campaign",
+        cascade="all, delete-orphan"
+    )
+    
+    instant_replies = relationship(
+        "CallCampaignInstantReply",
         back_populates="campaign",
         cascade="all, delete-orphan"
     )

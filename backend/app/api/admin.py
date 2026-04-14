@@ -262,6 +262,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 async def get_organizations_by_username(username: str, db: Session = Depends(get_db)):
     """Get all organizations where a user exists (for login organization dropdown)"""
     users = db.query(User).filter(User.username == username).all()
+    
+    print(f"DEBUG: Found {len(users)} users with username '{username}'")  # Debug log
 
     if not users:
         raise HTTPException(status_code=404, detail="User not found")
