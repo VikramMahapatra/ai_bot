@@ -470,6 +470,14 @@ def read_agents(
 
                     if not db_agent.external_agent_a_id:
                         db_agent.external_agent_a_id = echo_agent.get("a_id")
+                else:
+                    if old_status == "pending":
+                        organization_credit_service.release_reserved_credits(
+                            db=db,
+                            reference_type="agent",
+                            reference_id=db_agent.id,
+                            quantity=1
+                        )
                         
             db.commit()
             

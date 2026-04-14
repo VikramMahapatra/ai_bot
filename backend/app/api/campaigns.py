@@ -529,19 +529,6 @@ def _execute_campaign_now(
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> dict:
     
-    valid = organization_credit_service.validate_feature_usage(
-        db,
-        campaign.organization_id,
-        get_feature_code_for_campaign_type(campaign.campaign_type),
-        len(contacts)
-    )
-    
-    if not valid:
-        raise HTTPException(
-            status_code=400,
-            detail="Insufficient credits. Please add more credits to continue."
-        )
-    
     run_sequence = int(
         db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0)).filter(CampaignLog.campaign_id == campaign.id).scalar()
         or 0
@@ -600,13 +587,11 @@ def _execute_campaign_now(
     campaign.status = "completed" if sent_count > 0 else "failed"
     db.flush()
     
-    organization_credit_service.deduct_credits(
+    organization_credit_service.consume_reserved_credits(
         db=db,
-        organization_id=campaign.organization_id,
-        feature_code=get_feature_code_for_campaign_type(campaign.campaign_type),
-        quantity=sent_count,
         reference_type="campaign",
-        reference_id=campaign.id
+        reference_id=campaign.id,
+        actual_quantity=sent_count
     )
     
     db.commit()
@@ -1755,6 +1740,21 @@ async def create_campaign(
 
     if campaign_type == "email" and not (payload.email_subject or "").strip():
         raise HTTPException(status_code=400, detail="email_subject is required for email campaigns")
+    
+    contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        current_user.organization_id,
+        get_feature_code_for_campaign_type(payload.campaign_type),
+        len(contacts)
+    )
+    
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue."
+        )
 
     if payload.scheduled_time:
         compare_now = datetime.utcnow()

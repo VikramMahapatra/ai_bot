@@ -126,6 +126,16 @@ export interface CallCampaign {
     retry_on_busy: boolean;
     retry_on_voicemail: boolean;
     call_logs?: [];
+    instant_reply: false,
+    instant_reply_modes: [],
+    instant_reply_templates: {
+        whatsapp: string,
+        sms: string,
+        email: {
+            subject: string,
+            body: string
+        }
+    }
 }
 
 export interface CampaignResponse {

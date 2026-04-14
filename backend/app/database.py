@@ -59,11 +59,18 @@ def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
+        
+        result = conn.execute(text("SELECT current_database()"))
+        print("Running migration on DB:", result.fetchone())
+        
         # ----------------------------
         # schema migrations
         # ----------------------------
-        apply_db_migrations(conn)
+        try:
+            apply_db_migrations(conn)
+        except Exception as e:
+            print("Error applying migrations:", str(e))
       
         # ----------------------------
         # organization_limits
@@ -354,6 +361,7 @@ def init_db():
                 "response_rate": "DOUBLE PRECISION DEFAULT 0.0",
                 "product_id": "INTEGER",
                 "calling_no": "TEXT",
+                "instant_reply": "BOOLEAN DEFAULT FALSE"
             }
 
             for col, col_type in columns.items():
@@ -373,6 +381,15 @@ def init_db():
 
         except Exception as e:
             print(str(e))
+            
+        try:
+            conn.execute(text("""
+                ALTER TABLE call_campaigns
+                DROP COLUMN IF EXISTS reply_mode,
+                DROP COLUMN IF EXISTS reply_template;
+            """))
+        except Exception:
+            pass
 
 
         # ----------------------------
@@ -512,15 +529,18 @@ def init_db():
 
         except Exception as e:
             pass
-
-
-        # ----------------------------
-        # commit
-        # ----------------------------
+        
         try:
-            conn.commit()
-        except Exception as e:
-            print("Error committing database migrations")
-            print(str(e))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS call_campaign_instant_replies (
+                    id SERIAL PRIMARY KEY,
+                    call_campaign_id INTEGER REFERENCES call_campaigns(id),
+                    mode VARCHAR(20),
+                    subject TEXT,
+                    template TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """))
+        except Exception:
             pass
 
