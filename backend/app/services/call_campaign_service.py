@@ -23,6 +23,7 @@ from app.models.call_campaign_analytics import CampaignAIRecommendation, Campaig
 from app.models.products import Product
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
+from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 
 
 STALE_MINUTES = 1
@@ -147,7 +148,7 @@ def list_campaigns(
     # PAGINATION
     campaigns = (
         base_query
-        .order_by(CallCampaign.updated_at.desc())
+        .order_by(CallCampaign.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -324,10 +325,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         )            
             
     if data.start_datetime or data.active_days:
-        status = "scheduled"
         send_option = "schedule"
     else:
-        status = "active"
         send_option = "instant"
         
     agent = db.query(CallingAgent).filter(
@@ -379,6 +378,35 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     )
     db.add(schedule)
     
+    if data.instant_reply and data.instant_reply_modes:
+
+        for mode in data.instant_reply_modes:
+
+            template = None
+            subject = None
+
+            if mode == "whatsapp" and data.instant_reply_templates:
+                template = data.instant_reply_templates.whatsapp
+
+            elif mode == "sms" and data.instant_reply_templates:
+                template = data.instant_reply_templates.sms
+
+            elif mode == "email" and data.instant_reply_templates:
+                email_template = data.instant_reply_templates.email
+                
+                if email_template:
+                    subject = email_template.subject
+                    template = email_template.body
+
+            db.add(
+                CallCampaignInstantReply(
+                    call_campaign_id=campaign.id,
+                    mode=mode,
+                    template=template,
+                    subject=subject
+                )
+            )
+    
     external_contact_ids = get_external_contact_ids(db, data.contacts)
     
     contacts = db.query(Contact).filter(
@@ -421,7 +449,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         "dialer_schedule_start_date": dialer_start_date,
         "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
-        "concurrency_reserved": 2,
+        "concurrency_reserved": 1,
         "concurrency_allocated": 5,
         "contact_ids": external_contact_ids,
         "retries": data.max_retry_attempts,
@@ -435,6 +463,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     echoleads_campaign_id = None
     echoleads_campaign_status = "draft"
     try:
+        print("Create campaign payload:", payload)
         echo_response = client.create_campaign(payload)
         
         if echo_response and "campaign" in echo_response:
@@ -585,7 +614,7 @@ def update_campaign(
         "dialer_schedule_start_date": dialer_start_date,
         "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
-        "concurrency_reserved": 2,
+        "concurrency_reserved": 1,
         "concurrency_allocated": 5,
         "contact_ids": external_contact_ids,
         "retries": data.max_retry_attempts,
@@ -664,6 +693,44 @@ def update_campaign(
 
     if data.retry_on_voicemail is not None:
         schedule.retry_voicemail = data.retry_on_voicemail
+        
+    if data.instant_reply is not None:
+
+        # Delete existing replies
+        db.query(CallCampaignInstantReply).filter(
+            CallCampaignInstantReply.call_campaign_id == campaign_id
+        ).delete()
+
+        if data.instant_reply and data.instant_reply_modes:
+
+            templates = data.instant_reply_templates
+
+            for mode in data.instant_reply_modes:
+
+                template = None
+                subject = None
+
+                if mode == "whatsapp" and templates:
+                    template = templates.whatsapp
+
+                elif mode == "sms" and templates:
+                    template = templates.sms
+
+                elif mode == "email" and templates:
+                    email_template = templates.email
+
+                    if email_template:
+                        subject = email_template.subject
+                        template = email_template.body
+
+                db.add(
+                    CallCampaignInstantReply(
+                        call_campaign_id=campaign_id,
+                        mode=mode,
+                        template=template,
+                        subject=subject
+                    )
+                )
     
     if echo_failed:
         message = "Campaign updated successfully, but sync failed. Please reload the list to sync the campaign."
@@ -769,7 +836,7 @@ def build_contacts_payload(contacts, agent):
     def extract(text):
         return set(re.findall(r"\{\{(.*?)\}\}", text or ""))
 
-    placeholders = extract(agent.greetings) | extract(agent.prompt)
+    placeholders = extract(agent.greeting) | extract(agent.prompt)
 
     payload = []
 
@@ -1314,13 +1381,21 @@ def sync_campaign_from_echoleads(
             
 
         if not campaign_data:
-            if campaign.status == "pending":
+            if campaign.status == "draft":
                 organization_credit_service.release_reserved_credits(
                 db=db,
                 reference_type="call_campaign",
                 reference_id=campaign.id
             )  
             return
+        else:
+            if campaign.status == "draft":
+                organization_credit_service.consume_reserved_credits(
+                    db=db,
+                    reference_type="call_campaign",
+                    reference_id=campaign.id,
+                    actual_quantity=campaign.total_calls
+                )
 
         # -------------------------
         # Update Basic Campaign Data
@@ -1340,8 +1415,10 @@ def sync_campaign_from_echoleads(
         # Sync Calls
         # -------------------------
         for call in campaign_data.get("calls", []):
+            agent_id = str(call.get("agent_id")) if call.get("agent_id") else None
+            
             agent = db.query(CallingAgent).filter(
-                CallingAgent.external_agent_id == call.get("agent_id")
+                CallingAgent.external_agent_id == agent_id
             ).first()
 
             if agent:

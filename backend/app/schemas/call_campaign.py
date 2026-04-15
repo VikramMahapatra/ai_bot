@@ -2,6 +2,17 @@ from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from datetime import datetime
 
+from app.enums.campaign_reply_modes import CampaignInstantReplyMode
+
+class EmailTemplate(BaseModel):
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    
+class InstantReplyTemplates(BaseModel):
+    whatsapp: Optional[str] = None
+    sms: Optional[str] = None
+    email: Optional[EmailTemplate] = None
+
 class CampaignCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -29,6 +40,10 @@ class CampaignCreate(BaseModel):
     retry_on_no_answer: bool = False
     retry_on_busy: bool = False
     retry_on_voicemail: bool = False
+    
+    instant_reply: Optional[bool] = False
+    instant_reply_modes: Optional[List[CampaignInstantReplyMode]] = []
+    instant_reply_templates: Optional[InstantReplyTemplates] = None
     
     @field_validator("max_retry_attempts", "retry_interval", mode="before")
     def empty_string_to_none(cls, v):

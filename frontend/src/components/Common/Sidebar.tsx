@@ -37,6 +37,7 @@ import { chatService } from '../../services/chatService';
 import ContactsIcon from '@mui/icons-material/Contacts';
 import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
 
 const drawerWidth = 280;
 
@@ -61,7 +62,8 @@ interface MenuItem {
   | 'module_products_enabled'
   | 'module_users_enabled'
   | 'human_handoff_enabled'
-  | 'module_contact_book_enabled';
+  | 'module_contact_book_enabled'
+  | 'module_workflows_enabled';
 }
 
 const allMenuItems: MenuItem[] = [
@@ -76,6 +78,7 @@ const allMenuItems: MenuItem[] = [
   { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN', featureKey: 'module_campaigns_enabled' },
+  { text: 'Follow-Up Workflows', icon: <AutoModeIcon />, path: '/follow-up-workflow', requiredRole: 'ADMIN', featureKey: 'module_workflows_enabled' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },
   { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF', featureKey: 'human_handoff_enabled' },
   { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN', featureKey: 'module_products_enabled' },
