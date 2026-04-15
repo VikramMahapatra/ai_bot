@@ -5,13 +5,41 @@ import Checkbox from "@mui/material/Checkbox";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import React from "react";
-import { Typography } from "@mui/material";
+import { FormControl, InputLabel, MenuItem, Select, Typography } from "@mui/material";
+import { useFlow } from "../../../context/FlowContext";
+import Alert from "@mui/material/Alert";
+import Stack from "@mui/material/Stack";
 
 export default function InitialCallNode({ data, id }: any) {
-    const [checked, setChecked] = React.useState({
-        connected: false,
-        not_connected: false
-    });
+    const { onChangeGlobalWorkflowStop, edges, setNodes, onDeleteEdge } = useFlow();
+    const isConnected = edges.some(
+        (e: any) => e.source === id && e.data?.branch === "connected"
+    );
+
+    const isNotConnected = edges.some(
+        (e: any) => e.source === id && e.data?.branch === "not_connected"
+    );
+
+    const toggleConnected = (branch: string) => {
+        const existingEdge = edges.find(
+            (e: any) => e.source === id && e.data?.branch === branch
+        );
+
+        if (existingEdge) {
+            // 1. remove edge
+            onDeleteEdge(existingEdge.id);
+
+            // 2. remove node
+            setNodes((nds: any[]) =>
+                nds.filter((n) => n.id !== existingEdge.target)
+            );
+
+            return;
+        }
+
+        // create node + edge
+        addStep(branch);
+    };
 
     const addStep = (type: string) => {
         data.onAddStep?.(id, type);
@@ -111,7 +139,32 @@ export default function InitialCallNode({ data, id }: any) {
 
                 </div>
 
-
+                {data?.globalWorkflowStop && (
+                    <Box sx={{ mt: 1.5 }}>
+                        <Alert
+                            severity="error"
+                            variant="outlined"
+                            sx={{
+                                fontSize: 11,
+                                py: 0.3,
+                                px: 1,
+                                borderRadius: 2,
+                                backgroundColor: "#fef2f2",
+                                borderColor: "#fecaca",
+                                color: "#b91c1c",
+                                "& .MuiAlert-icon": {
+                                    fontSize: 16,
+                                    color: "#ef4444"
+                                }
+                            }}
+                        >
+                            Stop If:{" "}
+                            <strong style={{ textTransform: "capitalize" }}>
+                                {data.globalWorkflowStop}
+                            </strong>
+                        </Alert>
+                    </Box>
+                )}
 
                 {/* Branch Section */}
                 <Box sx={{ mt: 2, borderTop: "1px solid #eee", pt: 1.5 }}>
@@ -149,23 +202,11 @@ export default function InitialCallNode({ data, id }: any) {
                                 borderColor: "#86efac"
                             }
                         }}
-                        onClick={() => {
-                            setChecked({
-                                ...checked,
-                                connected: !checked.connected
-                            });
-                            addStep("connected");
-                        }}
+                        onClick={() => toggleConnected("connected")}
                     >
                         <Checkbox
                             size="small"
-                            checked={checked.connected}
-                            onChange={(e) =>
-                                setChecked({
-                                    ...checked,
-                                    connected: e.target.checked
-                                })
-                            }
+                            checked={isConnected}
                             sx={{
                                 padding: "2px",
                                 color: "#16a34a",
@@ -191,13 +232,7 @@ export default function InitialCallNode({ data, id }: any) {
                     {/* Not Connected */}
                     {/* Not Connected */}
                     <Box
-                        onClick={() => {
-                            setChecked({
-                                ...checked,
-                                not_connected: !checked.not_connected
-                            });
-                            addStep("not_connected");
-                        }}
+                        onClick={() => toggleConnected("not_connected")}
 
                         sx={{
                             display: "flex",
@@ -219,13 +254,7 @@ export default function InitialCallNode({ data, id }: any) {
                     >
                         <Checkbox
                             size="small"
-                            checked={checked.not_connected}
-                            onChange={(e) =>
-                                setChecked({
-                                    ...checked,
-                                    not_connected: e.target.checked
-                                })
-                            }
+                            checked={isNotConnected}
                             sx={{
                                 padding: "2px",
                                 color: "#ea580c",
@@ -248,45 +277,44 @@ export default function InitialCallNode({ data, id }: any) {
 
                 </Box>
 
-
-
-                {/* Global Stop */}
-                <div className="mt-4 border-t pt-3">
-
-                    <label
-                        className="
+                <div className="nodrag nopan mt-4 border-t pt-3">
+                    <FormControl size="small" fullWidth>
+                        <label
+                            className="
                         text-[10px]
                         font-semibold
                         text-gray-500
                         uppercase
                         tracking-wider
                         "
-                    >
-                        Global Workflow Stop
-                    </label>
+                        >
+                            Global Workflow Stop
+                        </label>
 
+                        <Select
+                            displayEmpty
+                            value={data?.globalWorkflowStop || ""}
+                            onChange={(e) =>
+                                onChangeGlobalWorkflowStop(id, e.target.value)
+                            }
+                        >
+                            <MenuItem value="">No Exit Condition</MenuItem>
+                            <MenuItem value="negative">
+                                Negative
+                            </MenuItem>
 
-                    <select
-                        className="
-                        mt-2
-                        w-full
-                        px-2
-                        py-2
-                        text-xs
-                        border
-                        border-gray-200
-                        rounded-lg
-                        focus:outline-none
-                        focus:ring-2
-                        focus:ring-blue-500
-                        "
-                    >
-                        <option>No Exit Condition</option>
-                        <option>Appointment Booked</option>
-                        <option>Interested</option>
-                        <option>Not Interested</option>
-                    </select>
+                            <MenuItem value="neutral">
+                                Neutral
+                            </MenuItem>
 
+                            <MenuItem value="positive">
+                                Positive
+                            </MenuItem>
+                            <MenuItem value="satisfactory">
+                                Satisfactory
+                            </MenuItem>
+                        </Select>
+                    </FormControl>
                 </div>
 
             </div>

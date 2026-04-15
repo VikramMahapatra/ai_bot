@@ -18,9 +18,22 @@ import SaveIcon from "@mui/icons-material/Save";
 import { Handle, Position } from "reactflow";
 import { useFlow } from "../../../context/FlowContext";
 
-export default function StepEditMode({ data, id, agents }: any) {
-    const { onChangeStepType, onCancelNode, onChangeAgent } = useFlow();
-    const stepType = data.stepType || "call";
+export default function StepEditMode({ data, id, agents, templates }: any) {
+    const
+        {
+            onChangeStepType,
+            onChangeDelay,
+            onChangeDelayUnit,
+            onCancelNode,
+            onChangeAgent,
+            onChangeTemplate,
+            onSave
+        } = useFlow();
+    const stepType = data?.stepType || "call";
+
+    const filteredTemplates = templates?.filter(
+        (t: any) => t.type === stepType
+    );
     return (
         <Box
             sx={{
@@ -54,11 +67,12 @@ export default function StepEditMode({ data, id, agents }: any) {
                         <InputLabel>Step Type</InputLabel>
 
                         <Select
-                            defaultValue="call"
+                            value={stepType}
                             label="Step Type"
                             onChange={(e) => onChangeStepType(id, e.target.value)}
                         >
                             <MenuItem value="call">Call</MenuItem>
+                            <MenuItem value="sms">SMS</MenuItem>
                             <MenuItem value="email">Email</MenuItem>
                             <MenuItem value="whatsapp">WhatsApp</MenuItem>
                         </Select>
@@ -87,7 +101,7 @@ export default function StepEditMode({ data, id, agents }: any) {
 
                 )}
 
-                {(stepType === "email" || stepType === "whatsapp") && (
+                {(stepType === "email" || stepType === "whatsapp" || stepType === "sms") && (
                     <div className="nodrag nopan">
                         <FormControl size="small" fullWidth>
                             <InputLabel>Template</InputLabel>
@@ -95,12 +109,18 @@ export default function StepEditMode({ data, id, agents }: any) {
                                 label="Template"
                                 value={data.templateId || ""}
                                 onChange={(e) =>
-                                    data.onChangeTemplate?.(id, e.target.value)
+                                    onChangeTemplate(id, e.target.value)
                                 }
                             >
-                                <MenuItem value="">Select Template</MenuItem>
-                                <MenuItem value="tpl1">Welcome Template</MenuItem>
-                                <MenuItem value="tpl2">Follow-up Template</MenuItem>
+                                {filteredTemplates.length === 0 ? (
+                                    <MenuItem value="">No Templates Available</MenuItem>
+                                ) : (
+                                    filteredTemplates.map((template: any) => (
+                                        <MenuItem key={template.id} value={template.id}>
+                                            {template.name}
+                                        </MenuItem>
+                                    ))
+                                )}
                             </Select>
                         </FormControl>
                     </div>
@@ -110,18 +130,18 @@ export default function StepEditMode({ data, id, agents }: any) {
                 <Box display="flex" gap={1}>
 
                     {/* Delay Value */}
-                    <TextField
-                        size="small"
-                        label="Delay"
-                        type="number"
-                        value={data.delay || 0}
-                        onChange={(e) =>
-                            data.onChange?.(id, {
-                                delay: Number(e.target.value)
-                            })
-                        }
-                        sx={{ flex: 1 }}
-                    />
+                    <div className="nodrag nopan">
+                        <TextField
+                            size="small"
+                            label="Delay"
+                            type="number"
+                            value={data?.delay || 0}
+                            onChange={(e) =>
+                                onChangeDelay(id, Number(e.target.value))
+                            }
+                            sx={{ flex: 1 }}
+                        />
+                    </div>
 
                     {/* Unit Dropdown */}
                     <div className="nodrag nopan">
@@ -129,7 +149,7 @@ export default function StepEditMode({ data, id, agents }: any) {
                             <Select
                                 value={data.delayUnit || "minutes"}
                                 onChange={(e) =>
-                                    data.onChange?.(id, {
+                                    onChangeDelayUnit(id, {
                                         delayUnit: e.target.value
                                     })
                                 }
@@ -162,7 +182,7 @@ export default function StepEditMode({ data, id, agents }: any) {
                         size="small"
                         variant="contained"
                         startIcon={<SaveIcon />}
-                        onClick={() => data.onSave?.(id)}
+                        onClick={() => onSave(id)}
                     >
                         Save
                     </Button>

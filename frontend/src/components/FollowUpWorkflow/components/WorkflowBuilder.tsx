@@ -29,30 +29,32 @@ const nodeTypes = {
     stop: StopNode
 };
 
-
-
-
 interface FollowUpWorkflowProps {
     onBack: () => void;
 }
-
-
 
 const edgeTypes = {
     workflow: WorkflowEdge
 };
 
 type FlowNodeData = {
+    branch?: string;
+    title?: string;
     stepNumber?: number;
+    globalWorkflowStop?: string;
+    isEditing?: boolean;
+    stepType?: string;
+    agentId?: string;
+    templateId?: string;
     onAddStep?: (id: string, type: string) => void;
 };
 
 type FlowEdgeData = {
     condition?: string;
+    branch?: string;
     onDelete?: (edgeId: string) => void;
     onChange?: (edgeId: string, value: string) => void;
 };
-
 
 export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
     const stepCounterRef = useRef(3);
@@ -75,7 +77,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                         ...edge,
                         data: {
                             ...edge.data,
-                            label: value
+                            condition: value
                         }
                     }
                     : edge
@@ -91,6 +93,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             position: { x: 100, y: 100 },
             data: {
                 stepNumber: 1,
+                globalWorkflowStop: "",
             },
         },
         {
@@ -98,7 +101,8 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             type: "stop",
             position: { x: 500, y: 100 },
             data: {
-                stepNumber: 2
+                stepNumber: 2,
+                globalWorkflowStop: "",
             }
         }
     ];
@@ -138,56 +142,73 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         [setEdges]
     );
 
-    /* Add Step From Branch */
-    const addStep = (parentId: string, branch: string) => {
+    const getNextStepNumber = () => {
+        const max = Math.max(
+            0,
+            ...nodes.map((n) => n.data?.stepNumber || 0)
+        );
 
+        return max + 1;
+    };
+
+    const addStep = (parentId: string, branch: string) => {
         const newNodeId = `${Date.now()}-${branch}`;
 
-        const parentNode = nodes.find(n => n.id === parentId);
+        setNodes((prevNodes) => {
+            const parentNode = prevNodes.find((n) => n.id === parentId);
 
-        const stepNumber = stepCounterRef.current;
+            const maxStep = Math.max(
+                0,
+                ...prevNodes.map((n) => n.data?.stepNumber || 0)
+            );
 
+            const stepNumber = maxStep + 1;
 
-        const offsetX = branch === "connected" ? 250 : 250;
-        const offsetY = branch === "connected" ? -80 : 80;
+            const newNode = {
+                id: newNodeId,
+                type: "customStep",
+                position: {
+                    x: (parentNode?.position.x || 200) + 250,
+                    y:
+                        (parentNode?.position.y || 200) +
+                        (branch === "connected" ? -80 : 80),
+                },
+                data: {
+                    title:
+                        branch === "connected"
+                            ? "Call Connected"
+                            : "Call Not Connected",
+                    branch,
+                    stepNumber,
+                    delayUnit: "minutes",
+                    delay: 0,
+                    stepType: "call",
+                    agentId: "",
+                    templateId: "",
+                    onAddStep: addStep
+                },
+            };
 
+            return [...prevNodes, newNode];
+        });
 
-        const newNode = {
-            id: newNodeId,
-            type: "customStep",
-            position: {
-                x: (parentNode?.position.x || 200) + offsetX,
-                y: (parentNode?.position.y || 200) + offsetY
+        setEdges((eds) => [
+            ...eds,
+            {
+                id: `e-${parentId}-${newNodeId}`,
+                source: parentId,
+                target: newNodeId,
+                type: "workflow",
+                data: {
+                    branch,
+                    condition: "",
+                    onDelete: onDeleteEdge,
+                    onChange: onEdgeLabelChange
+                }
             },
-            data: {
-                title:
-                    branch === "connected"
-                        ? "Call Connected"
-                        : "Call Not Connected",
-
-                branch,
-                stepNumber: stepNumber,
-                onAddStep: addStep
-            }
-        };
-
-        const newEdge = {
-            id: `e-${parentId}-${newNodeId}`,
-            source: parentId,
-            target: newNodeId,
-            type: "workflow",
-            data: {
-                label: branch,
-                onDelete: onDeleteEdge,
-                onChange: onEdgeLabelChange
-            }
-        };
-
-        setNodes((nds) => [...nds, newNode]);
-        setEdges((eds) => [...eds, newEdge]);
-
-        stepCounterRef.current += 1;
+        ]);
     };
+
 
     const onEditNode = (id: string) => {
         setNodes((nds) =>
@@ -207,6 +228,44 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                     : node
             )
         );
+    };
+
+    const onDeleteNode = (id: string) => {
+        setNodes((nds) => {
+            const filtered = nds.filter((n) => n.id !== id);
+
+            return filtered.map((node, index) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    stepNumber: index + 1,
+                },
+            }));
+        });
+
+        setEdges((eds) => {
+            const incoming = eds.filter((e) => e.target === id);
+            const outgoing = eds.filter((e) => e.source === id);
+
+            let updatedEdges = eds.filter(
+                (e) => e.source !== id && e.target !== id
+            );
+
+            // auto reconnect (simple chain case)
+            if (incoming.length === 1 && outgoing.length === 1) {
+                const newEdge = {
+                    id: `e-${incoming[0].source}-${outgoing[0].target}`,
+                    source: incoming[0].source,
+                    target: outgoing[0].target,
+                    type: "workflow",
+                    data: {}
+                };
+
+                updatedEdges.push(newEdge);
+            }
+
+            return updatedEdges;
+        });
     };
 
     /* Add Manual Step */
@@ -255,25 +314,27 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         );
     }, []);
 
-    const onChangeStepType = (id: string, value: string) => {
-        setNodes((nds) =>
-            nds.map((node) =>
-                node.id === id
-                    ? {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            stepType: value,
-                            agentId: undefined,
-                            templateId: undefined,
-                        },
-                    }
-                    : node
-            )
-        );
+    const onChangeStepType = (nodeId: string, value: string) => {
+        updateNodeData(nodeId, { stepType: value, agentId: undefined, templateId: undefined });
     };
 
     const onChangeAgent = (nodeId: string, agentId: string) => {
+        updateNodeData(nodeId, { agentId });
+    };
+
+    const onChangeTemplate = (nodeId: string, templateId: string) => {
+        updateNodeData(nodeId, { templateId });
+    };
+
+    const onChangeDelay = (nodeId: string, delay: number) => {
+        updateNodeData(nodeId, { delay });
+    };
+
+    const onChangeDelayUnit = (nodeId: string, delayUnit: string) => {
+        updateNodeData(nodeId, { delayUnit });
+    };
+
+    const updateNodeData = (nodeId: string, patch: Record<string, any>) => {
         setNodes((nds) =>
             nds.map((node) =>
                 node.id === nodeId
@@ -281,7 +342,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                         ...node,
                         data: {
                             ...node.data,
-                            agentId, // ✅ IMPORTANT
+                            ...patch,
                         },
                     }
                     : node
@@ -289,11 +350,52 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         );
     };
 
+    const onChangeGlobalWorkflowStop = (id: string, value: string) => {
+        setNodes((nds) =>
+            nds.map((node) =>
+                node.id === id
+                    ? {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            globalWorkflowStop: value,
+                        },
+                    }
+                    : node
+            )
+        );
+    };
+
+    const onSave = (id: string) => {
+        setNodes((nds) =>
+            nds.map((n) =>
+                n.id === id
+                    ? {
+                        ...n,
+                        data: {
+                            ...n.data,
+                            isEditing: false
+                        }
+                    }
+                    : n
+            )
+        );
+    };
+
     const nodeHandlers = {
         onEditNode,
         onCancelNode,
+        onDeleteNode,
         onChangeStepType,
-        onChangeAgent
+        onChangeAgent,
+        onChangeGlobalWorkflowStop,
+        edges,
+        setNodes,
+        onDeleteEdge,
+        onChangeTemplate,
+        onChangeDelay,
+        onChangeDelayUnit,
+        onSave
     };
 
     return (

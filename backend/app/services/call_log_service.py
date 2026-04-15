@@ -21,6 +21,7 @@ from app.models.conversation import Conversation
 from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.services.conversation_decision_service import analyze_conversation
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -426,7 +427,7 @@ def process_call(db, call, agent):
             existing.success_evaluation = success_eval_str.lower() == "true"
             db.flush()
             
-            save_transcripts(db, existing.id, call.get("transcript"))
+            save_transcripts(db, existing.id, call.get("transcript"), campaign)
         else:
             call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
             call_log = CallLog(
@@ -472,7 +473,7 @@ def process_call(db, call, agent):
                         reference_id=call_log.id
                     )   
                     
-                save_transcripts(db, call_log.id, call.get("transcript"))                        
+                save_transcripts(db, call_log.id, call.get("transcript"), campaign)                        
                 
             except IntegrityError:
                 db.rollback()                      
@@ -509,7 +510,7 @@ def process_call(db, call, agent):
         
     db.commit()
     
-def save_transcripts(db: Session, call_log_id: int, transcript):
+def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign : CallCampaign):
 
     if not transcript or not call_log_id    :
         return
@@ -542,6 +543,9 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
         )
         
     db.flush()
+    
+    if campaign and campaign.instant_reply:
+        response = analyze_conversation(transcript)
         
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 

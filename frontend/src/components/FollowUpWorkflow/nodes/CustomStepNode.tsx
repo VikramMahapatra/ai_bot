@@ -7,14 +7,41 @@ import StepEditNode from "./StepEditNode";
 import { useFlow } from "../../../context/FlowContext";
 import { useEffect, useState } from "react";
 import { CallingAgentLookup, callingAgentService } from "../../../services/callingAgentService";
+import { messageTemplateService } from "../../../services/messageTemplateService";
+import { UserRound, FileText, Clock } from "lucide-react";
 
 export default function CustomStepNode({ data, id }: any) {
-    const { onEditNode, onCancelNode } = useFlow();
+    const { onEditNode, onDeleteNode, edges, onDeleteEdge, setNodes } = useFlow();
     const [agents, setAgents] = useState<CallingAgentLookup[]>([]);
-    const [checked, setChecked] = useState({
-        connected: false,
-        not_connected: false
-    });
+    const [templates, setTemplates] = useState<any[]>([]);
+    const isConnected = edges.some(
+        (e: any) => e.source === id && e.data?.branch === "connected"
+    );
+
+    const isNotConnected = edges.some(
+        (e: any) => e.source === id && e.data?.branch === "not_connected"
+    );
+
+    const toggleConnected = (branch: string) => {
+        const existingEdge = edges.find(
+            (e: any) => e.source === id && e.data?.branch === branch
+        );
+
+        if (existingEdge) {
+            // 1. remove edge
+            onDeleteEdge(existingEdge.id);
+
+            // 2. remove node
+            setNodes((nds: any[]) =>
+                nds.filter((n) => n.id !== existingEdge.target)
+            );
+
+            return;
+        }
+
+        // create node + edge
+        addNext(branch);
+    };
 
     const addNext = (type: string) => {
         data.onAddStep?.(id, type);
@@ -25,10 +52,23 @@ export default function CustomStepNode({ data, id }: any) {
         setAgents(data || []);
     };
 
+    const loadTemplateLookup = async () => {
+        const data = await messageTemplateService.templateLookup();
+        setTemplates(data || []);
+    };
+
     useEffect(() => {
         loadAgentLookup();
+        loadTemplateLookup();
     }, [id]);
 
+    const selectedAgent = agents.find(
+        (a: any) => a.id === data.agentId
+    );
+
+    const selectedTemplate = templates.find(
+        (t: any) => t.id === data.templateId
+    );
 
     return (
         <div
@@ -128,11 +168,76 @@ export default function CustomStepNode({ data, id }: any) {
 
 
                 {data.isEditing && (
-                    <StepEditNode data={data} id={id} agents={agents} />
+                    <StepEditNode data={data} id={id} agents={agents} templates={templates} />
                 )}
 
                 {!data.isEditing && (
                     <>
+                        {/* Summary Section */}
+                        {(selectedAgent || selectedTemplate) && (
+                            <Box
+                                sx={{
+                                    mt: 1,
+                                    px: 1,
+                                    py: 0.8,
+                                    borderRadius: 2,
+                                    backgroundColor: "#f9fafb",
+                                    border: "1px solid #f3f4f6",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 0.5
+                                }}
+                            >
+                                {/* Agent */}
+                                {data.stepType === "call" && selectedAgent && (
+                                    <Typography
+                                        sx={{
+                                            fontSize: 11,
+                                            color: "#374151",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 0.5,
+                                        }}
+                                    >
+                                        <UserRound size={14} color="#2563eb" />
+                                        Agent: <b>{selectedAgent.name}</b>
+                                    </Typography>
+                                )}
+
+                                {["sms", "whatsapp", "email"].includes(data.stepType) &&
+                                    selectedTemplate && (
+                                        <Typography
+                                            sx={{
+                                                fontSize: 11,
+                                                color: "#374151",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 0.5,
+                                            }}
+                                        >
+                                            <FileText size={14} color="#6366f1" />
+                                            Template: <b>{selectedTemplate.name}</b>
+                                        </Typography>
+                                    )}
+
+                                {/* Delay */}
+                                {data.delay !== undefined && data.delay !== "" && data.delay > 0 && (
+                                    <Typography
+                                        sx={{
+                                            fontSize: 11,
+                                            color: "#374151",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 0.5,
+                                        }}
+                                    >
+                                        <Clock size={14} color="#f59e0b" />
+                                        Delay: <b>{data.delay} {data.delayUnit || "minutes"}</b>
+                                    </Typography>
+                                )}
+                            </Box>
+                        )}
+
                         <Box
                             sx={{
                                 display: "flex",
@@ -174,7 +279,7 @@ export default function CustomStepNode({ data, id }: any) {
 
                             {/* Delete */}
                             <Box
-                                onClick={() => data.onDelete?.(id)}
+                                onClick={() => onDeleteNode(id)}
                                 sx={{
                                     display: "flex",
                                     alignItems: "center",
@@ -224,11 +329,7 @@ export default function CustomStepNode({ data, id }: any) {
 
                             <Box
                                 onClick={() => {
-                                    setChecked({
-                                        ...checked,
-                                        connected: !checked.connected
-                                    });
-                                    addNext("connected");
+                                    toggleConnected("connected");
                                 }}
                                 sx={{
                                     display: "flex",
@@ -250,13 +351,7 @@ export default function CustomStepNode({ data, id }: any) {
                             >
                                 <Checkbox
                                     size="small"
-                                    checked={checked.connected}
-                                    onChange={(e) =>
-                                        setChecked({
-                                            ...checked,
-                                            connected: e.target.checked
-                                        })
-                                    }
+                                    checked={isConnected}
                                     sx={{
                                         p: "2px",
                                         color: "#16a34a",
@@ -280,11 +375,7 @@ export default function CustomStepNode({ data, id }: any) {
 
                             <Box
                                 onClick={() => {
-                                    setChecked({
-                                        ...checked,
-                                        not_connected: !checked.not_connected
-                                    });
-                                    addNext("not_connected");
+                                    toggleConnected("not_connected");
                                 }}
                                 sx={{
                                     display: "flex",
@@ -306,13 +397,7 @@ export default function CustomStepNode({ data, id }: any) {
                             >
                                 <Checkbox
                                     size="small"
-                                    checked={checked.not_connected}
-                                    onChange={(e) =>
-                                        setChecked({
-                                            ...checked,
-                                            not_connected: e.target.checked
-                                        })
-                                    }
+                                    checked={isNotConnected}
                                     sx={{
                                         p: "2px",
                                         color: "#ea580c",

@@ -543,4 +543,33 @@ def init_db():
             """))
         except Exception:
             pass
+        
+        
+        try:
+            # 1. Add column first
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS organization_id INTEGER
+            """))
+
+            # 2. Add FK constraint safely
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_message_templates_organization'
+                    ) THEN
+                        ALTER TABLE message_templates
+                        ADD CONSTRAINT fk_message_templates_organization
+                        FOREIGN KEY (organization_id)
+                        REFERENCES organizations(id)
+                        ON DELETE CASCADE;
+                    END IF;
+                END $$;
+            """))
+
+        except Exception as e:
+            pass
 

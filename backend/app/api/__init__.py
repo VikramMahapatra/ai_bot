@@ -19,6 +19,7 @@ from app.api.twilio_sms import router as twilio_sms_router
 from app.api.products import router as product_router
 from app.api.organization_setting import router as organization_settings_router
 from app.api.org_credit_billing import router as org_credit_billing_router
+from app.api.conversation_decision import router as conversation_decision_router
 from app.api.message_templates import router as message_templates_router
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "product_router",
     "organization_settings_router",
     "org_credit_billing_router",
+    "conversation_decision_router",
     "message_templates_router"
 ]
