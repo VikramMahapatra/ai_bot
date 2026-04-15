@@ -611,7 +611,13 @@ const AppointmentsPage: React.FC = () => {
                 <Select
                   value={status}
                   label="Status"
-                  onChange={(e) => setStatus(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === "overdue") 
+                      setUpcomingOnly(false) 
+                    else 
+                      setUpcomingOnly(true)
+                    setStatus(e.target.value)
+                  }}
                 >
                   <MenuItem value="all">All</MenuItem>
                   <MenuItem value="booked">Booked</MenuItem>
