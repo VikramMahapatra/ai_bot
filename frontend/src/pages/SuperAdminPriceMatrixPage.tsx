@@ -15,6 +15,7 @@ import {
   IconButton,
   Paper,
   Stack,
+  Snackbar,
   Switch,
   Table,
   TableBody,
@@ -25,6 +26,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import type { AlertColor } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -99,13 +101,22 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
   const [items, setItems] = useState<PriceMatrixItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<AlertColor>('success');
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<PriceMatrixItem | null>(null);
   const [createForm, setCreateForm] = useState<MatrixFormState>(DEFAULT_FORM);
   const [editForm, setEditForm] = useState<MatrixFormState>(DEFAULT_FORM);
   const [editingItem, setEditingItem] = useState<PriceMatrixItem | null>(null);
+
+  const showSnackbar = (message: string, severity: AlertColor = 'success') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
 
   const matrixStats = useMemo(() => {
     const total = items.length;
@@ -122,7 +133,7 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
       const data = await superadminService.listPriceMatrix();
       setItems(data);
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.detail || 'Failed to load price matrix');
+      showSnackbar(error?.response?.data?.detail || 'Failed to load price matrix', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -132,28 +143,22 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
     loadItems();
   }, []);
 
-  const resetMessages = () => {
-    setErrorMessage('');
-    setSuccessMessage('');
-  };
-
   const handleCreate = async () => {
     const payload = toPayload(createForm);
     if (!payload.category || !payload.module) {
-      setErrorMessage('Category and Module are required.');
+      showSnackbar('Category and Module are required.', 'error');
       return;
     }
 
     setIsSaving(true);
-    resetMessages();
     try {
       await superadminService.createPriceMatrixItem(payload);
-      setSuccessMessage('Price matrix row created successfully.');
+      showSnackbar('Price matrix row created successfully.', 'success');
       setCreateForm(DEFAULT_FORM);
       setCreateOpen(false);
       await loadItems();
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.detail || 'Failed to create price matrix row');
+      showSnackbar(error?.response?.data?.detail || 'Failed to create price matrix row', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -169,37 +174,41 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
     if (!editingItem) return;
     const payload = toPayload(editForm);
     if (!payload.category || !payload.module) {
-      setErrorMessage('Category and Module are required.');
+      showSnackbar('Category and Module are required.', 'error');
       return;
     }
 
     setIsSaving(true);
-    resetMessages();
     try {
       await superadminService.updatePriceMatrixItem(editingItem.id, payload);
-      setSuccessMessage('Price matrix row updated successfully.');
+      showSnackbar('Price matrix row updated successfully.', 'success');
       setEditOpen(false);
       setEditingItem(null);
       await loadItems();
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.detail || 'Failed to update price matrix row');
+      showSnackbar(error?.response?.data?.detail || 'Failed to update price matrix row', 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async (item: PriceMatrixItem) => {
-    const confirmed = window.confirm(`Delete "${item.category} / ${item.module}" from price matrix?`);
-    if (!confirmed) return;
+  const handleDelete = (item: PriceMatrixItem) => {
+    setDeleteTarget(item);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
 
     setIsSaving(true);
-    resetMessages();
     try {
-      await superadminService.deletePriceMatrixItem(item.id);
-      setSuccessMessage('Price matrix row deleted successfully.');
+      await superadminService.deletePriceMatrixItem(deleteTarget.id);
+      showSnackbar('Price matrix row deleted successfully.', 'success');
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
       await loadItems();
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.detail || 'Failed to delete price matrix row');
+      showSnackbar(error?.response?.data?.detail || 'Failed to delete price matrix row', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -276,17 +285,6 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
           </Button>
         </Stack>
       </Paper>
-
-      {errorMessage && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setErrorMessage('')}>
-          {errorMessage}
-        </Alert>
-      )}
-      {successMessage && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage('')}>
-          {successMessage}
-        </Alert>
-      )}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
@@ -406,6 +404,51 @@ const SuperAdminPriceMatrixPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => {
+          if (!isSaving) {
+            setDeleteConfirmOpen(false);
+            setDeleteTarget(null);
+          }
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Price Matrix Row</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Are you sure you want to delete{' '}
+            <strong>{deleteTarget ? `${deleteTarget.category} / ${deleteTarget.module}` : 'this row'}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDeleteConfirmOpen(false);
+              setDeleteTarget(null);
+            }}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" onClick={handleConfirmDelete} disabled={isSaving}>
+            {isSaving ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3500}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </SuperAdminLayout>
   );
 };
