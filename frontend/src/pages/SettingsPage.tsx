@@ -665,10 +665,11 @@ const SettingsPage: React.FC = () => {
                         helperText="Common: 25, 587, 465"
                         value={orgSettings.smtp_port}
                         onChange={(e) =>
+                          {console.log("SMTP PORT : ",parseInt(e.target.value)),
                           handleOrgFieldChange(
                             "smtp_port",
                             parseInt(e.target.value),
-                          )
+                          )}
                         }
                         InputLabelProps={{ shrink: true }}
                       />

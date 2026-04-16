@@ -1046,9 +1046,8 @@ const LeadManager: React.FC = () => {
   );
 
   const customFields = selectedLead?.custom_fields
-  ? JSON.parse(selectedLead.custom_fields)
-  : {};
-
+    ? JSON.parse(selectedLead.custom_fields)
+    : {};
 
   return (
     <Box>
@@ -1441,6 +1440,16 @@ const LeadManager: React.FC = () => {
                     </Box>
                   </Tooltip>
                 </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>
+                  <Tooltip title="Actions">
+                    <Box
+                      component="span"
+                      sx={{ display: "inline-flex", alignItems: "center" }}
+                    >
+                      <MoveDownIcon fontSize="small" />
+                    </Box>
+                  </Tooltip>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1489,6 +1498,24 @@ const LeadManager: React.FC = () => {
                         }}
                       >
                         <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title="Move to funnel">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => {
+                          if (!selectedLead) return;
+                          setDetailsOpen(false);
+                          openMoveDialog(selectedLead);
+                        }}
+                        sx={{
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                        }}
+                      >
+                        <MoveDownIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   </TableCell>
@@ -1553,8 +1580,12 @@ const LeadManager: React.FC = () => {
               </Box>
 
               {/* --- Basic Info --- */}
-              <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
-                  Basic Info
+              <Typography
+                variant="subtitle1"
+                fontWeight={600}
+                sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+              >
+                Basic Info
               </Typography>
               <Grid container spacing={4}>
                 <Grid item xs={6}>
@@ -1587,24 +1618,28 @@ const LeadManager: React.FC = () => {
                 </Grid>
               </Grid>
               {/* --- Custom Fields --- */}
-              <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
-                  Additional Info
+              <Typography
+                variant="subtitle1"
+                fontWeight={600}
+                sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+              >
+                Additional Info
               </Typography>
               <Grid container spacing={4}>
                 <Grid item xs={6}>
-                  <Field label="Whatsapp Number:" value={customFields?.whatsapp_number || "-"} />
-                  <Field label="Gender:" value={customFields?.gender || "-"} />
-                  <Field label="Designation:" value={customFields?.designation || "-"} />
                   <Field
-                    label="Source:"
-                    value={customFields?.source || ""}
+                    label="Whatsapp Number:"
+                    value={customFields?.whatsapp_number || "-"}
                   />
+                  <Field label="Gender:" value={customFields?.gender || "-"} />
+                  <Field
+                    label="Designation:"
+                    value={customFields?.designation || "-"}
+                  />
+                  <Field label="Source:" value={customFields?.source || ""} />
                 </Grid>
                 <Grid item xs={6}>
-                  <Field
-                    label="City:"
-                    value={customFields?.city || "-"}
-                  />
+                  <Field label="City:" value={customFields?.city || "-"} />
                   <Field
                     label="State:"
                     value={customFields?.session_id || "-"}
@@ -1620,7 +1655,7 @@ const LeadManager: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetailsOpen(false)}>Close</Button>
-          <Button
+          {/* <Button
             variant="contained"
             startIcon={<MoveDownIcon />}
             onClick={() => {
@@ -1630,7 +1665,7 @@ const LeadManager: React.FC = () => {
             }}
           >
             Move to Funnel
-          </Button>
+          </Button> */}
         </DialogActions>
       </Dialog>
 
