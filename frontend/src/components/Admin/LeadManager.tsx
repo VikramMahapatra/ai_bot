@@ -63,6 +63,7 @@ import {
   type OrganizationWidget,
 } from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
+import Field from "../Common/Field";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -296,6 +297,7 @@ const LeadManager: React.FC = () => {
           lead.widget_id,
           lead.product_name,
           lead.session_id,
+          lead.custom_fields,
           widgetName,
           campaignLabel,
         ]
@@ -365,6 +367,7 @@ const LeadManager: React.FC = () => {
         campaignType,
       );
       setLeads(data.items);
+
       setLeadsTotal(data.pagination?.total || 0);
     } catch {
       setError("Failed to load leads");
@@ -380,10 +383,15 @@ const LeadManager: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const mapWidget = (widget: any, inferredSource: string): OrganizationWidget => ({
+    const mapWidget = (
+      widget: any,
+      inferredSource: string,
+    ): OrganizationWidget => ({
       widget_id: widget.widget_id,
       name: widget.name,
-      source: String(widget.source ?? inferredSource).toLowerCase().trim(),
+      source: String(widget.source ?? inferredSource)
+        .toLowerCase()
+        .trim(),
       created_at: widget.created_at,
     });
 
@@ -392,7 +400,9 @@ const LeadManager: React.FC = () => {
         if (selectedSource === "voice") {
           const data = await dashboardService.getWidgets({ source: "voice" });
           if (cancelled) return;
-          setWidgets((data?.widgets || []).map((w: any) => mapWidget(w, "voice")));
+          setWidgets(
+            (data?.widgets || []).map((w: any) => mapWidget(w, "voice")),
+          );
           return;
         }
 
@@ -1035,6 +1045,11 @@ const LeadManager: React.FC = () => {
     </>
   );
 
+  const customFields = selectedLead?.custom_fields
+  ? JSON.parse(selectedLead.custom_fields)
+  : {};
+
+
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 2.5, borderRadius: 1.2 }} />}
@@ -1537,35 +1552,69 @@ const LeadManager: React.FC = () => {
                 </Box>
               </Box>
 
-              <Typography variant="body2">
-                <strong>Email:</strong> {selectedLead.email || "-"}
+              {/* --- Basic Info --- */}
+              <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                  Basic Info
               </Typography>
-              <Typography variant="body2">
-                <strong>Phone:</strong> {selectedLead.phone || "-"}
+              <Grid container spacing={4}>
+                <Grid item xs={6}>
+                  <Field label="Email:" value={selectedLead.email || "-"} />
+                  <Field label="Phone:" value={selectedLead.phone || "-"} />
+                  <Field label="Company:" value={selectedLead.company || "-"} />
+                  <Field
+                    label="Product Name:"
+                    value={selectedLead.product_name || ""}
+                  />
+                  <Field label="Source:" value={selectedLead.source} />
+                </Grid>
+                <Grid item xs={6}>
+                  <Field
+                    label="Funnel Stage:"
+                    value={displayStageLabel(selectedLead.funnel_stage)}
+                  />
+                  <Field
+                    label="Session ID:"
+                    value={selectedLead.session_id || "-"}
+                  />
+                  <Field
+                    label="Widget ID:"
+                    value={selectedLead.widget_id || "-"}
+                  />
+                  <Field
+                    label="Lead outcome:"
+                    value={selectedLead.lead_outcome || "-"}
+                  />
+                </Grid>
+              </Grid>
+              {/* --- Custom Fields --- */}
+              <Typography variant="subtitle1" fontWeight={600} sx={{ borderBottom: '1px solid #d0d0d0', pb: 1 }}>
+                  Additional Info
               </Typography>
-              <Typography variant="body2">
-                <strong>Company:</strong> {selectedLead.company || "-"}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Product Name:</strong> {selectedLead.product_name || ""}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Source:</strong> {sourceLabel(selectedLead.source)}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Funnel Stage:</strong>{" "}
-                {displayStageLabel(selectedLead.funnel_stage)}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Session ID:</strong> {selectedLead.session_id || "-"}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Widget ID:</strong> {selectedLead.widget_id || "-"}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Lead outcome:</strong>{" "}
-                {selectedLead.lead_outcome || "-"}
-              </Typography>
+              <Grid container spacing={4}>
+                <Grid item xs={6}>
+                  <Field label="Whatsapp Number:" value={customFields?.whatsapp_number || "-"} />
+                  <Field label="Gender:" value={customFields?.gender || "-"} />
+                  <Field label="Designation:" value={customFields?.designation || "-"} />
+                  <Field
+                    label="Source:"
+                    value={customFields?.source || ""}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Field
+                    label="City:"
+                    value={customFields?.city || "-"}
+                  />
+                  <Field
+                    label="State:"
+                    value={customFields?.session_id || "-"}
+                  />
+                  <Field
+                    label="Country:"
+                    value={customFields?.widget_id || "-"}
+                  />
+                </Grid>
+              </Grid>
             </Stack>
           )}
         </DialogContent>
