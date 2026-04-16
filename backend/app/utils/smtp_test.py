@@ -2,10 +2,10 @@ import smtplib
 from email.mime.text import MIMEText
 import ssl
 
-SMTP_HOST="smtp.office365.com"
-SMTP_PORT=587
-SMTP_USERNAME="hello@zentrixel.com"
-SMTP_PASSWORD="Zensmtp@02042025"
+SMTP_HOST = "smtp.office365.com"
+SMTP_PORT = 587
+SMTP_USERNAME = "hello@zentrixel.com"
+SMTP_PASSWORD = "Zensmtp@02042025"
 
 sender = SMTP_USERNAME
 receiver = "patil.rohit14@gmail.com"
