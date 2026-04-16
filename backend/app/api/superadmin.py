@@ -975,15 +975,60 @@ async def list_price_matrix_items(
     ).all()
 
 
+def _sync_price_matrix_id_sequence(db: Session) -> None:
+    """Ensure Postgres sequence for price_matrix_items.id is aligned with table data."""
+    db.execute(
+        text(
+            """
+            SELECT setval(
+                pg_get_serial_sequence('price_matrix_items', 'id'),
+                COALESCE((SELECT MAX(id) FROM price_matrix_items), 0) + 1,
+                false
+            )
+            """
+        )
+    )
+
+
 @router.post("/price-matrix", response_model=PriceMatrixItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_price_matrix_item(
     payload: PriceMatrixItemCreate,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
+    # Keep sequence aligned even when legacy/manual inserts advanced IDs.
+    _sync_price_matrix_id_sequence(db)
+
     item = PriceMatrixItem(**payload.model_dump())
     db.add(item)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        error_text = str(exc).lower()
+
+        # Retry once if the primary key sequence is stale.
+        if "price_matrix_items_pkey" in error_text and "duplicate key value" in error_text:
+            _sync_price_matrix_id_sequence(db)
+            retry_item = PriceMatrixItem(**payload.model_dump())
+            db.add(retry_item)
+            try:
+                db.commit()
+                db.refresh(retry_item)
+                return retry_item
+            except IntegrityError:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail="Could not create price matrix item due to duplicate key conflict.",
+                )
+
+        raise HTTPException(
+            status_code=400,
+            detail="Could not create price matrix item. Check if feature_code is already used.",
+        )
+
     db.refresh(item)
     return item
 

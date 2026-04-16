@@ -9,9 +9,9 @@ class EmailTemplate(BaseModel):
     body: Optional[str] = None
     
 class InstantReplyTemplates(BaseModel):
-    whatsapp: Optional[str] = None
-    sms: Optional[str] = None
-    email: Optional[EmailTemplate] = None
+    whatsapp: Optional[int] = None
+    sms: Optional[int] = None
+    email: Optional[int] = None
 
 class CampaignCreate(BaseModel):
     name: str

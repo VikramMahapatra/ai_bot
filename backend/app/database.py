@@ -587,16 +587,87 @@ def init_db():
             conn.execute(
                 text(
                     """
-                CREATE TABLE IF NOT EXISTS call_campaign_instant_replies (
-                    id SERIAL PRIMARY KEY,
-                    call_campaign_id INTEGER REFERENCES call_campaigns(id),
-                    mode VARCHAR(20),
-                    subject TEXT,
-                    template TEXT,
-                    created_at TIMESTAMP DEFAULT NOW()
-                );
+                ALTER TABLE call_campaign_instant_replies
+                ADD COLUMN IF NOT EXISTS template_id INTEGER;
             """
                 )
             )
-        except Exception:
+
+            conn.execute(
+                text(
+                    """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fk_instant_reply_template'
+                    ) THEN
+                        ALTER TABLE call_campaign_instant_replies
+                        ADD CONSTRAINT fk_instant_reply_template
+                        FOREIGN KEY (template_id)
+                        REFERENCES message_templates(id)
+                        ON DELETE RESTRICT;
+                    END IF;
+                END $$;
+            """
+                )
+            )
+
+            # 3. Drop old columns if they exist
+            conn.execute(
+                text(
+                    """
+                ALTER TABLE call_campaign_instant_replies
+                DROP COLUMN IF EXISTS subject;
+            """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                ALTER TABLE call_campaign_instant_replies
+                DROP COLUMN IF EXISTS template;
+            """
+                )
+            )
+
+        except Exception as e:
+            pass
+
+        try:
+            # 1. Add column first
+            conn.execute(
+                text(
+                    """
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS organization_id INTEGER
+            """
+                )
+            )
+
+            # 2. Add FK constraint safely
+            conn.execute(
+                text(
+                    """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_message_templates_organization'
+                    ) THEN
+                        ALTER TABLE message_templates
+                        ADD CONSTRAINT fk_message_templates_organization
+                        FOREIGN KEY (organization_id)
+                        REFERENCES organizations(id)
+                        ON DELETE CASCADE;
+                    END IF;
+                END $$;
+            """
+                )
+            )
+
+        except Exception as e:
             pass

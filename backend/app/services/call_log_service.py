@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timedelta, timezone
 import json
 import random
+import re
 from typing import Optional, Tuple, Union
 
 from fastapi import BackgroundTasks
@@ -21,6 +22,11 @@ from app.models.conversation import Conversation
 from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.services.conversation_decision_service import analyze_conversation
+from app.services.sms_service import send_sms
+from app.services.email_service import send_campaign_email
+from app.models.call_campaign_instant_replies import CallCampaignInstantReply
+from app.services.organization_setting_service import get_org_settings
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -426,7 +432,7 @@ def process_call(db, call, agent):
             existing.success_evaluation = success_eval_str.lower() == "true"
             db.flush()
             
-            save_transcripts(db, existing.id, call.get("transcript"))
+            save_transcripts(db, existing.id, call.get("transcript"), campaign, contact)
         else:
             call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
             call_log = CallLog(
@@ -472,7 +478,7 @@ def process_call(db, call, agent):
                         reference_id=call_log.id
                     )   
                     
-                save_transcripts(db, call_log.id, call.get("transcript"))                        
+                save_transcripts(db, call_log.id, call.get("transcript"), campaign, contact)                        
                 
             except IntegrityError:
                 db.rollback()                      
@@ -509,7 +515,7 @@ def process_call(db, call, agent):
         
     db.commit()
     
-def save_transcripts(db: Session, call_log_id: int, transcript):
+def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign : CallCampaign, contact : Contact):
 
     if not transcript or not call_log_id    :
         return
@@ -542,6 +548,57 @@ def save_transcripts(db: Session, call_log_id: int, transcript):
         )
         
     db.flush()
+    
+    if campaign and campaign.instant_reply:
+        response = analyze_conversation(transcript)
+        dispatch_instant_replies(
+            db=db,
+            campaign=campaign,
+            contact=contact,
+            decision=response.instant_reply_decision
+        )
+            
+
+def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Contact, decision : str):
+    if decision != "send_now":
+        return
+    
+    if not contact:
+        return
+
+    replies = (
+        db.query(CallCampaignInstantReply)
+        .filter(CallCampaignInstantReply.call_campaign_id == campaign.id)
+        .all()
+    )
+
+    for reply in replies:
+
+        template = reply.template
+        message = render_template(template.content, contact)
+
+        if reply.mode == "sms":
+            send_sms(
+                message=message,
+                to_number=contact.phone
+            )
+
+        # elif reply.mode == "whatsapp":
+        #     send_whatsapp(
+        #         message=message,
+        #         to_number=contact.whatsapp_number or contact.phone
+        #     )
+
+        elif reply.mode == "email":
+            org_settings = get_org_settings(db, campaign.organization_id)
+            send_campaign_email(
+                subject=template.subject or "Update",
+                message_template=message,
+                recipient_name=contact.name,
+                recipient_email=contact.email,
+                settings=org_settings
+            )            
+        
         
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
@@ -784,3 +841,29 @@ def get_default_dates(
     from_dt = parse_date(from_date) if from_date else to_dt - timedelta(days=1)
 
     return from_dt, to_dt
+
+
+def extract_placeholders(text):
+    if not text:
+        return set()
+    return set(re.findall(r"\{\{(.*?)\}\}", text))
+
+
+def render_template(template_body: str, contact):
+    if not template_body:
+        return ""
+
+    placeholders = extract_placeholders(template_body)
+
+    for key in placeholders:
+        value = getattr(contact, key, "")
+
+        # handle None safely + numeric types
+        if value is None:
+            value = ""
+        else:
+            value = str(value)
+
+        template_body = template_body.replace(f"{{{{{key}}}}}", value)
+
+    return template_body

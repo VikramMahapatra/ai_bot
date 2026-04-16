@@ -9,23 +9,26 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^5.14.18",
-    "@mui/material": "^5.14.18",
+    "@mui/material": "^5.18.0",
+    "@xyflow/react": "^12.10.2",
     "axios": "^1.6.2",
     "country-telephone-data": "^0.6.3",
     "file-saver": "^2.0.5",
     "jspdf": "^4.0.0",
     "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^1.8.0",
     "moment-timezone": "^0.6.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-phone-input-2": "^2.15.1",
     "react-router-dom": "^6.20.0",
+    "reactflow": "^11.11.4",
     "recharts": "^3.7.0",
     "xlsx": "^0.18.5",
-    "zustand": "^4.4.7"
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",

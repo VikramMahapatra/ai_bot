@@ -23,6 +23,8 @@ from app.api import (
     product_router,
     organization_settings_router,
     org_credit_billing_router,
+    conversation_decision_router,
+    message_templates_router
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -88,6 +90,8 @@ app.include_router(funnel_categories_router)
 app.include_router(product_router)
 app.include_router(organization_settings_router)
 app.include_router(org_credit_billing_router)
+app.include_router(conversation_decision_router)
+app.include_router(message_templates_router)
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")
