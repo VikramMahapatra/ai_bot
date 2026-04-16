@@ -51,6 +51,8 @@ interface WidgetConfig {
   name: string;
   welcome_message?: string;
   system_prompt?: string;
+  escalation_contact_level_1?: string;
+  escalation_contact_level_2?: string;
   primary_color: string;
   secondary_color: string;
   chat_header_font_color?: string;
@@ -152,6 +154,8 @@ const CreateChatAgentPage: React.FC = () => {
     name: '',
     welcome_message: 'Hi! How can I help you?',
     system_prompt: '',
+    escalation_contact_level_1: '',
+    escalation_contact_level_2: '',
     primary_color: '#2f6bff',
     secondary_color: '#36c4ff',
     chat_header_font_color: '',
@@ -431,6 +435,14 @@ const CreateChatAgentPage: React.FC = () => {
           name: config.name || prev.name,
           welcome_message: config.welcome_message || prev.welcome_message,
           system_prompt: config.system_prompt || '',
+          escalation_contact_level_1:
+            typeof config.escalation_contact_level_1 === 'string'
+              ? config.escalation_contact_level_1
+              : prev.escalation_contact_level_1,
+          escalation_contact_level_2:
+            typeof config.escalation_contact_level_2 === 'string'
+              ? config.escalation_contact_level_2
+              : prev.escalation_contact_level_2,
           primary_color: config.primary_color || prev.primary_color,
           secondary_color: config.secondary_color || prev.secondary_color,
           position: config.position || prev.position,
@@ -1312,6 +1324,26 @@ const CreateChatAgentPage: React.FC = () => {
                         minRows={4}
                         placeholder="Example: You are a concise sales assistant. Ask discovery questions before recommending solutions."
                         helperText="Override the default prompt for this specific agent."
+                        sx={fieldSx}
+                      />
+
+                      <TextField
+                        label="Escalation Contact Level 1"
+                        value={widget.escalation_contact_level_1 || ''}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, escalation_contact_level_1: e.target.value }))}
+                        fullWidth
+                        placeholder="Support Team: support@example.com | +1-555-0101"
+                        helperText="Used when the bot escalates conversations to first-level human support."
+                        sx={fieldSx}
+                      />
+
+                      <TextField
+                        label="Escalation Contact Level 2"
+                        value={widget.escalation_contact_level_2 || ''}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, escalation_contact_level_2: e.target.value }))}
+                        fullWidth
+                        placeholder="Escalation Manager: escalation@example.com | +1-555-0102"
+                        helperText="Fallback contact shown after Level 1 for escalated conversations."
                         sx={fieldSx}
                       />
 
