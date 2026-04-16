@@ -1,4 +1,4 @@
-import { Grid, TextField, Button, MenuItem, FormControlLabel, Switch, Typography, Paper, Box, Stack, Chip } from "@mui/material";
+import { Grid, TextField, Button, MenuItem, FormControlLabel, Switch, Typography, Paper, Box, Stack, Chip, Select } from "@mui/material";
 import { useEffect, useState } from "react";
 import { CallingAgentLookup, callingAgentService } from "../../services/callingAgentService";
 import { Product, productService } from "../../services/productService";
@@ -8,6 +8,7 @@ import { CallingNumber } from "../../types";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmsIcon from "@mui/icons-material/Sms";
 import EmailIcon from "@mui/icons-material/Email";
+import { messageTemplateService } from "../../services/messageTemplateService";
 
 interface CampaignInfoProps {
     form: any;
@@ -15,9 +16,34 @@ interface CampaignInfoProps {
     nextStep: () => void;
 }
 
+const MODES = [
+    {
+        key: "whatsapp",
+        label: "WhatsApp",
+        icon: <WhatsAppIcon />,
+        color: "success",
+        filterType: "whatsapp"
+    },
+    {
+        key: "sms",
+        label: "SMS",
+        icon: <SmsIcon />,
+        color: "primary",
+        filterType: "sms"
+    },
+    {
+        key: "email",
+        label: "Email",
+        icon: <EmailIcon />,
+        color: "secondary",
+        filterType: "email"
+    }
+];
+
 const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
     const [errors, setErrors] = useState<any>({});
     const [agents, setAgents] = useState<CallingAgentLookup[]>([]);
+    const [templates, setTemplates] = useState<any[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([])
 
@@ -37,11 +63,17 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         setCallingNumbers(data || []);
     };
 
+    const loadTemplateLookup = async () => {
+        const data = await messageTemplateService.templateLookup();
+        setTemplates(data || []);
+    };
+
 
     useEffect(() => {
         loadAgentLookup();
         loadProductLookup();
         loadCallingNoLookup();
+        loadTemplateLookup();
     }, [form]);
 
     const validate = () => {
@@ -66,33 +98,21 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
 
         if (form.instant_reply) {
 
-            if (!form.instant_reply_modes || form.instant_reply_modes.length === 0) {
+            const templates = form.instant_reply_templates || {};
+            const modes = form.instant_reply_modes || [];
+
+            if (modes.length === 0) {
                 newErrors.instant_reply_modes = "Select at least one reply mode";
             }
 
-            const templates = form.instant_reply_templates || {};
+            MODES.forEach((mode) => {
+                const isActive = modes.includes(mode.key);
 
-            if (form.instant_reply_modes?.includes("whatsapp")) {
-                if (!templates?.whatsapp?.trim()) {
-                    newErrors.whatsapp_template = "WhatsApp template is required";
+                if (isActive && !templates?.[mode.key]) {
+                    newErrors[`${mode.key}_template`] =
+                        `${mode.label} template is required`;
                 }
-            }
-
-            if (form.instant_reply_modes?.includes("sms")) {
-                if (!templates?.sms?.trim()) {
-                    newErrors.sms_template = "SMS template is required";
-                }
-            }
-
-            if (form.instant_reply_modes?.includes("email")) {
-                if (!templates?.email?.subject?.trim()) {
-                    newErrors.email_subject = "Email subject is required";
-                }
-
-                if (!templates?.email?.body?.trim()) {
-                    newErrors.email_body = "Email body is required";
-                }
-            }
+            });
         }
 
         setErrors(newErrors);
@@ -100,6 +120,16 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         if (Object.keys(newErrors).length === 0) {
             nextStep();
         }
+    };
+
+    const updateTemplateId = (mode: string, templateId: number) => {
+        setForm((prev: any) => ({
+            ...prev,
+            instant_reply_templates: {
+                ...prev.instant_reply_templates,
+                [mode]: templateId,
+            },
+        }));
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -310,162 +340,93 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                         />
                     </Box>
 
-                    {form.instant_reply && (
-                        <>
-
-                            {/* Mode Selector */}
-                            <Stack
-                                direction="row"
-                                spacing={1}
-                                mb={3}
-                            >
-
-                                <Chip
-                                    icon={<WhatsAppIcon />}
-                                    label="WhatsApp"
-                                    clickable
-                                    color={form.instant_reply_modes?.includes("whatsapp") ? "success" : "default"}
-                                    onClick={() =>
-                                        toggleMode("whatsapp")
-                                    }
-                                />
-
-                                <Chip
-                                    icon={<SmsIcon />}
-                                    label="SMS"
-                                    clickable
-                                    color={form.instant_reply_modes?.includes("sms") ? "primary" : "default"}
-                                    onClick={() =>
-                                        toggleMode("sms")
-                                    }
-                                />
-
-                                <Chip
-                                    icon={<EmailIcon />}
-                                    label="Email"
-                                    clickable
-                                    color={form.instant_reply_modes?.includes("email") ? "secondary" : "default"}
-                                    onClick={() =>
-                                        toggleMode("email")
-                                    }
-                                />
-
-                            </Stack>
-                            {/* Error Message */}
-                            {errors.instant_reply_modes && (
-                                <Typography
-                                    variant="caption"
-                                    color="error"
-                                    sx={{ ml: 1, mt: 0.5, display: "block" }}
-                                >
-                                    {errors.instant_reply_modes}
-                                </Typography>
-                            )}
-
-                            {/* WhatsApp */}
-                            {form.instant_reply_modes?.includes("whatsapp") && (
-                                <Box mb={2}>
-                                    <Typography
-                                        variant="subtitle2"
-                                        gutterBottom
-                                    >
-                                        WhatsApp Template
-                                    </Typography>
-
-                                    <TextField
-                                        size="small"
-                                        fullWidth
-                                        multiline
-                                        minRows={3}
-                                        placeholder="Hello {{name}}..."
-                                        value={form.instant_reply_templates?.whatsapp || ""}
-                                        onChange={(e) =>
-                                            updateTemplate("whatsapp", e.target.value)
-                                        }
-                                        error={!!errors.whatsapp_template}
-                                        helperText={errors.whatsapp_template}
-                                    />
-                                </Box>
-                            )}
-
-
-                            {/* SMS */}
-                            {form.instant_reply_modes?.includes("sms") && (
-                                <Box mb={2}>
-                                    <Typography
-                                        variant="subtitle2"
-                                        gutterBottom
-                                    >
-                                        SMS Template
-                                    </Typography>
-
-                                    <TextField
-                                        size="small"
-                                        fullWidth
-                                        multiline
-                                        minRows={3}
-                                        value={form.instant_reply_templates?.sms || ""}
-                                        onChange={(e) =>
-                                            updateTemplate("sms", e.target.value)
-                                        }
-                                        error={!!errors.sms_template}
-                                        helperText={errors.sms_template}
-                                    />
-                                </Box>
-                            )}
-
-
-                            {/* Email */}
-                            {form.instant_reply_modes?.includes("email") && (
-                                <Box mb={2}>
-
-                                    <Typography
-                                        variant="subtitle2"
-                                        gutterBottom
-                                    >
-                                        Email Template
-                                    </Typography>
-
-                                    <Grid container spacing={2}>
-
-                                        <Grid item xs={12}>
-                                            <TextField
-                                                size="small"
-                                                fullWidth
-                                                label="Subject"
-                                                value={form.instant_reply_templates?.email?.subject || ""}
-                                                onChange={(e) =>
-                                                    updateEmail("subject", e.target.value)
-                                                }
-                                                error={!!errors.email_subject}
-                                                helperText={errors.email_subject}
-                                            />
-                                        </Grid>
-
-                                        <Grid item xs={12}>
-                                            <TextField
-                                                size="small"
-                                                fullWidth
-                                                multiline
-                                                minRows={6}
-                                                label="Email Body"
-                                                value={form.instant_reply_templates?.email?.body || ""}
-                                                onChange={(e) =>
-                                                    updateEmail("body", e.target.value)
-                                                }
-                                                error={!!errors.email_body}
-                                                helperText={errors.email_body}
-                                            />
-                                        </Grid>
-
-                                    </Grid>
-
-                                </Box>
-                            )}
-
-                        </>
+                    {errors.instant_reply_modes && (
+                        <Typography color="error" variant="caption" sx={{ mt: 0.5, display: "block" }}>
+                            {errors.instant_reply_modes}
+                        </Typography>
                     )}
+                    {form.instant_reply && (
+                        <Box>
+                            {MODES.map((mode) => {
+                                const isActive = form.instant_reply_modes?.includes(mode.key);
 
+                                return (
+                                    <Box
+                                        key={mode.key}
+                                        display="flex"
+                                        alignItems="center"
+                                        justifyContent="space-between"
+                                        mb={1.5}
+                                        px={2}
+                                        py={1.5}
+                                        borderRadius={2}
+                                        border="1px solid"
+                                        borderColor={isActive ? "#d1e9ff" : "#eee"}
+                                        bgcolor={isActive ? "#f5faff" : "#fff"}
+                                        sx={{
+                                            transition: "all 0.2s ease",
+                                            "&:hover": {
+                                                backgroundColor: "#f9fafb",
+                                            },
+                                        }}
+                                    >
+                                        {/* LEFT SIDE */}
+                                        <Box display="flex" alignItems="center" gap={1.5}>
+                                            <Chip
+                                                icon={mode.icon}
+                                                label={mode.label}
+                                                clickable
+                                                color={isActive ? (mode.color as any) : "default"}
+                                                onClick={() => toggleMode(mode.key)}
+                                                sx={{
+                                                    fontWeight: 500,
+                                                }}
+                                            />
+                                        </Box>
+
+                                        {/* RIGHT SIDE */}
+                                        <Box width="55%">
+                                            <Select
+                                                fullWidth
+                                                size="small"
+                                                disabled={!isActive}
+                                                displayEmpty
+                                                value={
+                                                    form.instant_reply_templates?.[mode.key] || ""
+                                                }
+                                                onChange={(e) =>
+                                                    updateTemplateId(
+                                                        mode.key,
+                                                        Number(e.target.value)
+                                                    )
+                                                }
+                                                sx={{
+                                                    backgroundColor: isActive ? "#fff" : "#f5f5f5",
+                                                }}
+                                            >
+                                                <MenuItem value="">
+                                                    Select template
+                                                </MenuItem>
+
+                                                {templates
+                                                    ?.filter((t) => t.type === mode.filterType)
+                                                    .map((t) => (
+                                                        <MenuItem key={t.id} value={t.id}>
+                                                            {t.name}
+                                                        </MenuItem>
+                                                    ))}
+                                            </Select>
+                                            {errors[`${mode.key}_template`] && (
+                                                <Typography color="error" variant="caption" sx={{ mt: 0.5, display: "block" }}>
+                                                    {errors[`${mode.key}_template`]}
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
                 </Paper>
             </Grid>
 

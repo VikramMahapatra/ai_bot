@@ -129,12 +129,9 @@ export interface CallCampaign {
     instant_reply: false,
     instant_reply_modes: [],
     instant_reply_templates: {
-        whatsapp: string,
-        sms: string,
-        email: {
-            subject: string,
-            body: string
-        }
+        whatsapp: number | "";
+        sms: number | "";
+        email: number | "";
     }
 }
 
