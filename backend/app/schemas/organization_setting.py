@@ -26,10 +26,13 @@ class OrganizationSettingsBase(BaseModel):
     smtp_password: str | None = None
     smtp_sender_email: str | None = None
     smtp_use_tls: bool = True
-    
+
     default_escalation_level_1: str | None = None
     default_escalation_level_2: str | None = None
-    
+
+    expected_close_days: int | None = None
+
+
 class OrganizationSettingsUpdate(OrganizationSettingsBase):
     pass
 
