@@ -92,7 +92,7 @@ const KnowledgeManager: React.FC = () => {
     boxShadow: `0 14px 30px ${alpha(theme.palette.primary.dark, 0.14)}`,
     backdropFilter: "blur(10px)",
     position: "relative",
-    overflow: "hidden",
+    overflow: "visible",
     "&::before": {
       content: '""',
       position: "absolute",
@@ -722,30 +722,38 @@ const KnowledgeManager: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Paper sx={{ ...sectionPanelSx, p: 2.3 }}>
-            <Box sx={{ mb: 1.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Step 3: Vector Index Explorer
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Inspect chunk volume and source coverage for fast retrieval
-                diagnostics.
-              </Typography>
-            </Box>
-            <VectorizedDataViewer
-              widgetId={selectedWidgetId}
-              refreshToken={vectorRefreshToken}
-              externalLoading={vectorLoading}
-              onLoaded={(data) => {
-                if (data?.total_chunks && data.total_chunks > lastTotalChunks) {
-                  setLastTotalChunks(data.total_chunks);
-                  setVectorLoading(false);
-                } else {
-                  setTimeout(() => setVectorLoading(false), 5000);
-                }
-              }}
-            />
-          </Paper>
+          <Paper
+  sx={{
+    ...sectionPanelSx,
+    p: 2.5, mb: 2.5
+  }}
+>
+  <Box sx={{ mb: 1.5 }}>
+    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+      Step 3: Vector Index Explorer
+    </Typography>
+    <Typography variant="body2" color="text.secondary">
+      Inspect chunk volume and source coverage for fast retrieval diagnostics.
+    </Typography>
+  </Box>
+
+  <Box sx={{ flex: 1, overflow: 'hidden' }}>
+    <VectorizedDataViewer
+      widgetId={selectedWidgetId}
+      refreshToken={vectorRefreshToken}
+      externalLoading={vectorLoading}
+      onLoaded={(data) => {
+        if (data?.total_chunks && data.total_chunks > lastTotalChunks) {
+          setLastTotalChunks(data.total_chunks);
+          setVectorLoading(false);
+        } else {
+          setTimeout(() => setVectorLoading(false), 5000);
+        }
+      }}
+    />
+  </Box>
+</Paper>
+
         </Stack>
       ) : (
         <Paper sx={{ ...sectionPanelSx, p: 3 }}>

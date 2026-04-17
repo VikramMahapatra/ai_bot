@@ -78,10 +78,7 @@ const emptyCampaignForm: CallCampaign = {
     instant_reply_templates: {
         whatsapp: "",
         sms: "",
-        email: {
-            subject: "",
-            body: ""
-        }
+        email: ""
     }
 };
 

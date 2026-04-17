@@ -17,13 +17,14 @@ from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
-from app.services.call_log_service import process_call, save_transcripts
+from app.services.call_log_service import extract_placeholders, process_call
 from app.models.user import Organization
 from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 from app.models.products import Product
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
+from app.models.message_templates import MessageTemplate
 
 
 STALE_MINUTES = 1
@@ -188,7 +189,8 @@ def get_campaign(db: Session, campaign_id: int):
         db.query(CallCampaign)
         .options(
             joinedload(CallCampaign.contacts),
-            joinedload(CallCampaign.schedule)
+            joinedload(CallCampaign.schedule),
+            joinedload(CallCampaign.instant_replies)
         )
         .filter(CallCampaign.id == campaign_id)
         .first()
@@ -199,6 +201,13 @@ def get_campaign(db: Session, campaign_id: int):
 
     schedule = campaign.schedule
 
+    instant_reply_modes = []
+    instant_reply_templates = {}
+
+    for reply in campaign.instant_replies:
+        instant_reply_modes.append(reply.mode)
+        instant_reply_templates[reply.mode] = reply.template_id
+
     return {
         "id": campaign.id,
         "name": campaign.name,
@@ -208,11 +217,9 @@ def get_campaign(db: Session, campaign_id: int):
         "agent_id": campaign.agent_id,
         "calling_no": campaign.calling_no,
         "product_id": campaign.product_id,
-        
-        # Contacts → return contact_ids
+
         "contacts": [c.contact_id for c in campaign.contacts],
 
-        # Schedule
         "start_datetime": schedule.start_datetime if schedule else None,
         "end_datetime": schedule.end_datetime if schedule else None,
         "timezone": schedule.timezone if schedule else None,
@@ -220,7 +227,6 @@ def get_campaign(db: Session, campaign_id: int):
         "call_end_time": schedule.call_end_time if schedule else None,
         "call_interval": schedule.call_interval if schedule else None,
 
-        # Convert "Mon,Tue,Wed" → ["Mon","Tue","Wed"]
         "active_days": schedule.active_days.split(",") if schedule and schedule.active_days else [],
 
         "max_retry_attempts": schedule.max_retry_attempts if schedule else None,
@@ -228,7 +234,11 @@ def get_campaign(db: Session, campaign_id: int):
 
         "retry_on_no_answer": schedule.retry_no_answer if schedule else None,
         "retry_on_busy": schedule.retry_busy if schedule else None,
-        "retry_on_voicemail": schedule.retry_voicemail if schedule else None
+        "retry_on_voicemail": schedule.retry_voicemail if schedule else None,
+
+        "instant_reply": len(instant_reply_modes) > 0,
+        "instant_reply_modes": instant_reply_modes,
+        "instant_reply_templates": instant_reply_templates
     }
     
 def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign_id: int):
@@ -238,8 +248,13 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
             Product.name.label("product_name"),
             CampaignSchedule
         )
+        .options(
+            joinedload(CallCampaign.instant_replies)  # ✅ IMPORTANT
+        )
         .outerjoin(Product, Product.id == CallCampaign.product_id)
         .outerjoin(CampaignSchedule, CampaignSchedule.campaign_id == CallCampaign.id)
+        .outerjoin(CallCampaignInstantReply, CallCampaignInstantReply.call_campaign_id == CallCampaign.id)
+        .outerjoin(MessageTemplate, MessageTemplate.id == CallCampaignInstantReply.template_id)
         .filter(
             CallCampaign.id == campaign_id,
             CallCampaign.is_deleted == False
@@ -271,6 +286,16 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         CallLog.campaign_id == campaign_id,
         CallLog.status == "Scheduled"
     ).count()
+    
+    instant_reply_modes = []
+    instant_reply_templates = {}
+
+    for reply in campaign_obj.instant_replies:
+        instant_reply_modes.append(reply.mode)
+        instant_reply_templates[reply.mode] = {
+            "template_id": reply.template_id,
+            "name": reply.template.name if reply.template else None
+        }
 
     return {
         "id": campaign_obj.id,
@@ -299,6 +324,9 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
 
         "total_contacts": total_contacts,
         "scheduled_calls": scheduled_calls,
+        "instant_reply": len(instant_reply_modes) > 0,
+        "instant_reply_modes": instant_reply_modes,
+        "instant_reply_templates": instant_reply_templates
     }
     
 def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
@@ -345,7 +373,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         agent_id=data.agent_id,
         product_id=data.product_id,
         status= "draft",
-        external_campaign_name= unique_campaign_code
+        external_campaign_name= unique_campaign_code,
+        instant_reply= data.instant_reply
     )
 
     db.add(campaign)
@@ -381,31 +410,25 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     if data.instant_reply and data.instant_reply_modes:
 
         for mode in data.instant_reply_modes:
-
-            template = None
-            subject = None
+            template_id = None
 
             if mode == "whatsapp" and data.instant_reply_templates:
-                template = data.instant_reply_templates.whatsapp
+                template_id = data.instant_reply_templates.whatsapp
 
             elif mode == "sms" and data.instant_reply_templates:
-                template = data.instant_reply_templates.sms
+                template_id = data.instant_reply_templates.sms
 
             elif mode == "email" and data.instant_reply_templates:
-                email_template = data.instant_reply_templates.email
+                template_id = data.instant_reply_templates.email
                 
-                if email_template:
-                    subject = email_template.subject
-                    template = email_template.body
-
-            db.add(
-                CallCampaignInstantReply(
-                    call_campaign_id=campaign.id,
-                    mode=mode,
-                    template=template,
-                    subject=subject
+            if template_id:
+                db.add(
+                    CallCampaignInstantReply(
+                        call_campaign_id=campaign.id,
+                        mode=mode,
+                        template_id=template_id
+                    )
                 )
-            )
     
     external_contact_ids = get_external_contact_ids(db, data.contacts)
     
@@ -707,30 +730,25 @@ def update_campaign(
 
             for mode in data.instant_reply_modes:
 
-                template = None
-                subject = None
+                template_id = None
 
                 if mode == "whatsapp" and templates:
-                    template = templates.whatsapp
+                    template_id = templates.whatsapp
 
                 elif mode == "sms" and templates:
-                    template = templates.sms
+                    template_id = templates.sms
 
                 elif mode == "email" and templates:
-                    email_template = templates.email
+                    template_id = templates.email
 
-                    if email_template:
-                        subject = email_template.subject
-                        template = email_template.body
-
-                db.add(
-                    CallCampaignInstantReply(
-                        call_campaign_id=campaign_id,
-                        mode=mode,
-                        template=template,
-                        subject=subject
+                if template_id:   
+                    db.add(
+                        CallCampaignInstantReply(
+                            call_campaign_id=campaign_id,
+                            mode=mode,
+                            template_id=template_id,
+                        )
                     )
-                )
     
     if echo_failed:
         message = "Campaign updated successfully, but sync failed. Please reload the list to sync the campaign."
@@ -831,13 +849,7 @@ def delete_campaign(
     return {"message": "Campaign deleted"}
 
 def build_contacts_payload(contacts, agent):
-    import re
-
-    def extract(text):
-        return set(re.findall(r"\{\{(.*?)\}\}", text or ""))
-
-    placeholders = extract(agent.greeting) | extract(agent.prompt)
-
+    placeholders = extract_placeholders(agent.greeting) | extract_placeholders(agent.prompt)
     payload = []
 
     for contact in contacts:
@@ -863,10 +875,7 @@ def build_contacts_payload(contacts, agent):
 
     return payload
 
-def extract_placeholders(text):
-    if not text:
-        return set()
-    return set(re.findall(r"\{\{(.*?)\}\}", text))
+
 #### Campaign Contacts
 
 def get_contacts_by_ids(db: Session, ids: list[int]):

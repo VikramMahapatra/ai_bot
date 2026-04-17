@@ -42,11 +42,3 @@ def sync_call_logs(
     return service.sync_call_logs(db, current_user.organization_id, params.campaign_id, params.from_date, params.end_date)
 
 
-@router.post("/{call_log_id}/move-to-sales-funnel")
-def move_to_funnel(
-    call_log_id: int,
-    payload: MoveToFunnelRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return service.create_manual_lead(db, current_user.organization_id, call_log_id, payload)

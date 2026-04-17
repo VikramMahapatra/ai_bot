@@ -37,6 +37,7 @@ import CreditEstimatorSharePage from './pages/CreditEstimatorSharePage';
 import CreditsLayout from './components/Layout/CreditsLayout.tsx';
 import AdminCreditUsagePage from './pages/AdminCreditUsagePage';
 import FollowUpWorkflowPage from './pages/FollowUpWorkflowPage.tsx';
+import TemplatePage from './pages/TemplatePage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -661,6 +662,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="ADMIN">
               <FollowUpWorkflowPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <TemplatePage />
             </ProtectedRoute>
           }
         />

@@ -38,6 +38,7 @@ import ContactsIcon from '@mui/icons-material/Contacts';
 import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AutoModeIcon from '@mui/icons-material/AutoMode';
+import DescriptionIcon from "@mui/icons-material/Description";
 
 const drawerWidth = 280;
 
@@ -63,7 +64,8 @@ interface MenuItem {
   | 'module_users_enabled'
   | 'human_handoff_enabled'
   | 'module_contact_book_enabled'
-  | 'module_workflows_enabled';
+  | 'module_workflows_enabled'
+  | 'module_message_templates_enabled';
 }
 
 const allMenuItems: MenuItem[] = [
@@ -74,10 +76,11 @@ const allMenuItems: MenuItem[] = [
   { text: 'Knowledge Base', icon: <MenuBookIcon />, path: '/knowledge', requiredRole: 'ADMIN', featureKey: 'module_knowledge_enabled' },
   { text: 'Leads', icon: <PeopleAltIcon />, path: '/leads', requiredRole: 'ADMIN', featureKey: 'module_leads_enabled' },
   { text: 'Contact Book', icon: <ContactsIcon />, path: '/contacts', requiredRole: 'ADMIN', featureKey: 'module_contact_book_enabled' },
-  { text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN', featureKey: 'module_analytics_enabled' },
-  { text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
+  //{ text: 'Analytics', icon: <TrendingUpIcon />, path: '/analytics', requiredRole: 'ADMIN', featureKey: 'module_analytics_enabled' },
+  //{ text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN', featureKey: 'module_campaigns_enabled' },
+  { text: 'Message Templates', icon: <DescriptionIcon />, path: '/templates', requiredRole: 'ADMIN', featureKey: 'module_message_templates_enabled' },
   { text: 'Follow-Up Workflows', icon: <AutoModeIcon />, path: '/follow-up-workflow', requiredRole: 'ADMIN', featureKey: 'module_workflows_enabled' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },
   { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF', featureKey: 'human_handoff_enabled' },

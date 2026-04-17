@@ -7,7 +7,17 @@ from io import BytesIO
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File, Header, Query, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    UploadFile,
+    File,
+    Header,
+    Query,
+    Response,
+)
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -29,7 +39,10 @@ from app.models import (
 )
 from app.models.products import Product
 from app.services.email_service import send_campaign_email
-from app.services.campaign_email_ai_service import generate_email_variants_from_prompt, evaluate_email_spam_score
+from app.services.campaign_email_ai_service import (
+    generate_email_variants_from_prompt,
+    evaluate_email_spam_score,
+)
 from app.services.campaign_to_lead_rule_engine import (
     get_or_create_active_rule,
     run_rule_engine,
@@ -46,7 +59,14 @@ from app.services import organization_credit_service
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
 ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp", "sms"}
-ALLOWED_CAMPAIGN_STATUSES = {"draft", "scheduled", "running", "completed", "paused", "failed"}
+ALLOWED_CAMPAIGN_STATUSES = {
+    "draft",
+    "scheduled",
+    "running",
+    "completed",
+    "paused",
+    "failed",
+}
 ALLOWED_LOG_STATUSES = {
     "pending",
     "sent",
@@ -99,20 +119,31 @@ TRACKING_EVENT_TO_STATUS = {
 }
 
 
-def _ensure_campaign_access(db: Session, organization_id: int, campaign_type: Optional[str] = None) -> None:
+def _ensure_campaign_access(
+    db: Session, organization_id: int, campaign_type: Optional[str] = None
+) -> None:
     limits = get_effective_limits(db, organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
     if not limits.get("module_campaigns_enabled", False):
-        raise HTTPException(status_code=403, detail="Campaigns module is disabled for this organization")
+        raise HTTPException(
+            status_code=403, detail="Campaigns module is disabled for this organization"
+        )
 
     channel = (campaign_type or "").strip().lower()
     if channel == "email" and not limits.get("email_campaign_enabled", False):
-        raise HTTPException(status_code=403, detail="Email campaigns are disabled for this organization")
+        raise HTTPException(
+            status_code=403, detail="Email campaigns are disabled for this organization"
+        )
     if channel == "sms" and not limits.get("sms_campaign_enabled", False):
-        raise HTTPException(status_code=403, detail="SMS campaigns are disabled for this organization")
+        raise HTTPException(
+            status_code=403, detail="SMS campaigns are disabled for this organization"
+        )
     if channel == "whatsapp" and not limits.get("whatsapp_enabled", False):
-        raise HTTPException(status_code=403, detail="WhatsApp campaigns are disabled for this organization")
+        raise HTTPException(
+            status_code=403,
+            detail="WhatsApp campaigns are disabled for this organization",
+        )
 
 
 class ContactListCreateRequest(BaseModel):
@@ -210,7 +241,7 @@ def _parse_auto_agent_marker(description: Optional[str]) -> tuple[bool, Optional
     if not raw.startswith(AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX):
         return False, None
 
-    widget_id = raw[len(AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX):].strip() or None
+    widget_id = raw[len(AUTO_AGENT_CONTACT_LIST_MARKER_PREFIX) :].strip() or None
     return True, widget_id
 
 
@@ -256,7 +287,9 @@ def _build_email_template_payload(
 ) -> str:
     mode = (payload.email_content_mode or "manual").strip().lower()
     if mode not in {"manual", "prompt"}:
-        raise HTTPException(status_code=400, detail="email_content_mode must be manual or prompt")
+        raise HTTPException(
+            status_code=400, detail="email_content_mode must be manual or prompt"
+        )
 
     default_subject = (payload.email_subject or campaign_name).strip() or campaign_name
     default_body = (message_template or "").strip()
@@ -266,15 +299,23 @@ def _build_email_template_payload(
     if mode == "prompt":
         prompt_context = (payload.email_prompt_context or "").strip()
         if not prompt_context:
-            raise HTTPException(status_code=400, detail="email_prompt_context is required for prompt mode")
+            raise HTTPException(
+                status_code=400,
+                detail="email_prompt_context is required for prompt mode",
+            )
 
         if len(subjects) < 5 or len(bodies) < 5:
-            generated = generate_email_variants_from_prompt(campaign_name=campaign_name, prompt_context=prompt_context)
+            generated = generate_email_variants_from_prompt(
+                campaign_name=campaign_name, prompt_context=prompt_context
+            )
             subjects = _normalize_text_list(generated.get("subjects"), limit=5)
             bodies = _normalize_text_list(generated.get("bodies"), limit=5)
 
         if len(subjects) < 5 or len(bodies) < 5:
-            raise HTTPException(status_code=500, detail="Unable to generate 5 email subjects and 5 email bodies")
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to generate 5 email subjects and 5 email bodies",
+            )
 
         default_subject = subjects[0]
         default_body = bodies[0]
@@ -298,7 +339,9 @@ def _build_email_template_payload(
     return json.dumps(serialized, ensure_ascii=True)
 
 
-def _resolve_email_payload_for_contact(campaign_name: str, template_blob: str, contact_index: int) -> tuple[str, str]:
+def _resolve_email_payload_for_contact(
+    campaign_name: str, template_blob: str, contact_index: int
+) -> tuple[str, str]:
     raw_template = (template_blob or "").strip()
     fallback_subject = (campaign_name or "Campaign Update").strip() or "Campaign Update"
 
@@ -321,7 +364,10 @@ def _resolve_email_payload_for_contact(campaign_name: str, template_blob: str, c
         selected_subject, selected_body = combos[contact_index % len(combos)]
         return selected_subject, selected_body
 
-    default_subject = str(parsed.get("default_subject") or fallback_subject).strip() or fallback_subject
+    default_subject = (
+        str(parsed.get("default_subject") or fallback_subject).strip()
+        or fallback_subject
+    )
     default_body = str(parsed.get("default_body") or "").strip()
 
     if not default_body:
@@ -330,15 +376,25 @@ def _resolve_email_payload_for_contact(campaign_name: str, template_blob: str, c
     return default_subject, default_body
 
 
-def _get_active_twilio_sms_config(db: Session, organization_id: int) -> Optional[TwilioSmsChannel]:
-    return db.query(TwilioSmsChannel).filter(
-        TwilioSmsChannel.organization_id == organization_id,
-        TwilioSmsChannel.is_active == True,
-    ).first()
+def _get_active_twilio_sms_config(
+    db: Session, organization_id: int
+) -> Optional[TwilioSmsChannel]:
+    return (
+        db.query(TwilioSmsChannel)
+        .filter(
+            TwilioSmsChannel.organization_id == organization_id,
+            TwilioSmsChannel.is_active == True,
+        )
+        .first()
+    )
 
 
 def _get_tracking_base_url() -> str:
-    return (settings.CAMPAIGN_EMAIL_TRACKING_BASE_URL or "http://localhost:8000").strip().rstrip("/")
+    return (
+        (settings.CAMPAIGN_EMAIL_TRACKING_BASE_URL or "http://localhost:8000")
+        .strip()
+        .rstrip("/")
+    )
 
 
 def _is_safe_redirect_url(value: str) -> bool:
@@ -359,7 +415,10 @@ def _set_campaign_log_status(log: CampaignLog, next_status: str) -> None:
     current_rank = TRACKING_STATUS_RANK.get(current_key, 0)
     next_rank = TRACKING_STATUS_RANK.get(next_key, 0)
 
-    if current_key in TERMINAL_TRACKING_STATUSES and next_key not in TERMINAL_TRACKING_STATUSES:
+    if (
+        current_key in TERMINAL_TRACKING_STATUSES
+        and next_key not in TERMINAL_TRACKING_STATUSES
+    ):
         return
     if next_rank >= current_rank:
         log.status = next_key
@@ -460,7 +519,7 @@ def _send_campaign_message(
     contact_index: int,
     tracking_token: Optional[str] = None,
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
-    db: Session = None
+    db: Session = None,
 ) -> tuple[bool, Optional[str], Optional[str]]:
     """Send campaign message for the selected channel.
 
@@ -472,9 +531,9 @@ def _send_campaign_message(
             template_blob=campaign.message_template,
             contact_index=contact_index,
         )
-        
+
         org_settings = get_org_settings(db, campaign.organization_id)
-        
+
         return send_campaign_email(
             recipient_email=contact.email or "",
             recipient_name=contact.name or "",
@@ -483,7 +542,7 @@ def _send_campaign_message(
             subject=subject,
             tracking_token=tracking_token,
             tracking_base_url=_get_tracking_base_url(),
-            settings=org_settings
+            settings=org_settings,
         )
 
     if campaign.campaign_type == "whatsapp":
@@ -511,6 +570,7 @@ def _send_campaign_message(
 
     return False, "Unsupported campaign type", None
 
+
 def get_feature_code_for_campaign_type(campaign_type: str) -> str:
     if campaign_type == "email":
         return FeatureCodes.CMP_EMAIL_SEND
@@ -528,11 +588,16 @@ def _execute_campaign_now(
     contacts: List[Contact],
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
 ) -> dict:
-    
-    run_sequence = int(
-        db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0)).filter(CampaignLog.campaign_id == campaign.id).scalar()
-        or 0
-    ) + 1
+
+    run_sequence = (
+        int(
+            db.query(func.coalesce(func.max(CampaignLog.run_sequence), 0))
+            .filter(CampaignLog.campaign_id == campaign.id)
+            .scalar()
+            or 0
+        )
+        + 1
+    )
     run_started_at = datetime.utcnow()
 
     campaign.status = "running"
@@ -566,7 +631,7 @@ def _execute_campaign_now(
             contact_index=for_index,
             tracking_token=tracking_token,
             twilio_sms_config=twilio_sms_config,
-            db=db
+            db=db,
         )
 
         log.provider_message_id = provider_message_id
@@ -586,14 +651,14 @@ def _execute_campaign_now(
     campaign.number_failed = failed_count
     campaign.status = "completed" if sent_count > 0 else "failed"
     db.flush()
-    
+
     organization_credit_service.consume_reserved_credits(
         db=db,
         reference_type="campaign",
         reference_id=campaign.id,
-        actual_quantity=sent_count
+        actual_quantity=sent_count,
     )
-    
+
     db.commit()
     db.refresh(campaign)
 
@@ -612,8 +677,6 @@ def _execute_campaign_now(
     except Exception:
         # Never fail campaign execution because of rule-engine post-processing.
         pass
-    
-   
 
     return {
         "campaign_id": campaign.id,
@@ -653,10 +716,14 @@ async def run_campaign_to_lead_rule_engine(
     current_user: User = Depends(require_admin),
 ):
     if payload.campaign_id:
-        exists = db.query(Campaign.id).filter(
-            Campaign.id == payload.campaign_id,
-            Campaign.organization_id == current_user.organization_id,
-        ).first()
+        exists = (
+            db.query(Campaign.id)
+            .filter(
+                Campaign.id == payload.campaign_id,
+                Campaign.organization_id == current_user.organization_id,
+            )
+            .first()
+        )
         if not exists:
             raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -683,7 +750,9 @@ async def list_campaign_to_lead_conversions(
 ):
     limit = max(1, min(limit, 500))
 
-    campaign_ids_query = db.query(Campaign.id).filter(Campaign.organization_id == current_user.organization_id)
+    campaign_ids_query = db.query(Campaign.id).filter(
+        Campaign.organization_id == current_user.organization_id
+    )
     if campaign_id:
         campaign_ids_query = campaign_ids_query.filter(Campaign.id == campaign_id)
     org_campaign_ids = [row.id for row in campaign_ids_query.all()]
@@ -691,12 +760,19 @@ async def list_campaign_to_lead_conversions(
     if not org_campaign_ids:
         return {"items": [], "pagination": {"total": 0, "skip": skip, "limit": limit}}
 
-    query = db.query(CampaignLeadConversion).filter(CampaignLeadConversion.campaign_id.in_(org_campaign_ids))
+    query = db.query(CampaignLeadConversion).filter(
+        CampaignLeadConversion.campaign_id.in_(org_campaign_ids)
+    )
     if status:
         query = query.filter(CampaignLeadConversion.status == status.strip().lower())
 
     total = query.count()
-    rows = query.order_by(CampaignLeadConversion.created_at.desc()).offset(skip).limit(limit).all()
+    rows = (
+        query.order_by(CampaignLeadConversion.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     return {
         "items": [
@@ -732,9 +808,11 @@ async def get_campaign_reports_summary(
     window_days = max(1, min(days, 365))
     window_start = datetime.utcnow() - pd.Timedelta(days=window_days)
 
-    campaign_rows = db.query(Campaign.id, Campaign.campaign_name, Campaign.campaign_type).filter(
-        Campaign.organization_id == current_user.organization_id
-    ).all()
+    campaign_rows = (
+        db.query(Campaign.id, Campaign.campaign_name, Campaign.campaign_type)
+        .filter(Campaign.organization_id == current_user.organization_id)
+        .all()
+    )
     campaign_meta = {
         row.id: {
             "campaign_name": row.campaign_name,
@@ -757,9 +835,27 @@ async def get_campaign_reports_summary(
                 "success_rate": 0.0,
             },
             "channel_breakdown": {
-                "email": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
-                "sms": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
-                "whatsapp": {"runs": 0, "messages": 0, "sent": 0, "failed": 0, "success_rate": 0.0},
+                "email": {
+                    "runs": 0,
+                    "messages": 0,
+                    "sent": 0,
+                    "failed": 0,
+                    "success_rate": 0.0,
+                },
+                "sms": {
+                    "runs": 0,
+                    "messages": 0,
+                    "sent": 0,
+                    "failed": 0,
+                    "success_rate": 0.0,
+                },
+                "whatsapp": {
+                    "runs": 0,
+                    "messages": 0,
+                    "sent": 0,
+                    "failed": 0,
+                    "success_rate": 0.0,
+                },
             },
             "email_analytics": {
                 "delivered": 0,
@@ -784,10 +880,14 @@ async def get_campaign_reports_summary(
             "daily_trend": [],
         }
 
-    logs = db.query(CampaignLog).filter(
-        CampaignLog.campaign_id.in_(campaign_ids),
-        CampaignLog.created_at >= window_start,
-    ).all()
+    logs = (
+        db.query(CampaignLog)
+        .filter(
+            CampaignLog.campaign_id.in_(campaign_ids),
+            CampaignLog.created_at >= window_start,
+        )
+        .all()
+    )
 
     def _pct(numerator: int, denominator: int) -> float:
         if denominator <= 0:
@@ -845,7 +945,8 @@ async def get_campaign_reports_summary(
             log.campaign_id,
             {
                 "campaign_id": log.campaign_id,
-                "campaign_name": meta.get("campaign_name") or f"Campaign #{log.campaign_id}",
+                "campaign_name": meta.get("campaign_name")
+                or f"Campaign #{log.campaign_id}",
                 "campaign_type": channel,
                 "messages": 0,
                 "sent": 0,
@@ -885,7 +986,10 @@ async def get_campaign_reports_summary(
 
         event_time = log.last_event_at or log.created_at
         if event_time:
-            if not campaign_entry["last_event_at"] or event_time > campaign_entry["last_event_at"]:
+            if (
+                not campaign_entry["last_event_at"]
+                or event_time > campaign_entry["last_event_at"]
+            ):
                 campaign_entry["last_event_at"] = event_time
 
             day_key = event_time.date().isoformat()
@@ -1002,11 +1106,19 @@ async def campaign_email_open_pixel(
     tracking_token: str,
     db: Session = Depends(get_db),
 ):
-    log = db.query(CampaignLog).filter(CampaignLog.tracking_token == tracking_token).first()
+    log = (
+        db.query(CampaignLog)
+        .filter(CampaignLog.tracking_token == tracking_token)
+        .first()
+    )
     if log:
         _apply_tracking_event(log, "opened")
         db.commit()
-    return Response(content=TRACKING_PIXEL_GIF, media_type="image/gif", headers={"Cache-Control": "no-cache, no-store"})
+    return Response(
+        content=TRACKING_PIXEL_GIF,
+        media_type="image/gif",
+        headers={"Cache-Control": "no-cache, no-store"},
+    )
 
 
 @router.get("/public/email-track/click/{tracking_token}")
@@ -1019,7 +1131,11 @@ async def campaign_email_click_redirect(
     if not _is_safe_redirect_url(destination):
         raise HTTPException(status_code=400, detail="Invalid redirect URL")
 
-    log = db.query(CampaignLog).filter(CampaignLog.tracking_token == tracking_token).first()
+    log = (
+        db.query(CampaignLog)
+        .filter(CampaignLog.tracking_token == tracking_token)
+        .first()
+    )
     if log:
         _apply_tracking_event(log, "clicked", payload={"redirect_url": destination})
         db.commit()
@@ -1034,7 +1150,10 @@ async def campaign_email_tracking_webhook(
     x_campaign_webhook_secret: Optional[str] = Header(default=None),
 ):
     configured_secret = (settings.CAMPAIGN_EMAIL_WEBHOOK_SECRET or "").strip()
-    if configured_secret and (x_campaign_webhook_secret or "").strip() != configured_secret:
+    if (
+        configured_secret
+        and (x_campaign_webhook_secret or "").strip() != configured_secret
+    ):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     event = _normalize_tracking_status(payload.event)
@@ -1043,9 +1162,19 @@ async def campaign_email_tracking_webhook(
 
     log = None
     if payload.tracking_token:
-        log = db.query(CampaignLog).filter(CampaignLog.tracking_token == payload.tracking_token.strip()).first()
+        log = (
+            db.query(CampaignLog)
+            .filter(CampaignLog.tracking_token == payload.tracking_token.strip())
+            .first()
+        )
     if not log and payload.provider_message_id:
-        log = db.query(CampaignLog).filter(CampaignLog.provider_message_id == payload.provider_message_id.strip()).first()
+        log = (
+            db.query(CampaignLog)
+            .filter(
+                CampaignLog.provider_message_id == payload.provider_message_id.strip()
+            )
+            .first()
+        )
 
     if not log:
         raise HTTPException(status_code=404, detail="Campaign log not found")
@@ -1070,36 +1199,32 @@ async def generate_email_variants(
 ):
     del current_user
     try:
-        
+
         valid = organization_credit_service.validate_feature_usage(
-            db,
-            current_user.organization_id,
-            FeatureCodes.CMP_AI_CONTENT_GEN,
-            1
+            db, current_user.organization_id, FeatureCodes.CMP_AI_CONTENT_GEN, 1
         )
-        
+
         if not valid:
             raise HTTPException(
                 status_code=400,
-                detail="Insufficient credits. Please add more credits to continue."
+                detail="Insufficient credits. Please add more credits to continue.",
             )
-        
+
         data = generate_email_variants_from_prompt(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
         )
-        
-        
+
         organization_credit_service.deduct_credits(
             db=db,
             organization_id=current_user.organization_id,
             feature_code=FeatureCodes.CMP_AI_CONTENT_GEN,
             quantity=1,
-            reference_type="campaign_email_variant_generation"
+            reference_type="campaign_email_variant_generation",
         )
-        
+
         db.commit()
-        
+
         return {
             "subjects": data["subjects"],
             "bodies": data["bodies"],
@@ -1108,7 +1233,9 @@ async def generate_email_variants(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to generate email variants: {str(exc)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate email variants: {str(exc)}"
+        )
 
 
 @router.post("/email/spam-score")
@@ -1120,39 +1247,38 @@ async def score_email_variants_for_spam(
     del current_user
     try:
         valid = organization_credit_service.validate_feature_usage(
-            db,
-            current_user.organization_id,
-            FeatureCodes.CMP_AI_SPAM_CHECK,
-            1
+            db, current_user.organization_id, FeatureCodes.CMP_AI_SPAM_CHECK, 1
         )
-        
+
         if not valid:
             raise HTTPException(
                 status_code=400,
-                detail="Insufficient credits. Please add more credits to continue."
+                detail="Insufficient credits. Please add more credits to continue.",
             )
-            
+
         data = evaluate_email_spam_score(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
             subjects=payload.subjects,
             bodies=payload.bodies,
         )
-        
+
         organization_credit_service.deduct_credits(
             db=db,
             organization_id=current_user.organization_id,
             feature_code=FeatureCodes.CMP_AI_SPAM_CHECK,
             quantity=1,
-            reference_type="campaign_email_spam_score"
+            reference_type="campaign_email_spam_score",
         )
-        
+
         db.commit()
         return data
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to score spam risk: {str(exc)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to score spam risk: {str(exc)}"
+        )
 
 
 @router.get("/dashboard/stats")
@@ -1162,20 +1288,33 @@ async def campaign_dashboard_stats(
 ):
     org_id = current_user.organization_id
 
-    totals = db.query(
-        func.count(Campaign.id).label("campaign_count"),
-        func.coalesce(func.sum(Campaign.number_sent), 0).label("total_sent"),
-        func.coalesce(func.sum(Campaign.number_failed), 0).label("total_failed"),
-    ).filter(Campaign.organization_id == org_id).first()
+    totals = (
+        db.query(
+            func.count(Campaign.id).label("campaign_count"),
+            func.coalesce(func.sum(Campaign.number_sent), 0).label("total_sent"),
+            func.coalesce(func.sum(Campaign.number_failed), 0).label("total_failed"),
+        )
+        .filter(Campaign.organization_id == org_id)
+        .first()
+    )
 
-    status_rows = db.query(
-        Campaign.status,
-        func.count(Campaign.id).label("count"),
-    ).filter(Campaign.organization_id == org_id).group_by(Campaign.status).all()
+    status_rows = (
+        db.query(
+            Campaign.status,
+            func.count(Campaign.id).label("count"),
+        )
+        .filter(Campaign.organization_id == org_id)
+        .group_by(Campaign.status)
+        .all()
+    )
 
-    recent_campaigns = db.query(Campaign).filter(
-        Campaign.organization_id == org_id
-    ).order_by(Campaign.created_at.desc()).limit(5).all()
+    recent_campaigns = (
+        db.query(Campaign)
+        .filter(Campaign.organization_id == org_id)
+        .order_by(Campaign.created_at.desc())
+        .limit(5)
+        .all()
+    )
 
     return {
         "campaign_count": int(getattr(totals, "campaign_count", 0) or 0),
@@ -1226,11 +1365,15 @@ async def update_contact_list(
     if not list_name:
         raise HTTPException(status_code=400, detail="list_name is required")
 
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == contact_list_id,
-        ContactList.organization_id == current_user.organization_id
-    ).first()
-    
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
@@ -1249,6 +1392,7 @@ async def update_contact_list(
         "created_at": contact_list.created_at,
     }
 
+
 @router.get("/contact-lists")
 async def list_contact_lists(
     search: Optional[str] = None,
@@ -1258,7 +1402,9 @@ async def list_contact_lists(
     current_user: User = Depends(require_admin),
 ):
     limit = max(1, min(limit, 200))
-    query = db.query(ContactList).filter(ContactList.organization_id == current_user.organization_id)
+    query = db.query(ContactList).filter(
+        ContactList.organization_id == current_user.organization_id
+    )
 
     if search:
         search_term = f"%{search.strip()}%"
@@ -1270,10 +1416,15 @@ async def list_contact_lists(
     list_ids = [row.id for row in rows]
     counts = {}
     if list_ids:
-        count_rows = db.query(
-            Contact.contact_list_id,
-            func.count(Contact.id),
-        ).filter(Contact.contact_list_id.in_(list_ids)).group_by(Contact.contact_list_id).all()
+        count_rows = (
+            db.query(
+                Contact.contact_list_id,
+                func.count(Contact.id),
+            )
+            .filter(Contact.contact_list_id.in_(list_ids))
+            .group_by(Contact.contact_list_id)
+            .all()
+        )
         counts = {contact_list_id: count for contact_list_id, count in count_rows}
 
     return {
@@ -1304,16 +1455,26 @@ async def delete_contact_list(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
-    has_campaigns = db.query(Campaign.id).filter(Campaign.contact_list_id == contact_list.id).first()
+    has_campaigns = (
+        db.query(Campaign.id)
+        .filter(Campaign.contact_list_id == contact_list.id)
+        .first()
+    )
     if has_campaigns:
-        raise HTTPException(status_code=400, detail="Cannot delete contact list linked to campaigns")
+        raise HTTPException(
+            status_code=400, detail="Cannot delete contact list linked to campaigns"
+        )
 
     db.query(Contact).filter(Contact.contact_list_id == contact_list.id).delete()
     db.delete(contact_list)
@@ -1334,10 +1495,14 @@ async def list_contacts(
     limit = max(1, min(limit, 500))
 
     # Fetch contact list
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
@@ -1346,14 +1511,14 @@ async def list_contacts(
     if search:
         search_term = f"%{search.strip()}%"
         query = query.filter(
-            Contact.name.ilike(search_term) |
-            Contact.email.ilike(search_term) |
-            Contact.phone.ilike(search_term) |
-            Contact.company.ilike(search_term) |
-            Contact.whatsapp_number.ilike(search_term) |
-            Contact.designation.ilike(search_term) |
-            Contact.item_name.ilike(search_term) |
-            Contact.item_category.ilike(search_term)
+            Contact.name.ilike(search_term)
+            | Contact.email.ilike(search_term)
+            | Contact.phone.ilike(search_term)
+            | Contact.company.ilike(search_term)
+            | Contact.whatsapp_number.ilike(search_term)
+            | Contact.designation.ilike(search_term)
+            | Contact.item_name.ilike(search_term)
+            | Contact.item_category.ilike(search_term)
         )
 
     total = query.count()
@@ -1404,11 +1569,15 @@ async def upload_contacts_manual(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
-    
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
@@ -1420,19 +1589,27 @@ async def upload_contacts_manual(
 
     for index, item in enumerate(payload.contacts):
         try:
-            existing = db.query(Contact).filter(
-                Contact.contact_list_id == contact_list_id,
-                or_(
-                    Contact.phone == item.phone,
-                    Contact.email == item.email
+            existing = (
+                db.query(Contact)
+                .filter(
+                    Contact.contact_list_id == contact_list_id,
+                    or_(Contact.phone == item.phone, Contact.email == item.email),
                 )
-            ).first()
+                .first()
+            )
 
             if existing:
-                errors.append({"row": index + 1, "error": f"Contact with phone {item.phone} or email {item.email} already exists in this list"})
+                errors.append(
+                    {
+                        "row": index + 1,
+                        "error": f"Contact with phone {item.phone} or email {item.email} already exists in this list",
+                    }
+                )
                 continue
-            
-            name, email, phone, company = _validate_contact_payload(item.name, item.email, item.phone, item.company)
+
+            name, email, phone, company = _validate_contact_payload(
+                item.name, item.email, item.phone, item.company
+            )
             contact = Contact(
                 contact_list_id=contact_list.id,
                 name=name or None,
@@ -1462,10 +1639,14 @@ async def upload_contacts_csv(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
@@ -1485,7 +1666,9 @@ async def upload_contacts_csv(
         try:
             dataframe = pd.read_excel(BytesIO(raw))
         except Exception:
-            raise HTTPException(status_code=400, detail="Excel file is invalid or unsupported")
+            raise HTTPException(
+                status_code=400, detail="Excel file is invalid or unsupported"
+            )
 
         dataframe.columns = [str(col).strip().lower() for col in dataframe.columns]
         normalized_headers = set(dataframe.columns)
@@ -1502,7 +1685,9 @@ async def upload_contacts_csv(
         if not reader.fieldnames:
             raise HTTPException(status_code=400, detail="CSV headers are missing")
 
-        normalized_headers = {header.strip().lower() for header in reader.fieldnames if header}
+        normalized_headers = {
+            header.strip().lower() for header in reader.fieldnames if header
+        }
 
         rows_iter = [
             {str(key or "").strip().lower(): value for key, value in row.items()}
@@ -1514,7 +1699,7 @@ async def upload_contacts_csv(
     if not (required_headers & normalized_headers):
         raise HTTPException(
             status_code=400,
-            detail="File must include at least one of: name, email, phone"
+            detail="File must include at least one of: name, email, phone",
         )
 
     created = 0
@@ -1526,15 +1711,12 @@ async def upload_contacts_csv(
     # Process Rows
     # -------------------------
     for index, row in enumerate(rows_iter, start=2):
-        
+
         if not any(str(v).strip() for v in row.values() if v):
             continue
-    
+
         try:
-            phone = format_phone_number(
-                row.get("phone"),
-                country_code
-            )
+            phone = format_phone_number(row.get("phone"), country_code)
 
             name, email, phone, company = _validate_contact_payload(
                 row.get("name"),
@@ -1548,8 +1730,7 @@ async def upload_contacts_csv(
             # -------------------------
 
             whatsapp_number = format_phone_number(
-                row.get("whatsapp_number"),
-                country_code
+                row.get("whatsapp_number"), country_code
             )
 
             gender = row.get("gender")
@@ -1580,16 +1761,24 @@ async def upload_contacts_csv(
             existing = None
 
             if phone:
-                existing = db.query(Contact).filter(
-                    Contact.contact_list_id == contact_list.id,
-                    Contact.phone == phone
-                ).first()
+                existing = (
+                    db.query(Contact)
+                    .filter(
+                        Contact.contact_list_id == contact_list.id,
+                        Contact.phone == phone,
+                    )
+                    .first()
+                )
 
             if not existing and email:
-                existing = db.query(Contact).filter(
-                    Contact.contact_list_id == contact_list.id,
-                    Contact.email == email
-                ).first()
+                existing = (
+                    db.query(Contact)
+                    .filter(
+                        Contact.contact_list_id == contact_list.id,
+                        Contact.email == email,
+                    )
+                    .first()
+                )
 
             # -------------------------
             # UPDATE
@@ -1621,10 +1810,9 @@ async def upload_contacts_csv(
                 existing.lifecycle_stage = lifecycle_stage or existing.lifecycle_stage
                 existing.tags = tags or existing.tags
 
-                updated_contacts.append({
-                    "id": existing.id,
-                    "label": f"{existing.name} ({existing.phone})"
-                })
+                updated_contacts.append(
+                    {"id": existing.id, "label": f"{existing.name} ({existing.phone})"}
+                )
 
             # -------------------------
             # CREATE
@@ -1633,28 +1821,22 @@ async def upload_contacts_csv(
             else:
                 new_contact = Contact(
                     contact_list_id=contact_list.id,
-
                     name=name or None,
                     email=email or None,
                     phone=phone or None,
                     company=company or None,
-
                     whatsapp_number=whatsapp_number,
                     gender=gender,
                     designation=designation,
-
                     item_name=item_name,
                     item_type=item_type,
                     interest_stage=interest_stage,
                     item_category=item_category,
-
                     amount=amount,
                     offer_value=offer_value,
-
                     city=city,
                     state=state,
                     country=country,
-
                     source=source,
                     lifecycle_stage=lifecycle_stage,
                     tags=tags,
@@ -1663,16 +1845,15 @@ async def upload_contacts_csv(
                 db.add(new_contact)
                 db.flush()
 
-                added_contacts.append({
-                    "id": new_contact.id,
-                    "label": f"{new_contact.name} ({new_contact.phone})"
-                })
+                added_contacts.append(
+                    {
+                        "id": new_contact.id,
+                        "label": f"{new_contact.name} ({new_contact.phone})",
+                    }
+                )
 
         except ValueError as exc:
-            errors.append({
-                "row": index,
-                "error": str(exc)
-            })
+            errors.append({"row": index, "error": str(exc)})
 
     db.commit()
 
@@ -1680,7 +1861,7 @@ async def upload_contacts_csv(
         "created": len(added_contacts),
         "updated": len(updated_contacts),
         "failed": len(errors),
-        "errors": errors
+        "errors": errors,
     }
 
 
@@ -1690,10 +1871,15 @@ async def delete_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    contact = db.query(Contact).join(ContactList, ContactList.id == Contact.contact_list_id).filter(
-        Contact.id == contact_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact = (
+        db.query(Contact)
+        .join(ContactList, ContactList.id == Contact.contact_list_id)
+        .filter(
+            Contact.id == contact_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
 
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -1716,7 +1902,9 @@ async def create_campaign(
 
     campaign_type = payload.campaign_type.strip().lower()
     if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
-        raise HTTPException(status_code=400, detail="campaign_type must be email, whatsapp, or sms")
+        raise HTTPException(
+            status_code=400, detail="campaign_type must be email, whatsapp, or sms"
+        )
 
     _ensure_campaign_access(db, current_user.organization_id, campaign_type)
 
@@ -1728,10 +1916,14 @@ async def create_campaign(
     if status_value not in {"draft", "scheduled"}:
         raise HTTPException(status_code=400, detail="status must be draft or scheduled")
 
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == payload.contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == payload.contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not contact_list:
         raise HTTPException(status_code=404, detail="contact_list_id not found")
 
@@ -1739,21 +1931,25 @@ async def create_campaign(
         raise HTTPException(status_code=400, detail="product_id is required")
 
     if campaign_type == "email" and not (payload.email_subject or "").strip():
-        raise HTTPException(status_code=400, detail="email_subject is required for email campaigns")
-    
-    contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
-    
+        raise HTTPException(
+            status_code=400, detail="email_subject is required for email campaigns"
+        )
+
+    contacts = (
+        db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    )
+
     valid = organization_credit_service.validate_feature_usage(
         db,
         current_user.organization_id,
         get_feature_code_for_campaign_type(payload.campaign_type),
-        len(contacts)
+        len(contacts),
     )
-    
+
     if not valid:
         raise HTTPException(
             status_code=400,
-            detail="Insufficient credits. Please add more credits to continue."
+            detail="Insufficient credits. Please add more credits to continue.",
         )
 
     if payload.scheduled_time:
@@ -1763,16 +1959,25 @@ async def create_campaign(
     else:
         compare_now = None
 
-    if payload.scheduled_time and compare_now and payload.scheduled_time > compare_now and status_value == "draft":
+    if (
+        payload.scheduled_time
+        and compare_now
+        and payload.scheduled_time > compare_now
+        and status_value == "draft"
+    ):
         status_value = "scheduled"
 
     product_name = None
     if payload.product_id:
-        product = db.query(Product).filter(
-            Product.id == payload.product_id,
-            Product.organization_id == current_user.organization_id,
-            Product.is_deleted == False,
-        ).first()
+        product = (
+            db.query(Product)
+            .filter(
+                Product.id == payload.product_id,
+                Product.organization_id == current_user.organization_id,
+                Product.is_deleted == False,
+            )
+            .first()
+        )
         if not product:
             raise HTTPException(status_code=404, detail="product_id not found")
         product_name = product.name
@@ -1825,7 +2030,9 @@ async def list_campaigns(
 ):
     limit = max(1, min(limit, 200))
 
-    query = db.query(Campaign).filter(Campaign.organization_id == current_user.organization_id)
+    query = db.query(Campaign).filter(
+        Campaign.organization_id == current_user.organization_id
+    )
 
     if search:
         query = query.filter(Campaign.campaign_name.ilike(f"%{search.strip()}%"))
@@ -1849,16 +2056,22 @@ async def list_campaigns(
 
     if contact_list_id is not None:
         if contact_list_id <= 0:
-            raise HTTPException(status_code=400, detail="Invalid contact_list_id filter")
+            raise HTTPException(
+                status_code=400, detail="Invalid contact_list_id filter"
+            )
         query = query.filter(Campaign.contact_list_id == contact_list_id)
 
-    def _parse_iso_datetime(value: Optional[str], field_name: str) -> Optional[datetime]:
+    def _parse_iso_datetime(
+        value: Optional[str], field_name: str
+    ) -> Optional[datetime]:
         if not value:
             return None
         try:
             return datetime.fromisoformat(value)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid {field_name}; expected ISO datetime")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid {field_name}; expected ISO datetime"
+            )
 
     created_from_dt = _parse_iso_datetime(created_from, "created_from")
     created_to_dt = _parse_iso_datetime(created_to, "created_to")
@@ -1871,9 +2084,15 @@ async def list_campaigns(
         query = query.filter(Campaign.created_at <= created_to_dt)
 
     if scheduled_from_dt:
-        query = query.filter(Campaign.scheduled_time.isnot(None), Campaign.scheduled_time >= scheduled_from_dt)
+        query = query.filter(
+            Campaign.scheduled_time.isnot(None),
+            Campaign.scheduled_time >= scheduled_from_dt,
+        )
     if scheduled_to_dt:
-        query = query.filter(Campaign.scheduled_time.isnot(None), Campaign.scheduled_time <= scheduled_to_dt)
+        query = query.filter(
+            Campaign.scheduled_time.isnot(None),
+            Campaign.scheduled_time <= scheduled_to_dt,
+        )
 
     total = query.count()
     rows = query.order_by(Campaign.created_at.desc()).offset(skip).limit(limit).all()
@@ -1883,7 +2102,9 @@ async def list_campaigns(
     contact_list_map = {}
     product_map = {}
     if contact_list_ids:
-        contact_lists = db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
+        contact_lists = (
+            db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
+        )
         contact_list_map = {item.id: item.list_name for item in contact_lists}
     if product_ids:
         products = db.query(Product).filter(Product.id.in_(product_ids)).all()
@@ -1912,14 +2133,20 @@ async def get_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    row = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.organization_id == current_user.organization_id,
-    ).first()
+    row = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    contact_list = db.query(ContactList).filter(ContactList.id == row.contact_list_id).first()
+    contact_list = (
+        db.query(ContactList).filter(ContactList.id == row.contact_list_id).first()
+    )
     product_name = None
     if row.product_id:
         product = db.query(Product).filter(Product.id == row.product_id).first()
@@ -1939,10 +2166,14 @@ async def update_campaign_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    row = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.organization_id == current_user.organization_id,
-    ).first()
+    row = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -1963,15 +2194,21 @@ async def pause_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    row = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.organization_id == current_user.organization_id,
-    ).first()
+    row = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     if row.status == "completed":
-        raise HTTPException(status_code=400, detail="Completed campaigns cannot be paused")
+        raise HTTPException(
+            status_code=400, detail="Completed campaigns cannot be paused"
+        )
 
     row.status = "paused"
     db.commit()
@@ -1988,45 +2225,70 @@ async def run_due_campaigns(
     _ensure_campaign_access(db, current_user.organization_id)
 
     now = datetime.utcnow()
-    due_campaigns = db.query(Campaign).filter(
-        Campaign.organization_id == current_user.organization_id,
-        Campaign.status == "scheduled",
-        Campaign.scheduled_time.isnot(None),
-        Campaign.scheduled_time <= now,
-    ).all()
+    due_campaigns = (
+        db.query(Campaign)
+        .filter(
+            Campaign.organization_id == current_user.organization_id,
+            Campaign.status == "scheduled",
+            Campaign.scheduled_time.isnot(None),
+            Campaign.scheduled_time <= now,
+        )
+        .all()
+    )
 
     executed = []
     skipped = []
 
     for campaign in due_campaigns:
-        contact_list = db.query(ContactList).filter(
-            ContactList.id == campaign.contact_list_id,
-            ContactList.organization_id == current_user.organization_id,
-        ).first()
+        contact_list = (
+            db.query(ContactList)
+            .filter(
+                ContactList.id == campaign.contact_list_id,
+                ContactList.organization_id == current_user.organization_id,
+            )
+            .first()
+        )
 
         if not contact_list:
-            skipped.append({"campaign_id": campaign.id, "reason": "Contact list not found"})
+            skipped.append(
+                {"campaign_id": campaign.id, "reason": "Contact list not found"}
+            )
             continue
 
-        contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+        contacts = (
+            db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+        )
         if not contacts:
-            skipped.append({"campaign_id": campaign.id, "reason": "No contacts in selected list"})
+            skipped.append(
+                {"campaign_id": campaign.id, "reason": "No contacts in selected list"}
+            )
             continue
 
         twilio_sms_config = None
         if campaign.campaign_type == "sms":
-            twilio_sms_config = _get_active_twilio_sms_config(db, current_user.organization_id)
+            twilio_sms_config = _get_active_twilio_sms_config(
+                db, current_user.organization_id
+            )
             if not twilio_sms_config:
-                skipped.append({"campaign_id": campaign.id, "reason": "Twilio SMS is not configured or inactive"})
+                skipped.append(
+                    {
+                        "campaign_id": campaign.id,
+                        "reason": "Twilio SMS is not configured or inactive",
+                    }
+                )
                 continue
 
         try:
-            _ensure_campaign_access(db, current_user.organization_id, campaign.campaign_type)
+            _ensure_campaign_access(
+                db, current_user.organization_id, campaign.campaign_type
+            )
         except HTTPException as exc:
             skipped.append({"campaign_id": campaign.id, "reason": str(exc.detail)})
             continue
 
-        result = _execute_campaign_now(db, campaign, contacts, twilio_sms_config=twilio_sms_config)
+        result = _execute_campaign_now(
+            db, campaign, contacts, twilio_sms_config=twilio_sms_config
+        )
         executed.append(result)
 
     return {
@@ -2044,33 +2306,51 @@ async def run_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    campaign = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.organization_id == current_user.organization_id,
-    ).first()
+    campaign = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     _ensure_campaign_access(db, current_user.organization_id, campaign.campaign_type)
 
-    contact_list = db.query(ContactList).filter(
-        ContactList.id == campaign.contact_list_id,
-        ContactList.organization_id == current_user.organization_id,
-    ).first()
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == campaign.contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
-    contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    contacts = (
+        db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    )
     if not contacts:
-        raise HTTPException(status_code=400, detail="No contacts available in selected list")
+        raise HTTPException(
+            status_code=400, detail="No contacts available in selected list"
+        )
 
     twilio_sms_config = None
     if campaign.campaign_type == "sms":
-        twilio_sms_config = _get_active_twilio_sms_config(db, current_user.organization_id)
+        twilio_sms_config = _get_active_twilio_sms_config(
+            db, current_user.organization_id
+        )
         if not twilio_sms_config:
-            raise HTTPException(status_code=400, detail="Twilio SMS is not configured or inactive")
+            raise HTTPException(
+                status_code=400, detail="Twilio SMS is not configured or inactive"
+            )
 
-    return _execute_campaign_now(db, campaign, contacts, twilio_sms_config=twilio_sms_config)
+    return _execute_campaign_now(
+        db, campaign, contacts, twilio_sms_config=twilio_sms_config
+    )
 
 
 @router.get("/{campaign_id}/logs")
@@ -2085,10 +2365,14 @@ async def get_campaign_logs(
 ):
     limit = max(1, min(limit, 500))
 
-    campaign = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.organization_id == current_user.organization_id,
-    ).first()
+    campaign = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -2102,7 +2386,9 @@ async def get_campaign_logs(
 
     if run_sequence is not None:
         if run_sequence <= 0:
-            raise HTTPException(status_code=400, detail="run_sequence must be greater than 0")
+            raise HTTPException(
+                status_code=400, detail="run_sequence must be greater than 0"
+            )
         query = query.filter(CampaignLog.run_sequence == run_sequence)
 
     total = query.count()
@@ -2126,23 +2412,23 @@ async def get_campaign_logs(
         },
     }
 
+
 import phonenumbers
 from typing import Optional
 
 
 def format_phone_number(
-    phone_raw: Optional[str],
-    country_code: Optional[str] = None
+    phone_raw: Optional[str], country_code: Optional[str] = None
 ) -> Optional[str]:
     """
     Format phone number to E.164 format using country code.
-    
+
     Handles:
     - +91XXXXXXXXXX
     - 91XXXXXXXXXX
     - XXXXXXXXXX (with country)
     - International formats
-    
+
     Returns:
         Formatted phone (+XXXXXXXXXXXX) or None
     """
@@ -2158,8 +2444,7 @@ def format_phone_number(
             parsed = phonenumbers.parse(phone_raw, None)
         else:
             parsed = phonenumbers.parse(
-                phone_raw,
-                country_code.upper() if country_code else None
+                phone_raw, country_code.upper() if country_code else None
             )
 
         # Validate number
@@ -2167,11 +2452,10 @@ def format_phone_number(
             raise ValueError("Invalid phone number")
 
         # Format to E.164
-        return phonenumbers.format_number(
-            parsed,
-            phonenumbers.PhoneNumberFormat.E164
-        )
+        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
     except Exception:
-        print(f"Failed to parse phone number: {phone_raw} with country code: {country_code}")
+        print(
+            f"Failed to parse phone number: {phone_raw} with country code: {country_code}"
+        )
         raise ValueError(f"Invalid phone number: {phone_raw}")
