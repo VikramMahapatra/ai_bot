@@ -126,7 +126,7 @@ export interface AppointmentBookingRequest {
   widget_id: string;
   appointment_at: string;
   name: string;
-  email?: string;
+  email: string;
   phone?: string;
   notes?: string;
   timezone?: string;

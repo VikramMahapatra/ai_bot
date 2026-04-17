@@ -127,13 +127,30 @@ const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIc
 const APPOINTMENT_FORM_PROMPT =
   'If you would like to set a meeting, please fill this short form and I will set it up for you.';
 
+const IST_TIMEZONE = 'Asia/Kolkata';
+
 const getDefaultAppointmentDateTime = () => {
   const seed = new Date(Date.now() + 60 * 60 * 1000);
-  const local = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000).toISOString();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(seed);
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const local = `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:00`;
   return {
     date: local.slice(0, 10),
     time: local.slice(11, 16),
   };
+};
+
+const buildIstIsoDateTime = (date: string, time: string): Date => {
+  return new Date(`${date}T${time}:00+05:30`);
 };
 
 const parseJwtExpiryMs = (token: string): number | null => {
@@ -1194,7 +1211,7 @@ const AgentTestPage: React.FC = () => {
       return;
     }
 
-    const dateValue = new Date(`${appointmentDate}T${appointmentTime}`);
+    const dateValue = buildIstIsoDateTime(appointmentDate, appointmentTime);
     if (Number.isNaN(dateValue.getTime())) {
       setAppointmentError('Invalid date/time.');
       return;
@@ -1212,7 +1229,7 @@ const AgentTestPage: React.FC = () => {
           appointment_at: dateValue.toISOString(),
           name: appointmentName.trim(),
           email: appointmentEmail.trim(),
-          timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
+          timezone: IST_TIMEZONE,
         }),
       });
 
@@ -1223,9 +1240,14 @@ const AgentTestPage: React.FC = () => {
 
       const data = await response.json();
       const confirmation = typeof data?.message === 'string' ? data.message : 'Appointment booked successfully.';
+      const istTimeLabel = new Intl.DateTimeFormat('en-IN', {
+        timeZone: IST_TIMEZONE,
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(dateValue);
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: `Please book an appointment for ${dateValue.toLocaleString()}.` },
+        { role: 'user', content: `Please book an appointment for ${istTimeLabel} (IST).` },
         { role: 'assistant', content: confirmation },
       ]);
       setShowAppointmentForm(false);
@@ -2003,7 +2025,7 @@ const AgentTestPage: React.FC = () => {
                       />
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.9 }}>
                         <Box>
-                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Date</Typography>
+                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Date (IST)</Typography>
                           <TextField
                             type="date"
                             value={appointmentDate}
@@ -2014,7 +2036,7 @@ const AgentTestPage: React.FC = () => {
                           />
                         </Box>
                         <Box>
-                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Time</Typography>
+                          <Typography sx={{ fontSize: '0.68rem', color: '#64748b', mb: 0.2 }}>Time (IST)</Typography>
                           <TextField
                             type="time"
                             value={appointmentTime}
