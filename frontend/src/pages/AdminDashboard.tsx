@@ -619,10 +619,10 @@ const AdminDashboard: React.FC = () => {
             scrollButtons="auto"
             sx={{ borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`, mb: 0.5 }}
           >
-            <Tab label="Recent Leads" />
             <Tab label="Top Conversations" />
-            <Tab label="Agents" />
-            <Tab label="Knowledge Sources" />
+            <Tab label="Recent Leads" />
+            {/* <Tab label="Agents" />
+            <Tab label="Knowledge Sources" /> */}
           </Tabs>
 
           <TabPanel value={tab} index={0}>

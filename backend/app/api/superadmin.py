@@ -7,7 +7,12 @@ from datetime import datetime, timedelta, timezone
 import re
 import secrets
 from app.database import get_db
-from app.auth import get_password_hash, verify_password, create_access_token, require_superadmin
+from app.auth import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    require_superadmin,
+)
 from app.models import (
     Organization,
     User,
@@ -128,12 +133,18 @@ def _build_org_domain(name: str) -> str:
     return f"{base}-{secrets.token_hex(3)}"
 
 
-def _build_org_response(db: Session, org: Organization, admin_user: Optional[User] = None) -> SuperAdminOrganizationResponse:
+def _build_org_response(
+    db: Session, org: Organization, admin_user: Optional[User] = None
+) -> SuperAdminOrganizationResponse:
     if not admin_user:
-        admin_user = db.query(User).filter(
-            User.organization_id == org.id,
-            User.role == UserRole.ADMIN,
-        ).first()
+        admin_user = (
+            db.query(User)
+            .filter(
+                User.organization_id == org.id,
+                User.role == UserRole.ADMIN,
+            )
+            .first()
+        )
     limits = get_or_create_limits(db, org.id)
 
     return SuperAdminOrganizationResponse(
@@ -181,7 +192,9 @@ def _calculate_price_matrix_estimate(
         )
 
     requested_ids = {line.price_matrix_item_id for line in payload.lines}
-    items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(requested_ids)).all()
+    items = (
+        db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(requested_ids)).all()
+    )
     item_by_id = {item.id: item for item in items}
 
     missing_ids = sorted(requested_ids - set(item_by_id.keys()))
@@ -247,7 +260,11 @@ def _load_credit_estimate_share(
     enforce_active: bool = True,
     enforce_not_expired: bool = True,
 ) -> CreditEstimatorShare:
-    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.token == token).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.token == token)
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Shared estimate not found")
 
@@ -258,7 +275,9 @@ def _load_credit_estimate_share(
         now = datetime.now(timezone.utc)
         expires_at = _to_utc(share.expires_at)
         if expires_at <= now:
-            raise HTTPException(status_code=401, detail="Shared estimate link has expired")
+            raise HTTPException(
+                status_code=401, detail="Shared estimate link has expired"
+            )
 
     return share
 
@@ -295,8 +314,12 @@ def _build_credit_share_create_response(
     )
 
 
-def _build_credit_share_list_item_response(share: CreditEstimatorShare) -> CreditEstimatorShareListItemResponse:
-    created_at = _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+def _build_credit_share_list_item_response(
+    share: CreditEstimatorShare,
+) -> CreditEstimatorShareListItemResponse:
+    created_at = (
+        _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+    )
     expires_at = _to_utc(share.expires_at)
     estimate = _parse_estimate_payload(share.estimate_json)
     estimator_input = _parse_input_payload(share.input_json)
@@ -325,7 +348,9 @@ def _build_org_credit_allocation_response(
     return OrganizationCreditAllocationResponse(
         id=allocation.id,
         organization_id=allocation.organization_id,
-        organization_name=org_name_by_id.get(allocation.organization_id, f"Org #{allocation.organization_id}"),
+        organization_name=org_name_by_id.get(
+            allocation.organization_id, f"Org #{allocation.organization_id}"
+        ),
         price_matrix_item_id=allocation.price_matrix_item_id,
         category=matrix_item.category if matrix_item else "Unknown",
         module=matrix_item.module if matrix_item else "Unknown",
@@ -335,7 +360,11 @@ def _build_org_credit_allocation_response(
         credits_per_unit=allocation.credits_per_unit,
         allocated_credits=allocation.allocated_credits,
         is_active=allocation.is_active,
-        created_at=_to_utc(allocation.created_at) if allocation.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(allocation.created_at)
+            if allocation.created_at
+            else datetime.now(timezone.utc)
+        ),
         updated_at=_to_utc(allocation.updated_at) if allocation.updated_at else None,
     )
 
@@ -346,7 +375,9 @@ def _build_org_credit_profile_response(
 ) -> OrganizationCreditProfileResponse:
     return OrganizationCreditProfileResponse(
         organization_id=profile.organization_id,
-        organization_name=org_name_by_id.get(profile.organization_id, f"Org #{profile.organization_id}"),
+        organization_name=org_name_by_id.get(
+            profile.organization_id, f"Org #{profile.organization_id}"
+        ),
         total_price=float(profile.total_price or 0),
         buffer_percent=float(profile.buffer_percent or 0),
         discount_percent=float(profile.discount_percent or 0),
@@ -355,7 +386,11 @@ def _build_org_credit_profile_response(
         end_date=_to_utc(profile.end_date) if profile.end_date else None,
         expiry_days=profile.expiry_days,
         notes=profile.notes,
-        created_at=_to_utc(profile.created_at) if profile.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(profile.created_at)
+            if profile.created_at
+            else datetime.now(timezone.utc)
+        ),
         updated_at=_to_utc(profile.updated_at) if profile.updated_at else None,
     )
 
@@ -401,17 +436,27 @@ def _build_invoice_response(
     return BillingInvoiceResponse(
         id=invoice.id,
         organization_id=invoice.organization_id,
-        organization_name=org_name_by_id.get(invoice.organization_id, f"Org #{invoice.organization_id}"),
+        organization_name=org_name_by_id.get(
+            invoice.organization_id, f"Org #{invoice.organization_id}"
+        ),
         invoice_number=invoice.invoice_number,
         issue_date=_to_utc(invoice.issue_date),
         due_date=_to_utc(invoice.due_date) if invoice.due_date else None,
-        billing_start_date=_to_utc(invoice.billing_start_date) if invoice.billing_start_date else None,
-        billing_end_date=_to_utc(invoice.billing_end_date) if invoice.billing_end_date else None,
+        billing_start_date=(
+            _to_utc(invoice.billing_start_date) if invoice.billing_start_date else None
+        ),
+        billing_end_date=(
+            _to_utc(invoice.billing_end_date) if invoice.billing_end_date else None
+        ),
         amount=float(invoice.amount or 0),
         paid_amount=float(invoice.paid_amount or 0),
         status=invoice.status or "pending",
         notes=invoice.notes,
-        created_at=_to_utc(invoice.created_at) if invoice.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(invoice.created_at)
+            if invoice.created_at
+            else datetime.now(timezone.utc)
+        ),
         updated_at=_to_utc(invoice.updated_at) if invoice.updated_at else None,
     )
 
@@ -425,7 +470,9 @@ def _build_payment_response(
     return BillingPaymentResponse(
         id=payment.id,
         organization_id=payment.organization_id,
-        organization_name=org_name_by_id.get(payment.organization_id, f"Org #{payment.organization_id}"),
+        organization_name=org_name_by_id.get(
+            payment.organization_id, f"Org #{payment.organization_id}"
+        ),
         invoice_id=payment.invoice_id,
         invoice_number=invoice.invoice_number if invoice else None,
         amount=float(payment.amount or 0),
@@ -434,11 +481,17 @@ def _build_payment_response(
         reference=payment.reference,
         status=payment.status or "completed",
         notes=payment.notes,
-        created_at=_to_utc(payment.created_at) if payment.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(payment.created_at)
+            if payment.created_at
+            else datetime.now(timezone.utc)
+        ),
     )
 
 
-def _build_invoice_item_response(item: BillingInvoiceItem) -> BillingInvoiceItemResponse:
+def _build_invoice_item_response(
+    item: BillingInvoiceItem,
+) -> BillingInvoiceItemResponse:
     return BillingInvoiceItemResponse(
         id=item.id,
         invoice_id=item.invoice_id,
@@ -451,7 +504,9 @@ def _build_invoice_item_response(item: BillingInvoiceItem) -> BillingInvoiceItem
         quantity=item.quantity,
         credits_per_unit=item.credits_per_unit,
         allocated_credits=float(item.allocated_credits or 0),
-        created_at=_to_utc(item.created_at) if item.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(item.created_at) if item.created_at else datetime.now(timezone.utc)
+        ),
     )
 
 
@@ -464,9 +519,13 @@ def _build_bill_response(
     return BillingBillResponse(
         id=bill.id,
         organization_id=bill.organization_id,
-        organization_name=org_name_by_id.get(bill.organization_id, f"Org #{bill.organization_id}"),
+        organization_name=org_name_by_id.get(
+            bill.organization_id, f"Org #{bill.organization_id}"
+        ),
         invoice_id=bill.invoice_id,
-        invoice_number=invoice.invoice_number if invoice else f"Invoice #{bill.invoice_id}",
+        invoice_number=(
+            invoice.invoice_number if invoice else f"Invoice #{bill.invoice_id}"
+        ),
         payment_id=bill.payment_id,
         bill_number=bill.bill_number,
         issued_date=_to_utc(bill.issued_date),
@@ -474,7 +533,9 @@ def _build_bill_response(
         payment_method=bill.payment_method,
         payment_reference=bill.payment_reference,
         notes=bill.notes,
-        created_at=_to_utc(bill.created_at) if bill.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(bill.created_at) if bill.created_at else datetime.now(timezone.utc)
+        ),
     )
 
 
@@ -482,15 +543,23 @@ def _snapshot_invoice_items(
     db: Session,
     invoice: BillingInvoice,
 ):
-    rows = db.query(OrganizationCreditAllocation).filter(
-        OrganizationCreditAllocation.organization_id == invoice.organization_id,
-        OrganizationCreditAllocation.is_active == True,
-    ).all()
+    rows = (
+        db.query(OrganizationCreditAllocation)
+        .filter(
+            OrganizationCreditAllocation.organization_id == invoice.organization_id,
+            OrganizationCreditAllocation.is_active == True,
+        )
+        .all()
+    )
     if not rows:
         return
 
     matrix_ids = {row.price_matrix_item_id for row in rows}
-    matrix_items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all() if matrix_ids else []
+    matrix_items = (
+        db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all()
+        if matrix_ids
+        else []
+    )
     matrix_by_id = {item.id: item for item in matrix_items}
 
     for row in rows:
@@ -519,7 +588,9 @@ def _generate_or_update_receipt_for_payment(
     reason_note: Optional[str] = None,
 ) -> BillingBill:
     """Create or update the receipt (bill) record for a payment on an invoice."""
-    existing = db.query(BillingBill).filter(BillingBill.invoice_id == invoice.id).first()
+    existing = (
+        db.query(BillingBill).filter(BillingBill.invoice_id == invoice.id).first()
+    )
     now_utc = datetime.now(timezone.utc)
     if existing:
         existing.amount = round(payment_amount, 2)
@@ -534,7 +605,10 @@ def _generate_or_update_receipt_for_payment(
             change_type="receipt_updated",
             description=f"Receipt {existing.bill_number} updated for invoice {invoice.invoice_number}",
             previous_payload=None,
-            new_payload={"bill_number": existing.bill_number, "amount": float(existing.amount or 0)},
+            new_payload={
+                "bill_number": existing.bill_number,
+                "amount": float(existing.amount or 0),
+            },
         )
         return existing
 
@@ -556,7 +630,11 @@ def _generate_or_update_receipt_for_payment(
         change_type="receipt_generated",
         description=f"Receipt {bill.bill_number} generated for invoice {invoice.invoice_number}",
         previous_payload=None,
-        new_payload={"bill_number": bill.bill_number, "invoice_number": invoice.invoice_number, "amount": round(payment_amount, 2)},
+        new_payload={
+            "bill_number": bill.bill_number,
+            "invoice_number": invoice.invoice_number,
+            "amount": round(payment_amount, 2),
+        },
     )
     return bill
 
@@ -578,7 +656,9 @@ def _generate_bill_for_paid_invoice(
     )
 
 
-def _build_change_log_response(change: OrganizationCreditChangeLog) -> OrganizationCreditChangeLogResponse:
+def _build_change_log_response(
+    change: OrganizationCreditChangeLog,
+) -> OrganizationCreditChangeLogResponse:
     return OrganizationCreditChangeLogResponse(
         id=change.id,
         organization_id=change.organization_id,
@@ -587,7 +667,11 @@ def _build_change_log_response(change: OrganizationCreditChangeLog) -> Organizat
         previous_json=change.previous_json,
         new_json=change.new_json,
         description=change.description,
-        created_at=_to_utc(change.created_at) if change.created_at else datetime.now(timezone.utc),
+        created_at=(
+            _to_utc(change.created_at)
+            if change.created_at
+            else datetime.now(timezone.utc)
+        ),
     )
 
 
@@ -604,10 +688,14 @@ def _recompute_total_price_from_active_rows(
     organization_id: int,
     profile: Optional[OrganizationCreditProfile],
 ) -> float:
-    active_rows = db.query(OrganizationCreditAllocation).filter(
-        OrganizationCreditAllocation.organization_id == organization_id,
-        OrganizationCreditAllocation.is_active == True,
-    ).all()
+    active_rows = (
+        db.query(OrganizationCreditAllocation)
+        .filter(
+            OrganizationCreditAllocation.organization_id == organization_id,
+            OrganizationCreditAllocation.is_active == True,
+        )
+        .all()
+    )
     subtotal = sum(float(row.allocated_credits or 0) for row in active_rows)
     buffer_percent = float(profile.buffer_percent or 0) if profile else 0.0
     discount_percent = float(profile.discount_percent or 0) if profile else 0.0
@@ -626,9 +714,11 @@ def _auto_generate_invoice_for_org_change(
     reason: str,
 ):
     if profile is None:
-        profile = db.query(OrganizationCreditProfile).filter(
-            OrganizationCreditProfile.organization_id == organization_id
-        ).first()
+        profile = (
+            db.query(OrganizationCreditProfile)
+            .filter(OrganizationCreditProfile.organization_id == organization_id)
+            .first()
+        )
     if profile is None:
         profile = OrganizationCreditProfile(
             organization_id=organization_id,
@@ -639,7 +729,9 @@ def _auto_generate_invoice_for_org_change(
         )
         db.add(profile)
 
-    computed_total = _recompute_total_price_from_active_rows(db, organization_id, profile)
+    computed_total = _recompute_total_price_from_active_rows(
+        db, organization_id, profile
+    )
     if profile is not None:
         profile.total_price = computed_total
 
@@ -647,7 +739,9 @@ def _auto_generate_invoice_for_org_change(
         return
 
     now_utc = datetime.now(timezone.utc)
-    normalized_payment_status = _normalize_payment_status(profile.payment_status if profile else "pending")
+    normalized_payment_status = _normalize_payment_status(
+        profile.payment_status if profile else "pending"
+    )
     paid_amount = computed_total if normalized_payment_status == "paid" else 0.0
     invoice_status = _compute_invoice_status(computed_total, paid_amount)
 
@@ -683,7 +777,9 @@ def _auto_generate_invoice_for_org_change(
 
 def _apply_profile_patch(
     profile: OrganizationCreditProfile,
-    patch: Union[OrganizationCreditProfileInput, OrganizationCreditProfileUpdateRequest],
+    patch: Union[
+        OrganizationCreditProfileInput, OrganizationCreditProfileUpdateRequest
+    ],
 ):
     data = patch.model_dump(exclude_unset=True)
     if "total_price" in data and data["total_price"] is not None:
@@ -706,8 +802,7 @@ def _apply_profile_patch(
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)
 async def bootstrap_superadmin(
-    request: SuperAdminBootstrapRequest,
-    db: Session = Depends(get_db)
+    request: SuperAdminBootstrapRequest, db: Session = Depends(get_db)
 ):
     """Create the first superadmin (only if none exists)."""
     existing = db.query(SuperAdmin).first()
@@ -729,15 +824,20 @@ async def bootstrap_superadmin(
 
 @router.post("/login", response_model=SuperAdminLoginResponse)
 async def superadmin_login(
-    request: SuperAdminLoginRequest,
-    db: Session = Depends(get_db)
+    request: SuperAdminLoginRequest, db: Session = Depends(get_db)
 ):
-    superadmin = db.query(SuperAdmin).filter(
-        SuperAdmin.username == request.username
-    ).first()
+    superadmin = (
+        db.query(SuperAdmin).filter(SuperAdmin.username == request.username).first()
+    )
 
-    if not superadmin or not verify_password(request.password, superadmin.hashed_password) or not superadmin.is_active:
-        raise HTTPException(status_code=401, detail="Invalid credentials or inactive superadmin")
+    if (
+        not superadmin
+        or not verify_password(request.password, superadmin.hashed_password)
+        or not superadmin.is_active
+    ):
+        raise HTTPException(
+            status_code=401, detail="Invalid credentials or inactive superadmin"
+        )
 
     access_token = create_access_token(data={"sa": superadmin.id, "role": "SUPERADMIN"})
     return SuperAdminLoginResponse(
@@ -746,11 +846,15 @@ async def superadmin_login(
     )
 
 
-@router.post("/organizations", response_model=SuperAdminOrganizationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/organizations",
+    response_model=SuperAdminOrganizationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_organization_with_admin(
     request: SuperAdminCreateOrganizationRequest,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     org_name = (request.organization_name or "").strip()
     admin_username = (request.admin_username or "").strip()
@@ -760,7 +864,11 @@ async def create_organization_with_admin(
     if not admin_username:
         raise HTTPException(status_code=400, detail="Admin username is required")
 
-    existing_org = db.query(Organization).filter(func.lower(Organization.name) == org_name.lower()).first()
+    existing_org = (
+        db.query(Organization)
+        .filter(func.lower(Organization.name) == org_name.lower())
+        .first()
+    )
     if existing_org:
         raise HTTPException(status_code=400, detail="Organization already exists")
 
@@ -814,8 +922,7 @@ async def create_organization_with_admin(
 
 @router.get("/organizations", response_model=List[SuperAdminOrganizationResponse])
 async def list_organizations(
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    db: Session = Depends(get_db), superadmin: SuperAdmin = Depends(require_superadmin)
 ):
     orgs = db.query(Organization).all()
     return [_build_org_response(db, org) for org in orgs]
@@ -832,19 +939,27 @@ async def update_organization_with_admin(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    admin_user = db.query(User).filter(
-        User.organization_id == org.id,
-        User.role == UserRole.ADMIN,
-    ).first()
+    admin_user = (
+        db.query(User)
+        .filter(
+            User.organization_id == org.id,
+            User.role == UserRole.ADMIN,
+        )
+        .first()
+    )
 
     if request.organization_name is not None:
         org_name = request.organization_name.strip()
         if not org_name:
             raise HTTPException(status_code=400, detail="Organization name is required")
-        duplicate_org = db.query(Organization).filter(
-            func.lower(Organization.name) == org_name.lower(),
-            Organization.id != org.id,
-        ).first()
+        duplicate_org = (
+            db.query(Organization)
+            .filter(
+                func.lower(Organization.name) == org_name.lower(),
+                Organization.id != org.id,
+            )
+            .first()
+        )
         if duplicate_org:
             raise HTTPException(status_code=400, detail="Organization already exists")
         org.name = org_name
@@ -856,31 +971,60 @@ async def update_organization_with_admin(
     if request.effective_joining_date is not None:
         org.effective_joining_date = request.effective_joining_date
 
-    admin_username = request.admin_username.strip() if request.admin_username is not None else None
-    admin_email = str(request.admin_email).strip() if request.admin_email is not None else None
-    admin_password = request.admin_password.strip() if request.admin_password is not None else None
+    admin_username = (
+        request.admin_username.strip() if request.admin_username is not None else None
+    )
+    admin_email = (
+        str(request.admin_email).strip() if request.admin_email is not None else None
+    )
+    admin_password = (
+        request.admin_password.strip() if request.admin_password is not None else None
+    )
 
     if not admin_user:
         if not admin_username:
-            raise HTTPException(status_code=400, detail="Admin username is required to create missing admin")
+            raise HTTPException(
+                status_code=400,
+                detail="Admin username is required to create missing admin",
+            )
         if not admin_email:
-            raise HTTPException(status_code=400, detail="Admin email is required to create missing admin")
+            raise HTTPException(
+                status_code=400,
+                detail="Admin email is required to create missing admin",
+            )
         if not admin_password:
-            raise HTTPException(status_code=400, detail="Admin password is required to create missing admin")
+            raise HTTPException(
+                status_code=400,
+                detail="Admin password is required to create missing admin",
+            )
 
-        existing_username = db.query(User).filter(
-            User.organization_id == org.id,
-            func.lower(User.username) == admin_username.lower(),
-        ).first()
+        existing_username = (
+            db.query(User)
+            .filter(
+                User.organization_id == org.id,
+                func.lower(User.username) == admin_username.lower(),
+            )
+            .first()
+        )
         if existing_username:
-            raise HTTPException(status_code=400, detail="Admin username already exists in this organization")
+            raise HTTPException(
+                status_code=400,
+                detail="Admin username already exists in this organization",
+            )
 
-        existing_email = db.query(User).filter(
-            User.organization_id == org.id,
-            func.lower(User.email) == admin_email.lower(),
-        ).first()
+        existing_email = (
+            db.query(User)
+            .filter(
+                User.organization_id == org.id,
+                func.lower(User.email) == admin_email.lower(),
+            )
+            .first()
+        )
         if existing_email:
-            raise HTTPException(status_code=400, detail="Admin email already exists in this organization")
+            raise HTTPException(
+                status_code=400,
+                detail="Admin email already exists in this organization",
+            )
 
         admin_user = User(
             username=admin_username,
@@ -892,43 +1036,69 @@ async def update_organization_with_admin(
         )
         db.add(admin_user)
     else:
-        if (request.admin_email is not None or request.admin_password is not None) and request.admin_username is None:
-            raise HTTPException(status_code=400, detail="Admin username is required when updating admin credentials")
+        if (
+            request.admin_email is not None or request.admin_password is not None
+        ) and request.admin_username is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Admin username is required when updating admin credentials",
+            )
 
         if request.admin_username is not None:
             if not admin_username:
-                raise HTTPException(status_code=400, detail="Admin username is required")
-            existing_username = db.query(User).filter(
-                User.organization_id == org.id,
-                func.lower(User.username) == admin_username.lower(),
-                User.id != admin_user.id,
-            ).first()
+                raise HTTPException(
+                    status_code=400, detail="Admin username is required"
+                )
+            existing_username = (
+                db.query(User)
+                .filter(
+                    User.organization_id == org.id,
+                    func.lower(User.username) == admin_username.lower(),
+                    User.id != admin_user.id,
+                )
+                .first()
+            )
             if existing_username:
-                raise HTTPException(status_code=400, detail="Admin username already exists in this organization")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Admin username already exists in this organization",
+                )
             admin_user.username = admin_username
 
         if request.admin_email is not None:
             if not admin_email:
                 raise HTTPException(status_code=400, detail="Admin email is required")
-            existing_email = db.query(User).filter(
-                User.organization_id == org.id,
-                func.lower(User.email) == admin_email.lower(),
-                User.id != admin_user.id,
-            ).first()
+            existing_email = (
+                db.query(User)
+                .filter(
+                    User.organization_id == org.id,
+                    func.lower(User.email) == admin_email.lower(),
+                    User.id != admin_user.id,
+                )
+                .first()
+            )
             if existing_email:
-                raise HTTPException(status_code=400, detail="Admin email already exists in this organization")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Admin email already exists in this organization",
+                )
             admin_user.email = admin_email
 
         if request.admin_password is not None:
             if not admin_password:
-                raise HTTPException(status_code=400, detail="Admin password cannot be empty")
+                raise HTTPException(
+                    status_code=400, detail="Admin password cannot be empty"
+                )
             admin_user.hashed_password = get_password_hash(admin_password)
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Failed to update organization details due to duplicate data")
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to update organization details due to duplicate data",
+        )
 
     db.refresh(org)
     db.refresh(admin_user)
@@ -939,7 +1109,7 @@ async def update_organization_with_admin(
 async def get_organization_limits(
     org_id: int,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     limits = get_or_create_limits(db, org_id)
     return limits
@@ -950,9 +1120,9 @@ async def update_organization_limits(
     org_id: int,
     updates: OrganizationLimitsUpdate,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    update_data = updates.dict(exclude_unset=True)   
+    update_data = updates.dict(exclude_unset=True)
     limits = update_limits(db, org_id, update_data)
     return limits
 
@@ -990,7 +1160,11 @@ def _sync_price_matrix_id_sequence(db: Session) -> None:
     )
 
 
-@router.post("/price-matrix", response_model=PriceMatrixItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/price-matrix",
+    response_model=PriceMatrixItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_price_matrix_item(
     payload: PriceMatrixItemCreate,
     db: Session = Depends(get_db),
@@ -1009,7 +1183,10 @@ async def create_price_matrix_item(
         error_text = str(exc).lower()
 
         # Retry once if the primary key sequence is stale.
-        if "price_matrix_items_pkey" in error_text and "duplicate key value" in error_text:
+        if (
+            "price_matrix_items_pkey" in error_text
+            and "duplicate key value" in error_text
+        ):
             _sync_price_matrix_id_sequence(db)
             retry_item = PriceMatrixItem(**payload.model_dump())
             db.add(retry_item)
@@ -1068,22 +1245,35 @@ async def delete_price_matrix_item(
     return {"success": True, "deleted_item_id": item_id}
 
 
-@router.post("/organization-credit-allocations", response_model=List[OrganizationCreditAllocationResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/organization-credit-allocations",
+    response_model=List[OrganizationCreditAllocationResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_organization_credit_allocations(
     payload: OrganizationCreditAllocationCreateRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    organization = db.query(Organization).filter(Organization.id == payload.organization_id).first()
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == payload.organization_id)
+        .first()
+    )
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     if not payload.lines and payload.profile is None:
-        raise HTTPException(status_code=400, detail="Provide at least one allocation line or organization profile details")
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one allocation line or organization profile details",
+        )
 
-    profile = db.query(OrganizationCreditProfile).filter(
-        OrganizationCreditProfile.organization_id == payload.organization_id
-    ).first()
+    profile = (
+        db.query(OrganizationCreditProfile)
+        .filter(OrganizationCreditProfile.organization_id == payload.organization_id)
+        .first()
+    )
     profile_created = False
     if not profile:
         profile = OrganizationCreditProfile(
@@ -1097,7 +1287,9 @@ async def create_organization_credit_allocations(
         profile_created = True
 
     now_utc = datetime.now(timezone.utc)
-    cycle_expired = bool(profile.end_date and _to_utc(profile.end_date).date() < now_utc.date())
+    cycle_expired = bool(
+        profile.end_date and _to_utc(profile.end_date).date() < now_utc.date()
+    )
     has_changes = False
 
     profile_before = {
@@ -1105,7 +1297,9 @@ async def create_organization_credit_allocations(
         "buffer_percent": float(profile.buffer_percent or 0),
         "discount_percent": float(profile.discount_percent or 0),
         "payment_status": _normalize_payment_status(profile.payment_status),
-        "start_date": _to_utc(profile.start_date).isoformat() if profile.start_date else None,
+        "start_date": (
+            _to_utc(profile.start_date).isoformat() if profile.start_date else None
+        ),
         "end_date": _to_utc(profile.end_date).isoformat() if profile.end_date else None,
         "expiry_days": profile.expiry_days,
         "notes": profile.notes,
@@ -1118,17 +1312,25 @@ async def create_organization_credit_allocations(
             "buffer_percent": float(profile.buffer_percent or 0),
             "discount_percent": float(profile.discount_percent or 0),
             "payment_status": _normalize_payment_status(profile.payment_status),
-            "start_date": _to_utc(profile.start_date).isoformat() if profile.start_date else None,
-            "end_date": _to_utc(profile.end_date).isoformat() if profile.end_date else None,
+            "start_date": (
+                _to_utc(profile.start_date).isoformat() if profile.start_date else None
+            ),
+            "end_date": (
+                _to_utc(profile.end_date).isoformat() if profile.end_date else None
+            ),
             "expiry_days": profile.expiry_days,
             "notes": profile.notes,
         }
-        if profile_created or _json_dump_stable(profile_before) != _json_dump_stable(profile_after):
+        if profile_created or _json_dump_stable(profile_before) != _json_dump_stable(
+            profile_after
+        ):
             has_changes = True
             _create_credit_change_log(
                 db=db,
                 organization_id=payload.organization_id,
-                change_type="profile_update" if not profile_created else "profile_create",
+                change_type=(
+                    "profile_update" if not profile_created else "profile_create"
+                ),
                 description="Organization credit profile updated",
                 previous_payload=profile_before if not profile_created else None,
                 new_payload=profile_after,
@@ -1151,17 +1353,27 @@ async def create_organization_credit_allocations(
             )
 
         matrix_ids = {line.price_matrix_item_id for line in payload.lines}
-        matrix_items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all()
+        matrix_items = (
+            db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all()
+        )
         matrix_by_id = {item.id: item for item in matrix_items}
         missing_ids = sorted(matrix_ids - set(matrix_by_id.keys()))
         if missing_ids:
-            raise HTTPException(status_code=404, detail=f"Price matrix item(s) not found: {', '.join(map(str, missing_ids))}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Price matrix item(s) not found: {', '.join(map(str, missing_ids))}",
+            )
 
         if cycle_expired:
-            old_active_rows = db.query(OrganizationCreditAllocation).filter(
-                OrganizationCreditAllocation.organization_id == payload.organization_id,
-                OrganizationCreditAllocation.is_active == True,
-            ).all()
+            old_active_rows = (
+                db.query(OrganizationCreditAllocation)
+                .filter(
+                    OrganizationCreditAllocation.organization_id
+                    == payload.organization_id,
+                    OrganizationCreditAllocation.is_active == True,
+                )
+                .all()
+            )
             for old_row in old_active_rows:
                 old_row.is_active = False
                 has_changes = True
@@ -1182,17 +1394,26 @@ async def create_organization_credit_allocations(
                 )
             existing_active_rows = []
         else:
-            existing_active_rows = db.query(OrganizationCreditAllocation).filter(
-                OrganizationCreditAllocation.organization_id == payload.organization_id,
-                OrganizationCreditAllocation.is_active == True,
-                OrganizationCreditAllocation.price_matrix_item_id.in_(matrix_ids),
-            ).all()
+            existing_active_rows = (
+                db.query(OrganizationCreditAllocation)
+                .filter(
+                    OrganizationCreditAllocation.organization_id
+                    == payload.organization_id,
+                    OrganizationCreditAllocation.is_active == True,
+                    OrganizationCreditAllocation.price_matrix_item_id.in_(matrix_ids),
+                )
+                .all()
+            )
 
         existing_count_by_matrix_id = {}
         for row in existing_active_rows:
-            existing_count_by_matrix_id[row.price_matrix_item_id] = existing_count_by_matrix_id.get(row.price_matrix_item_id, 0) + 1
+            existing_count_by_matrix_id[row.price_matrix_item_id] = (
+                existing_count_by_matrix_id.get(row.price_matrix_item_id, 0) + 1
+            )
         duplicate_active_matrix_ids = sorted(
-            matrix_id for matrix_id, count in existing_count_by_matrix_id.items() if count > 1
+            matrix_id
+            for matrix_id, count in existing_count_by_matrix_id.items()
+            if count > 1
         )
         if duplicate_active_matrix_ids:
             duplicate_list = ", ".join(map(str, duplicate_active_matrix_ids))
@@ -1200,7 +1421,9 @@ async def create_organization_credit_allocations(
                 status_code=400,
                 detail=f"Price matrix row already exists as duplicate active subscription: {duplicate_list}",
             )
-        existing_row_by_matrix_id = {row.price_matrix_item_id: row for row in existing_active_rows}
+        existing_row_by_matrix_id = {
+            row.price_matrix_item_id: row for row in existing_active_rows
+        }
 
         for line in payload.lines:
             matrix_item = matrix_by_id[line.price_matrix_item_id]
@@ -1211,7 +1434,9 @@ async def create_organization_credit_allocations(
             allocated_credits = line.allocated_credits
             if allocated_credits is None:
                 if line.quantity is not None:
-                    allocated_credits = float(line.quantity) * float(credits_per_unit or 0)
+                    allocated_credits = float(line.quantity) * float(
+                        credits_per_unit or 0
+                    )
                 else:
                     allocated_credits = 0.0
 
@@ -1230,7 +1455,9 @@ async def create_organization_credit_allocations(
                     "credits_per_unit": existing_row.credits_per_unit,
                     "allocated_credits": existing_row.allocated_credits,
                 }
-                if _json_dump_stable(previous_payload) != _json_dump_stable(new_payload):
+                if _json_dump_stable(previous_payload) != _json_dump_stable(
+                    new_payload
+                ):
                     has_changes = True
                     _create_credit_change_log(
                         db=db,
@@ -1294,7 +1521,10 @@ async def create_organization_credit_allocations(
     ]
 
 
-@router.get("/organization-credit-allocations", response_model=List[OrganizationCreditAllocationResponse])
+@router.get(
+    "/organization-credit-allocations",
+    response_model=List[OrganizationCreditAllocationResponse],
+)
 async def list_organization_credit_allocations(
     organization_id: Optional[int] = None,
     search: Optional[str] = None,
@@ -1306,7 +1536,9 @@ async def list_organization_credit_allocations(
     if active_only:
         query = query.filter(OrganizationCreditAllocation.is_active == True)
     if organization_id is not None:
-        query = query.filter(OrganizationCreditAllocation.organization_id == organization_id)
+        query = query.filter(
+            OrganizationCreditAllocation.organization_id == organization_id
+        )
 
     rows = query.order_by(
         OrganizationCreditAllocation.created_at.desc(),
@@ -1318,7 +1550,9 @@ async def list_organization_credit_allocations(
     org_ids = {row.organization_id for row in rows}
     matrix_ids = {row.price_matrix_item_id for row in rows}
     orgs = db.query(Organization).filter(Organization.id.in_(org_ids)).all()
-    matrix_items = db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all()
+    matrix_items = (
+        db.query(PriceMatrixItem).filter(PriceMatrixItem.id.in_(matrix_ids)).all()
+    )
     org_name_by_id = {org.id: org.name for org in orgs}
     matrix_by_id = {item.id: item for item in matrix_items}
 
@@ -1334,7 +1568,8 @@ async def list_organization_credit_allocations(
     term = (search or "").strip().lower()
     if term:
         responses = [
-            row for row in responses
+            row
+            for row in responses
             if term in row.organization_name.lower()
             or term in row.category.lower()
             or term in row.module.lower()
@@ -1344,19 +1579,26 @@ async def list_organization_credit_allocations(
     return responses
 
 
-@router.get("/organization-credit-allocations/profile/{organization_id}", response_model=OrganizationCreditProfileResponse)
+@router.get(
+    "/organization-credit-allocations/profile/{organization_id}",
+    response_model=OrganizationCreditProfileResponse,
+)
 async def get_organization_credit_profile(
     organization_id: int,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    organization = db.query(Organization).filter(Organization.id == organization_id).first()
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    profile = db.query(OrganizationCreditProfile).filter(
-        OrganizationCreditProfile.organization_id == organization_id
-    ).first()
+    profile = (
+        db.query(OrganizationCreditProfile)
+        .filter(OrganizationCreditProfile.organization_id == organization_id)
+        .first()
+    )
     if not profile:
         profile = OrganizationCreditProfile(
             organization_id=organization_id,
@@ -1369,23 +1611,32 @@ async def get_organization_credit_profile(
         db.commit()
         db.refresh(profile)
 
-    return _build_org_credit_profile_response(profile, {organization.id: organization.name})
+    return _build_org_credit_profile_response(
+        profile, {organization.id: organization.name}
+    )
 
 
-@router.put("/organization-credit-allocations/profile/{organization_id}", response_model=OrganizationCreditProfileResponse)
+@router.put(
+    "/organization-credit-allocations/profile/{organization_id}",
+    response_model=OrganizationCreditProfileResponse,
+)
 async def update_organization_credit_profile(
     organization_id: int,
     payload: OrganizationCreditProfileUpdateRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    organization = db.query(Organization).filter(Organization.id == organization_id).first()
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    profile = db.query(OrganizationCreditProfile).filter(
-        OrganizationCreditProfile.organization_id == organization_id
-    ).first()
+    profile = (
+        db.query(OrganizationCreditProfile)
+        .filter(OrganizationCreditProfile.organization_id == organization_id)
+        .first()
+    )
     if not profile:
         profile = OrganizationCreditProfile(
             organization_id=organization_id,
@@ -1400,18 +1651,29 @@ async def update_organization_credit_profile(
     db.commit()
     db.refresh(profile)
 
-    return _build_org_credit_profile_response(profile, {organization.id: organization.name})
+    return _build_org_credit_profile_response(
+        profile, {organization.id: organization.name}
+    )
 
 
-@router.get("/organization-credit-allocations/summary", response_model=List[OrganizationCreditAllocationSummaryResponse])
+@router.get(
+    "/organization-credit-allocations/summary",
+    response_model=List[OrganizationCreditAllocationSummaryResponse],
+)
 async def summarize_organization_credit_allocations(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    rows = db.query(OrganizationCreditAllocation).filter(OrganizationCreditAllocation.is_active == True).all()
+    rows = (
+        db.query(OrganizationCreditAllocation)
+        .filter(OrganizationCreditAllocation.is_active == True)
+        .all()
+    )
     profiles = db.query(OrganizationCreditProfile).all()
 
-    org_ids = {row.organization_id for row in rows} | {profile.organization_id for profile in profiles}
+    org_ids = {row.organization_id for row in rows} | {
+        profile.organization_id for profile in profiles
+    }
     if not org_ids:
         return []
 
@@ -1433,19 +1695,35 @@ async def summarize_organization_credit_allocations(
 
     summaries: List[OrganizationCreditAllocationSummaryResponse] = []
     for org_id in sorted(org_ids):
-        values = summary_map.get(org_id, {"total_allocated_credits": 0.0, "row_count": 0})
+        values = summary_map.get(
+            org_id, {"total_allocated_credits": 0.0, "row_count": 0}
+        )
         profile = profile_by_org_id.get(org_id)
         summaries.append(
             OrganizationCreditAllocationSummaryResponse(
                 organization_id=org_id,
                 organization_name=org_name_by_id.get(org_id, f"Org #{org_id}"),
                 total_allocated_credits=round(values["total_allocated_credits"], 2),
-                total_price=round(float(profile.total_price or 0), 2) if profile else 0.0,
-                buffer_percent=round(float(profile.buffer_percent or 0), 2) if profile else 0.0,
-                discount_percent=round(float(profile.discount_percent or 0), 2) if profile else 0.0,
-                payment_status=_normalize_payment_status(profile.payment_status if profile else "pending"),
-                start_date=_to_utc(profile.start_date) if profile and profile.start_date else None,
-                end_date=_to_utc(profile.end_date) if profile and profile.end_date else None,
+                total_price=(
+                    round(float(profile.total_price or 0), 2) if profile else 0.0
+                ),
+                buffer_percent=(
+                    round(float(profile.buffer_percent or 0), 2) if profile else 0.0
+                ),
+                discount_percent=(
+                    round(float(profile.discount_percent or 0), 2) if profile else 0.0
+                ),
+                payment_status=_normalize_payment_status(
+                    profile.payment_status if profile else "pending"
+                ),
+                start_date=(
+                    _to_utc(profile.start_date)
+                    if profile and profile.start_date
+                    else None
+                ),
+                end_date=(
+                    _to_utc(profile.end_date) if profile and profile.end_date else None
+                ),
                 expiry_days=profile.expiry_days if profile else None,
                 notes=profile.notes if profile else None,
                 row_count=values["row_count"],
@@ -1455,7 +1733,10 @@ async def summarize_organization_credit_allocations(
     return summaries
 
 
-@router.get("/organization-credit-allocations/changes", response_model=List[OrganizationCreditChangeLogResponse])
+@router.get(
+    "/organization-credit-allocations/changes",
+    response_model=List[OrganizationCreditChangeLogResponse],
+)
 async def list_organization_credit_changes(
     organization_id: Optional[int] = None,
     change_type: Optional[str] = None,
@@ -1466,14 +1747,22 @@ async def list_organization_credit_changes(
     safe_limit = max(1, min(limit, 1000))
     query = db.query(OrganizationCreditChangeLog)
     if organization_id is not None:
-        query = query.filter(OrganizationCreditChangeLog.organization_id == organization_id)
+        query = query.filter(
+            OrganizationCreditChangeLog.organization_id == organization_id
+        )
     if change_type and change_type.strip():
-        query = query.filter(OrganizationCreditChangeLog.change_type == change_type.strip())
+        query = query.filter(
+            OrganizationCreditChangeLog.change_type == change_type.strip()
+        )
 
-    rows = query.order_by(
-        OrganizationCreditChangeLog.created_at.desc(),
-        OrganizationCreditChangeLog.id.desc(),
-    ).limit(safe_limit).all()
+    rows = (
+        query.order_by(
+            OrganizationCreditChangeLog.created_at.desc(),
+            OrganizationCreditChangeLog.id.desc(),
+        )
+        .limit(safe_limit)
+        .all()
+    )
     return [_build_change_log_response(row) for row in rows]
 
 
@@ -1492,7 +1781,9 @@ async def list_billing_invoices(
     if normalized_status and normalized_status != "all":
         query = query.filter(func.lower(BillingInvoice.status) == normalized_status)
 
-    rows = query.order_by(BillingInvoice.created_at.desc(), BillingInvoice.id.desc()).all()
+    rows = query.order_by(
+        BillingInvoice.created_at.desc(), BillingInvoice.id.desc()
+    ).all()
     if not rows:
         return []
 
@@ -1502,7 +1793,9 @@ async def list_billing_invoices(
     return [_build_invoice_response(row, org_name_by_id) for row in rows]
 
 
-@router.get("/billing/invoices/{invoice_id}", response_model=BillingInvoiceDetailResponse)
+@router.get(
+    "/billing/invoices/{invoice_id}", response_model=BillingInvoiceDetailResponse
+)
 async def get_billing_invoice_detail(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -1512,29 +1805,48 @@ async def get_billing_invoice_detail(
     if not invoice:
         raise HTTPException(status_code=404, detail="Billing invoice not found")
 
-    organization = db.query(Organization).filter(Organization.id == invoice.organization_id).first()
-    items = db.query(BillingInvoiceItem).filter(
-        BillingInvoiceItem.invoice_id == invoice.id
-    ).order_by(BillingInvoiceItem.id.asc()).all()
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == invoice.organization_id)
+        .first()
+    )
+    items = (
+        db.query(BillingInvoiceItem)
+        .filter(BillingInvoiceItem.invoice_id == invoice.id)
+        .order_by(BillingInvoiceItem.id.asc())
+        .all()
+    )
     if not items:
         _snapshot_invoice_items(db, invoice)
         db.commit()
-        items = db.query(BillingInvoiceItem).filter(
-            BillingInvoiceItem.invoice_id == invoice.id
-        ).order_by(BillingInvoiceItem.id.asc()).all()
+        items = (
+            db.query(BillingInvoiceItem)
+            .filter(BillingInvoiceItem.invoice_id == invoice.id)
+            .order_by(BillingInvoiceItem.id.asc())
+            .all()
+        )
 
-    bills = db.query(BillingBill).filter(
-        BillingBill.invoice_id == invoice.id
-    ).order_by(BillingBill.id.desc()).all()
+    bills = (
+        db.query(BillingBill)
+        .filter(BillingBill.invoice_id == invoice.id)
+        .order_by(BillingBill.id.desc())
+        .all()
+    )
 
-    org_name_by_id = {invoice.organization_id: organization.name if organization else f"Org #{invoice.organization_id}"}
+    org_name_by_id = {
+        invoice.organization_id: (
+            organization.name if organization else f"Org #{invoice.organization_id}"
+        )
+    }
     invoice_by_id = {invoice.id: invoice}
     base_invoice = _build_invoice_response(invoice, org_name_by_id)
 
     return BillingInvoiceDetailResponse(
         **base_invoice.model_dump(),
         items=[_build_invoice_item_response(item) for item in items],
-        bills=[_build_bill_response(bill, org_name_by_id, invoice_by_id) for bill in bills],
+        bills=[
+            _build_bill_response(bill, org_name_by_id, invoice_by_id) for bill in bills
+        ],
     )
 
 
@@ -1544,7 +1856,9 @@ async def export_billing_invoice(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    detail = await get_billing_invoice_detail(invoice_id=invoice_id, db=db, superadmin=superadmin)
+    detail = await get_billing_invoice_detail(
+        invoice_id=invoice_id, db=db, superadmin=superadmin
+    )
     return {
         "document_type": "invoice",
         "generated_at": _to_utc(datetime.now(timezone.utc)).isoformat(),
@@ -1552,7 +1866,10 @@ async def export_billing_invoice(
     }
 
 
-@router.post("/billing/invoices/{invoice_id}/mark-paid", response_model=BillingInvoiceMarkPaidResponse)
+@router.post(
+    "/billing/invoices/{invoice_id}/mark-paid",
+    response_model=BillingInvoiceMarkPaidResponse,
+)
 async def mark_billing_invoice_paid(
     invoice_id: int,
     payload: BillingInvoiceMarkPaidRequest,
@@ -1563,7 +1880,9 @@ async def mark_billing_invoice_paid(
     if not invoice:
         raise HTTPException(status_code=404, detail="Billing invoice not found")
 
-    total_outstanding = round(float(invoice.amount or 0) - float(invoice.paid_amount or 0), 2)
+    total_outstanding = round(
+        float(invoice.amount or 0) - float(invoice.paid_amount or 0), 2
+    )
     if total_outstanding <= 0:
         raise HTTPException(status_code=400, detail="Invoice is already fully paid")
 
@@ -1601,7 +1920,11 @@ async def mark_billing_invoice_paid(
             change_type="credit_applied",
             description=f"Credit of {apply_amount} applied from credit payment #{cp.id} to invoice {invoice.invoice_number}",
             previous_payload=None,
-            new_payload={"credit_payment_id": cp.id, "applied": apply_amount, "invoice_number": invoice.invoice_number},
+            new_payload={
+                "credit_payment_id": cp.id,
+                "applied": apply_amount,
+                "invoice_number": invoice.invoice_number,
+            },
         )
 
     # Step 2: Determine actual payment amount from user input
@@ -1648,23 +1971,34 @@ async def mark_billing_invoice_paid(
         db.flush()
 
     # Step 5: Update the invoice
-    previous_invoice_payload = {"paid_amount": float(invoice.paid_amount or 0), "status": invoice.status or "pending"}
+    previous_invoice_payload = {
+        "paid_amount": float(invoice.paid_amount or 0),
+        "status": invoice.status or "pending",
+    }
     total_credited_now = round(credit_applied + actual_payment, 2)
     invoice.paid_amount = round(float(invoice.paid_amount or 0) + total_credited_now, 2)
-    invoice.status = _compute_invoice_status(float(invoice.amount or 0), float(invoice.paid_amount or 0))
+    invoice.status = _compute_invoice_status(
+        float(invoice.amount or 0), float(invoice.paid_amount or 0)
+    )
     _create_credit_change_log(
         db=db,
         organization_id=invoice.organization_id,
         change_type="invoice_payment_received",
         description=f"Payment received for invoice {invoice.invoice_number}",
         previous_payload=previous_invoice_payload,
-        new_payload={"paid_amount": float(invoice.paid_amount or 0), "status": invoice.status, "payment_id": payment.id},
+        new_payload={
+            "paid_amount": float(invoice.paid_amount or 0),
+            "status": invoice.status,
+            "payment_id": payment.id,
+        },
     )
 
     # Step 6: Create partial residual invoice if underpaid
     partial_invoice_obj = None
     if invoice.status == "partial":
-        remaining = round(float(invoice.amount or 0) - float(invoice.paid_amount or 0), 2)
+        remaining = round(
+            float(invoice.amount or 0) - float(invoice.paid_amount or 0), 2
+        )
         partial_invoice_obj = BillingInvoice(
             organization_id=invoice.organization_id,
             invoice_number=f"INV-{invoice.organization_id}-{int(now_utc.timestamp())}-{secrets.token_hex(2).upper()}-R",
@@ -1685,7 +2019,10 @@ async def mark_billing_invoice_paid(
             change_type="partial_invoice_created",
             description=f"Partial invoice {partial_invoice_obj.invoice_number} created for remaining balance of {remaining}",
             previous_payload=None,
-            new_payload={"invoice_number": partial_invoice_obj.invoice_number, "amount": remaining},
+            new_payload={
+                "invoice_number": partial_invoice_obj.invoice_number,
+                "amount": remaining,
+            },
         )
 
     # Step 7: Generate / update the receipt (bill)
@@ -1704,8 +2041,16 @@ async def mark_billing_invoice_paid(
     if partial_invoice_obj:
         db.refresh(partial_invoice_obj)
 
-    organization = db.query(Organization).filter(Organization.id == invoice.organization_id).first()
-    org_name_by_id = {invoice.organization_id: organization.name if organization else f"Org #{invoice.organization_id}"}
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == invoice.organization_id)
+        .first()
+    )
+    org_name_by_id = {
+        invoice.organization_id: (
+            organization.name if organization else f"Org #{invoice.organization_id}"
+        )
+    }
     invoice_by_id = {invoice.id: invoice}
     if partial_invoice_obj:
         invoice_by_id[partial_invoice_obj.id] = partial_invoice_obj
@@ -1714,7 +2059,11 @@ async def mark_billing_invoice_paid(
         invoice=_build_invoice_response(invoice, org_name_by_id),
         payment=_build_payment_response(payment, org_name_by_id, invoice_by_id),
         bill=_build_bill_response(bill, org_name_by_id, invoice_by_id),
-        partial_invoice=_build_invoice_response(partial_invoice_obj, org_name_by_id) if partial_invoice_obj else None,
+        partial_invoice=(
+            _build_invoice_response(partial_invoice_obj, org_name_by_id)
+            if partial_invoice_obj
+            else None
+        ),
         credit_note=round(credit_note_amount, 2) if credit_note_amount > 0 else None,
         credit_applied=round(credit_applied, 2) if credit_applied > 0 else None,
     )
@@ -1726,29 +2075,41 @@ async def backfill_billing_invoices_for_existing_entries(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    active_org_rows = db.query(OrganizationCreditAllocation.organization_id).filter(
-        OrganizationCreditAllocation.is_active == True
-    ).distinct().all()
-    organization_ids = [int(row[0]) for row in active_org_rows if row and row[0] is not None]
+    active_org_rows = (
+        db.query(OrganizationCreditAllocation.organization_id)
+        .filter(OrganizationCreditAllocation.is_active == True)
+        .distinct()
+        .all()
+    )
+    organization_ids = [
+        int(row[0]) for row in active_org_rows if row and row[0] is not None
+    ]
 
     created_org_ids: List[int] = []
     skipped_org_ids: List[int] = []
     skipped_with_existing_invoice: List[int] = []
 
     for organization_id in organization_ids:
-        has_existing_invoice = db.query(BillingInvoice.id).filter(
-            BillingInvoice.organization_id == organization_id
-        ).first() is not None
+        has_existing_invoice = (
+            db.query(BillingInvoice.id)
+            .filter(BillingInvoice.organization_id == organization_id)
+            .first()
+            is not None
+        )
 
         if has_existing_invoice and not force:
             skipped_org_ids.append(organization_id)
             skipped_with_existing_invoice.append(organization_id)
             continue
 
-        profile = db.query(OrganizationCreditProfile).filter(
-            OrganizationCreditProfile.organization_id == organization_id
-        ).first()
-        computed_total = _recompute_total_price_from_active_rows(db, organization_id, profile)
+        profile = (
+            db.query(OrganizationCreditProfile)
+            .filter(OrganizationCreditProfile.organization_id == organization_id)
+            .first()
+        )
+        computed_total = _recompute_total_price_from_active_rows(
+            db, organization_id, profile
+        )
         if computed_total <= 0:
             skipped_org_ids.append(organization_id)
             continue
@@ -1810,9 +2171,17 @@ async def get_billing_bill(
     if not bill:
         raise HTTPException(status_code=404, detail="Billing bill not found")
 
-    organization = db.query(Organization).filter(Organization.id == bill.organization_id).first()
-    invoice = db.query(BillingInvoice).filter(BillingInvoice.id == bill.invoice_id).first()
-    org_name_by_id = {bill.organization_id: organization.name if organization else f"Org #{bill.organization_id}"}
+    organization = (
+        db.query(Organization).filter(Organization.id == bill.organization_id).first()
+    )
+    invoice = (
+        db.query(BillingInvoice).filter(BillingInvoice.id == bill.invoice_id).first()
+    )
+    org_name_by_id = {
+        bill.organization_id: (
+            organization.name if organization else f"Org #{bill.organization_id}"
+        )
+    }
     invoice_by_id = {bill.invoice_id: invoice} if invoice else {}
     return _build_bill_response(bill, org_name_by_id, invoice_by_id)
 
@@ -1824,7 +2193,9 @@ async def export_billing_bill(
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     bill = await get_billing_bill(bill_id=bill_id, db=db, superadmin=superadmin)
-    invoice_detail = await get_billing_invoice_detail(invoice_id=bill.invoice_id, db=db, superadmin=superadmin)
+    invoice_detail = await get_billing_invoice_detail(
+        invoice_id=bill.invoice_id, db=db, superadmin=superadmin
+    )
     return {
         "document_type": "bill",
         "generated_at": _to_utc(datetime.now(timezone.utc)).isoformat(),
@@ -1851,33 +2222,51 @@ async def list_billing_payments(
     if normalized_status and normalized_status != "all":
         query = query.filter(func.lower(BillingPayment.status) == normalized_status)
 
-    rows = query.order_by(BillingPayment.created_at.desc(), BillingPayment.id.desc()).all()
+    rows = query.order_by(
+        BillingPayment.created_at.desc(), BillingPayment.id.desc()
+    ).all()
     if not rows:
         return []
 
     org_ids = {row.organization_id for row in rows}
     invoice_ids = {row.invoice_id for row in rows if row.invoice_id is not None}
     orgs = db.query(Organization).filter(Organization.id.in_(org_ids)).all()
-    invoices = db.query(BillingInvoice).filter(BillingInvoice.id.in_(invoice_ids)).all() if invoice_ids else []
+    invoices = (
+        db.query(BillingInvoice).filter(BillingInvoice.id.in_(invoice_ids)).all()
+        if invoice_ids
+        else []
+    )
 
     org_name_by_id = {org.id: org.name for org in orgs}
     invoice_by_id = {invoice.id: invoice for invoice in invoices}
     return [_build_payment_response(row, org_name_by_id, invoice_by_id) for row in rows]
 
 
-@router.post("/billing/payments", response_model=BillingPaymentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/billing/payments",
+    response_model=BillingPaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_billing_payment(
     payload: BillingPaymentCreateRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    organization = db.query(Organization).filter(Organization.id == payload.organization_id).first()
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == payload.organization_id)
+        .first()
+    )
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     invoice = None
     if payload.invoice_id is not None:
-        invoice = db.query(BillingInvoice).filter(BillingInvoice.id == payload.invoice_id).first()
+        invoice = (
+            db.query(BillingInvoice)
+            .filter(BillingInvoice.id == payload.invoice_id)
+            .first()
+        )
         if not invoice:
             raise HTTPException(status_code=404, detail="Billing invoice not found")
         if invoice.organization_id != payload.organization_id:
@@ -1887,7 +2276,9 @@ async def create_billing_payment(
             )
 
     payment_date = payload.payment_date or datetime.now(timezone.utc)
-    normalized_payment_status = (payload.status or "completed").strip().lower() or "completed"
+    normalized_payment_status = (
+        payload.status or "completed"
+    ).strip().lower() or "completed"
     payment = BillingPayment(
         organization_id=payload.organization_id,
         invoice_id=payload.invoice_id,
@@ -1923,8 +2314,12 @@ async def create_billing_payment(
             "paid_amount": float(invoice.paid_amount or 0),
             "status": invoice.status or "pending",
         }
-        invoice.paid_amount = float(invoice.paid_amount or 0) + float(payload.amount or 0)
-        invoice.status = _compute_invoice_status(float(invoice.amount or 0), float(invoice.paid_amount or 0))
+        invoice.paid_amount = float(invoice.paid_amount or 0) + float(
+            payload.amount or 0
+        )
+        invoice.status = _compute_invoice_status(
+            float(invoice.amount or 0), float(invoice.paid_amount or 0)
+        )
         _create_credit_change_log(
             db=db,
             organization_id=payload.organization_id,
@@ -1959,16 +2354,25 @@ async def create_billing_payment(
     )
 
 
-@router.put("/organization-credit-allocations/{allocation_id}", response_model=OrganizationCreditAllocationResponse)
+@router.put(
+    "/organization-credit-allocations/{allocation_id}",
+    response_model=OrganizationCreditAllocationResponse,
+)
 async def update_organization_credit_allocation(
     allocation_id: int,
     payload: OrganizationCreditAllocationUpdateRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    row = db.query(OrganizationCreditAllocation).filter(OrganizationCreditAllocation.id == allocation_id).first()
+    row = (
+        db.query(OrganizationCreditAllocation)
+        .filter(OrganizationCreditAllocation.id == allocation_id)
+        .first()
+    )
     if not row:
-        raise HTTPException(status_code=404, detail="Organization credit allocation not found")
+        raise HTTPException(
+            status_code=404, detail="Organization credit allocation not found"
+        )
 
     previous_payload = {
         "quantity": row.quantity,
@@ -1995,7 +2399,9 @@ async def update_organization_credit_allocation(
         "allocated_credits": row.allocated_credits,
         "is_active": row.is_active,
     }
-    allocation_changed = _json_dump_stable(previous_payload) != _json_dump_stable(new_payload)
+    allocation_changed = _json_dump_stable(previous_payload) != _json_dump_stable(
+        new_payload
+    )
     if allocation_changed:
         _create_credit_change_log(
             db=db,
@@ -2006,9 +2412,11 @@ async def update_organization_credit_allocation(
             previous_payload=previous_payload,
             new_payload=new_payload,
         )
-        profile = db.query(OrganizationCreditProfile).filter(
-            OrganizationCreditProfile.organization_id == row.organization_id
-        ).first()
+        profile = (
+            db.query(OrganizationCreditProfile)
+            .filter(OrganizationCreditProfile.organization_id == row.organization_id)
+            .first()
+        )
         _auto_generate_invoice_for_org_change(
             db=db,
             organization_id=row.organization_id,
@@ -2019,12 +2427,24 @@ async def update_organization_credit_allocation(
     db.commit()
     db.refresh(row)
 
-    organization = db.query(Organization).filter(Organization.id == row.organization_id).first()
-    matrix_item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == row.price_matrix_item_id).first()
+    organization = (
+        db.query(Organization).filter(Organization.id == row.organization_id).first()
+    )
+    matrix_item = (
+        db.query(PriceMatrixItem)
+        .filter(PriceMatrixItem.id == row.price_matrix_item_id)
+        .first()
+    )
     return _build_org_credit_allocation_response(
         allocation=row,
-        org_name_by_id={row.organization_id: organization.name if organization else f"Org #{row.organization_id}"},
-        matrix_item_by_id={row.price_matrix_item_id: matrix_item} if matrix_item else {},
+        org_name_by_id={
+            row.organization_id: (
+                organization.name if organization else f"Org #{row.organization_id}"
+            )
+        },
+        matrix_item_by_id=(
+            {row.price_matrix_item_id: matrix_item} if matrix_item else {}
+        ),
     )
 
 
@@ -2034,9 +2454,15 @@ async def delete_organization_credit_allocation(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    row = db.query(OrganizationCreditAllocation).filter(OrganizationCreditAllocation.id == allocation_id).first()
+    row = (
+        db.query(OrganizationCreditAllocation)
+        .filter(OrganizationCreditAllocation.id == allocation_id)
+        .first()
+    )
     if not row:
-        raise HTTPException(status_code=404, detail="Organization credit allocation not found")
+        raise HTTPException(
+            status_code=404, detail="Organization credit allocation not found"
+        )
 
     previous_payload = {
         "quantity": row.quantity,
@@ -2056,9 +2482,11 @@ async def delete_organization_credit_allocation(
             previous_payload=previous_payload,
             new_payload={"is_active": False},
         )
-        profile = db.query(OrganizationCreditProfile).filter(
-            OrganizationCreditProfile.organization_id == row.organization_id
-        ).first()
+        profile = (
+            db.query(OrganizationCreditProfile)
+            .filter(OrganizationCreditProfile.organization_id == row.organization_id)
+            .first()
+        )
         _auto_generate_invoice_for_org_change(
             db=db,
             organization_id=row.organization_id,
@@ -2078,7 +2506,9 @@ async def estimate_price_matrix_credits(
     return _calculate_price_matrix_estimate(db, payload)
 
 
-@router.post("/credit-estimator/share", response_model=CreditEstimatorShareCreateResponse)
+@router.post(
+    "/credit-estimator/share", response_model=CreditEstimatorShareCreateResponse
+)
 async def create_credit_estimator_share(
     payload: CreditEstimatorShareCreateRequest,
     db: Session = Depends(get_db),
@@ -2119,17 +2549,28 @@ async def create_credit_estimator_share(
     return _build_credit_share_create_response(share, estimate, payload.valid_for_hours)
 
 
-@router.get("/credit-estimator/results", response_model=List[CreditEstimatorShareListItemResponse])
+@router.get(
+    "/credit-estimator/results",
+    response_model=List[CreditEstimatorShareListItemResponse],
+)
 async def list_credit_estimator_results(
     company_name: Optional[str] = None,
     status_filter: str = "all",
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    query = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.is_active == True).order_by(CreditEstimatorShare.created_at.desc(), CreditEstimatorShare.id.desc())
+    query = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.is_active == True)
+        .order_by(
+            CreditEstimatorShare.created_at.desc(), CreditEstimatorShare.id.desc()
+        )
+    )
 
     if company_name and company_name.strip():
-        query = query.filter(CreditEstimatorShare.company_name.ilike(f"%{company_name.strip()}%"))
+        query = query.filter(
+            CreditEstimatorShare.company_name.ilike(f"%{company_name.strip()}%")
+        )
 
     rows = query.all()
     now = datetime.now(timezone.utc)
@@ -2137,40 +2578,68 @@ async def list_credit_estimator_results(
     if status_filter == "active":
         rows = [row for row in rows if _to_utc(row.expires_at) > now and row.is_active]
     elif status_filter == "expired":
-        rows = [row for row in rows if _to_utc(row.expires_at) <= now or not row.is_active]
+        rows = [
+            row for row in rows if _to_utc(row.expires_at) <= now or not row.is_active
+        ]
 
     return [_build_credit_share_list_item_response(row) for row in rows]
 
 
-@router.get("/credit-estimator/results/{result_id}", response_model=CreditEstimatorShareListItemResponse)
+@router.get(
+    "/credit-estimator/results/{result_id}",
+    response_model=CreditEstimatorShareListItemResponse,
+)
 async def get_credit_estimator_result(
     result_id: int,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.id == result_id)
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Credit estimator result not found")
 
     return _build_credit_share_list_item_response(share)
 
 
-@router.put("/credit-estimator/results/{result_id}", response_model=CreditEstimatorShareCreateResponse)
+@router.put(
+    "/credit-estimator/results/{result_id}",
+    response_model=CreditEstimatorShareCreateResponse,
+)
 async def update_credit_estimator_result(
     result_id: int,
     payload: CreditEstimatorShareUpdateRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.id == result_id)
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Credit estimator result not found")
 
     existing_input = _parse_input_payload(share.input_json)
     next_lines = payload.lines if payload.lines is not None else existing_input.lines
-    next_buffer = payload.buffer_percent if payload.buffer_percent is not None else existing_input.buffer_percent
-    next_discount = payload.discount_percent if payload.discount_percent is not None else existing_input.discount_percent
-    next_company = payload.company_name.strip() if payload.company_name is not None else share.company_name
+    next_buffer = (
+        payload.buffer_percent
+        if payload.buffer_percent is not None
+        else existing_input.buffer_percent
+    )
+    next_discount = (
+        payload.discount_percent
+        if payload.discount_percent is not None
+        else existing_input.discount_percent
+    )
+    next_company = (
+        payload.company_name.strip()
+        if payload.company_name is not None
+        else share.company_name
+    )
 
     recompute_payload = PriceMatrixEstimateRequest(
         lines=next_lines,
@@ -2189,24 +2658,37 @@ async def update_credit_estimator_result(
     )
     share.estimate_json = json.dumps(estimate.model_dump())
     if payload.valid_for_hours is not None:
-        share.expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.valid_for_hours)
+        share.expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=payload.valid_for_hours
+        )
         expires_in_hours = payload.valid_for_hours
     else:
-        expires_in_hours = max(1, int((_to_utc(share.expires_at) - datetime.now(timezone.utc)).total_seconds() // 3600))
+        expires_in_hours = max(
+            1,
+            int(
+                (_to_utc(share.expires_at) - datetime.now(timezone.utc)).total_seconds()
+                // 3600
+            ),
+        )
 
     db.commit()
     db.refresh(share)
     return _build_credit_share_create_response(share, estimate, expires_in_hours)
 
 
-@router.post("/credit-estimator/share/{token}/extend", response_model=CreditEstimatorShareCreateResponse)
+@router.post(
+    "/credit-estimator/share/{token}/extend",
+    response_model=CreditEstimatorShareCreateResponse,
+)
 async def extend_credit_estimator_share(
     token: str,
     payload: CreditEstimatorShareExtendRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    share = _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=False)
+    share = _load_credit_estimate_share(
+        db, token, enforce_active=True, enforce_not_expired=False
+    )
     now = datetime.now(timezone.utc)
     current_expiry = _to_utc(share.expires_at)
     baseline = current_expiry if current_expiry > now else now
@@ -2218,14 +2700,21 @@ async def extend_credit_estimator_share(
     return _build_credit_share_create_response(share, estimate, payload.extra_hours)
 
 
-@router.post("/credit-estimator/results/{result_id}/extend", response_model=CreditEstimatorShareCreateResponse)
+@router.post(
+    "/credit-estimator/results/{result_id}/extend",
+    response_model=CreditEstimatorShareCreateResponse,
+)
 async def extend_credit_estimator_result(
     result_id: int,
     payload: CreditEstimatorShareExtendRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.id == result_id)
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Credit estimator result not found")
 
@@ -2239,14 +2728,20 @@ async def extend_credit_estimator_result(
     return _build_credit_share_create_response(share, estimate, payload.extra_hours)
 
 
-@router.get("/credit-estimator/share/{token}", response_model=CreditEstimatorSharePublicResponse)
+@router.get(
+    "/credit-estimator/share/{token}", response_model=CreditEstimatorSharePublicResponse
+)
 async def get_shared_credit_estimator_result(
     token: str,
     db: Session = Depends(get_db),
 ):
-    share = _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=True)
+    share = _load_credit_estimate_share(
+        db, token, enforce_active=True, enforce_not_expired=True
+    )
     estimate = _parse_estimate_payload(share.estimate_json)
-    created_at = _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+    created_at = (
+        _to_utc(share.created_at) if share.created_at else datetime.now(timezone.utc)
+    )
     return CreditEstimatorSharePublicResponse(
         id=share.id,
         company_name=share.company_name,
@@ -2263,9 +2758,11 @@ async def send_credit_estimator_share_via_email(
     payload: CreditEstimatorShareEmailRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
-    _load_credit_estimate_share(db, token, enforce_active=True, enforce_not_expired=True)
+    _load_credit_estimate_share(
+        db, token, enforce_active=True, enforce_not_expired=True
+    )
     body = (payload.body or "").strip()
     subject = (payload.subject or "").strip() or "Credit Estimate from Zentrixel"
     if not body:
@@ -2275,10 +2772,12 @@ async def send_credit_estimator_share_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
-        settings=settings
+        settings=settings,
     )
     if not success:
-        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+        raise HTTPException(
+            status_code=400, detail=error_message or "Failed to send email"
+        )
 
     return {"message": "Credit estimate share email sent successfully"}
 
@@ -2289,9 +2788,13 @@ async def send_credit_estimator_result_via_email(
     payload: CreditEstimatorShareEmailRequest,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
-    share = db.query(CreditEstimatorShare).filter(CreditEstimatorShare.id == result_id).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(CreditEstimatorShare.id == result_id)
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Credit estimator result not found")
 
@@ -2308,10 +2811,12 @@ async def send_credit_estimator_result_via_email(
         recipient_email=str(payload.to_email),
         subject=subject,
         message_body=body,
-        settings=settings
+        settings=settings,
     )
     if not success:
-        raise HTTPException(status_code=400, detail=error_message or "Failed to send email")
+        raise HTTPException(
+            status_code=400, detail=error_message or "Failed to send email"
+        )
 
     return {"message": "Credit estimate share email sent successfully"}
 
@@ -2322,10 +2827,14 @@ async def delete_credit_estimator_result(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    share = db.query(CreditEstimatorShare).filter(
-        CreditEstimatorShare.id == result_id,
-        CreditEstimatorShare.is_active == True,
-    ).first()
+    share = (
+        db.query(CreditEstimatorShare)
+        .filter(
+            CreditEstimatorShare.id == result_id,
+            CreditEstimatorShare.is_active == True,
+        )
+        .first()
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Credit estimator result not found")
 
@@ -2341,7 +2850,7 @@ async def delete_credit_estimator_result(
 async def delete_organization(
     org_id: int,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
@@ -2381,15 +2890,17 @@ async def delete_organization(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Failed to delete organization due to related records")
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to delete organization due to related records",
+        )
 
     return {"success": True, "deleted_organization_id": org_id}
 
 
 @router.get("/analytics/overview", response_model=SuperAdminOverviewResponse)
 async def superadmin_analytics_overview(
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    db: Session = Depends(get_db), superadmin: SuperAdmin = Depends(require_superadmin)
 ):
     orgs = db.query(Organization).all()
     total_orgs = len(orgs)
@@ -2401,9 +2912,12 @@ async def superadmin_analytics_overview(
     total_crawl_pages = 0
 
     for org in orgs:
-        usage = db.query(OrganizationSubscriptionUsage).filter(
-            OrganizationSubscriptionUsage.organization_id == org.id
-        ).order_by(OrganizationSubscriptionUsage.period_start.desc()).first()
+        usage = (
+            db.query(OrganizationSubscriptionUsage)
+            .filter(OrganizationSubscriptionUsage.organization_id == org.id)
+            .order_by(OrganizationSubscriptionUsage.period_start.desc())
+            .first()
+        )
         if not usage:
             continue
         total_conversations += usage.conversations_count
@@ -2426,16 +2940,19 @@ async def superadmin_analytics_overview(
 async def superadmin_organization_analytics(
     org_id: int,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     limits = get_or_create_limits(db, org_id)
-    usage = db.query(OrganizationSubscriptionUsage).filter(
-        OrganizationSubscriptionUsage.organization_id == org_id
-    ).order_by(OrganizationSubscriptionUsage.period_start.desc()).first()
+    usage = (
+        db.query(OrganizationSubscriptionUsage)
+        .filter(OrganizationSubscriptionUsage.organization_id == org_id)
+        .order_by(OrganizationSubscriptionUsage.period_start.desc())
+        .first()
+    )
 
     return {
         "organization": {
@@ -2448,9 +2965,7 @@ async def superadmin_organization_analytics(
     }
 
 
-
-
-@router.post('/outcomes/process')
+@router.post("/outcomes/process")
 async def run_outcome_processing_now(
     payload: dict = Body(None),
     db: Session = Depends(get_db),
@@ -2460,33 +2975,47 @@ async def run_outcome_processing_now(
 
     Optional JSON payload: {"batch_size": int, "max_batches": int}
     """
-    batch_size = int(payload.get('batch_size')) if payload and payload.get('batch_size') else settings.OUTCOME_DAEMON_BATCH_SIZE
-    max_batches = int(payload.get('max_batches')) if payload and payload.get('max_batches') else settings.OUTCOME_DAEMON_MAX_BATCHES
+    batch_size = (
+        int(payload.get("batch_size"))
+        if payload and payload.get("batch_size")
+        else settings.OUTCOME_DAEMON_BATCH_SIZE
+    )
+    max_batches = (
+        int(payload.get("max_batches"))
+        if payload and payload.get("max_batches")
+        else settings.OUTCOME_DAEMON_MAX_BATCHES
+    )
 
-    processed, failed = run_outcome_processing_batches(batch_size=batch_size, max_batches=max_batches)
+    processed, failed = run_outcome_processing_batches(
+        batch_size=batch_size, max_batches=max_batches
+    )
     return {"processed": processed, "failed": failed}
 
 
 @router.get("/analytics/by-org")
 async def superadmin_analytics_by_org(
-    db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    db: Session = Depends(get_db), superadmin: SuperAdmin = Depends(require_superadmin)
 ):
     orgs = db.query(Organization).all()
     data = []
 
     for org in orgs:
-        usage = db.query(OrganizationSubscriptionUsage).filter(
-            OrganizationSubscriptionUsage.organization_id == org.id
-        ).order_by(OrganizationSubscriptionUsage.period_start.desc()).first()
-        data.append({
-            "organization": {
-                "id": org.id,
-                "name": org.name,
-                "description": org.description,
-            },
-            "usage": usage,
-        })
+        usage = (
+            db.query(OrganizationSubscriptionUsage)
+            .filter(OrganizationSubscriptionUsage.organization_id == org.id)
+            .order_by(OrganizationSubscriptionUsage.period_start.desc())
+            .first()
+        )
+        data.append(
+            {
+                "organization": {
+                    "id": org.id,
+                    "name": org.name,
+                    "description": org.description,
+                },
+                "usage": usage,
+            }
+        )
 
     return data
 
@@ -2496,24 +3025,24 @@ async def superadmin_analytics_by_org(
 def get_calling_numbers(
     org_id: int,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    return db.query(OrganizationCallingNumber).filter(
-        OrganizationCallingNumber.organization_id == org_id
-    ).all()
-    
-    
+    return (
+        db.query(OrganizationCallingNumber)
+        .filter(OrganizationCallingNumber.organization_id == org_id)
+        .all()
+    )
+
+
 @router.post("/org/{org_id}/calling-number")
 def create_calling_number(
     org_id: int,
     payload: CallingNumberCreate,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     obj = OrganizationCallingNumber(
-        organization_id=org_id,
-        calling_number=payload.calling_number,
-        type=payload.type
+        organization_id=org_id, calling_number=payload.calling_number, type=payload.type
     )
 
     db.add(obj)
@@ -2522,16 +3051,15 @@ def create_calling_number(
 
     return obj
 
+
 @router.put("/org/calling-number/{id}")
 def update_calling_number(
     id: int,
     payload: CallingNumberUpdate,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    obj = db.query(
-        OrganizationCallingNumber
-    ).get(id)
+    obj = db.query(OrganizationCallingNumber).get(id)
 
     obj.calling_number = payload.calling_number
     obj.type = payload.type
@@ -2539,14 +3067,10 @@ def update_calling_number(
     db.commit()
     return obj
 
+
 @router.patch("/org/calling-number/{id}/active")
-def toggle_active(
-    id: int,
-    db: Session = Depends(get_db)
-):
-    obj = db.query(
-        OrganizationCallingNumber
-    ).get(id)
+def toggle_active(id: int, db: Session = Depends(get_db)):
+    obj = db.query(OrganizationCallingNumber).get(id)
 
     obj.is_active = not obj.is_active
 
@@ -2554,19 +3078,14 @@ def toggle_active(
 
     return obj
 
+
 @router.patch("/org/calling-number/{id}/default")
-def set_default(
-    id: int,
-    db: Session = Depends(get_db)
-):
-    obj = db.query(
-        OrganizationCallingNumber
-    ).get(id)
+def set_default(id: int, db: Session = Depends(get_db)):
+    obj = db.query(OrganizationCallingNumber).get(id)
 
     # remove old default
     db.query(OrganizationCallingNumber).filter(
-        OrganizationCallingNumber.organization_id ==
-        obj.organization_id
+        OrganizationCallingNumber.organization_id == obj.organization_id
     ).update({"is_default": False})
 
     obj.is_default = True
@@ -2575,14 +3094,10 @@ def set_default(
 
     return obj
 
+
 @router.delete("/org/calling-number/{id}")
-def delete_calling_number(
-    id: int,
-    db: Session = Depends(get_db)
-):
-    obj = db.query(
-        OrganizationCallingNumber
-    ).get(id)
+def delete_calling_number(id: int, db: Session = Depends(get_db)):
+    obj = db.query(OrganizationCallingNumber).get(id)
 
     db.delete(obj)
     db.commit()
@@ -2599,81 +3114,84 @@ def organization_calling_report(
     limit: int = Query(10, ge=1, le=100),
     search: str | None = None,
     db: Session = Depends(get_db),
-    superadmin: SuperAdmin = Depends(require_superadmin)
+    superadmin: SuperAdmin = Depends(require_superadmin),
 ):
 
     query = db.query(Organization)
 
     if search:
-        query = query.filter(Organization.name.contains(search))
+        search_term = f"%{search.strip()}%"
+        query = query.filter(Organization.name.ilike(search_term))
+    # query = query.filter(Organization.name.contains(search))
 
     total = query.count()
 
-    organizations = (
-        query
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    organizations = query.offset(skip).limit(limit).all()
 
     report = []
 
     for org in organizations:
-        agent_count = db.query(CallingAgent).filter(
-            CallingAgent.organization_id == org.id,
-            or_(
-                CallingAgent.is_deleted == False,
-                CallingAgent.is_deleted.is_(None)
+        agent_count = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == org.id,
+                or_(
+                    CallingAgent.is_deleted == False, CallingAgent.is_deleted.is_(None)
+                ),
             )
-        ).count()
+            .count()
+        )
 
-        campaign_count = db.query(CallCampaign).filter(
-            CallCampaign.organization_id == org.id,
-            CallCampaign.is_deleted == False
-        ).count()
+        campaign_count = (
+            db.query(CallCampaign)
+            .filter(
+                CallCampaign.organization_id == org.id, CallCampaign.is_deleted == False
+            )
+            .count()
+        )
 
-        call_count = db.query(CallLog).filter(
-            CallLog.organization_id == org.id
-        ).count()
+        call_count = db.query(CallLog).filter(CallLog.organization_id == org.id).count()
 
-        agents = db.query(CallingAgent).filter(
-            CallingAgent.organization_id == org.id,
-            CallingAgent.is_deleted == False
-        ).all()
+        agents = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == org.id, CallingAgent.is_deleted == False
+            )
+            .all()
+        )
 
-        campaigns = db.query(CallCampaign).filter(
-            CallCampaign.organization_id == org.id,
-            CallCampaign.is_deleted == False
-        ).all()
+        campaigns = (
+            db.query(CallCampaign)
+            .filter(
+                CallCampaign.organization_id == org.id, CallCampaign.is_deleted == False
+            )
+            .all()
+        )
 
-        report.append({
-            "organization_id": org.id,
-            "organization_name": org.name,
+        report.append(
+            {
+                "organization_id": org.id,
+                "organization_name": org.name,
+                "agents_created": agent_count,
+                "campaign_created": campaign_count,
+                "calls_done": call_count,
+                "agents": [
+                    {
+                        "name": a.name,
+                        "external_agent_name": a.external_agent_name,
+                        "external_agent_id": a.external_agent_id,
+                    }
+                    for a in agents
+                ],
+                "campaigns": [
+                    {
+                        "name": c.name,
+                        "external_campaign_name": c.external_campaign_name,
+                        "external_campaign_id": c.external_campaign_id,
+                    }
+                    for c in campaigns
+                ],
+            }
+        )
 
-            "agents_created": agent_count,
-            "campaign_created": campaign_count,
-            "calls_done": call_count,
-
-            "agents": [
-                {
-                    "name": a.name,
-                    "external_agent_name": a.external_agent_name,
-                    "external_agent_id": a.external_agent_id
-                } for a in agents
-            ],
-
-            "campaigns": [
-                {
-                    "name": c.name,
-                    "external_campaign_name": c.external_campaign_name,
-                    "external_campaign_id": c.external_campaign_id
-                } for c in campaigns
-            ]
-        })
-
-    return {
-        "items": report,
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    return {"items": report, "total": total, "skip": skip, "limit": limit}
