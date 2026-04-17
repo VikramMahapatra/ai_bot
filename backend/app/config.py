@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     HUMAN_HANDOFF_DISTANCE_THRESHOLD: float = 0.65
     HUMAN_HANDOFF_NO_ANSWER_PATTERNS: str = "i don't know|i do not know|don't have a reliable answer|unable to answer|no relevant context found|knowledge base doesn't contain|don't have reliable expertise|escalation contacts|would you like me to connect you"
     HUMAN_HANDOFF_WAITING_MESSAGE: str = "I am connecting you to a human expert. Please share any additional details and we will respond shortly."
+    DEFAULT_ESCALATION_CONTACT_LEVEL_1: str = "Support Team: support@example.com | +1-555-0101"
+    DEFAULT_ESCALATION_CONTACT_LEVEL_2: str = "Escalation Manager: escalation@example.com | +1-555-0102"
     HUMAN_HANDOFF_WAIT_TIMEOUT_SECONDS: int = 120
     HUMAN_HANDOFF_MAX_WAIT_CYCLES: int = 2
     HUMAN_HANDOFF_BUSY_MESSAGE: str = "Live users are currently busy. Do you want to wait for 2 more minutes while I try again, or would you like to schedule a meeting and I will set it up for you?"

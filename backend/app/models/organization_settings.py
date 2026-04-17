@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, Boolean, String, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.config import settings
+
 
 
 class OrganizationSettings(Base):
@@ -46,3 +48,21 @@ class OrganizationSettings(Base):
     expected_close_days = Column(Integer, nullable=True)
 
     organization = relationship("Organization")
+
+    @property
+    def DEFAULT_ESCALATION_CONTACT_LEVEL_1(self) -> str:
+        value = (self.default_escalation_level_1 or "").strip()
+        return value or settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+
+    @DEFAULT_ESCALATION_CONTACT_LEVEL_1.setter
+    def DEFAULT_ESCALATION_CONTACT_LEVEL_1(self, value: str | None) -> None:
+        self.default_escalation_level_1 = (value or "").strip() or None
+
+    @property
+    def DEFAULT_ESCALATION_CONTACT_LEVEL_2(self) -> str:
+        value = (self.default_escalation_level_2 or "").strip()
+        return value or settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+
+    @DEFAULT_ESCALATION_CONTACT_LEVEL_2.setter
+    def DEFAULT_ESCALATION_CONTACT_LEVEL_2(self, value: str | None) -> None:
+        self.default_escalation_level_2 = (value or "").strip() or None
