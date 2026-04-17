@@ -388,10 +388,14 @@ async def preview_crawl_links(
             request.max_depth,
             organization_id=current_user.organization_id,
         )
+        limited_urls = discovered_urls[: max(1, int(request.max_pages))]
         return WebCrawlPreviewResponse(
-            discovered_urls=discovered_urls,
+            discovered_urls=limited_urls,
             pages_scanned=pages_scanned,
-            message=f"Discovered {len(discovered_urls)} links. Select which pages to embed.",
+            message=(
+                f"Discovered {len(discovered_urls)} links; showing first {len(limited_urls)} "
+                "based on max pages. Select which pages to embed."
+            ),
         )
     except HTTPException:
         raise

@@ -20,7 +20,7 @@ export interface SourceListResponse {
 export interface KnowledgeSourceFilters {
   widgetId: string,
    // pagination
-  search?: String;
+  search?: string;
   skip?: number;
   limit?: number;
 }
@@ -67,8 +67,17 @@ export const knowledgeService = {
   },
 
   async listSources(filters?: KnowledgeSourceFilters): Promise<SourceListResponse> {
+    const params = filters
+      ? {
+          widget_id: filters.widgetId,
+          search: filters.search,
+          skip: filters.skip,
+          limit: filters.limit,
+        }
+      : undefined;
+
     const response = await api.get('/api/admin/knowledge/sources', {
-      params: filters,
+      params,
     });
     return response.data;
   },

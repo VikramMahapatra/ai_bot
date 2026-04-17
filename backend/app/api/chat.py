@@ -34,7 +34,7 @@ import re
 
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
 from app.models.organization_settings import OrganizationSettings
-from app.services.organization_setting_service import get_settings
+from app.services.organization_setting_service import get_settings, get_org_settings
 
 logger = logging.getLogger(__name__)
 
@@ -1327,7 +1327,7 @@ async def suggested_questions(
 async def chat(
     message: ChatMessage,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_optional)
+    current_user = Depends(get_current_user_optional),
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
     print(f"Received chat message: {message}")
@@ -1363,6 +1363,7 @@ async def chat(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
@@ -1685,6 +1686,7 @@ async def chat_stream(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
