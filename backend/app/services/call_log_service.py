@@ -56,6 +56,15 @@ def get_call_logs(
         params.end_date, 
         params.agent_id
     )
+    
+    conversation_subq = (
+        db.query(Conversation)
+        .filter(Conversation.session_id == CallLog.call_session_id)
+        .order_by(Conversation.created_at.desc())   # or desc if "latest" needed
+        .limit(1)
+        .correlate(CallLog)
+        .subquery()
+    )
 
     query = (
         db.query(
@@ -63,12 +72,15 @@ def get_call_logs(
             Contact.name.label("contact_name"),
             CallingAgent.name.label("agent_name"),
             CallCampaign.name.label("campaign_name"),
-            Lead.lead_outcome.label("lead_outcome")
+            conversation_subq.c.outcome.label("call_outcome")
         )
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(Lead, Lead.session_id == CallLog.call_session_id)  # for lead qualification status
+        .outerjoin(
+            conversation_subq,
+            conversation_subq.c.session_id == CallLog.call_session_id
+        )
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -110,7 +122,7 @@ def get_call_logs(
 
     # SENTIMENT
     if params.sentiment:
-        query = query.filter(Lead.lead_outcome == params.sentiment)
+        query = query.filter(conversation_subq.c.outcome == params.sentiment)
 
     # EVALUATION (boolean)
     if params.evaluation is not None:
@@ -181,7 +193,17 @@ def get_call_logs(
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid
-        lead_exists = db.query(Lead).filter(Lead.session_id == log.call_session_id).first()
+        lead_exists = db.query(Lead.id).join(
+            LeadContactMapping,
+            LeadContactMapping.lead_id == Lead.id
+        ).join(
+            Conversation,
+            Conversation.contact_id == LeadContactMapping.contact_id
+        ).filter(
+            Conversation.session_id == log.call_session_id,
+            Lead.organization_id == organization_id
+        ).limit(1).scalar()
+        
         if log.is_lead_qualified:
             lead_qualified_status = "Synced" if lead_exists else "Pending"
         else:
@@ -561,7 +583,7 @@ def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign :
             db=db,
             campaign=campaign,
             contact=contact,
-            decision= "send_now" or response.get("instant_reply_decision")
+            decision= response.get("instant_reply_decision")
         )
             
 

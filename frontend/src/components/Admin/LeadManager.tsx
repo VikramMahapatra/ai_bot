@@ -33,6 +33,8 @@ import {
   TextField,
   Tooltip,
   Typography,
+  Drawer,
+  Divider,
 } from "@mui/material";
 import { SelectChangeEvent } from "@mui/material/Select";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -49,8 +51,10 @@ import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import GroupIcon from "@mui/icons-material/Group";
+import HistoryIcon from "@mui/icons-material/History";
+import { Timeline, TimelineItem, TimelineSeparator, TimelineDot, TimelineConnector, TimelineContent } from "@mui/lab";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import { leadService } from "../../services/leadService";
+import { LeadActivity, leadService } from "../../services/leadService";
 import { dashboardService } from "../../services/dashboardService";
 import { funnelCategoryService } from "../../services/funnelCategoryService";
 import { Product, productService } from "../../services/productService";
@@ -64,8 +68,15 @@ import {
 } from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
 import Field from "../Common/Field";
+import CallIcon from "@mui/icons-material/Call";
+import EmailIcon from "@mui/icons-material/Email";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
+
+
 
 /** Whether a widget row should appear for the selected lead source filter. */
 const widgetMatchesLeadSource = (
@@ -150,6 +161,10 @@ const LeadManager: React.FC = () => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
   const [selectedCampaignType] = useState<"all" | CampaignType>("all");
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activities, setActivities] = useState<LeadActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
 
   const panelSx = {
     borderRadius: "18px",
@@ -279,8 +294,8 @@ const LeadManager: React.FC = () => {
     const campaignLabel =
       selectedCampaignId !== "all"
         ? (campaigns
-            .find((c) => String(c.id) === selectedCampaignId)
-            ?.campaign_name?.toLowerCase() ?? "")
+          .find((c) => String(c.id) === selectedCampaignId)
+          ?.campaign_name?.toLowerCase() ?? "")
         : "";
 
     return leads.filter((lead) => {
@@ -326,6 +341,22 @@ const LeadManager: React.FC = () => {
     selectedCampaignId,
     widgets,
   ]);
+
+  useEffect(() => {
+    if (!activityOpen || !selectedLead) return;
+
+    const fetchActivities = async () => {
+      setLoadingActivities(true);
+      try {
+        const res = await leadService.listLeadActivities(selectedLead.id);
+        setActivities(res || []);
+      } finally {
+        setLoadingActivities(false);
+      }
+    };
+
+    fetchActivities();
+  }, [activityOpen, selectedLead]);
 
   const loadFunnelCategories = async () => {
     try {
@@ -709,6 +740,21 @@ const LeadManager: React.FC = () => {
     },
   });
 
+  const getActivityIcon = (source: string) => {
+    switch (source) {
+      case "voice":
+        return <CallIcon fontSize="small" />;
+      case "email":
+        return <EmailIcon fontSize="small" />;
+      case "whatsapp":
+        return <WhatsAppIcon fontSize="small" />;
+      case "ai":
+        return <SmartToyIcon fontSize="small" />;
+      default:
+        return <HelpOutlineIcon fontSize="small" />;
+    }
+  };
+
   const gradientBarButtonSx = {
     minHeight: 46,
     px: 2.5,
@@ -828,20 +874,19 @@ const LeadManager: React.FC = () => {
         >
           {[
             selectedWidget &&
-              `widget: ${selectedWidget.name}${
-                selectedWidget.source
-                  ? ` (${sourceLabel(selectedWidget.source)})`
-                  : ""
-              }`,
+            `widget: ${selectedWidget.name}${selectedWidget.source
+              ? ` (${sourceLabel(selectedWidget.source)})`
+              : ""
+            }`,
             selectedProduct && `product: ${selectedProduct.name}`,
             selectedSource !== "all" &&
-              `source: ${sourceLabel(selectedSource)}`,
+            `source: ${sourceLabel(selectedSource)}`,
             selectedFunnelStage !== "all" &&
-              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
+            `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
             selectedCampaign &&
-              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
+            `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
             selectedCampaignType !== "all" &&
-              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
+            `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
           ]
             .filter(Boolean)
             .join(" · ") || "Showing leads from all widgets and campaigns"}
@@ -1425,31 +1470,11 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>
-                  <Tooltip title="Actions">
-                    <Box
-                      component="span"
-                      sx={{ display: "inline-flex", alignItems: "center" }}
-                    >
-                      <VisibilityIcon fontSize="small" />
-                    </Box>
-                  </Tooltip>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>
-                  <Tooltip title="Actions">
-                    <Box
-                      component="span"
-                      sx={{ display: "inline-flex", alignItems: "center" }}
-                    >
-                      <MoveDownIcon fontSize="small" />
-                    </Box>
-                  </Tooltip>
-                </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1467,7 +1492,6 @@ const LeadManager: React.FC = () => {
                   <TableCell>{lead.name || "-"}</TableCell>
                   <TableCell>{lead.email || "-"}</TableCell>
                   <TableCell>{lead.phone || "-"}</TableCell>
-                  <TableCell>{lead.company || "-"}</TableCell>
                   <TableCell>{lead.product_name || "-"}</TableCell>
                   <TableCell>
                     <Chip
@@ -1488,36 +1512,57 @@ const LeadManager: React.FC = () => {
                     {new Date(lead.created_at).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    <Tooltip title="View lead actions">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => openDetails(lead)}
-                        sx={{
-                          border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
-                        }}
-                      >
-                        <VisibilityIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip title="Move to funnel">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => {
-                          if (!selectedLead) return;
-                          setDetailsOpen(false);
-                          openMoveDialog(selectedLead);
-                        }}
-                        sx={{
-                          border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
-                        }}
-                      >
-                        <MoveDownIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      <Tooltip title="View activities">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSelectedLead(lead);
+                            setActivityOpen(true);
+                          }}
+                          sx={{
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          }}
+                        >
+                          <HistoryIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="View lead details">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => openDetails(lead)}
+                          sx={{
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          }}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Move to funnel">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => {
+                            if (!selectedLead) return;
+                            setDetailsOpen(false);
+                            openMoveDialog(selectedLead);
+                          }}
+                          sx={{
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          }}
+                        >
+                          <MoveDownIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1851,6 +1896,124 @@ const LeadManager: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Drawer
+        anchor="right"
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        PaperProps={{ sx: { width: 420, p: 2 } }}
+      >
+        <Typography variant="h6" mb={1}>
+          Lead Activity Timeline
+        </Typography>
+
+        <Divider sx={{ my: 2 }} />
+
+        {loadingActivities ? (
+          <Box display="flex" justifyContent="center" mt={4}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          <Timeline
+            sx={{
+              width: "100%",
+              p: 0,
+              "& .MuiTimelineItem-root:before": {
+                flex: 0,
+                padding: 0,
+              },
+            }}
+          >
+            {activities.map((a, index) => (
+              <TimelineItem key={a.id}>
+                <TimelineSeparator>
+                  <TimelineDot color="primary" />
+                  {index !== activities.length - 1 && (
+                    <TimelineConnector sx={{ bgcolor: "#e5e7eb", width: "2px" }} />
+                  )}
+                </TimelineSeparator>
+
+                <TimelineContent sx={{ width: "100%" }}>
+                  <Box
+                    sx={{
+                      position: "relative",
+                      borderRadius: 2,
+                      border: "1px solid #eee",
+                      bgcolor: "#fff",
+                      p: 1.5,
+                      transition: "0.2s",
+                      "&:hover": {
+                        boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+                      },
+                    }}
+                  >
+                    <Box sx={{ display: "flex", gap: 1.2, alignItems: "flex-start" }}>
+                      {/* ICON */}
+                      <Box
+                        sx={{
+                          mt: 0.2,
+                          color: "text.secondary",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        {getActivityIcon(a.source!)}
+                      </Box>
+
+                      {/* CONTENT */}
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
+                        {/* TITLE */}
+                        <Typography fontSize={13} fontWeight={700} lineHeight={1.2}>
+                          {a.attempt_label || "Activity"}
+                        </Typography>
+
+                        {/* META */}
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Typography fontSize={12} color="text.secondary">
+                            {a.source || "Unknown source"}
+                          </Typography>
+
+                          {a.created_at && (
+                            <>
+                              <Typography fontSize={12} color="text.secondary">•</Typography>
+                              <Typography fontSize={12} color="text.secondary">
+                                {new Date(a.created_at).toLocaleString()}
+                              </Typography>
+                            </>
+                          )}
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    {/* CHIPS */}
+                    <Box mt={0.8} display="flex" gap={1} flexWrap="wrap">
+                      {a.status && <Chip size="small" label={a.status} />}
+                      {a.outcome && <Chip size="small" label={a.outcome} />}
+                    </Box>
+
+                    {/* SUMMARY (VISUAL DE-EMPHASIS FIX) */}
+                    {a.summary && (
+                      <Box
+                        sx={{
+                          mt: 1.2,
+                          p: 1,
+                          borderRadius: 1.5,
+                          bgcolor: "#f8fafc",
+                          borderLeft: "3px solid #e5e7eb",
+                        }}
+                      >
+                        <Typography fontSize={12} color="text.secondary">
+                          {a.summary}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </TimelineContent>
+              </TimelineItem>
+            ))}
+          </Timeline>
+        )}
+      </Drawer>
     </Box>
   );
 };

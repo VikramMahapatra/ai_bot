@@ -16,6 +16,7 @@ import logging
 from app.api.organization_setting import get_settings
 from app.models.organization_settings import OrganizationSettings
 from app.services.call_log_service import create_lead_activity
+from app.models.lead_activities import LeadActivity
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +272,24 @@ async def list_leads(
         "items": leads,
         "pagination": {"total": total, "skip": skip, "limit": limit},
     }
+    
+@router.get("/{lead_id}/activities")
+def get_lead_activities(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    activities = (
+        db.query(LeadActivity)
+        .filter(
+            LeadActivity.lead_id == lead_id,
+            LeadActivity.lead.has(organization_id=current_user.organization_id)
+        )
+        .order_by(LeadActivity.activity_datetime.desc())
+        .all()
+    )
+
+    return activities
 
 
 @router.patch("/{lead_id}/funnel-stage", response_model=LeadResponse)
