@@ -134,8 +134,41 @@ export interface CallCampaign {
     call_logs?: [];
     instant_reply: boolean;
     instant_reply_modes: string[];
-    /** Keys: whatsapp | sms | email (or more). Value: legacy id or `{ template_id, name }`. */
-    instant_reply_templates: Record<
+    instant_reply_templates: {
+        whatsapp: number | "";
+        sms: number | "";
+        email: number | "";
+    };
+    workflow_id?: number | "";
+}
+
+
+export interface CallCampaignDetail {
+    id?: number;
+    name: string;
+    description: string;
+    category: string;
+    priority: string;
+    calling_no: string;
+    agent_id: number | "";
+    product_id?: number | "";
+    contacts: number[];
+    start_datetime: string;
+    end_datetime: string;
+    timezone: string;
+    call_start_time: string;
+    call_end_time: string;
+    call_interval: number | "";
+    active_days: string[];
+    max_retry_attempts: number | "";
+    retry_interval: number | "";
+    retry_on_no_answer: boolean;
+    retry_on_busy: boolean;
+    retry_on_voicemail: boolean;
+    call_logs?: [];
+    instant_reply: boolean;
+    instant_reply_modes: string[];
+    instant_reply_template: Record<
         string,
         number | "" | InstantReplyTemplateRef | undefined
     >;
@@ -167,7 +200,7 @@ export const callCampaignService = {
         return response.data;
     },
 
-    async getCampaignDetails(campaign_id?: number): Promise<CallCampaign> {
+    async getCampaignDetails(campaign_id?: number): Promise<CallCampaignDetail> {
         const response = await api.get(`/api/call-campaigns/${campaign_id}/detail`);
         return response.data;
     },

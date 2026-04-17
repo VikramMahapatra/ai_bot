@@ -23,7 +23,7 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.services.conversation_decision_service import analyze_conversation
-from app.services.sms_service import send_sms
+from app.services.sms_service import get_twilio_sms_config, send_sms
 from app.services.email_service import send_campaign_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
@@ -31,6 +31,7 @@ from app.models.whatsapp_channel import WhatsAppChannel
 from app.services.whatsapp_service import send_whatsapp_text_message
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
+from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowStep, WorkflowStepOutcome
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -531,6 +532,33 @@ def process_call(db, call, agent):
             # Mark call_log as lead qualified
             call_log.is_lead_qualified = True
             
+        # WORKFLOW EXECUTION
+        if contact:
+            # 1. Check if this is scheduled workflow call
+            continue_workflow_from_call(
+                db,
+                call_log,
+                call
+            )
+
+            # 2. If no scheduled execution, trigger initial workflow
+            if campaign.workflow_id:
+
+                execution_exists = db.query(WorkflowExecution).filter(
+                    WorkflowExecution.campaign_id == call_log.campaign_id,
+                    WorkflowExecution.contact_id == call_log.contact_id,
+                    WorkflowExecution.external_reference_id == call_log.external_call_id,
+                    WorkflowExecution.status == "pending"
+                ).first()
+
+                if not execution_exists:
+                    trigger_workflow_from_call(
+                        db,
+                        campaign.workflow_id,
+                        call_log,
+                        call
+                    )
+            
         db.flush()
     
     test_call = db.query(CallingAgentTestCall).filter(
@@ -612,7 +640,8 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
             try:
                 result = send_sms(
                     message=message,
-                    to_number=contact.phone
+                    to_number=contact.phone,
+                    organization_id=campaign.organization_id
                 )
                 
                 print(f"SMS send result: {result}")
@@ -938,3 +967,174 @@ def render_template(template_body: str, contact):
         template_body = template_body.replace(f"{{{{{key}}}}}", value)
 
     return template_body
+
+
+########## WORK FLOW BRANCHING LOGIC ##########
+def trigger_workflow_from_call(db, workflow_id, call_log, call):
+
+    call_status, outcome = get_call_result(call)
+
+    # Get initial step
+    initial_step = db.query(WorkflowStep).filter(
+        WorkflowStep.workflow_id == workflow_id,
+        WorkflowStep.node_type == "initial_call"
+    ).first()
+
+    if not initial_step:
+        return
+
+    # Get outcome config
+    step_outcome = db.query(WorkflowStepOutcome).filter(
+        WorkflowStepOutcome.step_id == initial_step.id,
+        WorkflowStepOutcome.call_status == call_status,
+        WorkflowStepOutcome.outcome == outcome
+    ).first()
+
+    if not step_outcome:
+        return
+
+    # Get next step using edge
+    edge = db.query(WorkflowEdge).filter(
+        WorkflowEdge.source_step_id == initial_step.id,
+        WorkflowEdge.branch == call_status
+    ).first()
+
+    if not edge:
+        return
+
+    next_step = db.query(WorkflowStep).filter(
+        WorkflowStep.id == edge.target_step_id
+    ).first()
+
+    if not next_step:
+        return
+
+    schedule_workflow_step(
+        db,
+        call_log,
+        step_outcome,
+        next_step
+    )
+    
+def continue_workflow_from_call(db, call_log: CallLog, call: dict):
+
+    execution = (
+        db.query(WorkflowExecution)
+        .filter(
+            WorkflowExecution.campaign_id == call_log.campaign_id,
+            WorkflowExecution.contact_id == call_log.contact_id,
+            WorkflowExecution.external_reference_id == call_log.external_call_id,
+            WorkflowExecution.status == "scheduled"
+        )
+        .order_by(WorkflowExecution.scheduled_at.desc())
+        .first()
+    )
+
+    if not execution:
+        return
+
+    execution.status = "completed"
+    execution.executed_at = datetime.utcnow()
+
+    call_status, outcome = get_call_result(call)
+
+    step_outcome = db.query(WorkflowStepOutcome).filter(
+        WorkflowStepOutcome.step_id == execution.step_id,
+        WorkflowStepOutcome.call_status == call_status,
+        WorkflowStepOutcome.outcome == outcome
+    ).first()
+
+    if not step_outcome:
+        return
+
+    # Get next edge
+    edge = db.query(WorkflowEdge).filter(
+        WorkflowEdge.source_step_id == execution.step_id,
+        WorkflowEdge.branch == call_status
+    ).first()
+
+    if not edge:
+        return
+
+    next_step = db.query(WorkflowStep).filter(
+        WorkflowStep.id == edge.target_step_id
+    ).first()
+
+    if not next_step:
+        return
+
+    schedule_workflow_step(
+        db,
+        call_log,
+        step_outcome,
+        next_step
+    )
+    
+def schedule_workflow_step(db, call_log, step_outcome):
+
+    delay = step_outcome.delay or 0
+
+    if step_outcome.delay_unit == "minutes":
+        scheduled_at = datetime.utcnow() + timedelta(minutes=delay)
+
+    elif step_outcome.delay_unit == "hours":
+        scheduled_at = datetime.utcnow() + timedelta(hours=delay)
+
+    elif step_outcome.delay_unit == "days":
+        scheduled_at = datetime.utcnow() + timedelta(days=delay)
+
+    execution = WorkflowExecution(
+        workflow_id=call_log.campaign_id,
+        campaign_id=call_log.campaign_id,
+        contact_id=call_log.contact_id,
+        step_id=step_outcome.next_step_id or step_outcome.step_id,
+        step_type=step_outcome.step_type,
+        status="pending",
+        scheduled_at=scheduled_at
+    )
+
+    db.add(execution)
+    db.flush()
+
+    # If action is call → schedule call
+    if step_outcome.step_type == "call":
+        response = reschedule_contact(
+            campaign_id=call_log.campaign_id,
+            contact_id=call_log.contact_id,
+            scheduled_at=scheduled_at
+        )
+        
+        if response.get("success"):
+            execution.status = "scheduled"
+            execution.external_reference_id = response.get("call_log_id")
+
+    # Future
+    # elif step_outcome.step_type == "whatsapp":
+    #     schedule_whatsapp(step_outcome, call_log, scheduled_at)
+
+    # elif step_outcome.step_type == "sms":
+    #     schedule_sms(step_outcome, call_log, scheduled_at)
+    
+def reschedule_contact(campaign_id, contact_id, scheduled_at):
+    echo_client = EcholeadsClient()
+    response = echo_client.reschedule_contact_call(campaign_id, contact_id, scheduled_at)
+    return response
+
+def get_call_result(call):
+
+    if call.get("transcript") and call.get("duration", 0) > 10:
+        call_status = "connected"
+    else:
+        call_status = "not_connected"
+
+    # outcome from API / AI / call data
+    outcome = call.get("sentiment")
+
+    # fallback outcomes
+    if not outcome:
+        if call_status == "not_connected":
+            outcome = "no_answer"
+        else:
+            outcome = "neutral"
+
+    return call_status, outcome
