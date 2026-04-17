@@ -534,8 +534,26 @@ def _should_include_previous_message(current_message: str, previous_message: str
         return True
 
     lower_current = current_message.lower().strip()
+    polite_followups = {
+        "please",
+        "yes please",
+        "ok",
+        "okay",
+        "sure",
+        "go ahead",
+        "proceed",
+        "continue",
+        "tell me more",
+        "more",
+        "details",
+        "share more",
+        "can you share",
+    }
+    if lower_current in polite_followups:
+        return True
+
     followup_pattern = re.search(
-        r"^(and|also|then|same for|what about|how about)\b|\b(it|that|those|them|same|again|previous|earlier)\b",
+        r"^(and|also|then|same for|what about|how about|please|yes please|ok|okay|sure)\b|\b(it|that|those|them|same|again|previous|earlier)\b",
         lower_current,
     )
     short_query = len(current_keywords) <= 5
