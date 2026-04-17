@@ -1597,11 +1597,18 @@ const LeadManager: React.FC = () => {
       <Dialog
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        maxWidth={false}
+        sx={{
+          "& .MuiDialog-paper": {
+            width: 720,
+            maxWidth: "95%",
+            margin: 0,
+            overflowX: "hidden"
+          }
+        }}
       >
         <DialogTitle>Lead Details</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent sx={{ overflowX: "hidden" }}>
           {selectedLead && (
             <Stack spacing={1.5}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -2014,7 +2021,7 @@ const LeadManager: React.FC = () => {
           </Timeline>
         )}
       </Drawer>
-    </Box>
+    </Box >
   );
 };
 
