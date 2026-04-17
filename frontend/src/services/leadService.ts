@@ -10,6 +10,21 @@ export interface LeadListResponse {
   };
 }
 
+export interface LeadActivity {
+  id: number;
+  lead_id: number;
+  source?: string | null;
+  session_id?: string | null;
+  campaign_id?: number | null;
+  activity_datetime: string; // ISO string from backend
+  status?: string | null;
+  attempt_label?: string | null;
+  summary?: string | null;
+  outcome?: string | null;
+  created_at?: string;
+}
+
+
 export const leadService = {
   async createLead(lead: LeadCreate): Promise<Lead> {
     const response = await api.post<Lead>("/api/admin/leads", lead);
@@ -38,6 +53,13 @@ export const leadService = {
     if (campaignType) params.append("campaign_type", campaignType);
     const response = await api.get<LeadListResponse>(
       `/api/admin/leads?${params.toString()}`,
+    );
+    return response.data;
+  },
+
+  async listLeadActivities(lead_id?: number): Promise<LeadActivity[]> {
+    const response = await api.get<LeadActivity[]>(
+      `/api/admin/leads/${lead_id}/activities`,
     );
     return response.data;
   },
