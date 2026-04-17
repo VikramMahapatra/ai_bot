@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.organization_setting import (
     OrganizationSettingsResponse,
-    OrganizationSettingsUpdate
+    OrganizationSettingsUpdate,
 )
 from app.models.organization_settings import OrganizationSettings
 from app.auth import get_current_user
@@ -13,18 +13,15 @@ router = APIRouter(prefix="/api/organization-settings", tags=["Organization Sett
 
 
 @router.get("", response_model=OrganizationSettingsResponse)
-def get_settings(
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    settings = db.query(OrganizationSettings).filter(
-        OrganizationSettings.organization_id == current_user.organization_id
-    ).first()
+def get_settings(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    settings = (
+        db.query(OrganizationSettings)
+        .filter(OrganizationSettings.organization_id == current_user.organization_id)
+        .first()
+    )
 
     if not settings:
-        settings = OrganizationSettings(
-            organization_id=current_user.organization_id
-        )
+        settings = OrganizationSettings(organization_id=current_user.organization_id)
         db.add(settings)
         db.commit()
         db.refresh(settings)
@@ -36,16 +33,16 @@ def get_settings(
 def update_settings(
     payload: OrganizationSettingsUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
-    settings = db.query(OrganizationSettings).filter(
-        OrganizationSettings.organization_id == current_user.organization_id
-    ).first()
+    settings = (
+        db.query(OrganizationSettings)
+        .filter(OrganizationSettings.organization_id == current_user.organization_id)
+        .first()
+    )
 
     if not settings:
-        settings = OrganizationSettings(
-            organization_id=current_user.organization_id
-        )
+        settings = OrganizationSettings(organization_id=current_user.organization_id)
         db.add(settings)
 
     for key, value in payload.dict().items():
