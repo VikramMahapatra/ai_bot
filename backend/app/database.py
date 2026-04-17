@@ -292,7 +292,7 @@ def init_db():
                     conn.execute(text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}"))
 
             conn.execute(
-                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_id INTEGER")
+                text("ALTER TABLE leads DROP COLUMN IF EXISTS campaign_id")
             )
 
         except Exception as e:
@@ -670,4 +670,31 @@ def init_db():
             )
 
         except Exception as e:
+            pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE conversations 
+                ADD COLUMN IF NOT EXISTS contact_id INTEGER,
+                ADD COLUMN IF NOT EXISTS source VARCHAR(50);
+            """))
+        except:
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE conversations
+                ADD CONSTRAINT fk_conversations_contact
+                FOREIGN KEY (contact_id)
+                REFERENCES contacts(id);
+            """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                    ALTER TABLE lead_activities 
+                    ADD COLUMN IF NOT EXISTS session_id VARCHAR(100)
+                """))
+        except:
             pass

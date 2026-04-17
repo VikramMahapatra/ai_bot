@@ -17,7 +17,7 @@ from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
-from app.services.call_log_service import process_call, save_transcripts
+from app.services.call_log_service import extract_placeholders, process_call
 from app.models.user import Organization
 from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
 from app.models.products import Product
@@ -373,7 +373,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         agent_id=data.agent_id,
         product_id=data.product_id,
         status= "draft",
-        external_campaign_name= unique_campaign_code
+        external_campaign_name= unique_campaign_code,
+        instant_reply= data.instant_reply
     )
 
     db.add(campaign)
@@ -848,13 +849,7 @@ def delete_campaign(
     return {"message": "Campaign deleted"}
 
 def build_contacts_payload(contacts, agent):
-    import re
-
-    def extract(text):
-        return set(re.findall(r"\{\{(.*?)\}\}", text or ""))
-
-    placeholders = extract(agent.greeting) | extract(agent.prompt)
-
+    placeholders = extract_placeholders(agent.greeting) | extract_placeholders(agent.prompt)
     payload = []
 
     for contact in contacts:

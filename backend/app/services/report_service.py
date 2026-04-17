@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import String, cast, func
+from sqlalchemy import String, case, cast, func
 from app.models import ConversationMetrics, Conversation, Lead
 from app.models.call_campaigns import CallCampaign
 from app.models.calling_agents import CallingAgent
@@ -12,6 +12,9 @@ from app.services.funnel_category_service import get_funnel_categories
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import logging
+
+from app.models.lead_contact_mapping import LeadContactMapping
+from app.models.campaign import Contact
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,7 @@ def get_session_conversations_report(
         func.max(Conversation.widget_id).label("widget_id"),
         func.count(Conversation.id).label("turn_count"),
         func.max(Conversation.outcome).label("outcome"),
+        func.max(Conversation.source).label("source"),
     ).filter(
         *conversation_filters
     ).group_by(
@@ -127,20 +131,40 @@ def get_session_conversations_report(
     ).subquery()
 
     leads_subquery = db.query(
-        Lead.session_id.label("session_id"),
+        Conversation.session_id.label("session_id"),
+        func.max(Lead.id).label("lead_id"),
         func.max(Lead.name).label("lead_name"),
         func.max(Lead.email).label("lead_email"),
         func.max(Lead.funnel_stage).label("funnel_stage"),
+    ).outerjoin(
+        LeadContactMapping,
+        LeadContactMapping.contact_id == Conversation.contact_id
+    ).outerjoin(
+        Lead,
+        Lead.id == LeadContactMapping.lead_id
     ).filter(
-        Lead.organization_id == organization_id
+        Conversation.organization_id == organization_id
     ).group_by(
-        Lead.session_id
+        Conversation.session_id
+    ).subquery()
+    
+    contact_subquery = db.query(
+        Conversation.session_id.label("session_id"),
+        func.max(Contact.name).label("contact_name"),
+    ).outerjoin(
+        Contact,
+        Contact.id == Conversation.contact_id
+    ).filter(
+        Conversation.organization_id == organization_id
+    ).group_by(
+        Conversation.session_id
     ).subquery()
 
     query = db.query(
         sessions_subquery.c.id.label("id"),
         sessions_subquery.c.session_id.label("session_id"),
         sessions_subquery.c.widget_id.label("widget_id"),
+        sessions_subquery.c.source.label("source"),
         sessions_subquery.c.turn_count.label("turn_count"),
         sessions_subquery.c.conversation_start.label("conversation_start"),
         sessions_subquery.c.conversation_end.label("conversation_end"),
@@ -155,6 +179,11 @@ def get_session_conversations_report(
         leads_subquery.c.lead_name.label("lead_name"),
         leads_subquery.c.lead_email.label("lead_email"),
         leads_subquery.c.funnel_stage.label("funnel_stage"),
+        func.coalesce(contact_subquery.c.contact_name, "Guest").label("contact_name"),
+        case(
+            (leads_subquery.c.lead_id.isnot(None), "yes"),
+            else_="no"
+        ).label("lead_conversion"),
     ).select_from(
         sessions_subquery
     ).outerjoin(
@@ -163,6 +192,9 @@ def get_session_conversations_report(
     ).outerjoin(
         leads_subquery,
         leads_subquery.c.session_id == sessions_subquery.c.session_id,
+    ).outerjoin(
+        contact_subquery,
+        contact_subquery.c.session_id == sessions_subquery.c.session_id,
     )
 
     if min_tokens is not None:
@@ -206,6 +238,7 @@ def get_session_conversations_report(
             "session_id": row.session_id,
             "organization_id": organization_id,
             "widget_id": row.widget_id,
+            "source": row.source,
             "total_messages": turn_count * 2,
             "total_tokens": int(row.total_tokens or 0),
             "prompt_tokens": int(row.prompt_tokens or 0),
@@ -214,6 +247,8 @@ def get_session_conversations_report(
             "conversation_duration": float(conversation_duration),
             "user_satisfaction": float(row.user_satisfaction) if row.user_satisfaction is not None else None,
             "has_lead": int(row.has_lead or 0),
+            "contact_name": row.contact_name,
+            "lead_conversion": row.lead_conversion,
             "lead_name": row.lead_name,
             "lead_email": row.lead_email,
             "outcome": row.outcome,
