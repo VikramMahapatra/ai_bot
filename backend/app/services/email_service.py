@@ -84,7 +84,7 @@ def _is_reputation_or_blocklist_rejection(rcpt_message: str) -> bool:
     return any(token in text for token in indicators)
 
 
-def _precheck_recipient_mailbox(email: str) -> tuple[bool | None, str | None]:
+def _precheck_recipient_mailbox(email: str, org_settings: OrganizationSettings) -> tuple[bool | None, str | None]:
     """Best-effort recipient mailbox check via MX + SMTP RCPT.
 
     Returns:
@@ -107,7 +107,7 @@ def _precheck_recipient_mailbox(email: str) -> tuple[bool | None, str | None]:
     if not mx_hosts:
         return None, "MX lookup inconclusive: no MX hosts found"
 
-    probe_from = settings.EMAIL_SENDER or "noreply@example.com"
+    probe_from = org_settings.smtp_sender_email or "noreply@example.com"
     inconclusive_errors = []
 
     for host in mx_hosts[:3]:
@@ -148,7 +148,7 @@ def send_conversation_email(recipient_email: str, conversation_data: list, setti
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Your Conversation Transcript - Zentrixel AI"
-        msg["From"] = settings.EMAIL_SENDER
+        msg["From"] = settings.smtp_sender_email
         msg["To"] = recipient_email
 
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
@@ -557,7 +557,7 @@ def send_campaign_email(
     if not normalized_email:
         return False, validation_error or "Missing or invalid email", None
 
-    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email)
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email, settings)
     if rcpt_ok is False:
         return False, rcpt_error or "Recipient mailbox rejected", None
     if rcpt_ok is None and rcpt_error:
@@ -656,7 +656,7 @@ def send_widget_test_link_email(
     if _is_reserved_test_email(normalized_email):
         return False, "Recipient email uses a placeholder/test domain"
 
-    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email)
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email, settings)
     if rcpt_ok is False:
         return False, rcpt_error or "Recipient mailbox rejected"
     if rcpt_ok is None and rcpt_error:

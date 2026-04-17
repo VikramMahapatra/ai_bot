@@ -15,6 +15,8 @@ import logging
 from app.models.call_campaigns import CallCampaign
 from app.services.call_campaign_service import sync_campaign_from_echoleads
 from app.utils.echoleads_client import EcholeadsClient
+from app.models.lead_contact_mapping import LeadContactMapping
+from app.models.lead_activities import LeadActivity
 
 logger = logging.getLogger(__name__)
 
@@ -185,12 +187,29 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                 {Conversation.outcome: outcome},
                 synchronize_session=False,
             )
+            
+            # Update LeadActivity outcome by session_id
+            db.query(LeadActivity).filter(
+                LeadActivity.session_id == session_id,
+                LeadActivity.outcome.is_(None),
+            ).update(
+                {LeadActivity.outcome: outcome},
+                synchronize_session=False,
+            )
 
             # Keep leads in sync with the resolved conversation outcome.
-            lead_rows = db.query(Lead).filter(
-                Lead.organization_id == org_id,
-                Lead.session_id == session_id,
-            ).all()
+            lead_rows = db.query(Lead).join(
+                LeadContactMapping,
+                LeadContactMapping.lead_id == Lead.id
+            ).join(
+                Conversation,
+                Conversation.contact_id == LeadContactMapping.contact_id
+            ).filter(
+                Conversation.organization_id == org_id,
+                Conversation.session_id == session_id,
+                Lead.organization_id == org_id
+            ).distinct(Lead.id).all()
+            
             for lead in lead_rows:
                 if (lead.lead_outcome or "").strip().lower() != outcome:
                     lead.lead_outcome = outcome
@@ -221,9 +240,8 @@ def process_pending_lead_outcomes(
     """Backfill lead_outcome from existing conversation outcomes for matching sessions."""
     lead_query = db.query(
         Lead.organization_id,
-        Lead.session_id,
+        Lead.id,
     ).filter(
-        Lead.session_id.isnot(None),
         Lead.lead_outcome.is_(None),
     )
 
@@ -232,17 +250,26 @@ def process_pending_lead_outcomes(
 
     pending_lead_sessions = lead_query.group_by(
         Lead.organization_id,
-        Lead.session_id,
+        Lead.id,
     ).limit(batch_size).all()
 
     synced = 0
     failed = 0
 
-    for org_id, session_id in pending_lead_sessions:
+    for org_id, lead_id  in pending_lead_sessions:
         try:
+            contact_ids = db.query(LeadContactMapping.contact_id).filter(
+                LeadContactMapping.lead_id == lead_id
+            ).all()
+
+            contact_ids = [c[0] for c in contact_ids]
+
+            if not contact_ids:
+                continue
+            
             latest_with_outcome = db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
-                Conversation.session_id == session_id,
+                Conversation.contact_id.in_(contact_ids),
                 Conversation.outcome.isnot(None),
             ).order_by(Conversation.created_at.desc()).first()
 
@@ -252,7 +279,7 @@ def process_pending_lead_outcomes(
             normalized_outcome = _normalize_outcome(latest_with_outcome.outcome)
             updated_rows = db.query(Lead).filter(
                 Lead.organization_id == org_id,
-                Lead.session_id == session_id,
+                Lead.id == lead_id,
                 Lead.lead_outcome.is_(None),
             ).update(
                 {Lead.lead_outcome: normalized_outcome},
@@ -268,7 +295,7 @@ def process_pending_lead_outcomes(
             logger.error(
                 "Failed to backfill lead outcome for org=%s session=%s: %s",
                 org_id,
-                session_id,
+                lead_id,
                 str(exc),
                 exc_info=True,
             )
@@ -284,9 +311,8 @@ def process_pending_lead_funnel_tags(
     """Backfill lead.funnel_stage from AI classification for sessions with missing funnel tags."""
     lead_query = db.query(
         Lead.organization_id,
-        Lead.session_id,
+        Lead.id,
     ).filter(
-        Lead.session_id.isnot(None),
         or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
     )
 
@@ -295,19 +321,29 @@ def process_pending_lead_funnel_tags(
 
     pending_sessions = lead_query.group_by(
         Lead.organization_id,
-        Lead.session_id,
+        Lead.id,
     ).limit(batch_size).all()
 
     tagged = 0
     failed = 0
     funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
 
-    for org_id, session_id in pending_sessions:
+    for org_id, lead_id in pending_sessions:
         try:
+            contact_ids = db.query(LeadContactMapping.contact_id).filter(
+                LeadContactMapping.lead_id == lead_id
+            ).all()
+
+            contact_ids = [c[0] for c in contact_ids]
+
+            if not contact_ids:
+                continue
+            
             rows = db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
-                Conversation.session_id == session_id,
+                Conversation.contact_id.in_(contact_ids),
             ).order_by(Conversation.created_at.asc()).all()
+            
             if not rows:
                 continue
 
@@ -326,7 +362,7 @@ def process_pending_lead_funnel_tags(
 
             updated_rows = db.query(Lead).filter(
                 Lead.organization_id == org_id,
-                Lead.session_id == session_id,
+                Lead.id == lead_id,
                 or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
             ).update(
                 {Lead.funnel_stage: inferred_funnel_stage},
@@ -342,7 +378,7 @@ def process_pending_lead_funnel_tags(
             logger.error(
                 "Failed to backfill funnel stage for org=%s session=%s: %s",
                 org_id,
-                session_id,
+                lead_id,
                 str(exc),
                 exc_info=True,
             )

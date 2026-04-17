@@ -196,7 +196,7 @@ function TemplateList() {
 
     return (
         <AdminLayout>
-            <Box>
+            <Box sx={{ p: 3 }}>
 
                 {/* HEADER */}
                 <Paper sx={{ p: 2, mb: 2 }}>

@@ -12,6 +12,8 @@ class Conversation(Base):
     widget_id = Column(String, index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True, index=True)
+    source = Column(String(50), nullable=True, index=True)
     message = Column(Text, nullable=False)
     response = Column(Text, nullable=False)
     role = Column(String, nullable=False)  # 'user' or 'assistant'
@@ -20,3 +22,4 @@ class Conversation(Base):
     
     # Relationships
     feedback = relationship("MessageFeedback", back_populates="conversation", cascade="all, delete-orphan")
+    contact = relationship("Contact")

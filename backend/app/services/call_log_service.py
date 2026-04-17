@@ -27,6 +27,10 @@ from app.services.sms_service import send_sms
 from app.services.email_service import send_campaign_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
+from app.models.whatsapp_channel import WhatsAppChannel
+from app.services.whatsapp_service import send_whatsapp_text_message
+from app.models.lead_activities import LeadActivity
+from app.models.lead_contact_mapping import LeadContactMapping
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -433,6 +437,7 @@ def process_call(db, call, agent):
             db.flush()
             
             save_transcripts(db, existing.id, call.get("transcript"), campaign, contact)
+            call_log = existing
         else:
             call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
             call_log = CallLog(
@@ -551,11 +556,12 @@ def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign :
     
     if campaign and campaign.instant_reply:
         response = analyze_conversation(transcript)
+        print(f"response from decision service: {response} and transcript: {transcript}")
         dispatch_instant_replies(
             db=db,
             campaign=campaign,
             contact=contact,
-            decision=response.instant_reply_decision
+            decision= "send_now" or response.get("instant_reply_decision")
         )
             
 
@@ -565,6 +571,8 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
     
     if not contact:
         return
+    
+    print("Dispatching instant replies...")
 
     replies = (
         db.query(CallCampaignInstantReply)
@@ -578,40 +586,67 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
         message = render_template(template.content, contact)
 
         if reply.mode == "sms":
-            send_sms(
-                message=message,
-                to_number=contact.phone
-            )
+            print(f"Sending SMS to {contact.phone} with message: {message}")
+            try:
+                result = send_sms(
+                    message=message,
+                    to_number=contact.phone
+                )
+                
+                print(f"SMS send result: {result}")
+            except Exception as e:
+                print(f"Failed to send SMS: {str(e)}")
+                pass
 
-        # elif reply.mode == "whatsapp":
-        #     send_whatsapp(
-        #         message=message,
-        #         to_number=contact.whatsapp_number or contact.phone
-        #     )
+        elif reply.mode == "whatsapp":
+            config = db.query(WhatsAppChannel).filter(
+                WhatsAppChannel.organization_id == campaign.organization_id,
+                WhatsAppChannel.is_active == True,
+            ).first()
+            
+            if config:
+                try:
+                    send_whatsapp_text_message(
+                        phone_number_id=config.phone_number_id,
+                        access_token=config.access_token,
+                        to_number=contact.phone,
+                        message_text=message,
+                    )
+                except Exception as e:
+                    print(f"Failed to send WhatsApp message: {str(e)}")
+                    pass
 
         elif reply.mode == "email":
+            print(f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}")
             org_settings = get_org_settings(db, campaign.organization_id)
-            send_campaign_email(
-                subject=template.subject or "Update",
-                message_template=message,
-                recipient_name=contact.name,
-                recipient_email=contact.email,
-                settings=org_settings
-            )            
-        
-        
+            try:
+                send_campaign_email(
+                    campaign_name=campaign.name,
+                    subject=template.subject or "Update",
+                    message_template=message,
+                    recipient_name=contact.name,
+                    recipient_email=contact.email,
+                    settings=org_settings
+                )
+            except Exception as e:
+                print(f"Failed to send Email: {str(e)}")
+                pass
+
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
-    # Prevent duplicate
-    query = db.query(Lead).filter(
-        Lead.organization_id == call_log.organization_id,
-        Lead.session_id == (
-            call_log.call_session_id
+    phone = contact.phone if contact and contact.phone else call.get("phone")
+
+    existing = (
+        db.query(Lead)
+        .filter(
+            Lead.organization_id == call_log.organization_id,
+            Lead.phone == phone,
+            Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
         )
+        .order_by(Lead.created_at.desc())
+        .first()
     )
-    
-    existing = query.first()
-    
+
     contact_fields = {}
     if contact:
         contact_fields = {
@@ -624,17 +659,39 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
             "source": contact.source,
             "tags": contact.tags
         }
-    
-    if not existing:
+
+    # If existing & not closed → update
+    if existing and existing.funnel_stage not in ["closed_won", "closed_lost"]:
+
+        existing.session_id = call_log.call_session_id
+        existing.widget_id = agent.widget_id
+
+        # Merge custom fields
+        existing_fields = {}
+        if existing.custom_fields:
+            existing_fields = json.loads(existing.custom_fields)
+
+        existing_fields.update({
+            "lead_info": call.get("lead_info"),
+            "external_call_id": call.get("id"),
+            **contact_fields
+        })
+
+        existing.custom_fields = json.dumps(existing_fields)
+
+        lead = existing
+
+    else:
+        # Create new lead
         lead = Lead(
             source="voice",
             session_id=call_log.call_session_id,
             widget_id=agent.widget_id,
             organization_id=agent.organization_id,
-            product_id = str(campaign.product_id) if campaign.product_id else None,
+            product_id=str(campaign.product_id) if campaign.product_id else None,
             name=contact.name if contact else None,
             email=contact.email if contact else None,
-            phone=call.get("phone"),
+            phone=phone,
             company=contact.company if contact else None,
             custom_fields=json.dumps({
                 "lead_info": call.get("lead_info"),
@@ -645,104 +702,92 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
         db.add(lead)
         db.flush()
-    else:
-        lead = existing
-    
+        
+        if contact:
+            mapping = LeadContactMapping(
+                lead_id=lead.id,
+                contact_id=contact.id,
+                source="voice"
+            )
+            db.add(mapping)
+            db.flush()
+
+    # Create conversation
     create_conversation_from_transcripts(
         db=db,
         call_log=call_log,
         agent=agent
     )
-    
+
+    # Add Lead Activity
+    create_lead_activity(
+        db=db,
+        lead=lead,
+        source="voice",
+        session_id=call_log.call_session_id,
+        campaign=campaign,
+        summary=call.get("call_summary"),
+        status=call.get("ended_reason"),
+    )
+
     return lead
 
-def create_manual_lead(db : Session, organization_id :int, call_log_id : int, payload: MoveToFunnelRequest):
-    result = True
-    # Fetch call log (you may adjust based on your CallLog model)
-    call = db.query(CallLog).filter(CallLog.id == call_log_id).first()
-    if not call:
-        return {
-            "success" : False,
-            "message" : "Call not found"
-        } 
-    
-    agent = db.query(CallingAgent).filter(
-        CallingAgent.id == call.agent_id,
-        CallingAgent.organization_id == organization_id
-    ).first()
-    
-    campaign = None
-    if call.campaign_id:
-        campaign = db.query(CallCampaign).filter(
-            CallCampaign.id == call.campaign_id
-        ).first()
-        
-    if not campaign:
-        return {
-            "success" : False,
-            "message" : "Campaign not found"
-        } 
-    
-    contact = None
-    if call.contact_id:
-        contact = db.query(Contact).filter(
-            Contact.id == call.contact_id
-        ).first()
-        
-    if not contact:
-        return {
-            "success" : False,
-            "message" : "Contact not found"
-        } 
 
-    # Prevent duplicate by phone + organization + optional product
-    query = db.query(Lead).filter(
-        Lead.phone == call.phone,
-        Lead.organization_id == agent.organization_id
-    )
-    if campaign.product_id:
-        query = query.filter(Lead.product_id == campaign.product_id)
+def create_lead_activity(
+    db,
+    lead,
+    source,
+    session_id=None,
+    campaign=None,
+    status="completed",
+    summary=None,
+    outcome=None
+):
 
-    if query.first():
-        return {
-            "success" : False,
-            "message" : "Lead already synced"
-        } 
-
-    # Build custom fields
-    custom_fields = {
-        "lead_info": call.lead_info,
-        "external_call_id": call.id
-    }
-
-    lead = Lead(
-        source="voice",
-        session_id=call.call_session_id,
-        widget_id=agent.widget_id,
-        organization_id=agent.organization_id,
-        product_id = str(campaign.product_id) if campaign.product_id else None,
-        name=contact.name if contact else None,
-        email=contact.email if contact else None,
-        phone=call.phone,
-        company=contact.company if contact else None,
-        custom_fields=json.dumps(custom_fields)
+    # Prevent duplicate activity
+    existing_activity = (
+        db.query(LeadActivity)
+        .filter(
+            LeadActivity.session_id == session_id,
+            LeadActivity.source == source
+        )
+        .first()
     )
 
-    db.add(lead)
-    db.flush()
-    
-    create_conversation_from_transcripts(
-        db=db,
-        call_log=call,
-        agent=agent
+    if existing_activity:
+        return existing_activity
+
+    # Get attempt number
+    attempt = get_next_attempt(db, lead.id, source)
+
+    activity = LeadActivity(
+        lead_id=lead.id,
+        campaign_id=campaign.id if campaign else None,
+        session_id=session_id,
+        source=source,
+        status=status,
+        attempt_label=f"{source.capitalize()} Attempt #{attempt}",
+        summary=summary,
+        outcome=outcome
     )
-    
-    db.commit()
-    
-    return {
-            "success" : True,
-            "message" : "Lead synced successfully"
-        } 
+
+    db.add(activity)
+
+    return activity
+
+def get_next_attempt(db, lead_id, source):
+
+    count = (
+        db.query(LeadActivity)
+        .filter(
+            LeadActivity.lead_id == lead_id,
+            LeadActivity.source == source
+        )
+        .count()
+    )
+
+    return count + 1
+
     
 def create_conversation_from_transcripts(db, call_log, agent):
     # Skip if already exists
@@ -776,7 +821,9 @@ def create_conversation_from_transcripts(db, call_log, agent):
                 message=t.text,
                 response="",
                 role="assistant",  # role of the “responder”
-                created_at=t.created_at
+                created_at=t.created_at,
+                contact_id=call_log.contact_id,
+                source="voice"
             )
             conversations.append(current_message)
 
@@ -793,7 +840,9 @@ def create_conversation_from_transcripts(db, call_log, agent):
                     message="",
                     response=t.text,
                     role="assistant",
-                    created_at=t.created_at
+                    created_at=t.created_at,
+                    contact_id=call_log.contact_id,
+                    source="voice"
                 )
                 conversations.append(current_message)
 
