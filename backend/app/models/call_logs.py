@@ -44,6 +44,12 @@ class CallLog(Base):
     audio_url = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    workflow_execution_id = Column(
+        Integer,
+        ForeignKey("workflow_executions.id"),
+        nullable=True
+    )
+    
 
     transcripts = relationship("CallTranscript", back_populates="call_log")
     

@@ -238,11 +238,11 @@ def process_pending_lead_outcomes(
     organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
     """Backfill lead_outcome from existing conversation outcomes for matching sessions."""
+    
     lead_query = db.query(
         Lead.organization_id,
+        Lead.session_id,
         Lead.id,
-    ).filter(
-        Lead.lead_outcome.is_(None),
     )
 
     if organization_id is not None:
@@ -250,28 +250,31 @@ def process_pending_lead_outcomes(
 
     pending_lead_sessions = lead_query.group_by(
         Lead.organization_id,
+        Lead.session_id,
         Lead.id,
     ).limit(batch_size).all()
 
     synced = 0
     failed = 0
 
-    for org_id, lead_id  in pending_lead_sessions:
+    for org_id, session_id, lead_id  in pending_lead_sessions:
         try:
-            contact_ids = db.query(LeadContactMapping.contact_id).filter(
+            contact_id = db.query(LeadContactMapping.contact_id).filter(
                 LeadContactMapping.lead_id == lead_id
-            ).all()
-
-            contact_ids = [c[0] for c in contact_ids]
-
-            if not contact_ids:
-                continue
+            ).scalar()
             
-            latest_with_outcome = db.query(Conversation).filter(
-                Conversation.organization_id == org_id,
-                Conversation.contact_id.in_(contact_ids),
-                Conversation.outcome.isnot(None),
-            ).order_by(Conversation.created_at.desc()).first()
+            if not contact_id:
+                latest_with_outcome = db.query(Conversation).filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                    Conversation.outcome.isnot(None),
+                ).order_by(Conversation.created_at.desc()).first()
+            else :
+                latest_with_outcome = db.query(Conversation).filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.contact_id == contact_id,
+                    Conversation.outcome.isnot(None),
+                ).order_by(Conversation.created_at.desc()).first()
 
             if not latest_with_outcome or not (latest_with_outcome.outcome or "").strip():
                 continue
@@ -311,9 +314,8 @@ def process_pending_lead_funnel_tags(
     """Backfill lead.funnel_stage from AI classification for sessions with missing funnel tags."""
     lead_query = db.query(
         Lead.organization_id,
+        Lead.session_id,
         Lead.id,
-    ).filter(
-        or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
     )
 
     if organization_id is not None:
@@ -321,6 +323,7 @@ def process_pending_lead_funnel_tags(
 
     pending_sessions = lead_query.group_by(
         Lead.organization_id,
+        Lead.session_id,
         Lead.id,
     ).limit(batch_size).all()
 
@@ -328,21 +331,22 @@ def process_pending_lead_funnel_tags(
     failed = 0
     funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
 
-    for org_id, lead_id in pending_sessions:
+    for org_id, session_id, lead_id in pending_sessions:
         try:
-            contact_ids = db.query(LeadContactMapping.contact_id).filter(
+            contact_id = db.query(LeadContactMapping.contact_id).filter(
                 LeadContactMapping.lead_id == lead_id
-            ).all()
-
-            contact_ids = [c[0] for c in contact_ids]
-
-            if not contact_ids:
-                continue
+            ).scalar()
             
-            rows = db.query(Conversation).filter(
-                Conversation.organization_id == org_id,
-                Conversation.contact_id.in_(contact_ids),
-            ).order_by(Conversation.created_at.asc()).all()
+            if not contact_id: # guest lead without contact mapping, try to find conversations by session_id if available
+                rows = db.query(Conversation).filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id
+                ).order_by(Conversation.created_at.asc()).all()
+            else :
+                rows = db.query(Conversation).filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.contact_id == contact_id
+                ).order_by(Conversation.created_at.asc()).all()
             
             if not rows:
                 continue

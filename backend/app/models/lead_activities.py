@@ -23,7 +23,7 @@ class LeadActivity(Base):
         index=True
     )
 
-    status = Column(String(50), nullable=True, index=True)
+    status = Column(String(150), nullable=True, index=True)
     attempt_label = Column(String(50), nullable=True)
 
     summary = Column(Text, nullable=True)

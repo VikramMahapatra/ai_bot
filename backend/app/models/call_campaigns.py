@@ -25,6 +25,13 @@ class CallCampaign(Base):
     success_rate = Column(Float, default=0.0)
     response_rate = Column(Float, default=0.0)
     instant_reply = Column(Boolean, default=False)
+    
+    workflow_id = Column(
+        Integer,
+        ForeignKey("workflows.id"),
+        nullable=True
+    )
+    
     is_deleted = Column(Boolean, default=False)
     external_campaign_id = Column(Integer, nullable=True) 
     external_campaign_name = Column(String, nullable=True) 
