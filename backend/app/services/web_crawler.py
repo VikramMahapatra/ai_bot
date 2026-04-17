@@ -172,8 +172,11 @@ class WebCrawler:
                 # Remove fragments
                 absolute_url = absolute_url.split('#')[0]
                 absolute_url = self.normalize_url(absolute_url)
+                next_depth = depth + 1
+                if next_depth > self.max_depth:
+                    continue
                 if self.is_valid_url(absolute_url):
-                    self._track_discovered_url(absolute_url, depth + 1)
+                    self._track_discovered_url(absolute_url, next_depth)
                     links.append(absolute_url)
             
             return links

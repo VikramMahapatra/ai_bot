@@ -34,7 +34,7 @@ import re
 
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
 from app.models.organization_settings import OrganizationSettings
-from app.services.organization_setting_service import get_settings
+from app.services.organization_setting_service import get_settings, get_org_settings
 
 logger = logging.getLogger(__name__)
 
@@ -1328,7 +1328,6 @@ async def chat(
     message: ChatMessage,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_optional),
-    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
     try:
@@ -1363,6 +1362,7 @@ async def chat(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
@@ -1636,7 +1636,7 @@ async def chat(
             )
 
             if limits.get("human_handoff_enabled"):
-                response_text = _ensure_handoff_offer_response(response_text, widget_config, settings)
+                response_text = _ensure_handoff_offer_response(response_text, widget_config, org_settings)
 
             increment_usage(
                 db,
@@ -1663,7 +1663,6 @@ async def chat_stream(
     message: ChatMessage,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_optional),
-    settings: OrganizationSettings = Depends(get_settings)
 ):
     try:
         user_id = None
@@ -1686,6 +1685,7 @@ async def chat_stream(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
@@ -1985,7 +1985,7 @@ async def chat_stream(
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, org_settings)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
                 else:
@@ -2010,7 +2010,7 @@ async def chat_stream(
                 if not collected_parts:
                     fallback_text = "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, org_settings)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
             finally:
