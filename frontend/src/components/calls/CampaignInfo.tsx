@@ -32,6 +32,18 @@ interface CampaignInfoProps {
   nextStep: () => void;
 }
 
+const getInstantTemplateId = (value: unknown): number | undefined => {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
+  if (typeof value === "object" && value !== null && "template_id" in value) {
+    const id = (value as { template_id?: number }).template_id;
+    if (id == null || id === ("" as unknown)) return undefined;
+    const n = Number(id);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  return undefined;
+};
+
 const MODES = [
   {
     key: "whatsapp",
@@ -122,7 +134,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
       MODES.forEach((mode) => {
         const isActive = modes.includes(mode.key);
 
-        if (isActive && !templates?.[mode.key]) {
+        if (isActive && getInstantTemplateId(templates?.[mode.key]) == null) {
           newErrors[`${mode.key}_template`] =
             `${mode.label} template is required`;
         }
@@ -137,11 +149,18 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   };
 
   const updateTemplateId = (mode: string, templateId: number) => {
+    const selected = templates.find((t) => t.id === templateId);
     setForm((prev: any) => ({
       ...prev,
       instant_reply_templates: {
         ...prev.instant_reply_templates,
-        [mode]: templateId,
+        [mode]:
+          templateId
+            ? {
+                template_id: templateId,
+                name: selected?.name ?? "",
+              }
+            : "",
       },
     }));
   };
@@ -381,10 +400,18 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                         size="small"
                         disabled={!isActive}
                         displayEmpty
-                        value={form.instant_reply_templates?.[mode.key] || ""}
-                        onChange={(e) =>
-                          updateTemplateId(mode.key, Number(e.target.value))
+                        value={
+                          getInstantTemplateId(
+                            form.instant_reply_templates?.[mode.key],
+                          ) ?? ""
                         }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          updateTemplateId(
+                            mode.key,
+                            raw === "" ? 0 : Number(raw),
+                          );
+                        }}
                         sx={{
                           backgroundColor: isActive ? "#fff" : "#f5f5f5",
                         }}
