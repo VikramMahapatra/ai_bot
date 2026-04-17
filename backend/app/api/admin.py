@@ -32,6 +32,7 @@ import secrets
 
 from app.models.organization_settings import OrganizationSettings
 from app.api.organization_setting import get_settings
+from app.services.organization_setting_service import get_org_settings
 
 logger = logging.getLogger(__name__)
 
@@ -455,7 +456,6 @@ async def get_widget_test_config(
     widget_id: str,
     token: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Get widget config for public test pages using a signed expiring token."""
     _validate_widget_test_link_token(token, widget_id)
@@ -464,7 +464,13 @@ async def get_widget_test_config(
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
 
-    if _ensure_widget_escalation_contacts(config, settings):
+    org_settings = (
+        get_org_settings(db, config.organization_id)
+        if config.organization_id
+        else settings
+    )
+
+    if _ensure_widget_escalation_contacts(config, org_settings):
         db.commit()
         db.refresh(config)
 
@@ -520,12 +526,22 @@ async def create_widget_config(
     config_data: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
+    org_settings: OrganizationSettings = Depends(get_settings),
 ):
     """Create widget configuration for the current user"""
     from app.models import WidgetConfig
 
     # Generate widget ID if not provided
     widget_id = config_data.get("widget_id", str(uuid.uuid4()))
+
+    escalation_contact_level_1 = (
+        (config_data.get("escalation_contact_level_1") or "").strip()
+        or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+    )
+    escalation_contact_level_2 = (
+        (config_data.get("escalation_contact_level_2") or "").strip()
+        or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+    )
 
     config = WidgetConfig(
         user_id=current_user.id,
@@ -540,12 +556,8 @@ async def create_widget_config(
         position=config_data.get("position", "bottom-right"),
         lead_capture_enabled=config_data.get("lead_capture_enabled", True),
         lead_fields=config_data.get("lead_fields"),
-        escalation_contact_level_1=config_data.get(
-            "escalation_contact_level_1", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
-        ),
-        escalation_contact_level_2=config_data.get(
-            "escalation_contact_level_2", settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
-        ),
+        escalation_contact_level_1=escalation_contact_level_1,
+        escalation_contact_level_2=escalation_contact_level_2,
     )
     db.add(config)
     db.commit()

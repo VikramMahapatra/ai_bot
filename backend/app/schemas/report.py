@@ -6,6 +6,8 @@ from datetime import datetime
 class ConversationMetricsResponse(BaseModel):
     id: int
     session_id: str
+    contact_name: str
+    source: Optional[str] = None
     organization_id: int
     widget_id: Optional[str]
     total_messages: int
@@ -16,6 +18,7 @@ class ConversationMetricsResponse(BaseModel):
     conversation_duration: float
     user_satisfaction: Optional[float]
     has_lead: int
+    lead_conversion: str
     lead_name: Optional[str]
     lead_email: Optional[str]
     outcome: Optional[str] = None

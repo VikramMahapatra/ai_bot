@@ -42,6 +42,8 @@ from app.models.funnel_category import FunnelCategory
 from app.models.followup_workflows import FollowUpWorkflow
 from app.models.followup_sequences import FollowUpSequence
 from app.models.message_templates import MessageTemplate
+from app.models.lead_activities import LeadActivity
+from app.models.lead_contact_mapping import LeadContactMapping
 
 __all__ = [
     "User",
@@ -89,5 +91,7 @@ __all__ = [
     "FunnelCategory",
     "FollowUpWorkflow",
     "FollowUpSequence",
-    "MessageTemplate"
+    "MessageTemplate",
+    "LeadActivity",
+    "LeadContactMapping"
 ]
