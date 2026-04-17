@@ -173,7 +173,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [crawlMaxDepth, setCrawlMaxDepth] = useState(2);
   const [knowledgeTitle, setKnowledgeTitle] = useState('FAQ and Product Knowledge');
   const [knowledgeText, setKnowledgeText] = useState('');
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [crawlPreviewItems, setCrawlPreviewItems] = useState<CrawlPreviewItem[]>([]);
   const [crawlJobStatus, setCrawlJobStatus] = useState<CrawlJobStatus | null>(null);
   const [refreshingCrawlStatus, setRefreshingCrawlStatus] = useState(false);
@@ -230,6 +230,8 @@ const CreateChatAgentPage: React.FC = () => {
   const knowledgeEditingLocked = crawlJobActive;
   const canAdvanceToStepB = selectedPreviewCount > 0;
   const canAdvanceToStepC = crawlJobStatus?.status === 'completed';
+  const embedJobCompleted = crawlJobStatus?.status === 'completed';
+  const canRunEmbedSelected = !busy && !crawlJobActive && selectedPreviewCount > 0 && !embedJobCompleted;
 
   const goBackStep = () => {
     setActiveStep((prev) => Math.max(0, prev - 1));
@@ -996,18 +998,31 @@ const CreateChatAgentPage: React.FC = () => {
       setError('Save agent profile first.');
       return;
     }
-    if (!uploadFile) {
-      setError('Please choose a file first (PDF, DOCX, XLSX).');
+    if (uploadFiles.length === 0) {
+      setError('Please choose one or more files first (PDF, DOCX, XLSX).');
       return;
     }
 
     try {
       setBusy(true);
       setError('');
-      await knowledgeService.uploadDocument(uploadFile, createdWidgetId);
-      setKnowledgeActionsDone((v) => v + 1);
-      setSuccess('Document uploaded successfully.');
-      setUploadFile(null);
+      const uploads = await Promise.allSettled(
+        uploadFiles.map((file) => knowledgeService.uploadDocument(file, createdWidgetId))
+      );
+      const successCount = uploads.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = uploads.length - successCount;
+
+      if (successCount > 0) {
+        setKnowledgeActionsDone((v) => v + successCount);
+      }
+
+      if (failedCount > 0) {
+        setError(`Uploaded ${successCount}/${uploadFiles.length} documents. ${failedCount} failed.`);
+      } else {
+        setSuccess(`Uploaded ${successCount} document${successCount === 1 ? '' : 's'} successfully.`);
+      }
+
+      setUploadFiles([]);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to upload document.');
     } finally {
@@ -1821,6 +1836,43 @@ const CreateChatAgentPage: React.FC = () => {
                                     variant="contained"
                                     onClick={() => setKnowledgeFlowStep(1)}
                                     disabled={!canAdvanceToStepB || knowledgeEditingLocked}
+                                    sx={{
+                                      position: 'relative',
+                                      overflow: 'hidden',
+                                      animation: canAdvanceToStepB && !knowledgeEditingLocked ? 'nextStepButtonGlow 2.2s ease-in-out infinite' : 'none',
+                                      '&::after': {
+                                        content: '""',
+                                        position: 'absolute',
+                                        top: '-25%',
+                                        left: '-42%',
+                                        width: '36%',
+                                        height: '150%',
+                                        transform: 'skewX(-18deg)',
+                                        background: `linear-gradient(110deg, ${alpha('#ffffff', 0)} 0%, ${alpha('#ffffff', 0.32)} 50%, ${alpha('#ffffff', 0)} 100%)`,
+                                        opacity: canAdvanceToStepB && !knowledgeEditingLocked ? 1 : 0,
+                                        animation: canAdvanceToStepB && !knowledgeEditingLocked ? 'nextStepButtonSweep 2.6s linear infinite' : 'none',
+                                        pointerEvents: 'none',
+                                      },
+                                      '@keyframes nextStepButtonGlow': {
+                                        '0%': {
+                                          boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0.32)}`,
+                                        },
+                                        '50%': {
+                                          boxShadow: `0 0 0 8px ${alpha(theme.palette.primary.main, 0)}, 0 0 14px ${alpha(theme.palette.primary.light, 0.28)}`,
+                                        },
+                                        '100%': {
+                                          boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}`,
+                                        },
+                                      },
+                                      '@keyframes nextStepButtonSweep': {
+                                        '0%': {
+                                          left: '-45%',
+                                        },
+                                        '100%': {
+                                          left: '112%',
+                                        },
+                                      },
+                                    }}
                                   >
                                     Next: Step B
                                   </Button>
@@ -1850,12 +1902,80 @@ const CreateChatAgentPage: React.FC = () => {
                                 <Button
                                   variant="contained"
                                   onClick={addWebsiteKnowledge}
-                                  disabled={busy || crawlJobActive || selectedPreviewCount < 1}
+                                  disabled={!canRunEmbedSelected}
                                   sx={{
                                     background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    isolation: 'isolate',
+                                    transform: canRunEmbedSelected ? 'translateZ(0)' : 'none',
+                                    animation: canRunEmbedSelected ? 'embedButtonGlow 1.5s ease-in-out infinite' : 'none',
+                                    '&::before': {
+                                      content: '""',
+                                      position: 'absolute',
+                                      inset: '22% 10%',
+                                      borderRadius: '999px',
+                                      background: `radial-gradient(circle, ${alpha('#ffffff', 0.48)} 0%, ${alpha('#ffffff', 0)} 70%)`,
+                                      opacity: canRunEmbedSelected ? 0.95 : 0,
+                                      animation: canRunEmbedSelected ? 'embedButtonInnerGlow 1.4s ease-in-out infinite' : 'none',
+                                      pointerEvents: 'none',
+                                      zIndex: 0,
+                                    },
+                                    '&::after': {
+                                      content: '""',
+                                      position: 'absolute',
+                                      top: '-30%',
+                                      left: '-45%',
+                                      width: '42%',
+                                      height: '160%',
+                                      background: `linear-gradient(110deg, ${alpha('#ffffff', 0)} 0%, ${alpha('#ffffff', 0.5)} 50%, ${alpha('#ffffff', 0)} 100%)`,
+                                      transform: 'skewX(-20deg)',
+                                      opacity: canRunEmbedSelected ? 1 : 0,
+                                      animation: canRunEmbedSelected ? 'embedButtonInnerSweep 1.9s linear infinite' : 'none',
+                                      pointerEvents: 'none',
+                                      zIndex: 0,
+                                    },
+                                    '@keyframes embedButtonGlow': {
+                                      '0%': {
+                                        boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0.58)}, 0 0 0 0 ${alpha(theme.palette.primary.light, 0.38)}`,
+                                        filter: 'brightness(1)',
+                                      },
+                                      '50%': {
+                                        boxShadow: `0 0 0 12px ${alpha(theme.palette.primary.main, 0)}, 0 0 22px ${alpha(theme.palette.primary.light, 0.65)}`,
+                                        filter: 'brightness(1.08)',
+                                      },
+                                      '100%': {
+                                        boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}, 0 0 0 ${alpha(theme.palette.primary.light, 0)}`,
+                                        filter: 'brightness(1)',
+                                      },
+                                    },
+                                    '@keyframes embedButtonInnerGlow': {
+                                      '0%': {
+                                        transform: 'scale(0.92)',
+                                        opacity: 0.5,
+                                      },
+                                      '50%': {
+                                        transform: 'scale(1.06)',
+                                        opacity: 0.95,
+                                      },
+                                      '100%': {
+                                        transform: 'scale(0.92)',
+                                        opacity: 0.5,
+                                      },
+                                    },
+                                    '@keyframes embedButtonInnerSweep': {
+                                      '0%': {
+                                        left: '-50%',
+                                      },
+                                      '100%': {
+                                        left: '115%',
+                                      },
+                                    },
                                   }}
                                 >
-                                  Embed Selected ({selectedPreviewCount})
+                                  <Box component="span" sx={{ position: 'relative', zIndex: 1 }}>
+                                    {embedJobCompleted ? 'Embed Completed' : `Embed Selected (${selectedPreviewCount})`}
+                                  </Box>
                                 </Button>
                               </Stack>
 
@@ -1927,7 +2047,48 @@ const CreateChatAgentPage: React.FC = () => {
                                 <Button variant="outlined" onClick={() => setKnowledgeFlowStep(0)}>
                                   Back: Step A
                                 </Button>
-                                <Button variant="contained" onClick={() => setKnowledgeFlowStep(2)} disabled={!canAdvanceToStepC}>
+                                <Button
+                                  variant="contained"
+                                  onClick={() => setKnowledgeFlowStep(2)}
+                                  disabled={!canAdvanceToStepC}
+                                  sx={{
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    animation: canAdvanceToStepC ? 'nextStepButtonGlow 2.2s ease-in-out infinite' : 'none',
+                                    '&::after': {
+                                      content: '""',
+                                      position: 'absolute',
+                                      top: '-25%',
+                                      left: '-42%',
+                                      width: '36%',
+                                      height: '150%',
+                                      transform: 'skewX(-18deg)',
+                                      background: `linear-gradient(110deg, ${alpha('#ffffff', 0)} 0%, ${alpha('#ffffff', 0.32)} 50%, ${alpha('#ffffff', 0)} 100%)`,
+                                      opacity: canAdvanceToStepC ? 1 : 0,
+                                      animation: canAdvanceToStepC ? 'nextStepButtonSweep 2.6s linear infinite' : 'none',
+                                      pointerEvents: 'none',
+                                    },
+                                    '@keyframes nextStepButtonGlow': {
+                                      '0%': {
+                                        boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0.32)}`,
+                                      },
+                                      '50%': {
+                                        boxShadow: `0 0 0 8px ${alpha(theme.palette.primary.main, 0)}, 0 0 14px ${alpha(theme.palette.primary.light, 0.28)}`,
+                                      },
+                                      '100%': {
+                                        boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}`,
+                                      },
+                                    },
+                                    '@keyframes nextStepButtonSweep': {
+                                      '0%': {
+                                        left: '-45%',
+                                      },
+                                      '100%': {
+                                        left: '112%',
+                                      },
+                                    },
+                                  }}
+                                >
                                   Next: Step C
                                 </Button>
                               </Stack>
@@ -2015,16 +2176,27 @@ const CreateChatAgentPage: React.FC = () => {
                         )}
                         <Stack spacing={1.4}>
                           <Button variant="outlined" component="label" disabled={busy || knowledgeEditingLocked}>
-                            {uploadFile ? `Selected: ${uploadFile.name}` : 'Choose File (PDF/DOCX/XLSX)'}
+                            {uploadFiles.length > 0
+                              ? `${uploadFiles.length} file${uploadFiles.length === 1 ? '' : 's'} selected`
+                              : 'Choose Files (PDF/DOCX/XLSX)'}
                             <input
                               type="file"
                               hidden
+                              multiple
                               accept=".pdf,.doc,.docx,.xls,.xlsx"
-                              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                setUploadFiles(files);
+                              }}
                             />
                           </Button>
-                          <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy || knowledgeEditingLocked}>
-                            Upload Document Knowledge
+                          {uploadFiles.length > 0 && (
+                            <Typography variant="caption" color="text.secondary">
+                              {uploadFiles.map((file) => file.name).join(', ')}
+                            </Typography>
+                          )}
+                          <Button variant="outlined" onClick={addDocumentKnowledge} disabled={busy || knowledgeEditingLocked || uploadFiles.length === 0}>
+                            Upload Document Knowledge ({uploadFiles.length})
                           </Button>
                         </Stack>
                       </Box>
