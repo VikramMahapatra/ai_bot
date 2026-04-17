@@ -12,6 +12,8 @@ from app.models import (
     Contact,
     Lead,
 )
+from app.services.call_log_service import create_lead_activity
+from app.models.lead_contact_mapping import LeadContactMapping
 
 DEFAULT_RULE_NAME = "Default Campaign to Lead Rule"
 
@@ -323,6 +325,21 @@ def run_rule_engine(
             details.append({**base_payload, "status": "skipped_duplicate", "lead_id": duplicate_lead.id})
             continue
 
+        
+        
+        contact_fields = {}
+        if contact:
+            contact_fields = {
+                "whatsapp_number": contact.whatsapp_number,
+                "gender": contact.gender,
+                "designation": contact.designation,
+                "city": contact.city,
+                "state": contact.state,
+                "country": contact.country,
+                "source": contact.source,
+                "tags": contact.tags
+            }
+            
         conversion_metadata = {
             "origin": "campaign_to_lead_rule_engine",
             "campaign_id": campaign.id,
@@ -332,45 +349,81 @@ def run_rule_engine(
             "score": score,
             "threshold": threshold,
             "reasons": reasons,
+            **contact_fields
         }
-
-        lead = Lead(
-            session_id=f"campaign-{campaign.id}-contact-{contact.id}-log-{log.id}",
-            widget_id=None,
-            product_id=str(campaign.product_id) if campaign.product_id else None,
-            user_id=None,
-            organization_id=organization_id,
-            name=(contact.name or "").strip() or None,
-            email=(contact.email or "").strip().lower() or None,
-            phone=(contact.phone or "").strip() or None,
-            company=(contact.company or "").strip() or None,
-            custom_fields=_dumps_json(conversion_metadata),
-            lead_outcome="campaign_engaged",
-            source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat",
-            funnel_stage=(rule.target_funnel_stage or "qualified"),
+        
+        existing = (
+            db.query(Lead)
+            .filter(
+                Lead.organization_id == organization_id,
+                (Lead.phone == contact.phone or Lead.email == contact.email),
+                Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
+            )
+            .order_by(Lead.created_at.desc())
+            .first()
         )
+        
+        if existing and existing.funnel_stage not in ["closed_won", "closed_lost"]:
+            lead = existing    
+        else:
+            lead = Lead(
+                session_id=f"campaign-{campaign.id}-contact-{contact.id}-log-{log.id}",
+                widget_id=None,
+                product_id=str(campaign.product_id) if campaign.product_id else None,
+                user_id=None,
+                organization_id=organization_id,
+                name=(contact.name or "").strip() or None,
+                email=(contact.email or "").strip().lower() or None,
+                phone=(contact.phone or "").strip() or None,
+                company=(contact.company or "").strip() or None,
+                custom_fields=_dumps_json(conversion_metadata),
+                lead_outcome="campaign_engaged",
+                source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat",
+                funnel_stage=(rule.target_funnel_stage or "qualified"),
+            )
 
-        converted_count += 1
+            converted_count += 1
+            if not dry_run:
+                db.add(lead)
+                db.flush()  
+                
+                if contact:
+                    mapping = LeadContactMapping(
+                        lead_id=lead.id,
+                        contact_id=contact.id,
+                        source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat"
+                    )
+                    db.add(mapping)
+                    db.flush()              
+            else:
+                details.append({**base_payload, "status": "would_convert"})
+        
+        
         if not dry_run:
-            db.add(lead)
-            db.flush()
             log.converted_lead_id = lead.id
             decision = CampaignLeadConversion(
-                organization_id=organization_id,
-                campaign_id=campaign.id,
-                campaign_log_id=log.id,
-                contact_id=contact.id,
-                lead_id=lead.id,
-                rule_id=rule.id,
-                score=score,
-                status="converted",
-                reason="eligible",
-                details=_dumps_json(base_payload),
+                    organization_id=organization_id,
+                    campaign_id=campaign.id,
+                    campaign_log_id=log.id,
+                    contact_id=contact.id,
+                    lead_id=lead.id,
+                    rule_id=rule.id,
+                    score=score,
+                    status="converted",
+                    reason="eligible",
+                    details=_dumps_json(base_payload),
             )
             db.add(decision)
             details.append({**base_payload, "status": "converted", "lead_id": lead.id})
-        else:
-            details.append({**base_payload, "status": "would_convert"})
+            
+            create_lead_activity(
+                db=db,
+                lead=lead,
+                source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat",
+                session_id=f"campaign-{campaign.id}-contact-{contact.id}-log-{log.id}",
+                campaign=campaign,
+                summary="Lead created from campaign engagement",
+            )
 
     if not dry_run:
         db.commit()

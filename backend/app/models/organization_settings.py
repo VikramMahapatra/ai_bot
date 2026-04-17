@@ -14,7 +14,7 @@ class OrganizationSettings(Base):
         Integer,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         unique=True,
-        nullable=False
+        nullable=False,
     )
 
     # -------- General Settings --------
@@ -33,7 +33,7 @@ class OrganizationSettings(Base):
     auto_capture_leads = Column(Boolean, default=True)
     require_email_for_lead = Column(Boolean, default=True)
     send_lead_notifications = Column(Boolean, default=False)
-    
+
     # -------- SMTP Settings --------
     smtp_host = Column(String, nullable=True)
     smtp_port = Column(Integer, nullable=True)
@@ -41,9 +41,11 @@ class OrganizationSettings(Base):
     smtp_password = Column(String, nullable=True)
     smtp_sender_email = Column(String, nullable=True)
     smtp_use_tls = Column(Boolean, default=True)
-    
+
     default_escalation_level_1 = Column(String, nullable=True)
     default_escalation_level_2 = Column(String, nullable=True)
+
+    expected_close_days = Column(Integer, nullable=True)
 
     organization = relationship("Organization")
 

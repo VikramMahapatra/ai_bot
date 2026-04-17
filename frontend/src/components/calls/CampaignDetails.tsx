@@ -73,6 +73,51 @@ const formatEndedReason = (reason?: string) => {
         .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize
 };
 
+const instantReplyChannelLabel = (key: string) => {
+    const k = key.toLowerCase();
+    if (k === "sms") return "SMS";
+    if (k === "email") return "Email";
+    if (k === "whatsapp") return "WhatsApp";
+    return key.charAt(0).toUpperCase() + key.slice(1);
+};
+
+type InstantReplyDetailRow = {
+    channelKey: string;
+    channelLabel: string;
+    name: string;
+    templateId: string;
+};
+
+const getInstantReplyDetailRows = (
+    templates: Record<string, unknown> | undefined,
+): InstantReplyDetailRow[] => {
+    if (!templates) return [];
+    const rows: InstantReplyDetailRow[] = [];
+    for (const [channelKey, val] of Object.entries(templates)) {
+        if (val == null || val === "") continue;
+        if (typeof val === "number") {
+            rows.push({
+                channelKey,
+                channelLabel: instantReplyChannelLabel(channelKey),
+                name: "—",
+                templateId: String(val),
+            });
+            continue;
+        }
+        if (typeof val === "object" && val !== null && "template_id" in val) {
+            const o = val as { template_id?: number; name?: string };
+            rows.push({
+                channelKey,
+                channelLabel: instantReplyChannelLabel(channelKey),
+                name: o.name?.trim() ? o.name : "—",
+                templateId:
+                    o.template_id != null ? String(o.template_id) : "—",
+            });
+        }
+    }
+    return rows;
+};
+
 export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     const theme = useTheme();
     const [campaign, setCampaign] = useState<any>(null);
@@ -430,6 +475,122 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             </Grid>
                         </Box>
                     )}
+
+                    {/* INSTANT REPLY */}
+                    {(() => {
+                        const irRows = getInstantReplyDetailRows(
+                            campaign?.instant_reply_templates,
+                        );
+                        const modes: string[] = Array.isArray(
+                            campaign?.instant_reply_modes,
+                        )
+                            ? campaign.instant_reply_modes
+                            : [];
+                        const showInstantReply =
+                            campaign?.instant_reply ||
+                            modes.length > 0 ||
+                            irRows.length > 0;
+                        if (!showInstantReply) return null;
+                        return (
+                            <Box
+                                sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    bgcolor: "grey.50",
+                                    mt: 2,
+                                }}
+                            >
+                                <Typography
+                                    variant="subtitle2"
+                                    color="text.secondary"
+                                    mb={1.5}
+                                >
+                                    Instant reply
+                                </Typography>
+                                <Grid container spacing={2} mb={irRows.length ? 2 : 0}>
+                                    <Grid item xs={12} sm={4}>
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                        >
+                                            Enabled
+                                        </Typography>
+                                        <Typography fontWeight={600}>
+                                            {campaign?.instant_reply
+                                                ? "Yes"
+                                                : "No"}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={8}>
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            display="block"
+                                        >
+                                            Modes
+                                        </Typography>
+                                        {modes.length ? (
+                                            <Box
+                                                display="flex"
+                                                gap={0.75}
+                                                flexWrap="wrap"
+                                                mt={0.5}
+                                            >
+                                                {modes.map((m) => (
+                                                    <Chip
+                                                        key={m}
+                                                        size="small"
+                                                        label={instantReplyChannelLabel(
+                                                            m,
+                                                        )}
+                                                    />
+                                                ))}
+                                            </Box>
+                                        ) : (
+                                            <Typography fontWeight={600}>
+                                                —
+                                            </Typography>
+                                        )}
+                                    </Grid>
+                                </Grid>
+                                {irRows.length ? (
+                                    <Grid container spacing={2}>
+                                        {irRows.map((row) => (
+                                            <Grid
+                                                item
+                                                xs={12}
+                                                md={4}
+                                                key={row.channelKey}
+                                            >
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    {row.channelLabel}
+                                                </Typography>
+                                                <Typography fontWeight={600}>
+                                                    {row.name}
+                                                </Typography>
+                                                <Typography
+                                                    variant="body2"
+                                                    color="text.secondary"
+                                                >
+                                                    Template ID: {row.templateId}
+                                                </Typography>
+                                            </Grid>
+                                        ))}
+                                    </Grid>
+                                ) : (
+                                    <Typography
+                                        variant="body2"
+                                        color="text.secondary"
+                                    >
+                                        No instant reply templates configured.
+                                    </Typography>
+                                )}
+                            </Box>
+                        );
+                    })()}
 
                 </CardContent>
             </Card>

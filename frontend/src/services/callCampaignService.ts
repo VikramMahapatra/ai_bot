@@ -103,6 +103,12 @@ export interface CampaignEngagement {
     avg_call_time: string;
 }
 
+/** Per-channel instant reply template as returned by the API / sent on save. */
+export interface InstantReplyTemplateRef {
+    template_id: number;
+    name: string;
+}
+
 export interface CallCampaign {
     id?: number;
     name: string;
@@ -126,16 +132,13 @@ export interface CallCampaign {
     retry_on_busy: boolean;
     retry_on_voicemail: boolean;
     call_logs?: [];
-    instant_reply: false,
-    instant_reply_modes: [],
-    instant_reply_templates: {
-        whatsapp: string,
-        sms: string,
-        email: {
-            subject: string,
-            body: string
-        }
-    }
+    instant_reply: boolean;
+    instant_reply_modes: string[];
+    /** Keys: whatsapp | sms | email (or more). Value: legacy id or `{ template_id, name }`. */
+    instant_reply_templates: Record<
+        string,
+        number | "" | InstantReplyTemplateRef | undefined
+    >;
 }
 
 export interface CampaignResponse {

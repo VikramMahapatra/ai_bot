@@ -30,6 +30,8 @@ export interface PlanUsageSummary {
 export interface ConversationMetric {
   id: number;
   session_id: string;
+  contact_name: string;
+  source: string;
   organization_id: number;
   widget_id: string | null;
   total_messages: number;
@@ -40,6 +42,7 @@ export interface ConversationMetric {
   conversation_duration: number;
   user_satisfaction: number | null;
   has_lead: number;
+  lead_conversion: string;
   lead_name: string | null;
   lead_email: string | null;
   outcome: string | null;
@@ -778,6 +781,6 @@ export const reportService = {
     saveAs(blob, `${fileName}_${Date.now()}.xlsx`);
   },
 
-  
+
 };
 

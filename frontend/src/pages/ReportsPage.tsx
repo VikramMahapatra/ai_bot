@@ -56,6 +56,11 @@ interface TabPanelProps {
   value: number;
 }
 
+const reportTabIndexes = {
+  conversations: 0,
+  campaign: 1
+};
+
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
 
@@ -220,7 +225,7 @@ const ReportsPage: React.FC = () => {
       setOutcomeRunning(true);
       const res = await reportService.runOutcomeProcessingNow();
       // Refresh conversations after processing
-      if (tabValue === 1) fetchConversations();
+      if (tabValue === reportTabIndexes.conversations) fetchConversations();
       setOutcomeSnackbarMessage(`Outcome processing completed: processed=${res.processed}, failed=${res.failed}`);
       setOutcomeSnackbarOpen(true);
     } catch (err: any) {
@@ -446,25 +451,25 @@ const ReportsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (tabValue === 1) {
+    if (tabValue === reportTabIndexes.conversations) {
       fetchConversations();
     }
   }, [tabValue, page, rowsPerPage]);
 
   useEffect(() => {
-    if (tabValue === 5 && campaignReportTab === 0) {
+    if (tabValue === reportTabIndexes.campaign && campaignReportTab === 0) {
       fetchCampaignReport();
     }
   }, [tabValue, campaignReportTab, campaignPage, campaignRowsPerPage]);
 
   useEffect(() => {
-    if (tabValue === 5 && campaignReportTab === 1) {
+    if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
       fetchVoiceCampaignReport();
     }
   }, [tabValue, campaignReportTab, voicePage, voiceRowsPerPage]);
 
   useEffect(() => {
-    if (tabValue === 5 && campaignReportTab === 1) {
+    if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
       fetchVoiceCampaignFilterOptions();
     }
   }, [tabValue, campaignReportTab]);
@@ -528,7 +533,7 @@ const ReportsPage: React.FC = () => {
   // Handle export CSV
   const handleExportCSV = async () => {
     try {
-      if (tabValue === 5 && campaignReportTab === 1) {
+      if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
         setLoading(true);
         setError(null);
         const { items, summary } = await fetchAllVoiceCampaignDataForExport();
@@ -548,7 +553,7 @@ const ReportsPage: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to export CSV');
     } finally {
-      if (tabValue === 5 && campaignReportTab === 1) {
+      if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
         setLoading(false);
       }
     }
@@ -613,7 +618,7 @@ const ReportsPage: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to export PDF');
     } finally {
-      if (tabValue === 5 && campaignReportTab === 1) {
+      if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
         setLoading(false);
       }
     }
@@ -687,6 +692,15 @@ const ReportsPage: React.FC = () => {
     minWidth: 150,
   };
 
+  const titleCase = (value: string) =>
+    value
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  const sourceLabel = (source?: string) =>
+    titleCase((source || "chat").toLowerCase());
+
   return (
     <AdminLayout>
       <Box>
@@ -729,10 +743,10 @@ const ReportsPage: React.FC = () => {
           }}
         >
           <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 1 }}>
-            Reports & Analytics
+            Reports
           </Typography>
           <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-            View detailed analytics and metrics for your conversations, leads, and system performance.
+            View detailed reports on conversations, token usage, lead generation, and more.
           </Typography>
         </Paper>
 
@@ -775,11 +789,11 @@ const ReportsPage: React.FC = () => {
                 fullWidth
                 size="small"
               />
-              </Grid>
+            </Grid>
             <Grid item xs={12} sm={6} md={2.5}>
-              <Button 
-                variant="contained" 
-                onClick={fetchSummary} 
+              <Button
+                variant="contained"
+                onClick={fetchSummary}
                 fullWidth
                 sx={{ height: 40 }}
               >
@@ -829,9 +843,6 @@ const ReportsPage: React.FC = () => {
 
         {loading && <LinearProgress />}
 
-        {/* Tabs */}
-        <Paper sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
-
         <Snackbar
           open={outcomeSnackbarOpen}
           autoHideDuration={4000}
@@ -842,6 +853,11 @@ const ReportsPage: React.FC = () => {
             {outcomeSnackbarMessage}
           </Alert>
         </Snackbar>
+
+        {/* Tabs */}
+        <Paper sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
+
+
           <Tabs
             value={tabValue}
             onChange={handleTabChange}
@@ -849,886 +865,894 @@ const ReportsPage: React.FC = () => {
             variant="scrollable"
             scrollButtons="auto"
           >
-            <Tab label="Summary" id="report-tab-0" aria-controls="report-tabpanel-0" />
+            {/* <Tab label="Summary" id="report-tab-0" aria-controls="report-tabpanel-0"  /> */}
             <Tab label="Conversations" id="report-tab-1" aria-controls="report-tabpanel-1" />
-            <Tab label="Token Usage" id="report-tab-2" aria-controls="report-tabpanel-2" />
+            {/* <Tab label="Token Usage" id="report-tab-2" aria-controls="report-tabpanel-2" />
             <Tab label="Lead Analytics" id="report-tab-3" aria-controls="report-tabpanel-3" />
-            <Tab label="Daily Stats" id="report-tab-4" aria-controls="report-tabpanel-4" />
+            <Tab label="Daily Stats" id="report-tab-4" aria-controls="report-tabpanel-4" /> */}
             <Tab label="Campaign Report" id="report-tab-5" aria-controls="report-tabpanel-5" />
           </Tabs>
 
-        {/* Summary Tab */}
-        <TabPanel value={tabValue} index={0}>
-          {summary && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Total Conversations
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.total_conversations}
-                        </Typography>
+          {/* Summary Tab */}
+          {/* <TabPanel value={tabValue} index={0}>
+            {summary && (
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Total Conversations
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.total_conversations}
+                          </Typography>
+                        </Box>
+                        <Assignment sx={{ fontSize: 32, color: 'primary.main', opacity: 0.7 }} />
                       </Box>
-                      <Assignment sx={{ fontSize: 32, color: 'primary.main', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Total Messages
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.total_messages}
-                        </Typography>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Total Messages
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.total_messages}
+                          </Typography>
+                        </Box>
+                        <ChatBubble sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
                       </Box>
-                      <ChatBubble sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Total Tokens
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.total_tokens?.toLocaleString()}
-                        </Typography>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Total Tokens
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.total_tokens?.toLocaleString()}
+                          </Typography>
+                        </Box>
+                        <TrendingUp sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
                       </Box>
-                      <TrendingUp sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Avg Tokens/Conversation
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.average_tokens_per_conversation?.toFixed(0)}
-                        </Typography>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Avg Tokens/Conversation
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.average_tokens_per_conversation?.toFixed(0)}
+                          </Typography>
+                        </Box>
+                        <BarChartIcon sx={{ fontSize: 32, color: '#369fff', opacity: 0.7 }} />
                       </Box>
-                      <BarChartIcon sx={{ fontSize: 32, color: '#369fff', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Total Leads
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.total_leads_captured}
-                        </Typography>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Total Leads
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.total_leads_captured}
+                          </Typography>
+                        </Box>
+                        <ShoppingCart sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
                       </Box>
-                      <ShoppingCart sx={{ fontSize: 32, color: '#5e72ff', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                          Avg Satisfaction
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
-                          {summary.average_satisfaction_rating?.toFixed(2) || 'N/A'} / 5
-                        </Typography>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                            Avg Satisfaction
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+                            {summary.average_satisfaction_rating?.toFixed(2) || 'N/A'} / 5
+                          </Typography>
+                        </Box>
+                        <Star sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
                       </Box>
-                      <Star sx={{ fontSize: 32, color: '#2d8ef0', opacity: 0.7 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-              <Grid item xs={12}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                      Conversation Duration
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Average: <strong>{summary.average_conversation_duration?.toFixed(2)} seconds</strong>
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )}
-        </TabPanel>
-
-        {/* Conversations Tab */}
-        <TabPanel value={tabValue} index={1}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Session ID</TableCell>
-                  <TableCell align="right">Messages</TableCell>
-                  <TableCell align="right">Tokens</TableCell>
-                  <TableCell align="right">Response Time</TableCell>
-                  <TableCell>AI Funnel</TableCell>
-                  <TableCell>Outcome</TableCell>
-                  <TableCell>Lead</TableCell>
-                  <TableCell>Date</TableCell>
-                  <TableCell align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {conversations.map((conv) => (
-                  <TableRow key={conv.id}>
-                    <TableCell title={conv.session_id} sx={{ maxWidth: 220 }}>
-                      <Typography variant="body2" noWrap>
-                        {truncateSessionId(conv.session_id)}
+                <Grid item xs={12}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                        Conversation Duration
                       </Typography>
-                    </TableCell>
-                    <TableCell align="right">{conv.total_messages}</TableCell>
-                    <TableCell align="right">{conv.total_tokens}</TableCell>
-                    <TableCell align="right">
-                      {conv.average_response_time?.toFixed(2)}s
-                    </TableCell>
-                    <TableCell>
-                      {conv.ai_funnel ? (
-                        <Chip label={conv.ai_funnel} size="small" color="secondary" variant="outlined" />
-                      ) : (
-                        <Chip label="Unassigned" variant="outlined" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={conv.outcome || 'Pending'}
-                        size="small"
-                        color={conv.outcome ? 'primary' : 'default'}
-                        variant={conv.outcome ? 'filled' : 'outlined'}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {conv.has_lead ? (
-                        <Chip label={conv.lead_name || 'New Lead'} color="success" size="small" />
-                      ) : (
-                        <Chip label="No Lead" variant="outlined" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(conv.conversation_start).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell align="center">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => handleViewSession(conv.session_id, conv.widget_id)}
-                      >
-                        View
-                      </Button>
-                    </TableCell>
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        Average: <strong>{summary.average_conversation_duration?.toFixed(2)} seconds</strong>
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            )}
+          </TabPanel> */}
+
+          {/* Conversations Tab */}
+          <TabPanel value={tabValue} index={0}>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Contact</TableCell>
+                    <TableCell>Source</TableCell>
+                    <TableCell align="right">Messages</TableCell>
+                    <TableCell align="right">Tokens</TableCell>
+                    <TableCell align="right">Response Time</TableCell>
+                    <TableCell>AI Funnel</TableCell>
+                    <TableCell>Outcome</TableCell>
+                    <TableCell align="center">Lead Conversion</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell align="center">Actions</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            rowsPerPageOptions={[5, 10, 25, 50]}
-            component="div"
-            count={totalConversations}
-            rowsPerPage={rowsPerPage}
-            page={page}
-            onPageChange={handleChangePage}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-          />
-        </TabPanel>
-
-        {/* Token Usage Tab */}
-        <TabPanel value={tabValue} index={2}>
-          {tokenReport && (
-            <Grid container spacing={2}>
-              {[
-                ['Total Tokens', tokenReport.total_tokens?.toLocaleString()],
-                ['Prompt Tokens', tokenReport.prompt_tokens?.toLocaleString()],
-                ['Completion Tokens', tokenReport.completion_tokens?.toLocaleString()],
-                ['Avg Tokens/Conversation', tokenReport.average_tokens_per_conversation?.toFixed(0)],
-                ['Conversations', tokenReport.conversations_count],
-                ['Estimated Cost', `$${tokenReport.cost_estimate?.toFixed(4) || '0.00'}`],
-              ].map(([label, value]) => (
-                <Grid item xs={12} sm={6} md={4} key={String(label)}>
-                  <Card sx={metricCardSx}>
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">
-                        {String(label)}
-                      </Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {String(value ?? '0')}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-
-              <Grid item xs={12}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Token Distribution
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Prompt Tokens', value: tokenReport.prompt_tokens },
-                            { name: 'Completion Tokens', value: tokenReport.completion_tokens },
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry: any) => `${entry.name}: ${entry.value}`}
-                          outerRadius={80}
-                          fill="#2f6bff"
-                          dataKey="value"
+                </TableHead>
+                <TableBody>
+                  {conversations.map((conv) => (
+                    <TableRow key={conv.id}>
+                      <TableCell title={conv.contact_name} sx={{ maxWidth: 220 }}>
+                        <Typography variant="body2" noWrap>
+                          {conv.contact_name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={sourceLabel(conv.source)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">{conv.total_messages}</TableCell>
+                      <TableCell align="right">{conv.total_tokens}</TableCell>
+                      <TableCell align="right">
+                        {conv.average_response_time?.toFixed(2)}s
+                      </TableCell>
+                      <TableCell>
+                        {conv.ai_funnel ? (
+                          <Chip label={conv.ai_funnel} size="small" color="secondary" variant="outlined" />
+                        ) : (
+                          <Chip label="Unassigned" variant="outlined" size="small" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={conv.outcome || 'Pending'}
+                          size="small"
+                          color={conv.outcome ? 'primary' : 'default'}
+                          variant={conv.outcome ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={titleCase(conv.lead_conversion)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {new Date(conv.conversation_start).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<VisibilityIcon />}
+                          onClick={() => handleViewSession(conv.session_id, conv.widget_id)}
                         >
-                          {COLORS.map((color, index) => (
-                            <Cell key={`cell-${index}`} fill={color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )}
-        </TabPanel>
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              rowsPerPageOptions={[5, 10, 25, 50]}
+              component="div"
+              count={totalConversations}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+            />
+          </TabPanel>
 
-        {/* Leads Tab */}
-        <TabPanel value={tabValue} index={3}>
-          {leadReport && (
-            <Grid container spacing={2}>
-              {[
-                ['Total Leads', leadReport.total_leads],
-                ['Leads with Email', leadReport.leads_with_email],
-                ['Conversion Rate', `${leadReport.conversion_rate?.toFixed(2)}%`],
-              ].map(([label, value]) => (
-                <Grid item xs={12} sm={6} md={4} key={String(label)}>
+          {/* Token Usage Tab */}
+          {/* <TabPanel value={tabValue} index={2}>
+            {tokenReport && (
+              <Grid container spacing={2}>
+                {[
+                  ['Total Tokens', tokenReport.total_tokens?.toLocaleString()],
+                  ['Prompt Tokens', tokenReport.prompt_tokens?.toLocaleString()],
+                  ['Completion Tokens', tokenReport.completion_tokens?.toLocaleString()],
+                  ['Avg Tokens/Conversation', tokenReport.average_tokens_per_conversation?.toFixed(0)],
+                  ['Conversations', tokenReport.conversations_count],
+                  ['Estimated Cost', `$${tokenReport.cost_estimate?.toFixed(4) || '0.00'}`],
+                ].map(([label, value]) => (
+                  <Grid item xs={12} sm={6} md={4} key={String(label)}>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">
+                          {String(label)}
+                        </Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {String(value ?? '0')}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+
+                <Grid item xs={12}>
                   <Card sx={metricCardSx}>
                     <CardContent>
-                      <Typography variant="caption" color="text.secondary">
-                        {String(label)}
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Token Distribution
                       </Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {String(value ?? '0')}
-                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Prompt Tokens', value: tokenReport.prompt_tokens },
+                              { name: 'Completion Tokens', value: tokenReport.completion_tokens },
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={(entry: any) => `${entry.name}: ${entry.value}`}
+                            outerRadius={80}
+                            fill="#2f6bff"
+                            dataKey="value"
+                          >
+                            {COLORS.map((color, index) => (
+                              <Cell key={`cell-${index}`} fill={color} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </CardContent>
                   </Card>
                 </Grid>
-              ))}
-
-              <Grid item xs={12} md={6}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Leads by Widget
-                    </Typography>
-                    <Box>
-                      {Object.entries(leadReport.leads_by_widget || {}).map(
-                        ([widget, count]: [string, any]) => (
-                          <Box key={widget} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2">{widget || 'Unknown'}</Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{count}</Typography>
-                          </Box>
-                        )
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
               </Grid>
+            )}
+          </TabPanel> */}
 
-              <Grid item xs={12} md={6}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Leads by Date (Last 7 Days)
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={Object.entries(leadReport.leads_by_date || {})
-                          .slice(-7)
-                          .map(([date, count]) => ({ date, leads: count }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="leads" fill="#2f6bff" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+          {/* Leads Tab */}
+          {/* <TabPanel value={tabValue} index={3}>
+            {leadReport && (
+              <Grid container spacing={2}>
+                {[
+                  ['Total Leads', leadReport.total_leads],
+                  ['Leads with Email', leadReport.leads_with_email],
+                  ['Conversion Rate', `${leadReport.conversion_rate?.toFixed(2)}%`],
+                ].map(([label, value]) => (
+                  <Grid item xs={12} sm={6} md={4} key={String(label)}>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">
+                          {String(label)}
+                        </Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {String(value ?? '0')}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+
+                <Grid item xs={12} md={6}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Leads by Widget
+                      </Typography>
+                      <Box>
+                        {Object.entries(leadReport.leads_by_widget || {}).map(
+                          ([widget, count]: [string, any]) => (
+                            <Box key={widget} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography variant="body2">{widget || 'Unknown'}</Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{count}</Typography>
+                            </Box>
+                          )
+                        )}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Leads by Date (Last 7 Days)
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart
+                          data={Object.entries(leadReport.leads_by_date || {})
+                            .slice(-7)
+                            .map(([date, count]) => ({ date, leads: count }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="leads" fill="#2f6bff" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
               </Grid>
-            </Grid>
-          )}
-        </TabPanel>
+            )}
+          </TabPanel> */}
 
-        {/* Daily Stats Tab */}
-        <TabPanel value={tabValue} index={4}>
-          {dailyStats.length > 0 && (
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Daily Conversations
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={dailyStats}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="conversation_count" stroke="#2f6bff" name="Conversations" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+          {/* Daily Stats Tab */}
+          {/* <TabPanel value={tabValue} index={4}>
+            {dailyStats.length > 0 && (
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Daily Conversations
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={dailyStats}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="conversation_count" stroke="#2f6bff" name="Conversations" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Daily Messages & Tokens
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={dailyStats}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" />
+                          <Tooltip />
+                          <Legend />
+                          <Bar yAxisId="left" dataKey="total_messages" fill="#2f6bff" name="Messages" />
+                          <Bar yAxisId="right" dataKey="total_tokens" fill="#36c4ff" name="Tokens" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Card sx={metricCardSx}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                        Daily Leads Captured
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={dailyStats}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="leads_captured" fill="#5e72ff" name="Leads" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Date</TableCell>
+                          <TableCell align="right">Conversations</TableCell>
+                          <TableCell align="right">Messages</TableCell>
+                          <TableCell align="right">Tokens</TableCell>
+                          <TableCell align="right">Leads</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dailyStats.map((stat, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{stat.date}</TableCell>
+                            <TableCell align="right">{stat.conversation_count}</TableCell>
+                            <TableCell align="right">{stat.total_messages}</TableCell>
+                            <TableCell align="right">{stat.total_tokens}</TableCell>
+                            <TableCell align="right">{stat.leads_captured}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Grid>
               </Grid>
+            )}
+          </TabPanel> */}
 
-              <Grid item xs={12}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Daily Messages & Tokens
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={dailyStats}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis yAxisId="left" />
-                        <YAxis yAxisId="right" orientation="right" />
-                        <Tooltip />
-                        <Legend />
-                        <Bar yAxisId="left" dataKey="total_messages" fill="#2f6bff" name="Messages" />
-                        <Bar yAxisId="right" dataKey="total_tokens" fill="#36c4ff" name="Tokens" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
+          <TabPanel value={tabValue} index={1}>
+            <Paper variant="outlined" sx={{ borderRadius: 2, mb: 2 }}>
+              <Tabs
+                value={campaignReportTab}
+                onChange={(_, newValue: number) => {
+                  setCampaignReportTab(newValue);
+                  if (newValue === 0) {
+                    fetchCampaignLookups();
+                    if (campaignPage === 0) {
+                      fetchCampaignReport();
+                    } else {
+                      setCampaignPage(0);
+                    }
+                    return;
+                  }
+                  fetchVoiceCampaignFilterOptions();
+                  if (voicePage === 0) {
+                    fetchVoiceCampaignReport();
+                  } else {
+                    setVoicePage(0);
+                  }
+                }}
+                aria-label="campaign report sub tabs"
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                <Tab label="Marketing" />
+                <Tab label="Voice" />
+              </Tabs>
+            </Paper>
 
-              <Grid item xs={12}>
-                <Card sx={metricCardSx}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                      Daily Leads Captured
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={dailyStats}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="leads_captured" fill="#5e72ff" name="Leads" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
+            {campaignReportTab === 0 ? (
+              <>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Campaign Report Filters
+                  </Typography>
+                  <Grid container spacing={1.5}>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Search Campaign"
+                        value={campaignSearch}
+                        onChange={(e) => setCampaignSearch(e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Type</InputLabel>
+                        <Select value={campaignType} label="Type" onChange={(e) => setCampaignType(e.target.value)}>
+                          <MenuItem value="">All</MenuItem>
+                          <MenuItem value="email">Email</MenuItem>
+                          <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                          <MenuItem value="sms">SMS</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Status</InputLabel>
+                        <Select value={campaignStatus} label="Status" onChange={(e) => setCampaignStatus(e.target.value)}>
+                          <MenuItem value="">All</MenuItem>
+                          <MenuItem value="draft">Draft</MenuItem>
+                          <MenuItem value="scheduled">Scheduled</MenuItem>
+                          <MenuItem value="running">Running</MenuItem>
+                          <MenuItem value="completed">Completed</MenuItem>
+                          <MenuItem value="failed">Failed</MenuItem>
+                          <MenuItem value="paused">Paused</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Product</InputLabel>
+                        <Select
+                          value={campaignProductId}
+                          label="Product"
+                          onChange={(e) => setCampaignProductId(e.target.value === '' ? '' : Number(e.target.value))}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {campaignProducts.map((item) => (
+                            <MenuItem key={item.id} value={item.id}>
+                              {item.name} ({item.code})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Contact List</InputLabel>
+                        <Select
+                          value={campaignContactListId}
+                          label="Contact List"
+                          onChange={(e) => setCampaignContactListId(e.target.value === '' ? '' : Number(e.target.value))}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {campaignContactLists.map((item) => (
+                            <MenuItem key={item.id} value={item.id}>
+                              {item.list_name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Created From"
+                        value={campaignCreatedFrom}
+                        onChange={(e) => setCampaignCreatedFrom(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Created To"
+                        value={campaignCreatedTo}
+                        onChange={(e) => setCampaignCreatedTo(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Scheduled From"
+                        value={campaignScheduledFrom}
+                        onChange={(e) => setCampaignScheduledFrom(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Scheduled To"
+                        value={campaignScheduledTo}
+                        onChange={(e) => setCampaignScheduledTo(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                        <Button variant="contained" size="small" onClick={handleApplyCampaignReportFilters}>
+                          Apply Filters
+                        </Button>
+                        <Button variant="outlined" size="small" onClick={handleResetCampaignReportFilters}>
+                          Reset
+                        </Button>
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </Paper>
 
-              <Grid item xs={12}>
                 <TableContainer>
-                  <Table size="small">
+                  <Table>
                     <TableHead>
                       <TableRow>
-                        <TableCell>Date</TableCell>
-                        <TableCell align="right">Conversations</TableCell>
-                        <TableCell align="right">Messages</TableCell>
-                        <TableCell align="right">Tokens</TableCell>
-                        <TableCell align="right">Leads</TableCell>
+                        <TableCell>Campaign</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Product</TableCell>
+                        <TableCell>Contact List</TableCell>
+                        <TableCell>Scheduled</TableCell>
+                        <TableCell align="right">Sent</TableCell>
+                        <TableCell align="right">Failed</TableCell>
+                        <TableCell>Created</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {dailyStats.map((stat, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{stat.date}</TableCell>
-                          <TableCell align="right">{stat.conversation_count}</TableCell>
-                          <TableCell align="right">{stat.total_messages}</TableCell>
-                          <TableCell align="right">{stat.total_tokens}</TableCell>
-                          <TableCell align="right">{stat.leads_captured}</TableCell>
+                      {campaignItems.length > 0 ? (
+                        campaignItems.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
+                              <Typography variant="caption" color="text.secondary">#{item.id}</Typography>
+                            </TableCell>
+                            <TableCell>{item.campaign_type}</TableCell>
+                            <TableCell>
+                              <Chip size="small" label={item.status} color={item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : 'primary'} variant="outlined" />
+                            </TableCell>
+                            <TableCell>{item.product_name || '-'}</TableCell>
+                            <TableCell>{item.contact_list_name || item.contact_list_id}</TableCell>
+                            <TableCell>{item.scheduled_time ? new Date(item.scheduled_time).toLocaleString() : '-'}</TableCell>
+                            <TableCell align="right">{item.number_sent}</TableCell>
+                            <TableCell align="right">{item.number_failed}</TableCell>
+                            <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={9} align="center">No campaigns found for selected filters.</TableCell>
                         </TableRow>
-                      ))}
+                      )}
                     </TableBody>
                   </Table>
                 </TableContainer>
-              </Grid>
-            </Grid>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={5}>
-          <Paper variant="outlined" sx={{ borderRadius: 2, mb: 2 }}>
-            <Tabs
-              value={campaignReportTab}
-              onChange={(_, newValue: number) => {
-                setCampaignReportTab(newValue);
-                if (newValue === 0) {
-                  fetchCampaignLookups();
-                  if (campaignPage === 0) {
-                    fetchCampaignReport();
-                  } else {
+                <TablePagination
+                  rowsPerPageOptions={[10, 25, 50]}
+                  component="div"
+                  count={campaignTotal}
+                  rowsPerPage={campaignRowsPerPage}
+                  page={campaignPage}
+                  onPageChange={(_, newPage) => setCampaignPage(newPage)}
+                  onRowsPerPageChange={(event) => {
+                    setCampaignRowsPerPage(parseInt(event.target.value, 10));
                     setCampaignPage(0);
-                  }
-                  return;
-                }
-                fetchVoiceCampaignFilterOptions();
-                if (voicePage === 0) {
-                  fetchVoiceCampaignReport();
-                } else {
-                  setVoicePage(0);
-                }
-              }}
-              aria-label="campaign report sub tabs"
-              variant="scrollable"
-              scrollButtons="auto"
-            >
-              <Tab label="Marketing" />
-              <Tab label="Voice" />
-            </Tabs>
-          </Paper>
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                    Voice Campaign Filters
+                  </Typography>
+                  <Grid container spacing={1.5}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Call Agent Name</InputLabel>
+                        <Select
+                          value={voiceAgentName}
+                          label="Call Agent Name"
+                          onChange={(e) => setVoiceAgentName(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {voiceAgentOptions.map((name) => (
+                            <MenuItem key={name} value={name}>{name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Campaign Name</InputLabel>
+                        <Select
+                          value={voiceCampaignName}
+                          label="Campaign Name"
+                          onChange={(e) => setVoiceCampaignName(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {voiceCampaignOptions.map((name) => (
+                            <MenuItem key={name} value={name}>{name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Lead Outcome</InputLabel>
+                        <Select
+                          multiple
+                          value={voiceLeadOutcomes}
+                          onChange={(e) => setVoiceLeadOutcomes(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                          input={<OutlinedInput label="Lead Outcome" />}
+                          renderValue={(selected) => (selected as string[]).join(', ')}
+                        >
+                          {voiceLeadOutcomeOptions.map((outcome) => (
+                            <MenuItem key={outcome} value={outcome}>
+                              <Checkbox checked={voiceLeadOutcomes.indexOf(outcome) > -1} />
+                              {outcome}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Created From"
+                        value={voiceCreatedFrom}
+                        onChange={(e) => setVoiceCreatedFrom(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Created To"
+                        value={voiceCreatedTo}
+                        onChange={(e) => setVoiceCreatedTo(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                        <Button variant="contained" size="small" onClick={handleApplyVoiceCampaignFilters}>
+                          Apply
+                        </Button>
+                        <Button variant="outlined" size="small" onClick={handleResetVoiceCampaignFilters}>
+                          Reset
+                        </Button>
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </Paper>
 
-          {campaignReportTab === 0 ? (
-            <>
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-                  Campaign Report Filters
-                </Typography>
-                <Grid container spacing={1.5}>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Search Campaign"
-                      value={campaignSearch}
-                      onChange={(e) => setCampaignSearch(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select value={campaignType} label="Type" onChange={(e) => setCampaignType(e.target.value)}>
-                        <MenuItem value="">All</MenuItem>
-                        <MenuItem value="email">Email</MenuItem>
-                        <MenuItem value="whatsapp">WhatsApp</MenuItem>
-                        <MenuItem value="sms">SMS</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Status</InputLabel>
-                      <Select value={campaignStatus} label="Status" onChange={(e) => setCampaignStatus(e.target.value)}>
-                        <MenuItem value="">All</MenuItem>
-                        <MenuItem value="draft">Draft</MenuItem>
-                        <MenuItem value="scheduled">Scheduled</MenuItem>
-                        <MenuItem value="running">Running</MenuItem>
-                        <MenuItem value="completed">Completed</MenuItem>
-                        <MenuItem value="failed">Failed</MenuItem>
-                        <MenuItem value="paused">Paused</MenuItem>
-                      </Select>
-                    </FormControl>
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">Total Call</Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {voiceSummary?.total_calls ?? 0}
+                        </Typography>
+                      </CardContent>
+                    </Card>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Product</InputLabel>
-                      <Select
-                        value={campaignProductId}
-                        label="Product"
-                        onChange={(e) => setCampaignProductId(e.target.value === '' ? '' : Number(e.target.value))}
-                      >
-                        <MenuItem value="">All</MenuItem>
-                        {campaignProducts.map((item) => (
-                          <MenuItem key={item.id} value={item.id}>
-                            {item.name} ({item.code})
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">Successful Attempt</Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {voiceSummary?.successful_attempts ?? 0}
+                        </Typography>
+                      </CardContent>
+                    </Card>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Contact List</InputLabel>
-                      <Select
-                        value={campaignContactListId}
-                        label="Contact List"
-                        onChange={(e) => setCampaignContactListId(e.target.value === '' ? '' : Number(e.target.value))}
-                      >
-                        <MenuItem value="">All</MenuItem>
-                        {campaignContactLists.map((item) => (
-                          <MenuItem key={item.id} value={item.id}>
-                            {item.list_name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">Sum of Call Duration</Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {voiceSummary?.sum_call_duration_label || '0s'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Created From"
-                      value={campaignCreatedFrom}
-                      onChange={(e) => setCampaignCreatedFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Created To"
-                      value={campaignCreatedTo}
-                      onChange={(e) => setCampaignCreatedTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Scheduled From"
-                      value={campaignScheduledFrom}
-                      onChange={(e) => setCampaignScheduledFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Scheduled To"
-                      value={campaignScheduledTo}
-                      onChange={(e) => setCampaignScheduledTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <Button variant="contained" size="small" onClick={handleApplyCampaignReportFilters}>
-                        Apply Filters
-                      </Button>
-                      <Button variant="outlined" size="small" onClick={handleResetCampaignReportFilters}>
-                        Reset
-                      </Button>
-                    </Stack>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={metricCardSx}>
+                      <CardContent>
+                        <Typography variant="caption" color="text.secondary">Campaign Duration</Typography>
+                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                          {voiceSummary?.campaign_duration_label || '0s'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
                   </Grid>
                 </Grid>
-              </Paper>
 
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Campaign</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Product</TableCell>
-                      <TableCell>Contact List</TableCell>
-                      <TableCell>Scheduled</TableCell>
-                      <TableCell align="right">Sent</TableCell>
-                      <TableCell align="right">Failed</TableCell>
-                      <TableCell>Created</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {campaignItems.length > 0 ? (
-                      campaignItems.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
-                            <Typography variant="caption" color="text.secondary">#{item.id}</Typography>
-                          </TableCell>
-                          <TableCell>{item.campaign_type}</TableCell>
-                          <TableCell>
-                            <Chip size="small" label={item.status} color={item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : 'primary'} variant="outlined" />
-                          </TableCell>
-                          <TableCell>{item.product_name || '-'}</TableCell>
-                          <TableCell>{item.contact_list_name || item.contact_list_id}</TableCell>
-                          <TableCell>{item.scheduled_time ? new Date(item.scheduled_time).toLocaleString() : '-'}</TableCell>
-                          <TableCell align="right">{item.number_sent}</TableCell>
-                          <TableCell align="right">{item.number_failed}</TableCell>
-                          <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={9} align="center">No campaigns found for selected filters.</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                rowsPerPageOptions={[10, 25, 50]}
-                component="div"
-                count={campaignTotal}
-                rowsPerPage={campaignRowsPerPage}
-                page={campaignPage}
-                onPageChange={(_, newPage) => setCampaignPage(newPage)}
-                onRowsPerPageChange={(event) => {
-                  setCampaignRowsPerPage(parseInt(event.target.value, 10));
-                  setCampaignPage(0);
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-                  Voice Campaign Filters
-                </Typography>
-                <Grid container spacing={1.5}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Call Agent Name</InputLabel>
-                      <Select
-                        value={voiceAgentName}
-                        label="Call Agent Name"
-                        onChange={(e) => setVoiceAgentName(e.target.value)}
-                      >
-                        <MenuItem value="">All</MenuItem>
-                        {voiceAgentOptions.map((name) => (
-                          <MenuItem key={name} value={name}>{name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Campaign Name</InputLabel>
-                      <Select
-                        value={voiceCampaignName}
-                        label="Campaign Name"
-                        onChange={(e) => setVoiceCampaignName(e.target.value)}
-                      >
-                        <MenuItem value="">All</MenuItem>
-                        {voiceCampaignOptions.map((name) => (
-                          <MenuItem key={name} value={name}>{name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Lead Outcome</InputLabel>
-                      <Select
-                        multiple
-                        value={voiceLeadOutcomes}
-                        onChange={(e) => setVoiceLeadOutcomes(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                        input={<OutlinedInput label="Lead Outcome" />}
-                        renderValue={(selected) => (selected as string[]).join(', ')}
-                      >
-                        {voiceLeadOutcomeOptions.map((outcome) => (
-                          <MenuItem key={outcome} value={outcome}>
-                            <Checkbox checked={voiceLeadOutcomes.indexOf(outcome) > -1} />
-                            {outcome}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Created From"
-                      value={voiceCreatedFrom}
-                      onChange={(e) => setVoiceCreatedFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Created To"
-                      value={voiceCreatedTo}
-                      onChange={(e) => setVoiceCreatedTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <Button variant="contained" size="small" onClick={handleApplyVoiceCampaignFilters}>
-                        Apply
-                      </Button>
-                      <Button variant="outlined" size="small" onClick={handleResetVoiceCampaignFilters}>
-                        Reset
-                      </Button>
-                    </Stack>
-                  </Grid>
-                </Grid>
-              </Paper>
-
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={metricCardSx}>
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">Total Call</Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {voiceSummary?.total_calls ?? 0}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={metricCardSx}>
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">Successful Attempt</Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {voiceSummary?.successful_attempts ?? 0}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={metricCardSx}>
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">Sum of Call Duration</Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {voiceSummary?.sum_call_duration_label || '0s'}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={metricCardSx}>
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">Campaign Duration</Typography>
-                      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                        {voiceSummary?.campaign_duration_label || '0s'}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              <TableContainer
-                sx={{
-                  width: '100%',
-                  overflowX: 'auto',
-                  overflowY: 'hidden',
-                  borderRadius: 2,
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                }}
-              >
-                <Table
-                  stickyHeader
-                  size="small"
+                <TableContainer
                   sx={{
                     width: '100%',
-                    minWidth: 1100,
-                    '& .MuiTableHead-root .MuiTableCell-root': {
-                      fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                      backgroundColor: alpha(theme.palette.primary.main, 0.06),
-                    },
-                    '& .MuiTableBody-root .MuiTableCell-root': {
-                      py: 1.2,
-                    },
+                    overflowX: 'auto',
+                    overflowY: 'hidden',
+                    borderRadius: 2,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
                   }}
                 >
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Agent Name</TableCell>
-                      <TableCell>Customer Name</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Organization</TableCell>
-                      <TableCell>Campaign Name</TableCell>
-                      <TableCell>Lead Outcome</TableCell>
-                      <TableCell>Product</TableCell>
-                      <TableCell>Created At</TableCell>
-                      <TableCell align="center">Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {voiceItems.length > 0 ? (
-                      voiceItems.map((item, idx) => (
-                        <TableRow key={`${item.email || 'voice'}-${idx}`}>
-                          <TableCell sx={voiceWrapCellSx}>{item.agent_name || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.customer_name || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.email || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.organization_name || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.campaign_name || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.lead_outcome || '-'}</TableCell>
-                          <TableCell sx={voiceWrapCellSx}>{item.product_name || '-'}</TableCell>
-                          <TableCell sx={voiceNoWrapCellSx}>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
-                          <TableCell align="center">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<VisibilityIcon />}
-                              onClick={() => handleOpenVoiceDetails(item)}
-                            >
-                              View
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
+                  <Table
+                    stickyHeader
+                    size="small"
+                    sx={{
+                      width: '100%',
+                      minWidth: 1100,
+                      '& .MuiTableHead-root .MuiTableCell-root': {
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                        backgroundColor: alpha(theme.palette.primary.main, 0.06),
+                      },
+                      '& .MuiTableBody-root .MuiTableCell-root': {
+                        py: 1.2,
+                      },
+                    }}
+                  >
+                    <TableHead>
                       <TableRow>
-                        <TableCell colSpan={9} align="center">No voice campaign records found.</TableCell>
+                        <TableCell>Agent Name</TableCell>
+                        <TableCell>Customer Name</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Organization</TableCell>
+                        <TableCell>Campaign Name</TableCell>
+                        <TableCell>Lead Outcome</TableCell>
+                        <TableCell>Product</TableCell>
+                        <TableCell>Created At</TableCell>
+                        <TableCell align="center">Action</TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                rowsPerPageOptions={[10, 25, 50]}
-                component="div"
-                count={voiceTotal}
-                rowsPerPage={voiceRowsPerPage}
-                page={voicePage}
-                onPageChange={(_, newPage) => setVoicePage(newPage)}
-                onRowsPerPageChange={(event) => {
-                  setVoiceRowsPerPage(parseInt(event.target.value, 10));
-                  setVoicePage(0);
-                }}
-              />
-            </>
-          )}
-        </TabPanel>
+                    </TableHead>
+                    <TableBody>
+                      {voiceItems.length > 0 ? (
+                        voiceItems.map((item, idx) => (
+                          <TableRow key={`${item.email || 'voice'}-${idx}`}>
+                            <TableCell sx={voiceWrapCellSx}>{item.agent_name || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.customer_name || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.email || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.organization_name || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.campaign_name || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.lead_outcome || '-'}</TableCell>
+                            <TableCell sx={voiceWrapCellSx}>{item.product_name || '-'}</TableCell>
+                            <TableCell sx={voiceNoWrapCellSx}>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
+                            <TableCell align="center">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<VisibilityIcon />}
+                                onClick={() => handleOpenVoiceDetails(item)}
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={9} align="center">No voice campaign records found.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePagination
+                  rowsPerPageOptions={[10, 25, 50]}
+                  component="div"
+                  count={voiceTotal}
+                  rowsPerPage={voiceRowsPerPage}
+                  page={voicePage}
+                  onPageChange={(_, newPage) => setVoicePage(newPage)}
+                  onRowsPerPageChange={(event) => {
+                    setVoiceRowsPerPage(parseInt(event.target.value, 10));
+                    setVoicePage(0);
+                  }}
+                />
+              </>
+            )}
+          </TabPanel>
         </Paper>
 
         <Dialog open={voiceDetailsOpen} onClose={handleCloseVoiceDetails} fullWidth maxWidth="sm">

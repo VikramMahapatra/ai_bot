@@ -20,14 +20,11 @@ class CallCampaignInstantReply(Base):
         nullable=False
     )
 
-    subject = Column(
-        Text,
-        nullable=True   # only for email
-    )
-
-    template = Column(
-        Text,
-        nullable=True
+    template_id = Column(
+        Integer,
+        ForeignKey("message_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
     )
 
     created_at = Column(
@@ -40,3 +37,5 @@ class CallCampaignInstantReply(Base):
         "CallCampaign",
         back_populates="instant_replies"
     )
+    
+    template = relationship("MessageTemplate")

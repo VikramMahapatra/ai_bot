@@ -202,10 +202,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
     useEffect(() => {
         loadContactLists();
-        loadAllContacts();
-        loadContactListLookup();
+         loadAllContacts();
+         loadContactListLookup();
         setUploadResult(null);
-    }, []);
+    }, [allContactSearch]);
 
     /* ---------------------------
     Search Filter
@@ -1217,7 +1217,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                 fullWidth
                                 size="small"
                                 label="Search Contacts"
-                                value={search}
+                                value={allContactSearch}
                                 onChange={(e) => setAllContactSearch(e.target.value)}
                                 InputProps={{
                                     endAdornment: (
