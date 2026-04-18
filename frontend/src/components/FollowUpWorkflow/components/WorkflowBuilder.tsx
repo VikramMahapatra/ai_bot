@@ -22,6 +22,7 @@ import Save from "@mui/icons-material/Save";
 import WorkflowEdge from "../edges/WorkflowEdge";
 import StopNode from "../nodes/StopNode";
 import { FlowContext } from "../../../context/FlowContext";
+import { Node } from "@xyflow/react"; // or reactflow
 
 const nodeTypes = {
     initialCall: InitialCallNode,
@@ -37,15 +38,26 @@ const edgeTypes = {
     workflow: WorkflowEdge
 };
 
+type DelayUnit = "minutes" | "hours" | "days";
+
+type FlowOutcome = {
+    id: string;
+    name?: string;
+    stepType: string;   // call | sms | email | whatsapp
+    agentId?: string;
+    templateId?: string;
+    delay?: number;
+    delayUnit?: DelayUnit;
+    branch?: string; // optional (useful for your edge mapping)
+};
+
 type FlowNodeData = {
     branch?: string;
     title?: string;
     stepNumber?: number;
     globalWorkflowStop?: string;
     isEditing?: boolean;
-    stepType?: string;
-    agentId?: string;
-    templateId?: string;
+    outcomes?: FlowOutcome[];
     onAddStep?: (id: string, type: string) => void;
 };
 
@@ -86,7 +98,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
 
     };
 
-    const initialNodes = [
+    const initialNodes: Node<FlowNodeData>[] = [
         {
             id: "1",
             type: "initialCall",
@@ -94,6 +106,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             data: {
                 stepNumber: 1,
                 globalWorkflowStop: "",
+                outcomes: []
             },
         },
         {
@@ -103,6 +116,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             data: {
                 stepNumber: 2,
                 globalWorkflowStop: "",
+                outcomes: []
             }
         }
     ];
@@ -121,35 +135,29 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         }
     ];
 
-    const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>(initialNodes);
+    const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>(initialNodes as any);
     const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeData>(initialEdges);
 
-    const onConnect = useCallback(
-        (params: any) => setEdges((eds) =>
+    const onConnect = useCallback((params: any) => {
+        console.log(" onConnect params:", params);
+        console.log("sourceHandle:", params.sourceHandle);
+
+        setEdges((eds) =>
             addEdge(
                 {
                     ...params,
                     type: "workflow",
                     data: {
                         condition: "",
+                        branch: params.sourceHandle,
                         onChange: onEdgeLabelChange,
                         onDelete: onDeleteEdge
                     }
                 },
                 eds
             )
-        ),
-        [setEdges]
-    );
-
-    const getNextStepNumber = () => {
-        const max = Math.max(
-            0,
-            ...nodes.map((n) => n.data?.stepNumber || 0)
         );
-
-        return max + 1;
-    };
+    }, [setEdges]);
 
     const addStep = (parentId: string, branch: string) => {
         const newNodeId = `${Date.now()}-${branch}`;
@@ -163,6 +171,15 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             );
 
             const stepNumber = maxStep + 1;
+
+            const outcome: FlowOutcome = {
+                id: `default-outcome-${Date.now()}`,
+                stepType: "call",
+                delayUnit: "minutes",
+                delay: 0,
+                agentId: "",
+                templateId: ""
+            };
 
             const newNode = {
                 id: newNodeId,
@@ -180,11 +197,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                             : "Call Not Connected",
                     branch,
                     stepNumber,
-                    delayUnit: "minutes",
-                    delay: 0,
-                    stepType: "call",
-                    agentId: "",
-                    templateId: "",
+                    outcomes: [outcome],
                     onAddStep: addStep
                 },
             };
@@ -192,11 +205,14 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             return [...prevNodes, newNode];
         });
 
+        console.log("branch:", branch);
+
         setEdges((eds) => [
             ...eds,
             {
                 id: `e-${parentId}-${newNodeId}`,
                 source: parentId,
+                sourceHandle: branch,
                 target: newNodeId,
                 type: "workflow",
                 data: {
@@ -208,7 +224,6 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             },
         ]);
     };
-
 
     const onEditNode = (id: string) => {
         setNodes((nds) =>
@@ -274,6 +289,15 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         const id = `${Date.now()}`;
         const stepNumber = stepCounterRef.current;
 
+        const outcome: FlowOutcome = {
+            id: `default-outcome-${Date.now()}`,
+            stepType: "call",
+            delayUnit: "minutes",
+            delay: 0,
+            agentId: "",
+            templateId: ""
+        };
+
         const newNode = {
             id,
             type: "customStep",
@@ -286,9 +310,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                 stepNumber: stepNumber,
                 onAddStep: addStep,
                 isEditing: false,
-                stepType: "call",
-                agentId: "",
-                templateId: "",
+                outcomes: [outcome]
             },
         };
 
@@ -309,6 +331,8 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                     stepType: node.data.stepType || "call",
                     agentId: node.data.agentId || "",
                     templateId: node.data.templateId || "",
+                    delay: node.data.delay || 0,
+                    delayUnit: node.data.delayUnit || "minutes"
                 },
             }))
         );
@@ -366,6 +390,50 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         );
     };
 
+    const updateOutcome = (nodeId: string, outcomeId: string, patch: any) => {
+        setNodes((nds) =>
+            nds.map((node) => {
+                if (node.id !== nodeId) return node;
+
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        outcomes: (node.data.outcomes || []).map((o: any) =>
+                            o.id === outcomeId ? { ...o, ...patch } : o
+                        )
+                    }
+                };
+            })
+        );
+    };
+
+    const addOutcome = (nodeId: string) => {
+        setNodes((nds) =>
+            nds.map((node) => {
+                if (node.id !== nodeId) return node;
+
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        outcomes: [
+                            ...(node.data.outcomes || []),
+                            {
+                                id: Date.now().toString(),
+                                stepType: "call",
+                                agentId: "",
+                                templateId: "",
+                                delay: 0,
+                                delayUnit: "minutes"
+                            }
+                        ]
+                    }
+                };
+            })
+        );
+    };
+
     const onSave = (id: string) => {
         setNodes((nds) =>
             nds.map((n) =>
@@ -395,6 +463,8 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         onChangeTemplate,
         onChangeDelay,
         onChangeDelayUnit,
+        updateOutcome,
+        addOutcome,
         onSave
     };
 
@@ -505,6 +575,11 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
                         fitView
+                        fitViewOptions={{
+                            padding: 0.2,
+                            minZoom: 0.5,
+                            maxZoom: 1
+                        }}
                     >
                         <Background
                             gap={16}

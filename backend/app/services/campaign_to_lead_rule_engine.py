@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -352,13 +353,27 @@ def run_rule_engine(
             **contact_fields
         }
         
+        filters = [
+            Lead.organization_id == organization_id,
+            Lead.product_id == (
+                str(campaign.product_id) if campaign.product_id else None
+            )
+        ]
+
+        contact_filters = []
+
+        if contact.phone:
+            contact_filters.append(Lead.phone == contact.phone)
+
+        if contact.email:
+            contact_filters.append(Lead.email == contact.email)
+
+        if contact_filters:
+            filters.append(or_(*contact_filters))
+
         existing = (
             db.query(Lead)
-            .filter(
-                Lead.organization_id == organization_id,
-                (Lead.phone == contact.phone or Lead.email == contact.email),
-                Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
-            )
+            .filter(*filters)
             .order_by(Lead.created_at.desc())
             .first()
         )

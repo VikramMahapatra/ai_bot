@@ -425,8 +425,7 @@ export default function CustomStepNode({ data, id }: any) {
 
             </div>
 
-
-            {/* Handles */}
+            {/* Target (input) */}
             <Handle
                 type="target"
                 position={Position.Left}
@@ -437,13 +436,30 @@ export default function CustomStepNode({ data, id }: any) {
                 }}
             />
 
+
+            {/* Source: Connected */}
             <Handle
                 type="source"
+                id="connected"
                 position={Position.Right}
                 style={{
-                    background: "#3b82f6",
-                    width: 8,
-                    height: 8
+                    top: "40%",
+                    background: "#22c55e",
+                    width: 10,
+                    height: 10
+                }}
+            />
+
+            {/* Source: Not Connected */}
+            <Handle
+                type="source"
+                id="not_connected"
+                position={Position.Right}
+                style={{
+                    top: "70%",
+                    background: "#f97316",
+                    width: 10,
+                    height: 10
                 }}
             />
 
