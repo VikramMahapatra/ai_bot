@@ -45,6 +45,8 @@ class CampaignCreate(BaseModel):
     instant_reply_modes: Optional[List[CampaignInstantReplyMode]] = []
     instant_reply_templates: Optional[InstantReplyTemplates] = None
     
+    workflow_id: Optional[int] = None
+    
     @field_validator("max_retry_attempts", "retry_interval", mode="before")
     def empty_string_to_none(cls, v):
         if v == "":
@@ -60,6 +62,7 @@ class CampaignUpdate(BaseModel):
     priority: Optional[str] = None
     agent_id: Optional[int] = None
     product_id: Optional[int] = None
+    workflow_id: Optional[int] = None
     calling_no: str
 
     contacts: Optional[List[int]] = None

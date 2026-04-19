@@ -275,6 +275,7 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
         return None
 
     candidate = text.strip()
+    parsed = datetime.strptime(candidate, fmt)
     now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
 
     lower = candidate.lower()
@@ -298,7 +299,9 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
 
     if re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", candidate):
         try:
-            return datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            return datetime.fromisoformat(candidate.replace("Z", "+00:00")).astimezone(
+                ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
+            )
         except Exception:
             pass
 
@@ -320,6 +323,7 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
     for fmt in formats:
         try:
             parsed = datetime.strptime(candidate, fmt)
+            parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
             if "%Y" not in fmt:
                 parsed = parsed.replace(year=now_local.year)
                 if parsed < now_local:
@@ -1091,6 +1095,7 @@ def _sync_appointment_contact_to_agent_list(db: Session, widget_config: WidgetCo
         name=cleaned_name,
         email=cleaned_email or None,
         phone=cleaned_phone or None,
+        session_id=appointment.session_id if appointment and appointment.session_id else None
     ))
 
 
@@ -1343,18 +1348,29 @@ def _get_subscription_session_count(db: Session, organization_id: int, usage) ->
     """Count distinct sessions in the active subscription window for accurate conversation limits."""
     if not usage:
         return 0
+    
+    period_start = usage.period_start
+    period_end = usage.period_end
+
+    # normalize if naive
+    if period_start and period_start.tzinfo is None:
+        period_start = period_start.replace(tzinfo=timezone.utc)
+
+    if period_end and period_end.tzinfo is None:
+        period_end = period_end.replace(tzinfo=timezone.utc)
 
     query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         Conversation.organization_id == organization_id,
-        Conversation.created_at >= usage.period_start,
-        Conversation.created_at <= usage.period_end,
+        Conversation.created_at >= period_start,
+        Conversation.created_at <= period_end,
     )
     return int(query.scalar() or 0)
 
 
 def _get_monthly_session_count(db: Session, organization_id: int) -> int:
-    now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    
     query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         Conversation.organization_id == organization_id,
         Conversation.created_at >= month_start,
@@ -1490,8 +1506,6 @@ async def chat(
         if message.customer_id and message.shop_domain:
             is_valid_customer  = await verify_shopify_customer(db, message.shop_domain, int(message.customer_id))
             use_shopify = is_valid_customer
-            
-        print(f"Shopify customer verified: {use_shopify}")
         
         # Resolve organization for scoping
         user = db.query(User).filter(User.id == user_id).first()

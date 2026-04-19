@@ -204,4 +204,6 @@ class EcholeadsClient:
             "schedule_date": schedule_date,
             "schedule_time": schedule_time
         }
+        
+        print("payload", payload)
         return self._post("/reschedule-contact", payload)

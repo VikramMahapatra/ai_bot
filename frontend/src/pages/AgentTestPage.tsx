@@ -1583,7 +1583,7 @@ const AgentTestPage: React.FC = () => {
               </Typography>
             </Box>
             <Stack direction="row" spacing={0.85}>
-              <Button
+              {/* <Button
                 size="small"
                 onClick={requestVideoCall}
                 sx={getHeaderIconButtonSx(false)}
@@ -1609,7 +1609,7 @@ const AgentTestPage: React.FC = () => {
                 title="End live call"
               >
                 📵
-              </Button>
+              </Button> */}
               <Button
                 size="small"
                 onClick={startFreshSession}
@@ -1795,46 +1795,46 @@ const AgentTestPage: React.FC = () => {
 
                     return (
                       <>
-                  <Box
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
-                      bgcolor: '#ffffff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.95rem',
-                      flex: '0 0 28px',
-                    }}
-                  >
-                    {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
-                  </Box>
-                  <Box
-                    sx={{
-                      px: 1.45,
-                      py: 1.05,
-                      borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
-                      bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
-                      background: message.role === 'user'
-                        ? `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
-                        : undefined,
-                      color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
-                      border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
-                      whiteSpace: 'pre-wrap',
-                      fontSize: { xs: '0.8rem', md: '0.86rem' },
-                      lineHeight: 1.45,
-                      boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
-                      minHeight: isPendingAssistantMessage ? 30 : undefined,
-                      minWidth: isPendingAssistantMessage ? 46 : undefined,
-                      display: isPendingAssistantMessage ? 'flex' : 'block',
-                      alignItems: isPendingAssistantMessage ? 'center' : undefined,
-                      justifyContent: isPendingAssistantMessage ? 'center' : undefined,
-                    }}
-                  >
-                    {isPendingAssistantMessage ? <CircularProgress size={16} /> : message.content}
-                  </Box>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            border: widgetLookDark ? '1px solid #64748b' : '1px solid #cbd5e1',
+                            bgcolor: '#ffffff',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.95rem',
+                            flex: '0 0 28px',
+                          }}
+                        >
+                          {message.role === 'assistant' ? botIconGlyph : userIconGlyph}
+                        </Box>
+                        <Box
+                          sx={{
+                            px: 1.45,
+                            py: 1.05,
+                            borderRadius: message.role === 'user' ? '16px 16px 6px 16px' : '16px 16px 16px 6px',
+                            bgcolor: message.role === 'user' ? undefined : widgetLookDark ? '#1f2937' : '#f8fafc',
+                            background: message.role === 'user'
+                              ? `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
+                              : undefined,
+                            color: message.role === 'user' ? '#ffffff' : widgetLookDark ? '#e2e8f0' : '#1e293b',
+                            border: message.role === 'assistant' ? (widgetLookDark ? '1px solid #334155' : '1px solid #cbd5e1') : 'none',
+                            whiteSpace: 'pre-wrap',
+                            fontSize: { xs: '0.8rem', md: '0.86rem' },
+                            lineHeight: 1.45,
+                            boxShadow: '0 2px 6px rgba(15,23,42,0.06)',
+                            minHeight: isPendingAssistantMessage ? 30 : undefined,
+                            minWidth: isPendingAssistantMessage ? 46 : undefined,
+                            display: isPendingAssistantMessage ? 'flex' : 'block',
+                            alignItems: isPendingAssistantMessage ? 'center' : undefined,
+                            justifyContent: isPendingAssistantMessage ? 'center' : undefined,
+                          }}
+                        >
+                          {isPendingAssistantMessage ? <CircularProgress size={16} /> : message.content}
+                        </Box>
                       </>
                     );
                   })()}
@@ -2085,52 +2085,52 @@ const AgentTestPage: React.FC = () => {
           <Box sx={{ p: 1.35, borderTop: widgetLookDark ? '1px solid #334155' : '1px solid #d1d5db', bgcolor: widgetLookDark ? '#111827' : '#ffffff' }}>
             <Stack spacing={0.7}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <TextField
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setLastActivityAtMs(Date.now());
-                }}
-                placeholder={
-                  sessionClosedByInactivity
-                    ? 'Session closed due to inactivity. Type a message to start a new session...'
-                    : 'Type your message...'
-                }
-                fullWidth
-                size="small"
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '14px',
-                    bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
-                    '& fieldset': { borderColor: widgetLookDark ? '#334155' : '#cbd5e1' },
-                    '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
-                    '&.Mui-focused fieldset': { borderColor: primaryColor },
-                  },
-                  '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    sendMessage();
+                <TextField
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    setLastActivityAtMs(Date.now());
+                  }}
+                  placeholder={
+                    sessionClosedByInactivity
+                      ? 'Session closed due to inactivity. Type a message to start a new session...'
+                      : 'Type your message...'
                   }
-                }}
-              />
-              <Button
-                variant="contained"
-                onClick={() => sendMessage()}
-                disabled={!input.trim() || sending || !canUseChat}
-                sx={{
-                  minWidth: 92,
-                  height: 48,
-                  borderRadius: '14px',
-                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-                  boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
-                  fontWeight: 700,
-                  textTransform: 'none',
-                }}
-              >
-                Send
-              </Button>
+                  fullWidth
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '14px',
+                      bgcolor: widgetLookDark ? '#0f172a' : '#f8fafc',
+                      '& fieldset': { borderColor: widgetLookDark ? '#334155' : '#cbd5e1' },
+                      '&:hover fieldset': { borderColor: widgetLookDark ? '#475569' : '#94a3b8' },
+                      '&.Mui-focused fieldset': { borderColor: primaryColor },
+                    },
+                    '& .MuiInputBase-input': { fontSize: '0.94rem', color: widgetLookDark ? '#e2e8f0' : '#334155' },
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => sendMessage()}
+                  disabled={!input.trim() || sending || !canUseChat}
+                  sx={{
+                    minWidth: 92,
+                    height: 48,
+                    borderRadius: '14px',
+                    background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                    boxShadow: '0 10px 20px rgba(15,23,42,0.2)',
+                    fontWeight: 700,
+                    textTransform: 'none',
+                  }}
+                >
+                  Send
+                </Button>
               </Box>
               <Typography variant="caption" sx={{ color: widgetLookDark ? '#94a3b8' : '#64748b', fontWeight: 500, fontSize: '0.68rem' }}>
                 Press Enter to send. Appointment booking is available anytime.

@@ -11,8 +11,8 @@ import {
     IconButton,
     Box
 } from "@mui/material";
-
-import CloseIcon from "@mui/icons-material/Close";
+import { Tooltip } from "@mui/material";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 
 export default function WorkflowEdge({
     id,
@@ -72,7 +72,7 @@ export default function WorkflowEdge({
                         }}
                     >
 
-                        <Select
+                        {/* <Select
                             size="small"
                             value={data?.condition || ""}
                             onChange={handleChange}
@@ -101,22 +101,24 @@ export default function WorkflowEdge({
                             <MenuItem value="satisfactory">
                                 Satisfactory
                             </MenuItem>
-                        </Select>
+                        </Select> */}
 
-                        <IconButton
-                            size="small"
-                            onClick={handleDelete}
-                            sx={{
-                                width: 20,
-                                height: 20,
-                                "&:hover": {
-                                    background: "#fee2e2",
-                                    color: "#ef4444"
-                                }
-                            }}
-                        >
-                            <CloseIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
+                        <Tooltip title="Delete connection" arrow>
+                            <IconButton
+                                size="small"
+                                onClick={handleDelete}
+                                sx={{
+                                    width: 20,
+                                    height: 20,
+                                    "&:hover": {
+                                        background: "#fee2e2",
+                                        color: "#ef4444"
+                                    }
+                                }}
+                            >
+                                <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                        </Tooltip>
 
                     </Paper>
                 </div>

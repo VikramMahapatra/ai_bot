@@ -629,7 +629,7 @@ function AppRoutes() {
         <Route
           path="/integrations/whatsapp"
           element={
-            <ProtectedRoute requiredRole="ADMIN">
+            <ProtectedRoute requiredRole="ALL">
               <WhatsAppIntegrationPage />
             </ProtectedRoute>
           }

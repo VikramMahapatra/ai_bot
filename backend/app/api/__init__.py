@@ -21,6 +21,7 @@ from app.api.organization_setting import router as organization_settings_router
 from app.api.org_credit_billing import router as org_credit_billing_router
 from app.api.conversation_decision import router as conversation_decision_router
 from app.api.message_templates import router as message_templates_router
+from app.api.workflow import router as workflow_router
 
 __all__ = [
     "admin_router",
@@ -43,5 +44,6 @@ __all__ = [
     "organization_settings_router",
     "org_credit_billing_router",
     "conversation_decision_router",
-    "message_templates_router"
+    "message_templates_router",
+    "workflow_router"
 ]

@@ -44,7 +44,7 @@ from app.models.followup_sequences import FollowUpSequence
 from app.models.message_templates import MessageTemplate
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
-from app.models.workflows import Workflow, WorkflowStep, WorkflowStepOutcome, WorkflowEdge, WorkflowExecution
+from app.models.workflows import Workflow, WorkflowStep, WorkflowStepOutcome, WorkflowEdge, WorkflowExecution, WorkflowExecutionLog
 
 __all__ = [
     "User",
@@ -99,5 +99,6 @@ __all__ = [
     "WorkflowStep",
     "WorkflowStepOutcome"
     "WorkflowEdge",
-    "WorkflowExecution"
+    "WorkflowExecution",
+    "WorkflowExecutionLog"
 ]

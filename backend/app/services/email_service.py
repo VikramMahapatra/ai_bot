@@ -386,7 +386,7 @@ def send_new_lead_notification(
     lead_phone: str,
     lead_company: str = None,
     admin_emails: list = None,
-    settings: OrganizationSettings = None
+    org_settings: OrganizationSettings = None
 ) -> bool:
     """
     Send notification email when new lead is captured
@@ -447,10 +447,10 @@ def send_new_lead_notification(
 
         plain_content = _html_to_plain_text(html_content)
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+        with _open_smtp_server(get_org_smtp_config(org_settings)) as server:
 
-            if settings.smtp_username and settings.smtp_password:
-                server.login(settings.smtp_username, settings.smtp_password)
+            if org_settings.smtp_username and org_settings.smtp_password:
+                server.login(org_settings.smtp_username, org_settings.smtp_password)
 
             for admin_email in admin_emails:
 
@@ -458,7 +458,7 @@ def send_new_lead_notification(
 
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = f"🎉 New Lead: {lead_name}"
-                    msg["From"] = settings.smtp_sender_email
+                    msg["From"] = org_settings.smtp_sender_email
                     msg["To"] = admin_email
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))

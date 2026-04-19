@@ -13,6 +13,8 @@ import hashlib
 from threading import Lock
 from urllib.parse import parse_qs, unquote, urlparse
 
+from app.models.campaign import Contact
+
 logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=settings.OPENAPI_KEY2)
@@ -1210,6 +1212,9 @@ def persist_conversation(
     token_usage: Dict,
     retrieval_trace: Optional[Dict] = None,
 ) -> None:
+    
+    contact = db.query(Contact).filter(Contact.session_id == session_id).first()
+    
     conversation = Conversation(
         session_id=session_id,
         widget_id=widget_id,
@@ -1217,7 +1222,9 @@ def persist_conversation(
         organization_id=organization_id,
         message=message,
         response=response_text,
-        role="user"
+        role="user",
+        source="chat",
+        contact_id= contact.id if contact else None
     )
     db.add(conversation)
     db.flush()
