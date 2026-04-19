@@ -70,6 +70,7 @@ function TemplateList() {
     subject: "",
     content: "",
   });
+  const [type, setType] = useState("all");
 
   const handleOpen = (item?: Template) => {
     if (item) {
@@ -89,7 +90,7 @@ function TemplateList() {
 
   useEffect(() => {
     fetchTemplates();
-  }, [search, templatePage, templateRowsPerPage]);
+  }, [search, templatePage, templateRowsPerPage,type]);
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -97,6 +98,7 @@ function TemplateList() {
       setLoading(true);
       const data = await messageTemplateService.listTemplates({
         search: search || undefined,
+        type: type,
         skip: templatePage * templateRowsPerPage,
         limit: templateRowsPerPage,
       });
@@ -226,7 +228,14 @@ function TemplateList() {
                   ),
                 }}
               />
-              <TextField select label="Type" size="small" sx={{ width: 200 }}>
+              <TextField
+                select
+                label="Type"
+                size="small"
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                sx={{ width: 200 }}
+              >
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="sms">SMS</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -305,9 +314,9 @@ function TemplateList() {
                       <IconButton onClick={() => handleOpen(t)}>
                         <Edit />
                       </IconButton>
-                      <IconButton>
+                      {/* <IconButton>
                         <Visibility />
-                      </IconButton>
+                      </IconButton> */}
                     </TableCell>
                   </TableRow>
                 ))

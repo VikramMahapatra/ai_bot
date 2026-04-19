@@ -1118,8 +1118,8 @@ const ReportsPage: React.FC = () => {
                   <TableRow>
                     <TableCell>Contact</TableCell>
                     <TableCell>Source</TableCell>
-                    <TableCell align="right">Messages</TableCell>
-                    <TableCell align="right">Tokens</TableCell>
+                    {/* <TableCell align="right">Messages</TableCell>
+                    <TableCell align="right">Tokens</TableCell> */}
                     <TableCell align="right">Response Time</TableCell>
                     <TableCell>AI Funnel</TableCell>
                     <TableCell>Outcome</TableCell>
@@ -1146,8 +1146,8 @@ const ReportsPage: React.FC = () => {
                           variant="outlined"
                         />
                       </TableCell>
-                      <TableCell align="right">{conv.total_messages}</TableCell>
-                      <TableCell align="right">{conv.total_tokens}</TableCell>
+                      {/* <TableCell align="right">{conv.total_messages}</TableCell>
+                      <TableCell align="right">{conv.total_tokens}</TableCell> */}
                       <TableCell align="right">
                         {conv.average_response_time?.toFixed(2)}s
                       </TableCell>
