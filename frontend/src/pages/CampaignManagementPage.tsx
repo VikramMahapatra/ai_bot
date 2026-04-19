@@ -580,7 +580,7 @@ const CampaignManagementPage: React.FC = () => {
   }, [tab, reportDays]);
 
   useEffect(() => {
-    if (tab !== 7) return;
+    if (tab !== 5) return;
     const run = async () => {
       try {
         await Promise.all([loadC2LRule(), loadC2LConversions()]);

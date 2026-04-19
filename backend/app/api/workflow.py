@@ -27,6 +27,17 @@ def get_all(
 ):
     return service.get_all(db, current_user.organization_id, params.skip, params.limit, params.search)
 
+@router.get("/{workflow_id:int}")
+def get_workflow(
+    workflow_id: int,
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    return service.get_workflow_by_id(
+        db,
+        workflow_id,
+        user.organization_id
+    )
 
 @router.get("/lookup")
 def get_workflow_lookup(
@@ -45,3 +56,18 @@ def create(
     current_user: User = Depends(get_current_user)
 ):
     return service.save_workflow(db, current_user.organization_id, data)
+
+
+@router.put("/{workflow_id:int}")
+def update(
+    workflow_id: int,
+    payload: WorkflowCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    return service.update_workflow(
+        db,
+        workflow_id,
+        user.organization_id,
+        payload
+    )

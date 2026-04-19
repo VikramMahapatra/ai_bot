@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     Box,
     Grid,
@@ -34,40 +34,54 @@ import {
 
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import { Workflow, workflowService } from "../../../services/workflowService";
+import { formatDateTime } from "../../../utils/dateUtils";
 
 interface WorkflowListProps {
     onCreate: () => void;
+    onEdit: (id: number) => void;
 }
 
-
-function WorkflowList({ onCreate }: WorkflowListProps) {
+function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
     const theme = useTheme();
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('all');
-    const workflows = [
-        {
-            id: 1,
-            name: "Interested Followup",
-            trigger: "Interested",
-            steps: 3,
-            status: "Active",
-            created_at: "2024-06-15",
-        },
-        {
-            id: 2,
-            name: "No Answer Followup",
-            trigger: "No Answer",
-            steps: 2,
-            status: "Active",
-            created_at: "2024-06-18",
-        },
-    ];
+    const [workflows, setWorkflows] = useState<Workflow[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const [workflowTotal, setWorkflowTotal] = useState(0);
+    const [workflowPage, setWorkflowPage] = useState(0);
+    const [workflowRowsPerPage, setWorkflowRowsPerPage] = useState(10);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [search, workflowPage, workflowRowsPerPage]);
+
+    const fetchProducts = async () => {
+        setLoading(true);
+        try {
+            setLoading(true);
+            const data = await workflowService.listWorkflows({
+                search: search || undefined,
+                skip: workflowPage * workflowRowsPerPage,
+                limit: workflowRowsPerPage,
+            });
+            setWorkflows(data.items || []);
+            setWorkflowTotal(data.pagination?.total || 0);
+        } catch (err) {
+            setError("Failed to load products");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <Box>
             <Paper
                 sx={{
                     p: { xs: 2, md: 2.4 },
+                    mb: 2,
                     borderRadius: "22px",
                     border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
                     background: `linear-gradient(125deg, ${alpha("#deebfb", 0.92)} 0%, ${alpha(
@@ -139,7 +153,7 @@ function WorkflowList({ onCreate }: WorkflowListProps) {
                     </Button>
                 </Box>
             </Paper>
-            <Grid container spacing={2} sx={{ mt: 2, mb: 2 }}>
+            {/* <Grid container spacing={2} sx={{ mt: 2, mb: 2 }}>
                 <Grid item xs={12} md={3}>
                     <SummaryCard
                         title="Total Workflows"
@@ -171,7 +185,7 @@ function WorkflowList({ onCreate }: WorkflowListProps) {
                         color="#9b59b6"
                     />
                 </Grid>
-            </Grid>
+            </Grid> */}
 
             <Stack
                 direction={{ xs: 'column', sm: 'row' }}
@@ -222,8 +236,8 @@ function WorkflowList({ onCreate }: WorkflowListProps) {
                     <TableHead>
                         <TableRow>
                             <TableCell>Workflow Name</TableCell>
-                            <TableCell>Trigger</TableCell>
                             <TableCell>Steps</TableCell>
+                            <TableCell>Actions</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Created</TableCell>
                             <TableCell align="right">Actions</TableCell>
@@ -240,51 +254,55 @@ function WorkflowList({ onCreate }: WorkflowListProps) {
                                 </TableCell>
                             </TableRow>
                         )}
+
                         {workflows.map((workflow) => (
                             <TableRow key={workflow.id} hover>
+
+                                {/* Name */}
                                 <TableCell>
                                     <Typography fontWeight={600}>
                                         {workflow.name}
                                     </Typography>
                                 </TableCell>
 
+                                {/* Steps */}
+                                <TableCell>
+                                    {workflow.steps_count || 0}
+                                </TableCell>
+
+                                {/* Actions Count */}
                                 <TableCell>
                                     <Chip
-                                        label={workflow.trigger}
+                                        label={`${workflow.actions_count || 0} actions`}
                                         size="small"
                                         variant="outlined"
                                     />
                                 </TableCell>
 
-                                <TableCell>
-                                    {workflow.steps} followups
-                                </TableCell>
-
+                                {/* Status */}
                                 <TableCell>
                                     <Chip
-                                        label={workflow.status}
-                                        color={
-                                            workflow.status === "Active"
-                                                ? "success"
-                                                : "default"
-                                        }
+                                        label={workflow.is_active ? "Active" : "Inactive"}
+                                        color={workflow.is_active ? "success" : "default"}
                                         size="small"
                                     />
                                 </TableCell>
 
+                                {/* Created */}
                                 <TableCell>
-                                    {workflow.created_at || "-"}
+                                    {formatDateTime(workflow.created_at) || "-"}
                                 </TableCell>
 
+                                {/* Actions */}
                                 <TableCell align="right">
-                                    <IconButton size="small">
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onEdit(workflow.id)}
+                                    >
                                         <EditIcon />
                                     </IconButton>
-
-                                    <IconButton size="small">
-                                        <VisibilityIcon />
-                                    </IconButton>
                                 </TableCell>
+
                             </TableRow>
                         ))}
                     </TableBody>

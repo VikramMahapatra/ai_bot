@@ -11,7 +11,7 @@ import "reactflow/dist/style.css";
 import InitialCallNode from "../nodes/InitialCallNode";
 import CustomStepNode from "../nodes/CustomStepNode";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Button, Grid, IconButton, Paper, TextField, Typography } from "@mui/material";
+import { Box, Button, Grid, IconButton, LinearProgress, Paper, TextField, Typography } from "@mui/material";
 import {
     Add,
     Delete,
@@ -24,7 +24,7 @@ import StopNode from "../nodes/StopNode";
 import { FlowContext } from "../../../context/FlowContext";
 import { Node } from "@xyflow/react"; // or reactflow
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { workflowService } from "../../../services/workflowService";
+import { WorkflowBuilderResponse, workflowService } from "../../../services/workflowService";
 
 const nodeTypes = {
     initialCall: InitialCallNode,
@@ -34,6 +34,7 @@ const nodeTypes = {
 
 interface FollowUpWorkflowProps {
     onBack: () => void;
+    workflowId?: number | null;
 }
 
 const edgeTypes = {
@@ -71,17 +72,9 @@ type FlowEdgeData = {
     onChange?: (edgeId: string, value: string) => void;
 };
 
-export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
-    const [workflowError, setWorkflowError] = useState<string | null>(null);
-    const [workflowName, setWorkflowName] = useState("");
-    const [workflowDescription, setWorkflowDescription] = useState("");
-    const [formError, setFormError] = useState({
-        name: "",
-        description: ""
-    });
-    const graph = new Map<string, string[]>();
 
 
+export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWorkflowProps) {
     const onDeleteEdge = (edgeId: string) => {
         setEdges((eds) => eds.filter((e) => e.id !== edgeId));
     };
@@ -103,6 +96,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         );
 
     };
+
 
     const initialNodes: Node<FlowNodeData>[] = [
         {
@@ -143,8 +137,69 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
         }
     ];
 
+
     const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>(initialNodes as any);
     const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeData>([]);
+    const [workflowError, setWorkflowError] = useState<string | null>(null);
+    const [workflowName, setWorkflowName] = useState("");
+    const [workflowDescription, setWorkflowDescription] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [formError, setFormError] = useState({
+        name: "",
+        description: ""
+    });
+
+    useEffect(() => {
+        if (!workflowId) {
+            setNodes(initialNodes as any);
+            setEdges(initialEdges as any);
+            return;
+        }
+
+        loadWorkflow(workflowId);
+
+    }, [workflowId]);
+
+    const loadWorkflow = async (id: number) => {
+        try {
+            setLoading(true);
+
+            const response: WorkflowBuilderResponse =
+                await workflowService.getWorkflow(id);
+
+            setWorkflowName(response.name);
+            setWorkflowDescription(response.description || "");
+
+            setNodes(attachNodeHandlers(response.nodes));
+            setEdges(attachEdgeHandlers(response.edges));
+
+        } catch (error) {
+            setWorkflowError("Failed to load workflow");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const attachNodeHandlers = (nodes: any[]) =>
+        nodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                onAddStep: addStep
+            }
+        }));
+
+    const attachEdgeHandlers = (edges: any[]) =>
+        edges.map((edge) => ({
+            ...edge,
+            data: {
+                ...edge.data,
+                onDelete: onDeleteEdge,
+                onChange: onEdgeLabelChange
+            }
+        }));
+
+
 
     const onConnect = useCallback((params: any) => {
         console.log(" onConnect params:", params);
@@ -665,7 +720,7 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
 
         const cleanOutcomes = (outcomes: any[] = []) => {
             return outcomes.map((o) => ({
-                id: o.id,
+                id: o.id ? String(o.id) : undefined,
                 outcome: o.outcome,
                 stepType: o.stepType,
                 branch: o.branch,
@@ -705,11 +760,31 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
             nodes: cleanNodes,
             edges: cleanEdges
         };
-        const res = await workflowService.createWorkflow(payload)
-        if (!res.success) {
-            setWorkflowError(res.message);
+
+        try {
+            let res;
+            setLoading(true)
+
+            if (workflowId) {
+                res = await workflowService.updateWorkflow(workflowId, payload);
+            } else {
+                res = await workflowService.createWorkflow(payload);
+            }
+
+            if (!res.success) {
+                setWorkflowError(res.message);
+                return;
+            }
+
+            onBack();
+
+        } catch (error) {
+            setWorkflowError("Failed to save workflow");
         }
-        onBack();
+        finally {
+            setLoading(false)
+        }
+
     };
 
     const handleSaveWorkflow = async () => {
@@ -751,6 +826,11 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
 
     return (
         <Box height="100vh" display="flex" flexDirection="column">
+            {loading && (
+                <Box mb={3}>
+                    <LinearProgress sx={{ borderRadius: 1.2 }} />
+                </Box>
+            )}
 
             {/* Header */}
             <Paper
@@ -870,8 +950,9 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                                     }
                                 }}
                                 onClick={handleSaveWorkflow}
+                                disabled={loading}
                             >
-                                Save Workflow
+                                {workflowId ? "Update Workflow" : "Save Workflow"}
                             </Button>
                         </Box>
                     </Grid>
@@ -899,10 +980,10 @@ export default function WorkflowFlowBuilder({ onBack }: FollowUpWorkflowProps) {
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
                         fitView
+                        minZoom={0.4}
+                        maxZoom={0.8}
                         fitViewOptions={{
-                            padding: 0.2,
-                            minZoom: 0.5,
-                            maxZoom: 1
+                            padding: 0.4
                         }}
                     >
                         <Background
