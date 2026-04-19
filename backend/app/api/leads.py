@@ -78,7 +78,7 @@ async def create_lead(
     lead: LeadCreate,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
-    settings: OrganizationSettings = Depends(get_settings)
+    settings: OrganizationSettings = Depends(get_settings),
 ):
     """Create a new lead"""
     try:
@@ -138,14 +138,13 @@ async def create_lead(
                     status_code=403,
                     detail="Lead generation is disabled for this organization",
                 )
-                
-                
+
         existing = (
             db.query(Lead)
             .filter(
                 Lead.organization_id == org_id,
                 (Lead.phone == lead.phone or Lead.email == lead.email),
-                Lead.product_id == (str(lead.product_id) if lead.product_id else None)
+                Lead.product_id == (str(lead.product_id) if lead.product_id else None),
             )
             .order_by(Lead.created_at.desc())
             .first()
@@ -157,7 +156,7 @@ async def create_lead(
             db.add(new_lead)
             db.commit()
             db.refresh(new_lead)
-            
+
             create_lead_activity(
                 db=db,
                 lead=new_lead,
@@ -192,7 +191,7 @@ async def create_lead(
                             lead_phone=new_lead.phone or "",
                             lead_company=new_lead.company,
                             admin_emails=admin_emails,
-                            settings=settings
+                            settings=settings,
                         )
                 except Exception as e:
                     logger.error(
@@ -234,7 +233,7 @@ async def list_leads(
         query = query.filter(Lead.funnel_stage == normalized_stage)
     if product_id:
         query = query.filter(Lead.product_id == product_id)
-        
+
     if campaign_id:
         query = query.filter(Lead.campaign_id == campaign_id)
 
@@ -272,7 +271,8 @@ async def list_leads(
         "items": leads,
         "pagination": {"total": total, "skip": skip, "limit": limit},
     }
-    
+
+
 @router.get("/{lead_id}/activities")
 def get_lead_activities(
     lead_id: int,
@@ -283,9 +283,9 @@ def get_lead_activities(
         db.query(LeadActivity)
         .filter(
             LeadActivity.lead_id == lead_id,
-            LeadActivity.lead.has(organization_id=current_user.organization_id)
+            LeadActivity.lead.has(organization_id=current_user.organization_id),
         )
-        .order_by(LeadActivity.activity_datetime.desc())
+        .order_by(LeadActivity.id.desc())
         .all()
     )
 
