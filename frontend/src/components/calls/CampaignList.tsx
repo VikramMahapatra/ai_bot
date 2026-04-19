@@ -17,7 +17,11 @@ import {
     TextField,
     InputAdornment,
     Tooltip,
-    Alert
+    Alert,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions
 } from "@mui/material";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -49,6 +53,8 @@ interface Props {
     onViewCampaign: (id?: number) => void;
     onDeleteCampaign: (id: number) => void;
 }
+
+const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
 const getStatusColor = (status: string) => {
     switch (status) {
@@ -87,9 +93,13 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [confirmDialog, setConfirmDialog] = useState<
+        null | { type: "toggleStatus"; campaign: Campaign } | { type: "delete"; campaign: Campaign }
+    >(null);
 
 
     const openDrawer = (campaign: Campaign) => {
+        scrollToTop();
         setSelectedCampaign(campaign);
         setDrawerOpen(true);
     };
@@ -160,6 +170,25 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         } finally {
             setLoading(false);
         }
+    };
+
+    const closeConfirmDialog = () => setConfirmDialog(null);
+
+    const executeConfirmDialog = async () => {
+        if (!confirmDialog) return;
+        const snapshot = confirmDialog;
+        setConfirmDialog(null);
+        if (snapshot.type === "toggleStatus") {
+            await handlePause(snapshot.campaign);
+        } else {
+            const id = snapshot.campaign.id;
+            if (id) {
+                onDeleteCampaign(id);
+                await loadCampaigns();
+                await loadCampaignStats();
+            }
+        }
+        scrollToTop();
     };
 
     const getStatusBg = (status: string) => {
@@ -361,7 +390,10 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                         variant="contained"
                         color="primary"
                         startIcon={<AddIcon />}
-                        onClick={() => onAddCampaign(setError)}
+                        onClick={() => {
+                            scrollToTop();
+                            onAddCampaign(setError);
+                        }}
                     >
                         Create Campaign
                     </Button>
@@ -538,7 +570,10 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                                 ? "warning"
                                                                 : "primary"
                                                         }
-                                                        onClick={() => handlePause(campaign)}
+                                                        onClick={() => {
+                                                            scrollToTop();
+                                                            setConfirmDialog({ type: "toggleStatus", campaign });
+                                                        }}
                                                     >
                                                         {campaign.status === "running" ? (
                                                             <PauseIcon />
@@ -556,14 +591,20 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                         </Tooltip>
                                         <IconButton
                                             size="small"
-                                            onClick={() => onViewCampaign(campaign.id)}
+                                            onClick={() => {
+                                                scrollToTop();
+                                                onViewCampaign(campaign.id);
+                                            }}
                                         >
                                             <VisibilityIcon />
                                         </IconButton>
                                         {["draft"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
-                                                onClick={() => onEditCampaign(campaign.id)}
+                                                onClick={() => {
+                                                    scrollToTop();
+                                                    onEditCampaign(campaign.id);
+                                                }}
                                             >
                                                 <EditIcon />
                                             </IconButton>
@@ -572,12 +613,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                             <IconButton
                                                 size="small"
                                                 color="error"
-                                                onClick={async () => {
-                                                    if (campaign.id)
-                                                        onDeleteCampaign(campaign.id);
-
-                                                    await loadCampaigns();
-                                                    await loadCampaignStats();
+                                                onClick={() => {
+                                                    scrollToTop();
+                                                    setConfirmDialog({ type: "delete", campaign });
                                                 }}
                                             >
                                                 <DeleteIcon />
@@ -608,6 +646,58 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                 onClose={closeDrawer}
                 campaign={selectedCampaign}
             />
+
+            <Dialog
+                open={confirmDialog !== null}
+                onClose={() => !loading && closeConfirmDialog()}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>
+                    {confirmDialog?.type === "delete"
+                        ? "Delete campaign?"
+                        : confirmDialog?.campaign.status === "running"
+                          ? "Pause campaign?"
+                          : "Start campaign?"}
+                </DialogTitle>
+                <DialogContent dividers>
+                    {confirmDialog?.type === "delete" ? (
+                        <Typography variant="body2" color="text.secondary">
+                            Delete draft campaign &quot;{confirmDialog.campaign.name}&quot;? This cannot be undone.
+                        </Typography>
+                    ) : confirmDialog?.type === "toggleStatus" ? (
+                        confirmDialog.campaign.status === "running" ? (
+                            <Typography variant="body2" color="text.secondary">
+                                Pause &quot;{confirmDialog.campaign.name}&quot;? Outbound activity for this campaign
+                                will stop until you start it again.
+                            </Typography>
+                        ) : (
+                            <Typography variant="body2" color="text.secondary">
+                                Start &quot;{confirmDialog.campaign.name}&quot;? Calls or messages may begin according to
+                                your schedule and contact list.
+                            </Typography>
+                        )
+                    ) : null}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeConfirmDialog} disabled={loading}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color={confirmDialog?.type === "delete" ? "error" : "primary"}
+                        onClick={executeConfirmDialog}
+                        disabled={loading}
+                    >
+                        {confirmDialog?.type === "delete"
+                            ? "Delete"
+                            : confirmDialog?.type === "toggleStatus" &&
+                                confirmDialog.campaign.status === "running"
+                              ? "Pause"
+                              : "Start"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
         </Box>
     );
