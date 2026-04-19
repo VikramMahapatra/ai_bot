@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import AdminLayout from '../components/Layout/AdminLayout';
+﻿import React, { useState, useEffect } from "react";
+import AdminLayout from "../components/Layout/AdminLayout";
 import {
   Box,
   Paper,
@@ -32,8 +32,8 @@ import {
   DialogTitle,
   DialogContent,
   Snackbar,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
+} from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import {
   Download as FileDownloadIcon,
   LocalPrintshop as PrintIcon,
@@ -44,11 +44,36 @@ import {
   Star,
   ChatBubble,
   Visibility as VisibilityIcon,
-} from '@mui/icons-material';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { reportService, ConversationMetric, DailyStats, SessionMessage, VoiceCampaignReportItem, VoiceCampaignReportSummary } from '../services/reportService';
-import { campaignService, CampaignItem, ContactListItem } from '../services/campaignService';
-import { productService, Product } from '../services/productService';
+} from "@mui/icons-material";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  reportService,
+  ConversationMetric,
+  DailyStats,
+  SessionMessage,
+  VoiceCampaignReportItem,
+  VoiceCampaignReportSummary,
+} from "../services/reportService";
+import {
+  campaignService,
+  CampaignItem,
+  ContactListItem,
+} from "../services/campaignService";
+import { productService, Product } from "../services/productService";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -58,7 +83,7 @@ interface TabPanelProps {
 
 const reportTabIndexes = {
   conversations: 0,
-  campaign: 1
+  campaign: 1,
 };
 
 function TabPanel(props: TabPanelProps) {
@@ -84,20 +109,22 @@ const ReportsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Filter states
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [widgetId, setWidgetId] = useState('');
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [widgetId, setWidgetId] = useState("");
 
   // Campaign report filters
-  const [campaignSearch, setCampaignSearch] = useState('');
-  const [campaignType, setCampaignType] = useState('');
-  const [campaignStatus, setCampaignStatus] = useState('');
-  const [campaignProductId, setCampaignProductId] = useState<number | ''>('');
-  const [campaignContactListId, setCampaignContactListId] = useState<number | ''>('');
-  const [campaignCreatedFrom, setCampaignCreatedFrom] = useState('');
-  const [campaignCreatedTo, setCampaignCreatedTo] = useState('');
-  const [campaignScheduledFrom, setCampaignScheduledFrom] = useState('');
-  const [campaignScheduledTo, setCampaignScheduledTo] = useState('');
+  const [campaignSearch, setCampaignSearch] = useState("");
+  const [campaignType, setCampaignType] = useState("");
+  const [campaignStatus, setCampaignStatus] = useState("");
+  const [campaignProductId, setCampaignProductId] = useState<number | "">("");
+  const [campaignContactListId, setCampaignContactListId] = useState<
+    number | ""
+  >("");
+  const [campaignCreatedFrom, setCampaignCreatedFrom] = useState("");
+  const [campaignCreatedTo, setCampaignCreatedTo] = useState("");
+  const [campaignScheduledFrom, setCampaignScheduledFrom] = useState("");
+  const [campaignScheduledTo, setCampaignScheduledTo] = useState("");
 
   // Summary data
   const [summary, setSummary] = useState<any>(null);
@@ -107,15 +134,15 @@ const ReportsPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalConversations, setTotalConversations] = useState(0);
-  const [sortBy] = useState('conversation_start');
-  const [sortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortBy] = useState("conversation_start");
+  const [sortOrder] = useState<"asc" | "desc">("desc");
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogLoading, setSessionDialogLoading] = useState(false);
-  const [sessionDialogId, setSessionDialogId] = useState('');
+  const [sessionDialogId, setSessionDialogId] = useState("");
   const [sessionMessages, setSessionMessages] = useState<SessionMessage[]>([]);
   const [outcomeRunning, setOutcomeRunning] = useState(false);
   const [outcomeSnackbarOpen, setOutcomeSnackbarOpen] = useState(false);
-  const [outcomeSnackbarMessage, setOutcomeSnackbarMessage] = useState('');
+  const [outcomeSnackbarMessage, setOutcomeSnackbarMessage] = useState("");
 
   // Token data
   const [tokenReport, setTokenReport] = useState<any>(null);
@@ -133,31 +160,33 @@ const ReportsPage: React.FC = () => {
   const [campaignPage, setCampaignPage] = useState(0);
   const [campaignRowsPerPage, setCampaignRowsPerPage] = useState(10);
   const [campaignProducts, setCampaignProducts] = useState<Product[]>([]);
-  const [campaignContactLists, setCampaignContactLists] = useState<ContactListItem[]>([]);
+  const [campaignContactLists, setCampaignContactLists] = useState<
+    ContactListItem[]
+  >([]);
 
   // Voice campaign report data
-  const [voiceAgentName, setVoiceAgentName] = useState('');
-  const [voiceCampaignName, setVoiceCampaignName] = useState('');
+  const [voiceAgentName, setVoiceAgentName] = useState("");
+  const [voiceCampaignName, setVoiceCampaignName] = useState("");
   const [voiceLeadOutcomes, setVoiceLeadOutcomes] = useState<string[]>([]);
-  const [voiceCreatedFrom, setVoiceCreatedFrom] = useState('');
-  const [voiceCreatedTo, setVoiceCreatedTo] = useState('');
-  const [voiceSummary, setVoiceSummary] = useState<VoiceCampaignReportSummary | null>(null);
+  const [voiceCreatedFrom, setVoiceCreatedFrom] = useState("");
+  const [voiceCreatedTo, setVoiceCreatedTo] = useState("");
+  const [voiceSummary, setVoiceSummary] =
+    useState<VoiceCampaignReportSummary | null>(null);
   const [voiceItems, setVoiceItems] = useState<VoiceCampaignReportItem[]>([]);
   const [voiceTotal, setVoiceTotal] = useState(0);
   const [voicePage, setVoicePage] = useState(0);
   const [voiceRowsPerPage, setVoiceRowsPerPage] = useState(10);
   const [voiceAgentOptions, setVoiceAgentOptions] = useState<string[]>([]);
-  const [voiceCampaignOptions, setVoiceCampaignOptions] = useState<string[]>([]);
-  const [voiceDefaultCampaignName, setVoiceDefaultCampaignName] = useState('');
-  const [voiceLeadOutcomeOptions, setVoiceLeadOutcomeOptions] = useState<string[]>([
-    'positive',
-    'satisfactory',
-    'neutral',
-    'negative',
-    'unresolved',
-  ]);
+  const [voiceCampaignOptions, setVoiceCampaignOptions] = useState<string[]>(
+    [],
+  );
+  const [voiceDefaultCampaignName, setVoiceDefaultCampaignName] = useState("");
+  const [voiceLeadOutcomeOptions, setVoiceLeadOutcomeOptions] = useState<
+    string[]
+  >(["positive", "satisfactory", "neutral", "negative", "unresolved"]);
   const [voiceDetailsOpen, setVoiceDetailsOpen] = useState(false);
-  const [voiceDetailsItem, setVoiceDetailsItem] = useState<VoiceCampaignReportItem | null>(null);
+  const [voiceDetailsItem, setVoiceDetailsItem] =
+    useState<VoiceCampaignReportItem | null>(null);
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -174,7 +203,7 @@ const ReportsPage: React.FC = () => {
       });
       setSummary(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch summary');
+      setError(err.message || "Failed to fetch summary");
     } finally {
       setLoading(false);
     }
@@ -197,7 +226,7 @@ const ReportsPage: React.FC = () => {
       setConversations(data.metrics);
       setTotalConversations(data.pagination.total);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch conversations');
+      setError(err.message || "Failed to fetch conversations");
     } finally {
       setLoading(false);
     }
@@ -214,7 +243,7 @@ const ReportsPage: React.FC = () => {
       });
       setTokenReport(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch token report');
+      setError(err.message || "Failed to fetch token report");
     } finally {
       setLoading(false);
     }
@@ -226,10 +255,12 @@ const ReportsPage: React.FC = () => {
       const res = await reportService.runOutcomeProcessingNow();
       // Refresh conversations after processing
       if (tabValue === reportTabIndexes.conversations) fetchConversations();
-      setOutcomeSnackbarMessage(`Outcome processing completed: processed=${res.processed}, failed=${res.failed}`);
+      setOutcomeSnackbarMessage(
+        `Outcome processing completed: processed=${res.processed}, failed=${res.failed}`,
+      );
       setOutcomeSnackbarOpen(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to run outcome processing');
+      setError(err.message || "Failed to run outcome processing");
     } finally {
       setOutcomeRunning(false);
     }
@@ -250,7 +281,7 @@ const ReportsPage: React.FC = () => {
       });
       setLeadReport(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch leads report');
+      setError(err.message || "Failed to fetch leads report");
     } finally {
       setLoading(false);
     }
@@ -264,14 +295,16 @@ const ReportsPage: React.FC = () => {
       const data = await reportService.getDailyStats({ days: 30 });
       setDailyStats(data.daily_stats);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch daily stats');
+      setError(err.message || "Failed to fetch daily stats");
     } finally {
       setLoading(false);
     }
   };
 
-  const toIsoStartOfDay = (value: string) => (value ? `${value}T00:00:00` : undefined);
-  const toIsoEndOfDay = (value: string) => (value ? `${value}T23:59:59` : undefined);
+  const toIsoStartOfDay = (value: string) =>
+    value ? `${value}T00:00:00` : undefined;
+  const toIsoEndOfDay = (value: string) =>
+    value ? `${value}T23:59:59` : undefined;
 
   const fetchCampaignLookups = async () => {
     try {
@@ -282,7 +315,7 @@ const ReportsPage: React.FC = () => {
       setCampaignProducts(products || []);
       setCampaignContactLists(lists.items || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load campaign filter options');
+      setError(err.message || "Failed to load campaign filter options");
     }
   };
 
@@ -296,7 +329,9 @@ const ReportsPage: React.FC = () => {
         campaign_type: (campaignType || undefined) as any,
         status: (campaignStatus || undefined) as any,
         product_id: campaignProductId ? Number(campaignProductId) : undefined,
-        contact_list_id: campaignContactListId ? Number(campaignContactListId) : undefined,
+        contact_list_id: campaignContactListId
+          ? Number(campaignContactListId)
+          : undefined,
         created_from: toIsoStartOfDay(campaignCreatedFrom),
         created_to: toIsoEndOfDay(campaignCreatedTo),
         scheduled_from: toIsoStartOfDay(campaignScheduledFrom),
@@ -307,7 +342,7 @@ const ReportsPage: React.FC = () => {
       setCampaignItems(data.items || []);
       setCampaignTotal(data.pagination?.total || 0);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch campaign report');
+      setError(err.message || "Failed to fetch campaign report");
     } finally {
       setLoading(false);
     }
@@ -321,7 +356,7 @@ const ReportsPage: React.FC = () => {
       lead_outcomes?: string[];
       start_date?: string;
       end_date?: string;
-    }
+    },
   ) => {
     try {
       setLoading(true);
@@ -331,8 +366,11 @@ const ReportsPage: React.FC = () => {
         skip: currentPage * voiceRowsPerPage,
         limit: voiceRowsPerPage,
         agent_name: overrides?.agent_name ?? (voiceAgentName || undefined),
-        campaign_name: overrides?.campaign_name ?? (voiceCampaignName || undefined),
-        lead_outcomes: overrides?.lead_outcomes ?? (voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined),
+        campaign_name:
+          overrides?.campaign_name ?? (voiceCampaignName || undefined),
+        lead_outcomes:
+          overrides?.lead_outcomes ??
+          (voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined),
         start_date: overrides?.start_date ?? toIsoStartOfDay(voiceCreatedFrom),
         end_date: overrides?.end_date ?? toIsoEndOfDay(voiceCreatedTo),
       });
@@ -340,7 +378,7 @@ const ReportsPage: React.FC = () => {
       setVoiceTotal(data.total || 0);
       setVoiceSummary(data.summary || null);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch voice campaign report');
+      setError(err.message || "Failed to fetch voice campaign report");
     } finally {
       setLoading(false);
     }
@@ -391,7 +429,7 @@ const ReportsPage: React.FC = () => {
       const data = await reportService.getVoiceCampaignFilterOptions();
       setVoiceAgentOptions(data.agent_names || []);
       setVoiceCampaignOptions(data.campaign_names || []);
-      const defaultCampaign = data.default_campaign_name || '';
+      const defaultCampaign = data.default_campaign_name || "";
       setVoiceDefaultCampaignName(defaultCampaign);
       if (defaultCampaign) {
         setVoiceCampaignName((prev) => prev || defaultCampaign);
@@ -400,7 +438,7 @@ const ReportsPage: React.FC = () => {
         setVoiceLeadOutcomeOptions(data.lead_outcomes);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load voice filter options');
+      setError(err.message || "Failed to load voice filter options");
     }
   };
 
@@ -410,15 +448,15 @@ const ReportsPage: React.FC = () => {
   };
 
   const handleResetCampaignReportFilters = async () => {
-    setCampaignSearch('');
-    setCampaignType('');
-    setCampaignStatus('');
-    setCampaignProductId('');
-    setCampaignContactListId('');
-    setCampaignCreatedFrom('');
-    setCampaignCreatedTo('');
-    setCampaignScheduledFrom('');
-    setCampaignScheduledTo('');
+    setCampaignSearch("");
+    setCampaignType("");
+    setCampaignStatus("");
+    setCampaignProductId("");
+    setCampaignContactListId("");
+    setCampaignCreatedFrom("");
+    setCampaignCreatedTo("");
+    setCampaignScheduledFrom("");
+    setCampaignScheduledTo("");
     setCampaignPage(0);
     await fetchCampaignReport(0);
   };
@@ -429,12 +467,12 @@ const ReportsPage: React.FC = () => {
   };
 
   const handleResetVoiceCampaignFilters = async () => {
-    const resetCampaign = voiceDefaultCampaignName || '';
-    setVoiceAgentName('');
+    const resetCampaign = voiceDefaultCampaignName || "";
+    setVoiceAgentName("");
     setVoiceCampaignName(resetCampaign);
     setVoiceLeadOutcomes([]);
-    setVoiceCreatedFrom('');
-    setVoiceCreatedTo('');
+    setVoiceCreatedFrom("");
+    setVoiceCreatedTo("");
     setVoicePage(0);
     await fetchVoiceCampaignReport(0, {
       agent_name: undefined,
@@ -514,7 +552,9 @@ const ReportsPage: React.FC = () => {
   };
 
   // Handle rows per page change
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChangeRowsPerPage = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
@@ -538,10 +578,14 @@ const ReportsPage: React.FC = () => {
         setError(null);
         const { items, summary } = await fetchAllVoiceCampaignDataForExport();
         if (items.length === 0) {
-          setError('No voice campaign data to export.');
+          setError("No voice campaign data to export.");
           return;
         }
-        await reportService.exportVoiceCampaignToExcel(items, summary, 'voice_campaign_report');
+        await reportService.exportVoiceCampaignToExcel(
+          items,
+          summary,
+          "voice_campaign_report",
+        );
         return;
       }
 
@@ -551,7 +595,7 @@ const ReportsPage: React.FC = () => {
         widget_id: widgetId,
       });
     } catch (err: any) {
-      setError(err.message || 'Failed to export CSV');
+      setError(err.message || "Failed to export CSV");
     } finally {
       if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
         setLoading(false);
@@ -565,58 +609,85 @@ const ReportsPage: React.FC = () => {
       switch (tabValue) {
         case 0: // Summary
           if (summary) {
-            await reportService.exportSummaryToPDF(summary, 'Summary Report');
+            await reportService.exportSummaryToPDF(summary, "Summary Report");
           } else {
-            setError('No summary data to export. Please fetch summary first.');
+            setError("No summary data to export. Please fetch summary first.");
           }
           break;
         case 1: // Conversations
           if (conversations.length > 0) {
-            await reportService.exportConversationsToPDF(conversations, 'Conversations Report');
+            await reportService.exportConversationsToPDF(
+              conversations,
+              "Conversations Report",
+            );
           } else {
-            setError('No conversations data to export. Please fetch conversations first.');
+            setError(
+              "No conversations data to export. Please fetch conversations first.",
+            );
           }
           break;
         case 2: // Token Usage
           if (tokenReport) {
-            await reportService.exportTokensToPDF(tokenReport, 'Token Usage Report');
+            await reportService.exportTokensToPDF(
+              tokenReport,
+              "Token Usage Report",
+            );
           } else {
-            setError('No token data to export. Please fetch token report first.');
+            setError(
+              "No token data to export. Please fetch token report first.",
+            );
           }
           break;
         case 3: // Leads
           if (leadReport) {
-            await reportService.exportLeadsToPDF(leadReport, 'Leads Analytics Report');
+            await reportService.exportLeadsToPDF(
+              leadReport,
+              "Leads Analytics Report",
+            );
           } else {
-            setError('No leads data to export. Please fetch leads report first.');
+            setError(
+              "No leads data to export. Please fetch leads report first.",
+            );
           }
           break;
         case 4: // Daily Stats
           if (dailyStats.length > 0) {
-            await reportService.exportDailyStatsToPDF(dailyStats, 'Daily Statistics Report');
+            await reportService.exportDailyStatsToPDF(
+              dailyStats,
+              "Daily Statistics Report",
+            );
           } else {
-            setError('No daily stats to export. Please fetch daily stats first.');
+            setError(
+              "No daily stats to export. Please fetch daily stats first.",
+            );
           }
           break;
         case 5: // Campaign report
           if (campaignReportTab === 1) {
             setLoading(true);
             setError(null);
-            const { items, summary } = await fetchAllVoiceCampaignDataForExport();
+            const { items, summary } =
+              await fetchAllVoiceCampaignDataForExport();
             if (items.length > 0) {
-              await reportService.exportVoiceCampaignToPDF(items, summary, 'Voice Campaign Report');
+              await reportService.exportVoiceCampaignToPDF(
+                items,
+                summary,
+                "Voice Campaign Report",
+              );
             } else {
-              setError('No voice campaign data to export. Please fetch voice report first.');
+              setError(
+                "No voice campaign data to export. Please fetch voice report first.",
+              );
             }
           } else {
-            setError('PDF export is currently available for Voice report tab.');
+            setError("PDF export is currently available for Voice report tab.");
           }
           break;
         default:
-          setError('Invalid tab selected');
+          setError("Invalid tab selected");
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to export PDF');
+      setError(err.message || "Failed to export PDF");
     } finally {
       if (tabValue === reportTabIndexes.campaign && campaignReportTab === 1) {
         setLoading(false);
@@ -630,22 +701,28 @@ const ReportsPage: React.FC = () => {
   };
 
   const exportPrimaryLabel =
-    tabValue === 5 && campaignReportTab === 1 ? 'Export Excel' : 'Export CSV';
+    tabValue === 5 && campaignReportTab === 1 ? "Export Excel" : "Export CSV";
 
   const truncateSessionId = (sessionId: string) => {
     if (!sessionId || sessionId.length <= 18) return sessionId;
     return `${sessionId.slice(0, 8)}...${sessionId.slice(-8)}`;
   };
 
-  const handleViewSession = async (sessionId: string, sessionWidgetId?: string | null) => {
+  const handleViewSession = async (
+    sessionId: string,
+    sessionWidgetId?: string | null,
+  ) => {
     try {
       setSessionDialogLoading(true);
       setSessionDialogId(sessionId);
       setSessionDialogOpen(true);
-      const messages = await reportService.getSessionMessages(sessionId, sessionWidgetId || undefined);
+      const messages = await reportService.getSessionMessages(
+        sessionId,
+        sessionWidgetId || undefined,
+      );
       setSessionMessages(messages);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch session messages');
+      setError(err.message || "Failed to fetch session messages");
       setSessionMessages([]);
     } finally {
       setSessionDialogLoading(false);
@@ -654,7 +731,7 @@ const ReportsPage: React.FC = () => {
 
   const handleCloseSessionDialog = () => {
     setSessionDialogOpen(false);
-    setSessionDialogId('');
+    setSessionDialogId("");
     setSessionMessages([]);
   };
 
@@ -668,27 +745,28 @@ const ReportsPage: React.FC = () => {
     setVoiceDetailsItem(null);
   };
 
-  const COLORS = ['#2f6bff', '#2d8ef0', '#5e72ff', '#36c4ff', '#7ab9ff'];
+  const COLORS = ["#2f6bff", "#2d8ef0", "#5e72ff", "#36c4ff", "#7ab9ff"];
 
   const metricCardSx = {
     boxShadow: 2,
     borderRadius: 3,
     border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-    background: 'linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(236,245,255,0.92) 100%)',
+    background:
+      "linear-gradient(140deg, rgba(255,255,255,0.96) 0%, rgba(236,245,255,0.92) 100%)",
   };
 
   const voiceWrapCellSx = {
-    whiteSpace: 'normal',
-    wordBreak: 'break-word',
-    overflowWrap: 'anywhere',
-    verticalAlign: 'top',
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    verticalAlign: "top",
     maxWidth: 220,
     lineHeight: 1.4,
   };
 
   const voiceNoWrapCellSx = {
-    whiteSpace: 'nowrap',
-    verticalAlign: 'top',
+    whiteSpace: "nowrap",
+    verticalAlign: "top",
     minWidth: 150,
   };
 
@@ -709,51 +787,67 @@ const ReportsPage: React.FC = () => {
           sx={{
             p: { xs: 2, md: 2.6 },
             mb: 3,
-            borderRadius: '22px',
+            borderRadius: "22px",
             border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.92)} 0%, ${alpha(
+            background: `linear-gradient(125deg, ${alpha("#deebfb", 0.92)} 0%, ${alpha(
               theme.palette.background.paper,
-              0.84
-            )} 72%, ${alpha('#a9bfdc', 0.98)} 100%)`,
+              0.84,
+            )} 72%, ${alpha("#a9bfdc", 0.98)} 100%)`,
             boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
-            position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
+            position: "relative",
+            overflow: "hidden",
+            "&::before": {
               content: '""',
-              position: 'absolute',
+              position: "absolute",
               inset: 0,
               background:
-                'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-              pointerEvents: 'none',
+                "linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)",
+              pointerEvents: "none",
             },
-            '&::after': {
+            "&::after": {
               content: '""',
-              position: 'absolute',
-              top: '-24%',
-              right: '-6%',
-              width: '42%',
-              height: '150%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-              pointerEvents: 'none',
+              position: "absolute",
+              top: "-24%",
+              right: "-6%",
+              width: "42%",
+              height: "150%",
+              background:
+                "radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)",
+              pointerEvents: "none",
             },
-            '& > *': {
-              position: 'relative',
+            "& > *": {
+              position: "relative",
               zIndex: 1,
             },
           }}
         >
-          <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 1 }}>
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 800, color: "primary.main", mb: 1 }}
+          >
             Reports
           </Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-            View detailed reports on conversations, token usage, lead generation, and more.
+          <Typography variant="body1" sx={{ color: "text.secondary" }}>
+            View detailed reports on conversations, token usage, lead
+            generation, and more.
           </Typography>
         </Paper>
 
-        {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
 
         {/* Filters */}
-        <Paper sx={{ p: 3, mb: 3, borderRadius: '18px', border: `1px solid ${alpha(theme.palette.common.white, 0.62)}` }}>
+        <Paper
+          sx={{
+            p: 3,
+            mb: 3,
+            borderRadius: "18px",
+            border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+          }}
+        >
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             Filter Reports
           </Typography>
@@ -804,7 +898,7 @@ const ReportsPage: React.FC = () => {
         </Paper>
 
         {/* Export/Print buttons */}
-        <Box sx={{ mb: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ mb: 3, display: "flex", gap: 1, flexWrap: "wrap" }}>
           <Button
             startIcon={<FileDownloadIcon />}
             variant="outlined"
@@ -830,14 +924,14 @@ const ReportsPage: React.FC = () => {
             startIcon={<Star />}
             variant="contained"
             sx={{
-              background: 'linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)',
-              textTransform: 'none',
+              background: "linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)",
+              textTransform: "none",
               fontWeight: 700,
             }}
             onClick={handleRunOutcomeProcessing}
             disabled={outcomeRunning}
           >
-            {outcomeRunning ? 'Running...' : 'Run Outcome Processing Now'}
+            {outcomeRunning ? "Running..." : "Run Outcome Processing Now"}
           </Button>
         </Box>
 
@@ -847,17 +941,24 @@ const ReportsPage: React.FC = () => {
           open={outcomeSnackbarOpen}
           autoHideDuration={4000}
           onClose={handleOutcomeSnackbarClose}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         >
-          <Alert onClose={handleOutcomeSnackbarClose} severity="success" sx={{ width: '100%' }}>
+          <Alert
+            onClose={handleOutcomeSnackbarClose}
+            severity="success"
+            sx={{ width: "100%" }}
+          >
             {outcomeSnackbarMessage}
           </Alert>
         </Snackbar>
 
         {/* Tabs */}
-        <Paper sx={{ borderRadius: 3, border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}` }}>
-
-
+        <Paper
+          sx={{
+            borderRadius: 3,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+          }}
+        >
           <Tabs
             value={tabValue}
             onChange={handleTabChange}
@@ -866,11 +967,19 @@ const ReportsPage: React.FC = () => {
             scrollButtons="auto"
           >
             {/* <Tab label="Summary" id="report-tab-0" aria-controls="report-tabpanel-0"  /> */}
-            <Tab label="Conversations" id="report-tab-1" aria-controls="report-tabpanel-1" />
+            <Tab
+              label="Conversations"
+              id="report-tab-1"
+              aria-controls="report-tabpanel-1"
+            />
             {/* <Tab label="Token Usage" id="report-tab-2" aria-controls="report-tabpanel-2" />
             <Tab label="Lead Analytics" id="report-tab-3" aria-controls="report-tabpanel-3" />
             <Tab label="Daily Stats" id="report-tab-4" aria-controls="report-tabpanel-4" /> */}
-            <Tab label="Campaign Report" id="report-tab-5" aria-controls="report-tabpanel-5" />
+            <Tab
+              label="Campaign Report"
+              id="report-tab-5"
+              aria-controls="report-tabpanel-5"
+            />
           </Tabs>
 
           {/* Summary Tab */}
@@ -1022,7 +1131,10 @@ const ReportsPage: React.FC = () => {
                 <TableBody>
                   {conversations.map((conv) => (
                     <TableRow key={conv.id}>
-                      <TableCell title={conv.contact_name} sx={{ maxWidth: 220 }}>
+                      <TableCell
+                        title={conv.contact_name}
+                        sx={{ maxWidth: 220 }}
+                      >
                         <Typography variant="body2" noWrap>
                           {conv.contact_name}
                         </Typography>
@@ -1041,17 +1153,26 @@ const ReportsPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         {conv.ai_funnel ? (
-                          <Chip label={conv.ai_funnel} size="small" color="secondary" variant="outlined" />
+                          <Chip
+                            label={conv.ai_funnel}
+                            size="small"
+                            color="secondary"
+                            variant="outlined"
+                          />
                         ) : (
-                          <Chip label="Unassigned" variant="outlined" size="small" />
+                          <Chip
+                            label="Unassigned"
+                            variant="outlined"
+                            size="small"
+                          />
                         )}
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={conv.outcome || 'Pending'}
+                          label={conv.outcome || "Pending"}
                           size="small"
-                          color={conv.outcome ? 'primary' : 'default'}
-                          variant={conv.outcome ? 'filled' : 'outlined'}
+                          color={conv.outcome ? "primary" : "default"}
+                          variant={conv.outcome ? "filled" : "outlined"}
                         />
                       </TableCell>
                       <TableCell>
@@ -1069,7 +1190,9 @@ const ReportsPage: React.FC = () => {
                           size="small"
                           variant="outlined"
                           startIcon={<VisibilityIcon />}
-                          onClick={() => handleViewSession(conv.session_id, conv.widget_id)}
+                          onClick={() =>
+                            handleViewSession(conv.session_id, conv.widget_id)
+                          }
                         >
                           View
                         </Button>
@@ -1349,7 +1472,10 @@ const ReportsPage: React.FC = () => {
             {campaignReportTab === 0 ? (
               <>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: 700, mb: 1.5 }}
+                  >
                     Campaign Report Filters
                   </Typography>
                   <Grid container spacing={1.5}>
@@ -1365,7 +1491,11 @@ const ReportsPage: React.FC = () => {
                     <Grid item xs={12} sm={6} md={2}>
                       <FormControl fullWidth size="small">
                         <InputLabel>Type</InputLabel>
-                        <Select value={campaignType} label="Type" onChange={(e) => setCampaignType(e.target.value)}>
+                        <Select
+                          value={campaignType}
+                          label="Type"
+                          onChange={(e) => setCampaignType(e.target.value)}
+                        >
                           <MenuItem value="">All</MenuItem>
                           <MenuItem value="email">Email</MenuItem>
                           <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -1376,7 +1506,11 @@ const ReportsPage: React.FC = () => {
                     <Grid item xs={12} sm={6} md={2}>
                       <FormControl fullWidth size="small">
                         <InputLabel>Status</InputLabel>
-                        <Select value={campaignStatus} label="Status" onChange={(e) => setCampaignStatus(e.target.value)}>
+                        <Select
+                          value={campaignStatus}
+                          label="Status"
+                          onChange={(e) => setCampaignStatus(e.target.value)}
+                        >
                           <MenuItem value="">All</MenuItem>
                           <MenuItem value="draft">Draft</MenuItem>
                           <MenuItem value="scheduled">Scheduled</MenuItem>
@@ -1393,7 +1527,13 @@ const ReportsPage: React.FC = () => {
                         <Select
                           value={campaignProductId}
                           label="Product"
-                          onChange={(e) => setCampaignProductId(e.target.value === '' ? '' : Number(e.target.value))}
+                          onChange={(e) =>
+                            setCampaignProductId(
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
+                            )
+                          }
                         >
                           <MenuItem value="">All</MenuItem>
                           {campaignProducts.map((item) => (
@@ -1410,7 +1550,13 @@ const ReportsPage: React.FC = () => {
                         <Select
                           value={campaignContactListId}
                           label="Contact List"
-                          onChange={(e) => setCampaignContactListId(e.target.value === '' ? '' : Number(e.target.value))}
+                          onChange={(e) =>
+                            setCampaignContactListId(
+                              e.target.value === ""
+                                ? ""
+                                : Number(e.target.value),
+                            )
+                          }
                         >
                           <MenuItem value="">All</MenuItem>
                           {campaignContactLists.map((item) => (
@@ -1450,7 +1596,9 @@ const ReportsPage: React.FC = () => {
                         type="date"
                         label="Scheduled From"
                         value={campaignScheduledFrom}
-                        onChange={(e) => setCampaignScheduledFrom(e.target.value)}
+                        onChange={(e) =>
+                          setCampaignScheduledFrom(e.target.value)
+                        }
                         InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
@@ -1466,11 +1614,22 @@ const ReportsPage: React.FC = () => {
                       />
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button variant="contained" size="small" onClick={handleApplyCampaignReportFilters}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                      >
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={handleApplyCampaignReportFilters}
+                        >
                           Apply Filters
                         </Button>
-                        <Button variant="outlined" size="small" onClick={handleResetCampaignReportFilters}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleResetCampaignReportFilters}
+                        >
                           Reset
                         </Button>
                       </Stack>
@@ -1498,24 +1657,58 @@ const ReportsPage: React.FC = () => {
                         campaignItems.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>
-                              <Typography sx={{ fontWeight: 600 }}>{item.campaign_name}</Typography>
-                              <Typography variant="caption" color="text.secondary">#{item.id}</Typography>
+                              <Typography sx={{ fontWeight: 600 }}>
+                                {item.campaign_name}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                #{item.id}
+                              </Typography>
                             </TableCell>
                             <TableCell>{item.campaign_type}</TableCell>
                             <TableCell>
-                              <Chip size="small" label={item.status} color={item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : 'primary'} variant="outlined" />
+                              <Chip
+                                size="small"
+                                label={item.status}
+                                color={
+                                  item.status === "completed"
+                                    ? "success"
+                                    : item.status === "failed"
+                                      ? "error"
+                                      : "primary"
+                                }
+                                variant="outlined"
+                              />
                             </TableCell>
-                            <TableCell>{item.product_name || '-'}</TableCell>
-                            <TableCell>{item.contact_list_name || item.contact_list_id}</TableCell>
-                            <TableCell>{item.scheduled_time ? new Date(item.scheduled_time).toLocaleString() : '-'}</TableCell>
-                            <TableCell align="right">{item.number_sent}</TableCell>
-                            <TableCell align="right">{item.number_failed}</TableCell>
-                            <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
+                            <TableCell>{item.product_name || "-"}</TableCell>
+                            <TableCell>
+                              {item.contact_list_name || item.contact_list_id}
+                            </TableCell>
+                            <TableCell>
+                              {item.scheduled_time
+                                ? new Date(item.scheduled_time).toLocaleString()
+                                : "-"}
+                            </TableCell>
+                            <TableCell align="right">
+                              {item.number_sent}
+                            </TableCell>
+                            <TableCell align="right">
+                              {item.number_failed}
+                            </TableCell>
+                            <TableCell>
+                              {item.created_at
+                                ? new Date(item.created_at).toLocaleString()
+                                : "-"}
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={9} align="center">No campaigns found for selected filters.</TableCell>
+                          <TableCell colSpan={9} align="center">
+                            No campaigns found for selected filters.
+                          </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -1537,7 +1730,10 @@ const ReportsPage: React.FC = () => {
             ) : (
               <>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: 700, mb: 1.5 }}
+                  >
                     Voice Campaign Filters
                   </Typography>
                   <Grid container spacing={1.5}>
@@ -1551,7 +1747,9 @@ const ReportsPage: React.FC = () => {
                         >
                           <MenuItem value="">All</MenuItem>
                           {voiceAgentOptions.map((name) => (
-                            <MenuItem key={name} value={name}>{name}</MenuItem>
+                            <MenuItem key={name} value={name}>
+                              {name}
+                            </MenuItem>
                           ))}
                         </Select>
                       </FormControl>
@@ -1566,7 +1764,9 @@ const ReportsPage: React.FC = () => {
                         >
                           <MenuItem value="">All</MenuItem>
                           {voiceCampaignOptions.map((name) => (
-                            <MenuItem key={name} value={name}>{name}</MenuItem>
+                            <MenuItem key={name} value={name}>
+                              {name}
+                            </MenuItem>
                           ))}
                         </Select>
                       </FormControl>
@@ -1577,13 +1777,25 @@ const ReportsPage: React.FC = () => {
                         <Select
                           multiple
                           value={voiceLeadOutcomes}
-                          onChange={(e) => setVoiceLeadOutcomes(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                          onChange={(e) =>
+                            setVoiceLeadOutcomes(
+                              typeof e.target.value === "string"
+                                ? e.target.value.split(",")
+                                : e.target.value,
+                            )
+                          }
                           input={<OutlinedInput label="Lead Outcome" />}
-                          renderValue={(selected) => (selected as string[]).join(', ')}
+                          renderValue={(selected) =>
+                            (selected as string[]).join(", ")
+                          }
                         >
                           {voiceLeadOutcomeOptions.map((outcome) => (
                             <MenuItem key={outcome} value={outcome}>
-                              <Checkbox checked={voiceLeadOutcomes.indexOf(outcome) > -1} />
+                              <Checkbox
+                                checked={
+                                  voiceLeadOutcomes.indexOf(outcome) > -1
+                                }
+                              />
                               {outcome}
                             </MenuItem>
                           ))}
@@ -1613,11 +1825,22 @@ const ReportsPage: React.FC = () => {
                       />
                     </Grid>
                     <Grid item xs={12} md={3}>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button variant="contained" size="small" onClick={handleApplyVoiceCampaignFilters}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                      >
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={handleApplyVoiceCampaignFilters}
+                        >
                           Apply
                         </Button>
-                        <Button variant="outlined" size="small" onClick={handleResetVoiceCampaignFilters}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleResetVoiceCampaignFilters}
+                        >
                           Reset
                         </Button>
                       </Stack>
@@ -1629,8 +1852,13 @@ const ReportsPage: React.FC = () => {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={metricCardSx}>
                       <CardContent>
-                        <Typography variant="caption" color="text.secondary">Total Call</Typography>
-                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Total Call
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          sx={{ mt: 1, fontWeight: 700 }}
+                        >
                           {voiceSummary?.total_calls ?? 0}
                         </Typography>
                       </CardContent>
@@ -1639,8 +1867,13 @@ const ReportsPage: React.FC = () => {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={metricCardSx}>
                       <CardContent>
-                        <Typography variant="caption" color="text.secondary">Successful Attempt</Typography>
-                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Successful Attempt
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          sx={{ mt: 1, fontWeight: 700 }}
+                        >
                           {voiceSummary?.successful_attempts ?? 0}
                         </Typography>
                       </CardContent>
@@ -1649,9 +1882,14 @@ const ReportsPage: React.FC = () => {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={metricCardSx}>
                       <CardContent>
-                        <Typography variant="caption" color="text.secondary">Sum of Call Duration</Typography>
-                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                          {voiceSummary?.sum_call_duration_label || '0s'}
+                        <Typography variant="caption" color="text.secondary">
+                          Sum of Call Duration
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          sx={{ mt: 1, fontWeight: 700 }}
+                        >
+                          {voiceSummary?.sum_call_duration_label || "0s"}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -1659,9 +1897,14 @@ const ReportsPage: React.FC = () => {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={metricCardSx}>
                       <CardContent>
-                        <Typography variant="caption" color="text.secondary">Campaign Duration</Typography>
-                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-                          {voiceSummary?.campaign_duration_label || '0s'}
+                        <Typography variant="caption" color="text.secondary">
+                          Campaign Duration
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          sx={{ mt: 1, fontWeight: 700 }}
+                        >
+                          {voiceSummary?.campaign_duration_label || "0s"}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -1670,9 +1913,9 @@ const ReportsPage: React.FC = () => {
 
                 <TableContainer
                   sx={{
-                    width: '100%',
-                    overflowX: 'auto',
-                    overflowY: 'hidden',
+                    width: "100%",
+                    overflowX: "auto",
+                    overflowY: "hidden",
                     borderRadius: 2,
                     border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
                   }}
@@ -1681,14 +1924,17 @@ const ReportsPage: React.FC = () => {
                     stickyHeader
                     size="small"
                     sx={{
-                      width: '100%',
+                      width: "100%",
                       minWidth: 1100,
-                      '& .MuiTableHead-root .MuiTableCell-root': {
+                      "& .MuiTableHead-root .MuiTableCell-root": {
                         fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                        backgroundColor: alpha(theme.palette.primary.main, 0.06),
+                        whiteSpace: "nowrap",
+                        backgroundColor: alpha(
+                          theme.palette.primary.main,
+                          0.06,
+                        ),
                       },
-                      '& .MuiTableBody-root .MuiTableCell-root': {
+                      "& .MuiTableBody-root .MuiTableCell-root": {
                         py: 1.2,
                       },
                     }}
@@ -1709,15 +1955,33 @@ const ReportsPage: React.FC = () => {
                     <TableBody>
                       {voiceItems.length > 0 ? (
                         voiceItems.map((item, idx) => (
-                          <TableRow key={`${item.email || 'voice'}-${idx}`}>
-                            <TableCell sx={voiceWrapCellSx}>{item.agent_name || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.customer_name || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.email || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.organization_name || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.campaign_name || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.lead_outcome || '-'}</TableCell>
-                            <TableCell sx={voiceWrapCellSx}>{item.product_name || '-'}</TableCell>
-                            <TableCell sx={voiceNoWrapCellSx}>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</TableCell>
+                          <TableRow key={`${item.email || "voice"}-${idx}`}>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.agent_name || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.customer_name || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.email || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.organization_name || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.campaign_name || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.lead_outcome || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
+                              {item.product_name || "-"}
+                            </TableCell>
+                            <TableCell sx={voiceNoWrapCellSx}>
+                              {item.created_at
+                                ? new Date(item.created_at).toLocaleString()
+                                : "-"}
+                            </TableCell>
                             <TableCell align="center">
                               <Button
                                 size="small"
@@ -1732,7 +1996,9 @@ const ReportsPage: React.FC = () => {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={9} align="center">No voice campaign records found.</TableCell>
+                          <TableCell colSpan={9} align="center">
+                            No voice campaign records found.
+                          </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -1755,63 +2021,121 @@ const ReportsPage: React.FC = () => {
           </TabPanel>
         </Paper>
 
-        <Dialog open={voiceDetailsOpen} onClose={handleCloseVoiceDetails} fullWidth maxWidth="sm">
+        <Dialog
+          open={voiceDetailsOpen}
+          onClose={handleCloseVoiceDetails}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Voice Lead Details</DialogTitle>
           <DialogContent dividers>
             {!voiceDetailsItem ? (
-              <Typography variant="body2" color="text.secondary">No details available.</Typography>
+              <Typography variant="body2" color="text.secondary">
+                No details available.
+              </Typography>
             ) : (
               <Grid container spacing={1.5}>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Agent Name</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.agent_name || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Agent Name
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.agent_name || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Customer Name</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.customer_name || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Customer Name
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.customer_name || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Email</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.email || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Email
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.email || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Company</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.company || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Company
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.company || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Organization</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.organization_name || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Organization
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.organization_name || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Campaign Name</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.campaign_name || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Campaign Name
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.campaign_name || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Campaign Source</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.campaign_source || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Campaign Source
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.campaign_source || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Funnel Stage</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.funnel_stage || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Funnel Stage
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.funnel_stage || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Lead Outcome</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.lead_outcome || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Lead Outcome
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.lead_outcome || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Product</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.product_name || '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Product
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.product_name || "-"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">Created At</Typography>
-                  <Typography variant="body1">{voiceDetailsItem.created_at ? new Date(voiceDetailsItem.created_at).toLocaleString() : '-'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Created At
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.created_at
+                      ? new Date(voiceDetailsItem.created_at).toLocaleString()
+                      : "-"}
+                  </Typography>
                 </Grid>
               </Grid>
             )}
           </DialogContent>
         </Dialog>
 
-        <Dialog open={sessionDialogOpen} onClose={handleCloseSessionDialog} fullWidth maxWidth="md">
+        <Dialog
+          open={sessionDialogOpen}
+          onClose={handleCloseSessionDialog}
+          fullWidth
+          maxWidth="md"
+        >
           <DialogTitle>
             Session Messages: {truncateSessionId(sessionDialogId)}
           </DialogTitle>
@@ -1823,23 +2147,36 @@ const ReportsPage: React.FC = () => {
                 No messages found for this session.
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {sessionMessages.map((item, idx) => (
                   <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 1 }}
+                    >
                       {new Date(item.created_at).toLocaleString()}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, mb: 0.5 }}
+                    >
                       User
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1.5, whiteSpace: 'pre-wrap' }}>
-                      {item.message || 'â€”'}
+                    <Typography
+                      variant="body2"
+                      sx={{ mb: 1.5, whiteSpace: "pre-wrap" }}
+                    >
+                      {item.message || "â€”"}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, mb: 0.5 }}
+                    >
                       Assistant
                     </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {item.response || 'â€”'}
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                      {item.response || "â€”"}
                     </Typography>
                   </Paper>
                 ))}
@@ -1853,6 +2190,3 @@ const ReportsPage: React.FC = () => {
 };
 
 export default ReportsPage;
-
-
-
