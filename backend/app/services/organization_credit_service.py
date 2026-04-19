@@ -363,13 +363,30 @@ def consume_reserved_credits(
     # adjust actual usage
     usage.used_quantity = actual_quantity
 
-    # recompute credits
-    allocation = db.query(OrganizationCreditAllocation).filter(
-        OrganizationCreditAllocation.price_matrix_item_id == usage.price_matrix_item_id
+    # get price item
+    item = db.query(PriceMatrixItem).filter(
+        PriceMatrixItem.id == usage.price_matrix_item_id
     ).first()
 
-    usage.credits_used = actual_quantity * allocation.credits_per_unit
+    # recompute credits
+    credits_required = actual_quantity * item.credits_per_unit
+
+    usage.credits_used = credits_required
     usage.status = "consumed"
+    
+    # Update OrgCreditBalance
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == usage.organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).with_for_update().first()
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    balance.used_credit += credits_required
+    balance.remaining_credit = balance.total_credit - balance.used_credit
 
     db.commit()
     

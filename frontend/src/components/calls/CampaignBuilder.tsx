@@ -299,6 +299,7 @@ const CampaignBuilder = () => {
             await callCampaignService.deleteCampaign(campaignId);
             showSuccess("Campaign delete successfully")
             setView("list");
+            refreshCredits()
         }
         catch (err: any) {
             showError(err?.response?.data?.detail || 'Failed to save the campaign data');

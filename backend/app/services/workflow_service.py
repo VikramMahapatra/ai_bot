@@ -117,7 +117,7 @@ def get_workflow_by_id(db: Session, workflow_id: int, organization_id: int):
             "data": {
                 "title": step.title,
                 "stepNumber": step.step_number,
-                "branch": None,
+                "branch": step.outcomes[0].call_status if step.outcomes else None,
                 "outcomes": outcomes
             }
         })

@@ -833,17 +833,14 @@ def delete_campaign(
             detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted."
         )
     
-    # echoleads = EcholeadsClient()
-    
-    # echo_payload = {
-    #     "status": "paused"
-    # }
-
-    # # Update Echoleads agent
-    # if campaign.external_campaign_id:
-    #     echoleads.update_agent(campaign.external_campaign_id, echo_payload)
 
     campaign.is_deleted = True
+    
+    organization_credit_service.release_reserved_credits(
+        db=db,
+        reference_type="call_campaign",
+        reference_id=str(campaign.id)
+    )
 
     db.commit()
 

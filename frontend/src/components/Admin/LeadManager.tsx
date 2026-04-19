@@ -84,7 +84,7 @@ import EmailIcon from "@mui/icons-material/Email";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
-import EventIcon from "@mui/icons-material/Event";
+import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -306,8 +306,8 @@ const LeadManager: React.FC = () => {
     const campaignLabel =
       selectedCampaignId !== "all"
         ? (campaigns
-            .find((c) => String(c.id) === selectedCampaignId)
-            ?.campaign_name?.toLowerCase() ?? "")
+          .find((c) => String(c.id) === selectedCampaignId)
+          ?.campaign_name?.toLowerCase() ?? "")
         : "";
 
     return leads.filter((lead) => {
@@ -795,6 +795,8 @@ const LeadManager: React.FC = () => {
         return <CallIcon fontSize="small" />;
       case "email":
         return <EmailIcon fontSize="small" />;
+      case "chat":
+        return <ChatBubbleIcon fontSize="small" />;
       case "whatsapp":
         return <WhatsAppIcon fontSize="small" />;
       case "ai":
@@ -923,20 +925,19 @@ const LeadManager: React.FC = () => {
         >
           {[
             selectedWidget &&
-              `widget: ${selectedWidget.name}${
-                selectedWidget.source
-                  ? ` (${sourceLabel(selectedWidget.source)})`
-                  : ""
-              }`,
+            `widget: ${selectedWidget.name}${selectedWidget.source
+              ? ` (${sourceLabel(selectedWidget.source)})`
+              : ""
+            }`,
             selectedProduct && `product: ${selectedProduct.name}`,
             selectedSource !== "all" &&
-              `source: ${sourceLabel(selectedSource)}`,
+            `source: ${sourceLabel(selectedSource)}`,
             selectedFunnelStage !== "all" &&
-              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
+            `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
             selectedCampaign &&
-              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
+            `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
             selectedCampaignType !== "all" &&
-              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
+            `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
           ]
             .filter(Boolean)
             .join(" · ") || "Showing leads from all widgets and campaigns"}
@@ -1079,7 +1080,7 @@ const LeadManager: React.FC = () => {
                   <MenuItem key={campaign.id} value={String(campaign.id)}>
                     {campaign.campaign_name}
                     {campaign.campaign_type &&
-                    campaignTypeLabel(campaign.campaign_type)
+                      campaignTypeLabel(campaign.campaign_type)
                       ? `(${campaignTypeLabel(campaign.campaign_type)})`
                       : ""}
                   </MenuItem>
@@ -2081,7 +2082,7 @@ const LeadManager: React.FC = () => {
                   <TimelineDot color="primary" />
                   {index !== activities.length - 1 && (
                     <TimelineConnector
-                      sx={{ bgcolor: "#e5e7eb", width: "2px" }}
+                      sx={{ bgcolor: "#cdd4e1", width: "2px" }}
                     />
                   )}
                 </TimelineSeparator>
