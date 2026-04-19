@@ -10,14 +10,26 @@ import WorkflowList from "../components/FollowUpWorkflow/components/FollowUpWork
 
 export default function FollowUpWorkflowPage() {
     const [view, setView] = useState("list");
+    const [selectedWorkflow, setSelectedWorkflow] = useState<number | null>(null);
 
     return (
         <AdminLayout>
             <Box sx={{ maxWidth: 1380, mx: 'auto', px: { xs: 0, md: 0.5 }, position: 'relative' }}>
                 {view === "list" ? (
-                    <WorkflowList onCreate={() => setView("create")} />
+                    <WorkflowList
+                        onCreate={() => setView("create")}
+                        onEdit={(id) => {
+                            setSelectedWorkflow(id);
+                            setView("edit");
+                        }}
+                    />
                 ) : (
-                    <WorkflowFlowBuilder onBack={() => setView("list")} />
+                    <WorkflowFlowBuilder
+                        workflowId={selectedWorkflow}
+                        onBack={() => {
+                            setView("list");
+                        }}
+                    />
                 )}
             </Box>
         </AdminLayout>

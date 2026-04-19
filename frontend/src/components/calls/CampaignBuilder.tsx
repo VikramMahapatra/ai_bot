@@ -242,12 +242,22 @@ const CampaignBuilder = () => {
         setLoading(true);
         try {
 
+            const cleanTemplates = (templates: any) => ({
+                whatsapp: templates.whatsapp || null,
+                sms: templates.sms || null,
+                email: templates.email || null
+            });
+
             const payload = {
                 ...campaignForm,
                 product_id: campaignForm.product_id || undefined,
+                workflow_id: campaignForm.workflow_id || undefined,
                 active_days: sendOption === "now" ? [] : campaignForm.active_days, // conditional
                 start_datetime: formatDateForBackend(campaignForm.start_datetime),
                 end_datetime: formatDateForBackend(campaignForm.end_datetime),
+                instant_reply_templates: cleanTemplates(
+                    campaignForm.instant_reply_templates || {}
+                )
             };
             let response;
 
@@ -289,6 +299,7 @@ const CampaignBuilder = () => {
             await callCampaignService.deleteCampaign(campaignId);
             showSuccess("Campaign delete successfully")
             setView("list");
+            refreshCredits()
         }
         catch (err: any) {
             showError(err?.response?.data?.detail || 'Failed to save the campaign data');

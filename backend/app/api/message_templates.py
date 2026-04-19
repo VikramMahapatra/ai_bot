@@ -11,34 +11,64 @@ from app.auth import get_current_user
 from app.models.user import User
 
 router = APIRouter(
-    prefix="/api/templates", 
+    prefix="/api/templates",
     tags=["Templates"],
-    dependencies=[Depends(get_current_user)]
-    )
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/create")
-def create_template(data: TemplateCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return message_template_service.create_template(db, current_user.organization_id, data)
+def create_template(
+    data: TemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return message_template_service.create_template(
+        db, current_user.organization_id, data
+    )
 
 
 @router.get("/all")
-def list_templates(params: TemplateRequest = Depends(), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return message_template_service.get_templates(db, current_user.organization_id, skip=params.skip, limit=params.limit, search=params.search)
+def list_templates(
+    params: TemplateRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return message_template_service.get_templates(
+        db,
+        current_user.organization_id,
+        skip=params.skip,
+        limit=params.limit,
+        search=params.search,
+        template_type=params.type,
+    )
 
 
 @router.get("/{template_id:int}")
-def get_template(template_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return message_template_service.get_template(db, template_id)
 
 
 @router.put("/update/{template_id}")
-def update_template(template_id: int, data: TemplateUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_template(
+    template_id: int,
+    data: TemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return message_template_service.update_template(db, template_id, data)
 
 
 @router.delete("/delete/{template_id}")
-def delete_template(template_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return message_template_service.delete_template(db, template_id)
 
 
@@ -46,6 +76,8 @@ def delete_template(template_id: int, db: Session = Depends(get_db), current_use
 def get_template_lookup(
     type: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    return message_template_service.get_template_lookup(db, current_user.organization_id, type)
+    return message_template_service.get_template_lookup(
+        db, current_user.organization_id, type
+    )

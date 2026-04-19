@@ -52,7 +52,14 @@ import BusinessIcon from "@mui/icons-material/Business";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import GroupIcon from "@mui/icons-material/Group";
 import HistoryIcon from "@mui/icons-material/History";
-import { Timeline, TimelineItem, TimelineSeparator, TimelineDot, TimelineConnector, TimelineContent } from "@mui/lab";
+import {
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineDot,
+  TimelineConnector,
+  TimelineContent,
+} from "@mui/lab";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import { LeadActivity, leadService } from "../../services/leadService";
 import { dashboardService } from "../../services/dashboardService";
@@ -67,16 +74,19 @@ import {
   type OrganizationWidget,
 } from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
+import {
+  FUNNEL_ALL_CHIP_TINT,
+  LEAD_SOURCE_FILTER_TINTS,
+} from "../../constants/leadFilterChartColors";
 import Field from "../Common/Field";
 import CallIcon from "@mui/icons-material/Call";
 import EmailIcon from "@mui/icons-material/Email";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
-
-
 
 /** Whether a widget row should appear for the selected lead source filter. */
 const widgetMatchesLeadSource = (
@@ -100,7 +110,7 @@ const sourceLabel = (source?: string) =>
   titleCase((source || "chat").toLowerCase());
 
 const campaignTypeLabel = (type?: string) =>
-  titleCase((type || "email").toLowerCase());
+  titleCase((type || "").toLowerCase());
 
 const stageLabel = (stage?: string | null) => {
   if (!stage || !stage.trim()) return "Unassigned";
@@ -165,6 +175,8 @@ const LeadManager: React.FC = () => {
   const [activityOpen, setActivityOpen] = useState(false);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [closeDateOpen, setCloseDateOpen] = useState(false);
+  const [closeDate, setCloseDate] = useState("");
 
   const panelSx = {
     borderRadius: "18px",
@@ -572,15 +584,29 @@ const LeadManager: React.FC = () => {
     }
   };
 
+  const handleDateChange = (lead: Lead, date: string) => {
+    const updatedRows = leads.map((row) =>
+      row.id === lead.id ? { ...row, close_date: date } : row,
+    );
+    setLeads(updatedRows);
+  };
+
   const openDetails = (lead: Lead) => {
     setSelectedLead(lead);
     setDetailsOpen(true);
   };
 
   const openMoveDialog = (lead: Lead) => {
-    setMoveStage(lead.funnel_stage || "");
+    const stage = lead.funnel_stage;
+    if (!stage || !stage.trim()) setMoveStage(funnelCategories[0].key || "");
+    else setMoveStage(lead.funnel_stage || "");
     setSelectedLead(lead);
     setMoveOpen(true);
+  };
+
+  const openExpCloseDateDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setCloseDateOpen(true);
   };
 
   const openCreateCategoryDialog = () => {
@@ -692,6 +718,36 @@ const LeadManager: React.FC = () => {
     }
   };
 
+  const handleLeadCloseDate = async () => {
+    if (!selectedLead) return;
+    if (!closeDate) {
+      setError("Please select a expected close date before confirming.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      const updated = await leadService.setLeadCloseDate(
+        selectedLead.id,
+        closeDate,
+      );
+      setLeads((prev) =>
+        prev.map((lead) => (lead.id === updated.id ? updated : lead)),
+      );
+      setSelectedLead(updated);
+      setCloseDateOpen(false);
+      // setSuccess(
+      //   `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
+      // );
+    } catch {
+      setError("Failed to set close date to lead");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const selectedWidget =
     selectedWidgetId === "all"
       ? null
@@ -704,14 +760,7 @@ const LeadManager: React.FC = () => {
     selectedCampaignId === "all"
       ? null
       : campaigns.find((c) => String(c.id) === selectedCampaignId);
-  const sourceTintByKey: Record<string, string> = {
-    all: "#4f46e5",
-    chat: "#3b82f6",
-    voice: "#06b6d4",
-    email: "#10b981",
-    sms: "#f59e0b",
-    whatsapp: "#22c55e",
-  };
+  const sourceTintByKey: Record<string, string> = { ...LEAD_SOURCE_FILTER_TINTS };
 
   const compactMenuProps = {
     PaperProps: {
@@ -746,6 +795,8 @@ const LeadManager: React.FC = () => {
         return <CallIcon fontSize="small" />;
       case "email":
         return <EmailIcon fontSize="small" />;
+      case "chat":
+        return <ChatBubbleIcon fontSize="small" />;
       case "whatsapp":
         return <WhatsAppIcon fontSize="small" />;
       case "ai":
@@ -1027,8 +1078,11 @@ const LeadManager: React.FC = () => {
                 <MenuItem value="all">All Campaigns</MenuItem>
                 {campaigns.map((campaign) => (
                   <MenuItem key={campaign.id} value={String(campaign.id)}>
-                    {campaign.campaign_name} (
-                    {campaignTypeLabel(campaign.campaign_type)})
+                    {campaign.campaign_name}
+                    {campaign.campaign_type &&
+                      campaignTypeLabel(campaign.campaign_type)
+                      ? `(${campaignTypeLabel(campaign.campaign_type)})`
+                      : ""}
                   </MenuItem>
                 ))}
               </Select>
@@ -1425,7 +1479,10 @@ const LeadManager: React.FC = () => {
                     clickable
                     variant="outlined"
                     onClick={() => setSelectedFunnelStage("all")}
-                    sx={filterChipSx(selectedFunnelStage === "all", "#7c3aed")}
+                    sx={filterChipSx(
+                      selectedFunnelStage === "all",
+                      FUNNEL_ALL_CHIP_TINT,
+                    )}
                   />
                   {activeFunnelCategories.map((stage) => (
                     <Chip
@@ -1472,6 +1529,7 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Outcome</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
@@ -1501,6 +1559,18 @@ const LeadManager: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>
+                    {lead.lead_outcome ? (
+                      <Chip
+                        label={lead.lead_outcome}
+                        size="small"
+                        color="primary"
+                        variant="filled"
+                      />
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Chip
                       label={displayStageLabel(lead.funnel_stage)}
                       size="small"
@@ -1517,7 +1587,7 @@ const LeadManager: React.FC = () => {
                         display: "flex",
                         alignItems: "center",
                         gap: 0.5,
-                        whiteSpace: "nowrap"
+                        whiteSpace: "nowrap",
                       }}
                     >
                       <Tooltip title="View activities">
@@ -1551,9 +1621,9 @@ const LeadManager: React.FC = () => {
                           size="small"
                           color="primary"
                           onClick={() => {
-                            if (!selectedLead) return;
+                            if (!lead) return;
                             setDetailsOpen(false);
-                            openMoveDialog(selectedLead);
+                            openMoveDialog(lead);
                           }}
                           sx={{
                             border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
@@ -1562,6 +1632,18 @@ const LeadManager: React.FC = () => {
                           <MoveDownIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      {/* <Tooltip title="Set close date">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => openExpCloseDateDialog(lead)}
+                          sx={{
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          }}
+                        >
+                          <EventIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip> */}
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -1603,8 +1685,8 @@ const LeadManager: React.FC = () => {
             width: 720,
             maxWidth: "95%",
             margin: 0,
-            overflowX: "hidden"
-          }
+            overflowX: "hidden",
+          },
         }}
       >
         <DialogTitle>Lead Details</DialogTitle>
@@ -1788,6 +1870,69 @@ const LeadManager: React.FC = () => {
       </Dialog>
 
       <Dialog
+        open={closeDateOpen}
+        onClose={() => setCloseDateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Expected Close Date</DialogTitle>
+        <DialogContent dividers>
+          {selectedLead && (
+            <Stack spacing={2}>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  {selectedLead.name || "Anonymous"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedLead.phone || "-"}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  {selectedLead.email || "-"}
+                </Typography>
+              </Paper>
+
+              <FormControl fullWidth size="small">
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mb: 0.5 }}
+                >
+                  Select Expected Close Date
+                </Typography>
+                <TextField
+                  //label="Expected Close Date"
+                  type="date"
+                  size="small"
+                  value={selectedLead.close_date}
+                  onChange={(e) => setCloseDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min: new Date().toISOString().split("T")[0], // prevent past dates
+                  }}
+                  sx={{ width: 200 }}
+                />
+              </FormControl>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCloseDateOpen(false)}>Back</Button>
+          <Button
+            variant="contained"
+            onClick={handleLeadCloseDate}
+            disabled={loading}
+            startIcon={
+              loading ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
+          >
+            {loading ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={categoryDialogOpen}
         onClose={() => setCategoryDialogOpen(false)}
         maxWidth="sm"
@@ -1936,7 +2081,9 @@ const LeadManager: React.FC = () => {
                 <TimelineSeparator>
                   <TimelineDot color="primary" />
                   {index !== activities.length - 1 && (
-                    <TimelineConnector sx={{ bgcolor: "#e5e7eb", width: "2px" }} />
+                    <TimelineConnector
+                      sx={{ bgcolor: "#cdd4e1", width: "2px" }}
+                    />
                   )}
                 </TimelineSeparator>
 
@@ -1954,7 +2101,13 @@ const LeadManager: React.FC = () => {
                       },
                     }}
                   >
-                    <Box sx={{ display: "flex", gap: 1.2, alignItems: "flex-start" }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 1.2,
+                        alignItems: "flex-start",
+                      }}
+                    >
                       {/* ICON */}
                       <Box
                         sx={{
@@ -1968,21 +2121,35 @@ const LeadManager: React.FC = () => {
                       </Box>
 
                       {/* CONTENT */}
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.3,
+                        }}
+                      >
                         {/* TITLE */}
-                        <Typography fontSize={13} fontWeight={700} lineHeight={1.2}>
+                        <Typography
+                          fontSize={13}
+                          fontWeight={700}
+                          lineHeight={1.2}
+                        >
                           {a.attempt_label || "Activity"}
                         </Typography>
 
                         {/* META */}
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
                           <Typography fontSize={12} color="text.secondary">
                             {a.source || "Unknown source"}
                           </Typography>
 
                           {a.created_at && (
                             <>
-                              <Typography fontSize={12} color="text.secondary">•</Typography>
+                              <Typography fontSize={12} color="text.secondary">
+                                •
+                              </Typography>
                               <Typography fontSize={12} color="text.secondary">
                                 {new Date(a.created_at).toLocaleString()}
                               </Typography>
@@ -2021,7 +2188,7 @@ const LeadManager: React.FC = () => {
           </Timeline>
         )}
       </Drawer>
-    </Box >
+    </Box>
   );
 };
 

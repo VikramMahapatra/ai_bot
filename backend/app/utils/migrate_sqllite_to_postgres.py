@@ -18,15 +18,23 @@ pg_engine = create_engine(POSTGRES_URI)
 pg_db = pg_engine.connect()
 
 # --- Define FK-safe table order ---
+# TABLE_MIGRATION_ORDER = [
+#     "plans", "organizations", "super_admins", "users", "contact_lists", "products", "voices",
+#     "funnel_categories", "organization_limits", "organization_subscriptions", "widget_configs",
+#     "whatsapp_channels", "twilio_sms_channels", "contacts", "campaigns",  "calling_agents", "call_campaigns", "campaign_schedules",
+#     "campaign_lead_rules", "campaign_contacts", "leads", "campaign_logs", "campaign_lead_conversions",
+#     "campaign_key_insights", "campaign_sentiments", "campaign_ai_recommendations", 
+#     "handoff_agent_assignments", "handoff_sessions", "handoff_messages", "conversation_metrics",
+#     "message_feedback", "call_logs", "call_transcripts", "appointments", "appointment_intakes",
+#     "calling_agent_test_calls", "organization_usage", "organization_calling_numbers",
+# ]
+
 TABLE_MIGRATION_ORDER = [
-    "plans", "organizations", "super_admins", "users", "contact_lists", "products", "voices",
-    "funnel_categories", "organization_limits", "organization_subscriptions", "widget_configs",
-    "whatsapp_channels", "twilio_sms_channels", "contacts", "campaigns",  "calling_agents", "call_campaigns", "campaign_schedules",
-    "campaign_lead_rules", "campaign_contacts", "leads", "campaign_logs", "campaign_lead_conversions",
-    "campaign_key_insights", "campaign_sentiments", "campaign_ai_recommendations", 
-    "handoff_agent_assignments", "handoff_sessions", "handoff_messages", "conversation_metrics",
-    "message_feedback", "call_logs", "call_transcripts", "appointments", "appointment_intakes",
-    "calling_agent_test_calls", "organization_usage", "organization_calling_numbers",
+    "organizations", "super_admins", "users", "contact_lists", "products", "voices",
+    "funnel_categories", "widget_configs",
+    "whatsapp_channels", "twilio_sms_channels", "contacts", "calling_agents", "call_campaigns", "campaign_schedules",
+    "campaign_contacts", "campaign_key_insights", "campaign_sentiments", "campaign_ai_recommendations", 
+    "call_logs", "call_transcripts", "calling_agent_test_calls",  "organization_calling_numbers",
 ]
 
 # --- Helper to check FK existence ---

@@ -1,7 +1,13 @@
-import api from './api';
+import api from "./api";
 
-export type CampaignType = 'email' | 'whatsapp' | 'sms';
-export type CampaignStatus = 'draft' | 'scheduled' | 'running' | 'completed' | 'paused' | 'failed';
+export type CampaignType = "email" | "whatsapp" | "sms";
+export type CampaignStatus =
+  | "draft"
+  | "scheduled"
+  | "running"
+  | "completed"
+  | "paused"
+  | "failed";
 
 export interface CampaignItem {
   id: number;
@@ -38,16 +44,16 @@ export interface CampaignLogItem {
   email?: string;
   phone?: string;
   status:
-  | 'pending'
-  | 'sent'
-  | 'delivered'
-  | 'opened'
-  | 'read'
-  | 'clicked'
-  | 'bounced'
-  | 'complained'
-  | 'unsubscribed'
-  | 'failed';
+    | "pending"
+    | "sent"
+    | "delivered"
+    | "opened"
+    | "read"
+    | "clicked"
+    | "bounced"
+    | "complained"
+    | "unsubscribed"
+    | "failed";
   sent_at?: string;
   delivered_at?: string;
   opened_at?: string;
@@ -86,9 +92,27 @@ export interface CampaignReportsSummary {
     success_rate: number;
   };
   channel_breakdown: {
-    email: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
-    sms: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
-    whatsapp: { runs: number; messages: number; sent: number; failed: number; success_rate: number };
+    email: {
+      runs: number;
+      messages: number;
+      sent: number;
+      failed: number;
+      success_rate: number;
+    };
+    sms: {
+      runs: number;
+      messages: number;
+      sent: number;
+      failed: number;
+      success_rate: number;
+    };
+    whatsapp: {
+      runs: number;
+      messages: number;
+      sent: number;
+      failed: number;
+      success_rate: number;
+    };
   };
   email_analytics: {
     delivered: number;
@@ -270,8 +294,8 @@ export interface CreateCampaignPayload {
   scheduled_time?: string;
   contact_list_id: number;
   product_id?: number;
-  status?: 'draft' | 'scheduled';
-  email_content_mode?: 'manual' | 'prompt';
+  status?: "draft" | "scheduled";
+  email_content_mode?: "manual" | "prompt";
   email_subject?: string;
   email_prompt_context?: string;
   email_subject_variants?: string[];
@@ -294,7 +318,7 @@ export interface SpamScoreCombination {
   subject_index: number;
   body_index: number;
   spam_score: number;
-  risk_level: 'low' | 'medium' | 'high';
+  risk_level: "low" | "medium" | "high";
   reasons: string[];
   suggestions: string[];
 }
@@ -340,22 +364,29 @@ export interface UploadManualContactsPayload {
 
 export const campaignService = {
   async getDashboardStats(): Promise<DashboardStats> {
-    const response = await api.get('/api/admin/campaigns/dashboard/stats');
+    const response = await api.get("/api/admin/campaigns/dashboard/stats");
     return response.data;
   },
 
-  async listCampaigns(filters: CampaignFilters = {}): Promise<CampaignListResponse> {
-    const response = await api.get('/api/admin/campaigns', { params: filters });
+  async listCampaigns(
+    filters: CampaignFilters = {},
+  ): Promise<CampaignListResponse> {
+    const response = await api.get("/api/admin/campaigns", { params: filters });
     return response.data;
   },
 
   async createCampaign(payload: CreateCampaignPayload): Promise<CampaignItem> {
-    const response = await api.post('/api/admin/campaigns', payload);
+    const response = await api.post("/api/admin/campaigns", payload);
     return response.data;
   },
 
-  async generateEmailVariants(payload: GenerateEmailVariantsPayload): Promise<GenerateEmailVariantsResponse> {
-    const response = await api.post('/api/admin/campaigns/email/generate-variants', payload);
+  async generateEmailVariants(
+    payload: GenerateEmailVariantsPayload,
+  ): Promise<GenerateEmailVariantsResponse> {
+    const response = await api.post(
+      "/api/admin/campaigns/email/generate-variants",
+      payload,
+    );
     return response.data;
   },
 
@@ -365,17 +396,26 @@ export const campaignService = {
     subjects: string[];
     bodies: string[];
   }): Promise<SpamScoreResponse> {
-    const response = await api.post('/api/admin/campaigns/email/spam-score', payload);
+    const response = await api.post(
+      "/api/admin/campaigns/email/spam-score",
+      payload,
+    );
     return response.data;
   },
 
-  async runCampaign(campaignId: number): Promise<{ status: string; number_sent: number; number_failed: number }> {
+  async runCampaign(
+    campaignId: number,
+  ): Promise<{ status: string; number_sent: number; number_failed: number }> {
     const response = await api.post(`/api/admin/campaigns/${campaignId}/run`);
     return response.data;
   },
 
-  async runDueCampaigns(): Promise<{ due_count: number; executed_count: number; skipped_count: number }> {
-    const response = await api.post('/api/admin/campaigns/run-due');
+  async runDueCampaigns(): Promise<{
+    due_count: number;
+    executed_count: number;
+    skipped_count: number;
+  }> {
+    const response = await api.post("/api/admin/campaigns/run-due");
     return response.data;
   },
 
@@ -384,48 +424,96 @@ export const campaignService = {
     return response.data;
   },
 
-  async listCampaignLogs(campaignId: number, params: { status?: string; run_sequence?: number; skip?: number; limit?: number } = {}): Promise<CampaignLogResponse> {
-    const response = await api.get(`/api/admin/campaigns/${campaignId}/logs`, { params });
+  async listCampaignLogs(
+    campaignId: number,
+    params: {
+      status?: string;
+      run_sequence?: number;
+      skip?: number;
+      limit?: number;
+    } = {},
+  ): Promise<CampaignLogResponse> {
+    const response = await api.get(`/api/admin/campaigns/${campaignId}/logs`, {
+      params,
+    });
     return response.data;
   },
 
-  async getCampaignReportsSummary(params: { days?: number } = {}): Promise<CampaignReportsSummary> {
-    const response = await api.get('/api/admin/campaigns/reports/summary', { params });
+  async getCampaignReportsSummary(
+    params: { days?: number } = {},
+  ): Promise<CampaignReportsSummary> {
+    const response = await api.get("/api/admin/campaigns/reports/summary", {
+      params,
+    });
     return response.data;
   },
 
   async getCampaignToLeadRule(): Promise<CampaignToLeadRule> {
-    const response = await api.get('/api/admin/campaigns/c2l/rules/current');
+    const response = await api.get("/api/admin/campaigns/c2l/rules/current");
     return response.data;
   },
 
-  async updateCampaignToLeadRule(payload: Partial<CampaignToLeadRule>): Promise<CampaignToLeadRule> {
-    const response = await api.put('/api/admin/campaigns/c2l/rules/current', payload);
+  async updateCampaignToLeadRule(
+    payload: Partial<CampaignToLeadRule>,
+  ): Promise<CampaignToLeadRule> {
+    const response = await api.put(
+      "/api/admin/campaigns/c2l/rules/current",
+      payload,
+    );
     return response.data;
   },
 
-  async runCampaignToLeadRuleEngine(payload: { campaign_id?: number; dry_run?: boolean; limit?: number }): Promise<CampaignToLeadRunResult> {
-    const response = await api.post('/api/admin/campaigns/c2l/run', payload);
+  async runCampaignToLeadRuleEngine(payload: {
+    campaign_id?: number;
+    dry_run?: boolean;
+    limit?: number;
+  }): Promise<CampaignToLeadRunResult> {
+    const response = await api.post("/api/admin/campaigns/c2l/run", payload);
     return response.data;
   },
 
-  async listCampaignToLeadConversions(params: { campaign_id?: number; status?: string; skip?: number; limit?: number } = {}): Promise<CampaignToLeadConversionResponse> {
-    const response = await api.get('/api/admin/campaigns/c2l/conversions', { params });
+  async listCampaignToLeadConversions(
+    params: {
+      campaign_id?: number;
+      status?: string;
+      skip?: number;
+      limit?: number;
+    } = {},
+  ): Promise<CampaignToLeadConversionResponse> {
+    const response = await api.get("/api/admin/campaigns/c2l/conversions", {
+      params,
+    });
     return response.data;
   },
 
-  async createContactList(payload: { list_name: string; description?: string }): Promise<ContactListItem> {
-    const response = await api.post('/api/admin/campaigns/contact-lists', payload);
+  async createContactList(payload: {
+    list_name: string;
+    description?: string;
+  }): Promise<ContactListItem> {
+    const response = await api.post(
+      "/api/admin/campaigns/contact-lists",
+      payload,
+    );
     return response.data;
   },
 
-  async updateContactList(editingListId: number, payload: { list_name: string; description?: string }): Promise<ContactListItem> {
-    const response = await api.put(`/api/admin/campaigns/contact-lists/${editingListId}`, payload);
+  async updateContactList(
+    editingListId: number,
+    payload: { list_name: string; description?: string },
+  ): Promise<ContactListItem> {
+    const response = await api.put(
+      `/api/admin/campaigns/contact-lists/${editingListId}`,
+      payload,
+    );
     return response.data;
   },
 
-  async listContactLists(params: ContactFilters = {}): Promise<ContactListResponse> {
-    const response = await api.get('/api/admin/campaigns/contact-lists', { params });
+  async listContactLists(
+    params: ContactFilters = {},
+  ): Promise<ContactListResponse> {
+    const response = await api.get("/api/admin/campaigns/contact-lists", {
+      params,
+    });
     return response.data;
   },
 
@@ -433,22 +521,49 @@ export const campaignService = {
     await api.delete(`/api/admin/campaigns/contact-lists/${contactListId}`);
   },
 
-  async listContacts(contactListId: number, params: ContactFilters = {}): Promise<ContactResponse> {
-    const response = await api.get(`/api/admin/campaigns/contact-lists/${contactListId}/contacts`, { params });
+  async listContacts(
+    contactListId: number,
+    params: ContactFilters = {},
+  ): Promise<ContactResponse> {
+    const response = await api.get(
+      `/api/admin/campaigns/contact-lists/${contactListId}/contacts`,
+      { params },
+    );
     return response.data;
   },
 
-  async uploadContactsManual(contactListId: number, payload: UploadManualContactsPayload): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
-    const response = await api.post(`/api/admin/campaigns/contact-lists/${contactListId}/contacts/manual`, payload);
+  async uploadContactsManual(
+    contactListId: number,
+    payload: UploadManualContactsPayload,
+  ): Promise<{
+    created: number;
+    failed: number;
+    errors: Array<{ row: number; error: string }>;
+  }> {
+    const response = await api.post(
+      `/api/admin/campaigns/contact-lists/${contactListId}/contacts/manual`,
+      payload,
+    );
     return response.data;
   },
 
-  async uploadContactsCsv(contactListId: number, formData: FormData): Promise<{ created: number; failed: number; errors: Array<{ row: number; error: string }> }> {
-    const response = await api.post(`/api/admin/campaigns/contact-lists/${contactListId}/contacts/csv`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
+  async uploadContactsCsv(
+    contactListId: number,
+    formData: FormData,
+  ): Promise<{
+    created: number;
+    failed: number;
+    errors: Array<{ row: number; error: string }>;
+  }> {
+    const response = await api.post(
+      `/api/admin/campaigns/contact-lists/${contactListId}/contacts/csv`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       },
-    });
+    );
     return response.data;
   },
 
