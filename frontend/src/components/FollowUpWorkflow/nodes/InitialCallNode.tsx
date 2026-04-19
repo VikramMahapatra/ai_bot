@@ -323,13 +323,29 @@ export default function InitialCallNode({ data, id }: any) {
 
             {/* Handles */}
 
+            {/* Connected */}
             <Handle
                 type="source"
+                id="connected"
                 position={Position.Right}
                 style={{
-                    background: "#3b82f6",
-                    width: 8,
-                    height: 8
+                    top: "35%",
+                    background: "#22c55e",
+                    width: 10,
+                    height: 10
+                }}
+            />
+
+            {/* Not Connected */}
+            <Handle
+                type="source"
+                id="not_connected"
+                position={Position.Right}
+                style={{
+                    top: "70%",
+                    background: "#f97316",
+                    width: 10,
+                    height: 10
                 }}
             />
 

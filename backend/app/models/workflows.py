@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, Identity, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import JSON, Column, Float, Identity, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship
 class Workflow(Base):
     __tablename__ = "workflows"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer,  Identity(), primary_key=True, index=True)
     organization_id = Column(Integer, nullable=False)
 
     name = Column(String(255), nullable=False)
@@ -34,14 +34,18 @@ class Workflow(Base):
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
 
     workflow_id = Column(Integer, ForeignKey("workflows.id"))
 
     node_type = Column(String(50))  
     # initial_call | action | stop
+    
+    position = Column(JSON)
 
     title = Column(String(255))
+    
+    step_number = Column(Integer)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -54,7 +58,7 @@ class WorkflowStep(Base):
 class WorkflowStepOutcome(Base):
     __tablename__ = "workflow_step_outcomes"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
 
     step_id = Column(
         Integer,
@@ -86,7 +90,7 @@ class WorkflowStepOutcome(Base):
 class WorkflowEdge(Base):
     __tablename__ = "workflow_edges"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
 
     workflow_id = Column(
         Integer,
@@ -123,7 +127,7 @@ class WorkflowEdge(Base):
 class WorkflowExecution(Base):
     __tablename__ = "workflow_executions"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Identity(), primary_key=True)
 
     workflow_id = Column(Integer)
     campaign_id = Column(Integer)
@@ -137,5 +141,23 @@ class WorkflowExecution(Base):
     status = Column(String(50))  
     # pending / completed
 
-    scheduled_at = Column(DateTime)
-    executed_at = Column(DateTime)
+    scheduled_at = Column(DateTime(timezone=True))
+    executed_at = Column(DateTime(timezone=True))
+    
+class WorkflowExecutionLog(Base):
+    __tablename__ = "workflow_execution_logs"
+
+    id = Column(Integer, Identity(), primary_key=True)
+
+    execution_id = Column(Integer, ForeignKey("workflow_executions.id"))
+
+    step_id = Column(Integer)
+    event_type = Column(String(50))
+    # trigger / scheduled / executed / moved / failed
+
+    call_status = Column(String(50), nullable=True)
+    outcome = Column(String(50), nullable=True)
+
+    event_metadata = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

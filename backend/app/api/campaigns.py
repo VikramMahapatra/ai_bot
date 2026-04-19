@@ -655,7 +655,7 @@ def _execute_campaign_now(
     organization_credit_service.consume_reserved_credits(
         db=db,
         reference_type="campaign",
-        reference_id=campaign.id,
+        reference_id=str(campaign.id),
         actual_quantity=sent_count,
     )
 

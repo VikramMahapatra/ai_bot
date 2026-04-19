@@ -74,6 +74,10 @@ import {
   type OrganizationWidget,
 } from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
+import {
+  FUNNEL_ALL_CHIP_TINT,
+  LEAD_SOURCE_FILTER_TINTS,
+} from "../../constants/leadFilterChartColors";
 import Field from "../Common/Field";
 import CallIcon from "@mui/icons-material/Call";
 import EmailIcon from "@mui/icons-material/Email";
@@ -756,14 +760,7 @@ const LeadManager: React.FC = () => {
     selectedCampaignId === "all"
       ? null
       : campaigns.find((c) => String(c.id) === selectedCampaignId);
-  const sourceTintByKey: Record<string, string> = {
-    all: "#4f46e5",
-    chat: "#3b82f6",
-    voice: "#06b6d4",
-    email: "#10b981",
-    sms: "#f59e0b",
-    whatsapp: "#22c55e",
-  };
+  const sourceTintByKey: Record<string, string> = { ...LEAD_SOURCE_FILTER_TINTS };
 
   const compactMenuProps = {
     PaperProps: {
@@ -1481,7 +1478,10 @@ const LeadManager: React.FC = () => {
                     clickable
                     variant="outlined"
                     onClick={() => setSelectedFunnelStage("all")}
-                    sx={filterChipSx(selectedFunnelStage === "all", "#7c3aed")}
+                    sx={filterChipSx(
+                      selectedFunnelStage === "all",
+                      FUNNEL_ALL_CHIP_TINT,
+                    )}
                   />
                   {activeFunnelCategories.map((stage) => (
                     <Chip

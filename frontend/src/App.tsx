@@ -27,6 +27,7 @@ import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
 import SuperAdminOrgCreditBillingPage from './pages/SuperAdminOrgCreditBillingPage';
+import SuperAdminCreditUsagePage from './pages/SuperAdminCreditUsagePage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
@@ -465,6 +466,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/superadmin/credit-usage"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminCreditUsagePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/superadmin/organization-credits"
         element={<Navigate to="/superadmin/org-credit-billing" replace />}
       />
@@ -620,7 +629,7 @@ function AppRoutes() {
         <Route
           path="/integrations/whatsapp"
           element={
-            <ProtectedRoute requiredRole="ADMIN">
+            <ProtectedRoute requiredRole="ALL">
               <WhatsAppIntegrationPage />
             </ProtectedRoute>
           }
