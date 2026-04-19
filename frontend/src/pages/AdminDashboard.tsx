@@ -47,6 +47,14 @@ import {
   Legend,
 } from "recharts";
 import { dashboardService } from "../services/dashboardService";
+import {
+  FUNNEL_ALL_CHIP_TINT,
+  FUNNEL_STAGE_BAR_BLUES,
+  LEAD_SOURCE_FILTER_TINTS,
+  leadSourceChartFill,
+  TREND_CONVERSATIONS_BAR,
+  TREND_LEADS_BAR,
+} from "../constants/leadFilterChartColors";
 import type { AnalyticsSummary } from "../services/callService";
 import { callService } from "../services/callService";
 
@@ -167,13 +175,6 @@ const formatDateTime = (value?: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
-};
-
-const safeHexColor = (value?: string): string => {
-  const fallback = "#4e89d5";
-  if (!value) return fallback;
-  const trimmed = value.trim();
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
 };
 
 const formatLimitValue = (value: number | null): string => {
@@ -363,11 +364,6 @@ const AdminDashboard: React.FC = () => {
     });
   }, []);
 
-  const pieColors = useMemo(
-    () => ["#4e89d5", "#67a4e8", "#3d75d9", "#79b4f1", "#5f99dd", "#7f93b8"],
-    [],
-  );
-
   const glassPanelSx = {
     borderRadius: "18px",
     border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
@@ -464,16 +460,39 @@ const AdminDashboard: React.FC = () => {
     [callSummary, theme],
   );
 
-  const funnelData = useMemo(
-    () =>
-      leadsFunnel
-        .sort((a, b) => a.position - b.position)
-        .map((item) => ({
-          ...item,
-          fill: safeHexColor(item.color),
-        })),
-    [leadsFunnel],
-  );
+  const funnelData = useMemo(() => {
+    const sorted = [...leadsFunnel].sort(
+      (a, b) => a.position - b.position,
+    );
+    let blueIdx = 0;
+
+    return sorted.map((item) => {
+      const key = String(item.stage_key || "").toLowerCase();
+      const name = String(item.stage_name || "").toLowerCase();
+
+      if (
+        key === "unassigned" ||
+        key.includes("unassign") ||
+        name.includes("unassigned")
+      ) {
+        return { ...item, fill: alpha(FUNNEL_ALL_CHIP_TINT, 0.72) };
+      }
+      if (
+        (key.includes("won") && !key.includes("lost")) ||
+        name.includes("closed won")
+      ) {
+        return { ...item, fill: LEAD_SOURCE_FILTER_TINTS.whatsapp };
+      }
+      if (key.includes("lost") || name.includes("closed lost")) {
+        return { ...item, fill: "#ef4444" };
+      }
+
+      const fill =
+        FUNNEL_STAGE_BAR_BLUES[blueIdx % FUNNEL_STAGE_BAR_BLUES.length];
+      blueIdx += 1;
+      return { ...item, fill };
+    });
+  }, [leadsFunnel]);
 
   return (
     <AdminLayout>
@@ -806,10 +825,14 @@ const AdminDashboard: React.FC = () => {
                   <Legend />
                   <Bar
                     dataKey="conversations"
-                    fill="#4e89d5"
+                    fill={TREND_CONVERSATIONS_BAR}
                     radius={[7, 7, 0, 0]}
                   />
-                  <Bar dataKey="leads" fill="#67a4e8" radius={[7, 7, 0, 0]} />
+                  <Bar
+                    dataKey="leads"
+                    fill={TREND_LEADS_BAR}
+                    radius={[7, 7, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </Paper>
@@ -832,10 +855,10 @@ const AdminDashboard: React.FC = () => {
                       outerRadius={88}
                       innerRadius={46}
                     >
-                      {leadsBySource.map((_, idx) => (
+                      {leadsBySource.map((row, idx) => (
                         <Cell
-                          key={`lead-source-${idx}`}
-                          fill={pieColors[idx % pieColors.length]}
+                          key={`lead-source-${row.source}-${idx}`}
+                          fill={leadSourceChartFill(row.source, idx)}
                         />
                       ))}
                     </Pie>
