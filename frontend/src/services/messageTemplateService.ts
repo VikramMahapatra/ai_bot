@@ -21,6 +21,9 @@ export interface TemplateFilters {
 
   // search
   search?: string;
+
+  //Type
+  type?: string;
 }
 
 export interface TemplateListResponse {

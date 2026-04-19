@@ -78,7 +78,10 @@ def _extract_lead_outcome_from_custom_fields(
         return None
     return None
 
-def _sync_lead_contact_to_agent_list(db: Session, widget_config: WidgetConfig, lead: LeadCreate) -> None:
+
+def _sync_lead_contact_to_agent_list(
+    db: Session, widget_config: WidgetConfig, lead: LeadCreate
+) -> None:
     cleaned_email = (lead.email or "").strip().lower()
     cleaned_phone = (lead.phone or "").strip()
     normalized_phone = _normalize_phone(cleaned_phone)
@@ -90,36 +93,39 @@ def _sync_lead_contact_to_agent_list(db: Session, widget_config: WidgetConfig, l
     if not contact_list:
         return
 
-    existing_contacts = db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    existing_contacts = (
+        db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    )
     for existing in existing_contacts:
         existing_email = (existing.email or "").strip().lower()
         existing_phone_normalized = _normalize_phone((existing.phone or "").strip())
 
         if cleaned_email and existing_email and existing_email == cleaned_email:
             return
-        if normalized_phone and existing_phone_normalized and existing_phone_normalized == normalized_phone:
+        if (
+            normalized_phone
+            and existing_phone_normalized
+            and existing_phone_normalized == normalized_phone
+        ):
             return
 
     cleaned_name = (lead.name or "").strip() or None
-    
+
     contact = Contact(
         contact_list_id=contact_list.id,
         name=cleaned_name,
         email=cleaned_email or None,
         phone=cleaned_phone or None,
-        session_id=lead.session_id if lead and lead.session_id else None
+        session_id=lead.session_id if lead and lead.session_id else None,
     )
     db.add(contact)
     db.flush()
-    
+
     if contact.session_id:
         db.query(Conversation).filter(
             Conversation.session_id == contact.session_id
-        ).update(
-            {Conversation.contact_id: contact.id},
-            synchronize_session=False
-        )
-    
+        ).update({Conversation.contact_id: contact.id}, synchronize_session=False)
+
     return contact
 
 
@@ -127,7 +133,7 @@ def _sync_lead_contact_to_agent_list(db: Session, widget_config: WidgetConfig, l
 async def create_lead(
     lead: LeadCreate,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Create a new lead"""
     try:
@@ -187,10 +193,10 @@ async def create_lead(
                     status_code=403,
                     detail="Lead generation is disabled for this organization",
                 )
-                
+
         filters = [
             Lead.organization_id == org_id,
-            Lead.product_id == (str(lead.product_id) if lead.product_id else None)
+            Lead.product_id == (str(lead.product_id) if lead.product_id else None),
         ]
 
         contact_filters = []
@@ -203,28 +209,29 @@ async def create_lead(
 
         if contact_filters:
             filters.append(or_(*contact_filters))
-                
-                
+
         existing = (
-            db.query(Lead)
-            .filter(*filters)
-            .order_by(Lead.created_at.desc())
-            .first()
+            db.query(Lead).filter(*filters).order_by(Lead.created_at.desc()).first()
         )
 
         logger.info(f"Creating lead with data: {lead_data}")
-        if existing is None or existing.funnel_stage not in {"closed_won", "closed_lost"}:
-            
-            contact = db.query(Contact).filter(Contact.session_id == lead.session_id).first()
-             
+        if existing is None or existing.funnel_stage not in {
+            "closed_won",
+            "closed_lost",
+        }:
+
+            contact = (
+                db.query(Contact).filter(Contact.session_id == lead.session_id).first()
+            )
+
             if not contact:
                 contact = _sync_lead_contact_to_agent_list(db, widget_owner, lead)
-            
+
             new_lead = Lead(**lead_data)
             db.add(new_lead)
             db.commit()
             db.refresh(new_lead)
-            
+
             create_lead_activity(
                 db=db,
                 lead=new_lead,
@@ -232,12 +239,10 @@ async def create_lead(
                 session_id=lead.session_id,
                 summary="Lead created from campaign engagement",
             )
-            
+
             if contact:
                 mapping = LeadContactMapping(
-                        lead_id=new_lead.id,
-                        contact_id=contact.id,
-                        source="chat"
+                    lead_id=new_lead.id, contact_id=contact.id, source="chat"
                 )
                 db.add(mapping)
                 db.flush()
@@ -269,7 +274,7 @@ async def create_lead(
                             lead_phone=new_lead.phone or "",
                             lead_company=new_lead.company,
                             admin_emails=admin_emails,
-                            settings=settings
+                            settings=settings,
                         )
                 except Exception as e:
                     logger.error(
@@ -312,7 +317,7 @@ async def list_leads(
         query = query.filter(Lead.funnel_stage == normalized_stage)
     if product_id:
         query = query.filter(Lead.product_id == product_id)
-        
+
     if campaign_id:
         query = query.filter(Lead.campaign_id == campaign_id)
 
@@ -350,7 +355,8 @@ async def list_leads(
         "items": leads,
         "pagination": {"total": total, "skip": skip, "limit": limit},
     }
-    
+
+
 @router.get("/{lead_id}/activities")
 def get_lead_activities(
     lead_id: int,
@@ -361,9 +367,9 @@ def get_lead_activities(
         db.query(LeadActivity)
         .filter(
             LeadActivity.lead_id == lead_id,
-            LeadActivity.lead.has(organization_id=current_user.organization_id)
+            LeadActivity.lead.has(organization_id=current_user.organization_id),
         )
-        .order_by(LeadActivity.activity_datetime.desc())
+        .order_by(LeadActivity.id.desc())
         .all()
     )
 

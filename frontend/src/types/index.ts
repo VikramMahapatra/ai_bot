@@ -157,6 +157,7 @@ export interface Lead {
   organization_id?: number;
   user_id?: number;
   created_at: string;
+  close_date: string;
 }
 
 export interface Organization {

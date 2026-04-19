@@ -36,7 +36,7 @@ function normalizeMeCampaignsResponse(data: unknown): CampaignItem[] {
     return (d.campaigns as Record<string, unknown>[]).map((c) => ({
       id: Number(c.campaign_id ?? c.id),
       campaign_name: String(c.campaign_name ?? c.name ?? ""),
-      campaign_type: (c.campaign_type as CampaignType) || "email",
+      campaign_type: (c.campaign_type as CampaignType) || "",
       message_template: String(c.message_template ?? ""),
       contact_list_id: Number(c.contact_list_id ?? 0),
       status: (c.status as CampaignItem["status"]) || "draft",
