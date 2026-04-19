@@ -312,7 +312,4 @@ export const superadminService = {
     const response = await api.get(`/api/superadmin/billing/bills/${billId}/export`);
     return response.data;
   },
-
-
-
 };

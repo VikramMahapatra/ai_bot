@@ -74,6 +74,16 @@ export const leadService = {
     return response.data;
   },
 
+   async setLeadCloseDate(leadId: number, closeDate: string): Promise<Lead> {
+    const response = await api.patch<Lead>(
+      `/api/admin/leads/${leadId}/close-date`,
+      {
+        close_date: closeDate,
+      },
+    );
+    return response.data;
+  },
+
   async exportLeads(
     widgetId?: string,
     productId?: string,

@@ -24,6 +24,7 @@ import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 const drawerWidth = 274;
 
@@ -43,6 +44,7 @@ const menuItems: MenuItem[] = [
   { text: 'Price Matrix', icon: <TableChartIcon />, path: '/superadmin/price-matrix' },
   { text: 'Credit Estimator', icon: <CalculateIcon />, path: '/superadmin/credit-estimator' },
   { text: 'Credit Billing', icon: <AccountBalanceWalletIcon />, path: '/superadmin/org-credit-billing' },
+  { text: 'Credit Usage', icon: <CalendarMonthIcon />, path: '/superadmin/credit-usage' },
   { text: 'Organizations', icon: <BusinessIcon />, path: '/superadmin/organizations' },
   { text: 'Analytics', icon: <InsightsIcon />, path: '/superadmin/analytics' },
   { text: 'Call Analytics', icon: <SupportAgentIcon />, path: '/superadmin/call-analytics' },
