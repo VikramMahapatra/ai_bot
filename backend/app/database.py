@@ -698,3 +698,39 @@ def init_db():
                 """))
         except:
             pass
+        
+        try:
+            conn.execute(text("""
+                    ALTER TABLE call_campaigns 
+                    ADD COLUMN IF NOT EXISTS workflow_id INTEGER
+                """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE call_campaigns
+                ADD CONSTRAINT fk_call_campaigns_workflow
+                FOREIGN KEY (workflow_id)
+                REFERENCES workflows(id);
+            """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                    ALTER TABLE call_logs 
+                    ADD COLUMN IF NOT EXISTS workflow_execution_id INTEGER 
+                """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE call_logs
+                ADD CONSTRAINT fk_call_logs_workflow_execution
+                FOREIGN KEY (workflow_execution_id)
+                REFERENCES workflow_executions(id);
+            """))
+        except:
+            pass

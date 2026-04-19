@@ -64,6 +64,27 @@ const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
 const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
 const createSessionId = () => `session_${Date.now()}_${Math.random()}`;
 const STREAM_FALLBACK_TIMEOUT_MS = 12000;
+const IST_TIMEZONE = 'Asia/Kolkata';
+
+const getIstDefaultDateTimeLocalValue = (): string => {
+  const seed = new Date(Date.now() + 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(seed);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+};
+
+const parseIstDateTimeLocalValue = (value: string): Date => {
+  return new Date(`${value}:00+05:30`);
+};
+
 const formatCountdownClock = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
@@ -764,11 +785,7 @@ const ChatInterface: React.FC = () => {
       return;
     }
     if (!appointmentDateTime) {
-      const seed = new Date(Date.now() + 60 * 60 * 1000);
-      const localDate = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-      setAppointmentDateTime(localDate);
+      setAppointmentDateTime(getIstDefaultDateTimeLocalValue());
     }
     setAppointmentError('');
     setAppointmentDialogOpen(true);
@@ -788,7 +805,18 @@ const ChatInterface: React.FC = () => {
       return;
     }
 
-    const dateValue = new Date(appointmentDateTime);
+    if (!appointmentEmail.trim()) {
+      setAppointmentError('Please provide your email address.');
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(appointmentEmail.trim())) {
+      setAppointmentError('Please enter a valid email address.');
+      return;
+    }
+
+    const dateValue = parseIstDateTimeLocalValue(appointmentDateTime);
     if (Number.isNaN(dateValue.getTime())) {
       setAppointmentError('Invalid appointment date/time.');
       return;
@@ -802,15 +830,21 @@ const ChatInterface: React.FC = () => {
         widget_id: selectedWidgetId,
         appointment_at: dateValue.toISOString(),
         name: appointmentName.trim(),
-        email: appointmentEmail.trim() || undefined,
+        email: appointmentEmail.trim(),
         phone: appointmentPhone.trim() || undefined,
         notes: appointmentNotes.trim() || undefined,
-        timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
+        timezone: IST_TIMEZONE,
       });
+
+      const istTimeLabel = new Intl.DateTimeFormat('en-IN', {
+        timeZone: IST_TIMEZONE,
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(dateValue);
 
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: `Please book an appointment for ${dateValue.toLocaleString()}.` },
+        { role: 'user', content: `Please book an appointment for ${istTimeLabel} (IST).` },
         { role: 'assistant', content: result.message },
       ]);
 
@@ -1934,6 +1968,7 @@ const ChatInterface: React.FC = () => {
               value={appointmentEmail}
               onChange={(e) => setAppointmentEmail(e.target.value)}
               fullWidth
+              required
             />
             <TextField
               label="Phone"
@@ -1942,12 +1977,13 @@ const ChatInterface: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Appointment Date & Time"
+              label="Appointment Date & Time (IST)"
               type="datetime-local"
               value={appointmentDateTime}
               onChange={(e) => setAppointmentDateTime(e.target.value)}
               fullWidth
               InputLabelProps={{ shrink: true }}
+              helperText="All appointments are scheduled in IST by default."
               required
             />
             <TextField

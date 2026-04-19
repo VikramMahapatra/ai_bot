@@ -79,7 +79,8 @@ const emptyCampaignForm: CallCampaign = {
         whatsapp: "",
         sms: "",
         email: ""
-    }
+    },
+    workflow_id: ""
 };
 
 const CampaignBuilder = () => {
@@ -184,7 +185,8 @@ const CampaignBuilder = () => {
 
                 instant_reply: data.instant_reply,
                 instant_reply_modes: data.instant_reply_modes,
-                instant_reply_templates: data.instant_reply_templates
+                instant_reply_templates: data.instant_reply_templates,
+                workflow_id: data.workflow_id || ""
             });
 
             if (data.contacts && data.contacts.length > 0) {

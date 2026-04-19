@@ -21,10 +21,10 @@ import { Product, productService } from "../../services/productService";
 import { CallingNumberType, callService } from "../../services/callService";
 import { CallingNumber } from "../../types";
 
-import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmsIcon from "@mui/icons-material/Sms";
 import EmailIcon from "@mui/icons-material/Email";
 import { messageTemplateService } from "../../services/messageTemplateService";
+import { WorkflowLookupItem, workflowService } from "../../services/workflowService";
 
 interface CampaignInfoProps {
   form: any;
@@ -45,13 +45,13 @@ const getInstantTemplateId = (value: unknown): number | undefined => {
 };
 
 const MODES = [
-  {
-    key: "whatsapp",
-    label: "WhatsApp",
-    icon: <WhatsAppIcon />,
-    color: "success",
-    filterType: "whatsapp",
-  },
+  // {
+  //   key: "whatsapp",
+  //   label: "WhatsApp",
+  //   icon: <WhatsAppIcon />,
+  //   color: "success",
+  //   filterType: "whatsapp",
+  // },
   {
     key: "sms",
     label: "SMS",
@@ -73,6 +73,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   const [agents, setAgents] = useState<CallingAgentLookup[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowLookupItem[]>([]);
   const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([]);
 
   const loadAgentLookup = async () => {
@@ -83,6 +84,11 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   const loadProductLookup = async () => {
     const data = await productService.productLookup();
     setProducts(data || []);
+  };
+
+  const loadWorkflowLookup = async () => {
+    const data = await workflowService.getWorkflowLookup();
+    setWorkflows(data || []);
   };
 
   const loadCallingNoLookup = async () => {
@@ -102,6 +108,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
     loadProductLookup();
     loadCallingNoLookup();
     loadTemplateLookup();
+    loadWorkflowLookup();
   }, [form]);
 
   const validate = () => {
@@ -149,18 +156,13 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   };
 
   const updateTemplateId = (mode: string, templateId: number) => {
-    const selected = templates.find((t) => t.id === templateId);
     setForm((prev: any) => ({
       ...prev,
       instant_reply_templates: {
         ...prev.instant_reply_templates,
         [mode]:
           templateId
-            ? {
-                template_id: templateId,
-                name: selected?.name ?? "",
-              }
-            : "",
+            ? templateId : "",
       },
     }));
   };
@@ -256,7 +258,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         </TextField>
       </Grid>
 
-      <Grid item xs={12} sm={6}>
+      <Grid item xs={12} sm={4}>
         <TextField
           label="Product"
           select
@@ -273,24 +275,25 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         </TextField>
       </Grid>
 
-      {/* <Grid item xs={4}>
-                <TextField
-                    label="Priority"
-                    select
-                    fullWidth
-                    name="priority"
-                    value={form.priority}
-                    onChange={(e) =>
-                        setForm({ ...form, priority: e.target.value })
-                    }
-                >
-                    <MenuItem value="low">Low</MenuItem>
-                    <MenuItem value="medium">Medium</MenuItem>
-                    <MenuItem value="high">High</MenuItem>
-                </TextField>
-            </Grid> */}
+      <Grid item xs={4}>
+        <TextField
+          label="Workflow"
+          select
+          fullWidth
+          name="workflow_id"
+          value={form.workflow_id}
+          onChange={(e) => setForm({ ...form, workflow_id: e.target.value })}
+        >
+          {workflows.map((w) => (
+            <MenuItem key={w.id} value={w.id}>
+              {w.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Grid>
 
-      <Grid item xs={12} sm={6}>
+
+      <Grid item xs={12} sm={4}>
         <TextField
           label="Category"
           select

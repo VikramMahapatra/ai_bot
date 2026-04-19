@@ -176,6 +176,11 @@ const KnowledgeManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    setSourcePage(0);
+    setSearch("");
+  }, [selectedWidgetId]);
+
+  useEffect(() => {
     if (!selectedWidgetId) return;
     loadSources(selectedWidgetId);
     const interval = setInterval(() => loadSources(selectedWidgetId), 5000); // Refresh every 5 seconds

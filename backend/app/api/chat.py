@@ -34,7 +34,7 @@ import re
 
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
 from app.models.organization_settings import OrganizationSettings
-from app.services.organization_setting_service import get_settings
+from app.services.organization_setting_service import get_settings, get_org_settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +42,16 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 
-def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig], org_settings: OrganizationSettings) -> str:
+def _build_escalation_contacts_message(widget_config: Optional[WidgetConfig]) -> str:
     level_1 = (
         widget_config.escalation_contact_level_1
         if widget_config and widget_config.escalation_contact_level_1
-        else org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
     )
     level_2 = (
         widget_config.escalation_contact_level_2
         if widget_config and widget_config.escalation_contact_level_2
-        else org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+        else settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
     )
     return (
         "Sorry-I do not have a reliable answer for this right now. "
@@ -188,7 +188,7 @@ def _mentions_appointment_topic(text: str) -> bool:
 
 
 def _appointment_datetime_examples_message() -> str:
-    now_local = datetime.now()
+    now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
     example_1 = (now_local + timedelta(days=1)).replace(hour=15, minute=30, second=0, microsecond=0)
     example_2 = (now_local + timedelta(days=2)).replace(hour=16, minute=0, second=0, microsecond=0)
     example_3 = (now_local + timedelta(days=3)).replace(hour=10, minute=30, second=0, microsecond=0)
@@ -203,6 +203,8 @@ def _appointment_datetime_examples_message() -> str:
 def _prompt_for_next_intake_field(next_field: str) -> str:
     if next_field == "name":
         return "Please share your full name to continue booking."
+    if next_field == "email":
+        return "Please share your email address to continue booking."
     if next_field == "appointment_at":
         return _appointment_datetime_examples_message()
     if next_field == "timezone":
@@ -223,6 +225,8 @@ def _is_relevant_for_next_field(text: str, next_field: str) -> bool:
 
     if next_field == "name":
         return _extract_name(text) is not None
+    if next_field == "email":
+        return _extract_email(text) is not None or bool(re.search(r"\b(email|mail)\b", text.lower()))
     if next_field == "appointment_at":
         return _parse_datetime_input(text) is not None or bool(re.search(r"\b(\d{1,2}:\d{2}|\d{4}-\d{2}-\d{2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|tomorrow)\b", text.lower()))
     if next_field == "timezone":
@@ -271,7 +275,7 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
         return None
 
     candidate = text.strip()
-    now_local = datetime.now()
+    now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
 
     lower = candidate.lower()
     relative_time_match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lower)
@@ -439,6 +443,12 @@ def _response_looks_like_no_answer(response_text: str) -> bool:
         "reliable expertise",
         "escalation contacts",
         "would you like me to connect you",
+        "could not find reliable information",
+        "topic is not covered",
+        "not covered clearly",
+        "not enough verified context",
+        "not seeing a reliable answer",
+        "not covered in the current knowledge base",
     ]
     return any(hint in normalized for hint in fallback_hints)
 
@@ -472,7 +482,7 @@ def _response_offers_handoff(response_text: Optional[str]) -> bool:
     return any(marker in normalized for marker in offer_markers)
 
 
-def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[WidgetConfig], org_settings: OrganizationSettings) -> str:
+def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[WidgetConfig]) -> str:
     if not _response_looks_like_no_answer(response_text):
         return response_text
     if _response_offers_handoff(response_text):
@@ -480,7 +490,7 @@ def _ensure_handoff_offer_response(response_text: str, widget_config: Optional[W
 
     base = (response_text or "").strip()
     if not base:
-        return _build_escalation_contacts_message(widget_config, org_settings)
+        return _build_escalation_contacts_message(widget_config)
 
     return f"{base}\n\n{_build_light_handoff_offer_prompt()}"
 
@@ -580,6 +590,101 @@ def _is_handoff_opt_in(text: str) -> bool:
         return True
 
     return False
+
+
+def _is_direct_live_agent_request(text: str) -> bool:
+    normalized = _normalize_handoff_text(text)
+    if not normalized:
+        return False
+
+    negative_phrases = {
+        "no",
+        "no thanks",
+        "not now",
+        "dont connect",
+        "don't connect",
+    }
+    if normalized in negative_phrases:
+        return False
+
+    direct_markers = [
+        "live agent",
+        "human agent",
+        "real agent",
+        "customer support agent",
+        "support agent",
+        "representative",
+        "talk to agent",
+        "chat to agent",
+        "talk to live",
+        "chat to live",
+        "connect me to",
+        "transfer me",
+        "handoff",
+    ]
+    if any(marker in normalized for marker in direct_markers):
+        return True
+
+    tokens = set(re.findall(r"[a-zA-Z0-9]+", normalized))
+    if not tokens:
+        return False
+
+    has_agent_target = bool(tokens & {"agent", "human", "live", "support", "representative", "team"})
+    has_action = bool(tokens & {"talk", "chat", "speak", "connect", "transfer", "handoff", "reach"})
+    return has_agent_target and has_action
+
+
+def _handoff_lead_capture_prompt_for_direct_request(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    user_message: str,
+) -> Optional[str]:
+    if _get_open_handoff_session(db, session_id, widget_id, organization_id):
+        return None
+    if not _is_direct_live_agent_request(user_message):
+        return None
+    if _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
+        return None
+
+    return (
+        "Before I transfer this handoff request to a live agent, "
+        "please fill the quick contact form in chat so we can reach you if needed."
+    )
+
+
+def _create_direct_handoff_request(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    widget_id: str,
+    user_message: str,
+) -> Optional[HandoffSession]:
+    if _get_open_handoff_session(db, session_id, widget_id, organization_id):
+        return None
+    if not _is_direct_live_agent_request(user_message):
+        return None
+
+    handoff_session = _create_or_get_handoff_session(
+        db,
+        organization_id,
+        session_id,
+        widget_id,
+        user_message,
+        "User requested a live agent directly.",
+        "user_requested_live_agent_directly",
+    )
+    db.add(HandoffMessage(
+        handoff_session_id=handoff_session.id,
+        sender_type="bot",
+        sender_user_id=None,
+        message=settings.HUMAN_HANDOFF_WAITING_MESSAGE,
+    ))
+    handoff_session.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(handoff_session)
+    return handoff_session
 
 
 def _create_handoff_after_user_confirmation(
@@ -997,6 +1102,11 @@ def _finalize_intake_appointment(
     session_id: str,
     widget_id: str,
 ) -> str:
+    if not (active.email or "").strip():
+        active.next_field = "email"
+        db.commit()
+        return "Please share your email address before I confirm this appointment."
+
     dt_value = active.appointment_at
     if not dt_value:
         active.next_field = "appointment_at"
@@ -1127,9 +1237,28 @@ def _handle_appointment_intake_flow(
         if not name:
             return "Please share your full name (for example: My name is Vikram Mahapatra)."
         active.name = name
+        active.next_field = "email"
+        db.commit()
+        return f"Thanks, {name}. Please share your email address to continue booking."
+
+    if active.next_field == "email":
+        email = _extract_email(text)
+        if not email:
+            return "Please share a valid email address (for example: name@example.com)."
+        active.email = email
+        if active.appointment_at:
+            db.commit()
+            return _finalize_intake_appointment(
+                db=db,
+                user=user,
+                widget_config=widget_config,
+                active=active,
+                session_id=session_id,
+                widget_id=widget_id,
+            )
         active.next_field = "appointment_at"
         db.commit()
-        return f"Thanks, {name}. {_appointment_datetime_examples_message()}"
+        return _appointment_datetime_examples_message()
 
     if active.next_field == "appointment_at":
         dt_value = _parse_datetime_input(text)
@@ -1175,18 +1304,23 @@ def _handle_appointment_intake_flow(
 
 
     if active.next_field == "contact":
-        if not _is_skip(text):
-            email = _extract_email(text)
-            phone = _extract_phone(text)
-            if not email and not phone:
-                return "Please share at least one contact detail (email or phone), or type skip."
-            if email:
-                active.email = email
-            if phone:
-                active.phone = phone
-        active.next_field = "notes"
+        email = _extract_email(text)
+        if not email:
+            return "Please share a valid email address (for example: name@example.com)."
+        active.email = email
+        if active.appointment_at:
+            db.commit()
+            return _finalize_intake_appointment(
+                db=db,
+                user=user,
+                widget_config=widget_config,
+                active=active,
+                session_id=session_id,
+                widget_id=widget_id,
+            )
+        active.next_field = "appointment_at"
         db.commit()
-        return "Any additional notes for the appointment? (Type skip if none)"
+        return _appointment_datetime_examples_message()
 
     if active.next_field == "notes":
         notes = None if _is_skip(text) else text[:1000]
@@ -1266,7 +1400,7 @@ class AppointmentBookingRequest(BaseModel):
     widget_id: str
     appointment_at: datetime
     name: str
-    email: Optional[EmailStr] = None
+    email: EmailStr
     phone: Optional[str] = None
     notes: Optional[str] = None
     timezone: Optional[str] = None
@@ -1328,9 +1462,9 @@ async def chat(
     message: ChatMessage,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user_optional),
-    settings: OrganizationSettings = Depends(get_settings)
 ):
     """Chat endpoint with RAG - uses user's knowledge base"""
+    print(f"Received chat message: {message}")
     try:
         # Get user_id from widget_id or authenticated user
         user_id = None
@@ -1363,6 +1497,7 @@ async def chat(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
@@ -1449,6 +1584,103 @@ async def chat(
                     ui_action=ui_action,
                     handoff_chat_id=handoff_session.chat_id,
                     handoff_status=handoff_session.status,
+                )
+
+            direct_lead_prompt = _handoff_lead_capture_prompt_for_direct_request(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if direct_lead_prompt:
+                persist_conversation(
+                    db,
+                    session_id=message.session_id,
+                    widget_id=message.widget_id,
+                    user_id=user_id,
+                    organization_id=user.organization_id,
+                    message=message.message,
+                    response_text=direct_lead_prompt,
+                    token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    retrieval_trace={
+                        "user_query": message.message,
+                        "retrieval_query": None,
+                        "query_variants": [],
+                        "retrieved_chunks": [],
+                        "selected_chunks": [],
+                        "source_ids": [],
+                        "has_context": False,
+                        "escalation_triggered": True,
+                        "top_distance": None,
+                    },
+                )
+                increment_usage(
+                    db,
+                    user.organization_id,
+                    conversations_count=1 if is_new_session else 0,
+                    messages_count=2,
+                    tokens_used=0,
+                )
+                return ChatResponse(
+                    response=direct_lead_prompt,
+                    session_id=message.session_id,
+                    sources=[],
+                    ui_action="open_lead_form",
+                )
+
+            direct_handoff = _create_direct_handoff_request(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if direct_handoff:
+                waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+                persist_conversation(
+                    db,
+                    session_id=message.session_id,
+                    widget_id=message.widget_id,
+                    user_id=user_id,
+                    organization_id=user.organization_id,
+                    message=message.message,
+                    response_text=waiting_response,
+                    token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    retrieval_trace={
+                        "user_query": message.message,
+                        "retrieval_query": None,
+                        "query_variants": [],
+                        "retrieved_chunks": [],
+                        "selected_chunks": [],
+                        "source_ids": [],
+                        "has_context": False,
+                        "escalation_triggered": True,
+                        "top_distance": None,
+                    },
+                )
+                increment_usage(
+                    db,
+                    user.organization_id,
+                    conversations_count=1 if is_new_session else 0,
+                    messages_count=2,
+                    tokens_used=0,
+                )
+                await handoff_hub.broadcast(user.organization_id, {
+                    "type": "handoff_request_created",
+                    "chat_id": direct_handoff.chat_id,
+                    "widget_id": direct_handoff.widget_id,
+                    "session_id": direct_handoff.session_id,
+                    "status": direct_handoff.status,
+                    "handoff_reason": direct_handoff.handoff_reason,
+                })
+                return ChatResponse(
+                    response=waiting_response,
+                    session_id=message.session_id,
+                    sources=[],
+                    ui_action="open_human_handoff",
+                    handoff_chat_id=direct_handoff.chat_id,
+                    handoff_status=direct_handoff.status,
                 )
 
             lead_prompt = _handoff_lead_capture_prompt_if_needed(
@@ -1636,7 +1868,7 @@ async def chat(
             )
 
             if limits.get("human_handoff_enabled"):
-                response_text = _ensure_handoff_offer_response(response_text, widget_config, settings)
+                response_text = _ensure_handoff_offer_response(response_text, widget_config)
 
             increment_usage(
                 db,
@@ -1662,8 +1894,7 @@ async def chat(
 async def chat_stream(
     message: ChatMessage,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user_optional),
-    settings: OrganizationSettings = Depends(get_settings)
+    current_user = Depends(get_current_user_optional)    
 ):
     try:
         user_id = None
@@ -1686,6 +1917,7 @@ async def chat_stream(
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
         subscription_usage = get_or_create_subscription_usage(db, user.organization_id)
@@ -1784,6 +2016,116 @@ async def chat_stream(
                         yield f"data: {json.dumps(done_payload)}\n\n"
 
                 return StreamingResponse(handoff_event_generator(), media_type="text/event-stream")
+
+            direct_lead_prompt = _handoff_lead_capture_prompt_for_direct_request(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if direct_lead_prompt:
+                def direct_lead_prompt_event_generator():
+                    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
+                        yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(direct_lead_prompt)} }}\n\n"
+                    finally:
+                        persist_conversation(
+                            db,
+                            session_id=message.session_id,
+                            widget_id=message.widget_id,
+                            user_id=user_id,
+                            organization_id=user.organization_id,
+                            message=message.message,
+                            response_text=direct_lead_prompt,
+                            token_usage=token_usage,
+                            retrieval_trace={
+                                "user_query": message.message,
+                                "retrieval_query": None,
+                                "query_variants": [],
+                                "retrieved_chunks": [],
+                                "selected_chunks": [],
+                                "source_ids": [],
+                                "has_context": False,
+                                "escalation_triggered": True,
+                                "top_distance": None,
+                            },
+                        )
+                        increment_usage(
+                            db,
+                            user.organization_id,
+                            conversations_count=1 if is_new_session else 0,
+                            messages_count=2,
+                            tokens_used=0,
+                        )
+                        yield "data: {\"type\": \"done\", \"sources\": [], \"ui_action\": \"open_lead_form\" }\n\n"
+
+                return StreamingResponse(direct_lead_prompt_event_generator(), media_type="text/event-stream")
+
+            direct_handoff = _create_direct_handoff_request(
+                db,
+                user.organization_id,
+                message.session_id,
+                message.widget_id,
+                message.message,
+            )
+            if direct_handoff:
+                waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
+
+                def direct_handoff_event_generator():
+                    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    try:
+                        yield "data: {\"type\": \"ready\"}\n\n"
+                        if (waiting_response or "").strip():
+                            yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(waiting_response)} }}\n\n"
+                    finally:
+                        persist_conversation(
+                            db,
+                            session_id=message.session_id,
+                            widget_id=message.widget_id,
+                            user_id=user_id,
+                            organization_id=user.organization_id,
+                            message=message.message,
+                            response_text=waiting_response,
+                            token_usage=token_usage,
+                            retrieval_trace={
+                                "user_query": message.message,
+                                "retrieval_query": None,
+                                "query_variants": [],
+                                "retrieved_chunks": [],
+                                "selected_chunks": [],
+                                "source_ids": [],
+                                "has_context": False,
+                                "escalation_triggered": True,
+                                "top_distance": None,
+                            },
+                        )
+                        increment_usage(
+                            db,
+                            user.organization_id,
+                            conversations_count=1 if is_new_session else 0,
+                            messages_count=2,
+                            tokens_used=0,
+                        )
+                        asyncio.create_task(handoff_hub.broadcast(user.organization_id, {
+                            "type": "handoff_request_created",
+                            "chat_id": direct_handoff.chat_id,
+                            "widget_id": direct_handoff.widget_id,
+                            "session_id": direct_handoff.session_id,
+                            "status": direct_handoff.status,
+                            "handoff_reason": direct_handoff.handoff_reason,
+                        }))
+                        done_payload = {
+                            "type": "done",
+                            "sources": [],
+                            "ui_action": "open_human_handoff",
+                            "handoff_chat_id": direct_handoff.chat_id,
+                            "handoff_status": direct_handoff.status,
+                        }
+                        yield f"data: {json.dumps(done_payload)}\n\n"
+
+                return StreamingResponse(direct_handoff_event_generator(), media_type="text/event-stream")
 
             lead_prompt = _handoff_lead_capture_prompt_if_needed(
                 db,
@@ -1985,7 +2327,7 @@ async def chat_stream(
                 if stream is None:
                     fallback_text = escalation_fallback_text or "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
                 else:
@@ -2010,7 +2352,7 @@ async def chat_stream(
                 if not collected_parts:
                     fallback_text = "Sorry—I don’t have a reliable answer for this right now."
                     if limits.get("human_handoff_enabled"):
-                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config, settings)
+                        fallback_text = _ensure_handoff_offer_response(fallback_text, widget_config)
                     collected_parts.append(fallback_text)
                     yield f"data: {{\"type\": \"token\", \"text\": {json.dumps(fallback_text)} }}\n\n"
             finally:
