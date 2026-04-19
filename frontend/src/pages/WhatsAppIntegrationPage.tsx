@@ -408,11 +408,15 @@ const WhatsAppIntegrationPage: React.FC = () => {
                 onChange={(e) => handleChange('widget_id', e.target.value)}
                 helperText="Incoming WhatsApp messages use this widget knowledge base"
               >
-                {widgets.map((widget) => (
-                  <MenuItem key={widget.widget_id} value={widget.widget_id}>
-                    {widget.name} ({widget.widget_id})
-                  </MenuItem>
-                ))}
+                {widgets?.length ? (
+                  widgets.map((widget) => (
+                    <MenuItem key={widget.widget_id} value={widget.widget_id}>
+                      {widget.name} ({widget.widget_id})
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem disabled>No widgets available</MenuItem>
+                )}
               </TextField>
             </Grid>
             <Grid item xs={12} md={6}>

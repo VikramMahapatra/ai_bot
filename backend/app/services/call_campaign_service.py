@@ -374,7 +374,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         product_id=data.product_id,
         status= "draft",
         external_campaign_name= unique_campaign_code,
-        instant_reply= data.instant_reply
+        instant_reply= data.instant_reply,
+        workflow_id=data.workflow_id
     )
 
     db.add(campaign)

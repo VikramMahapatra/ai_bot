@@ -7,7 +7,7 @@ from app.auth import get_current_user
 from app.services import workflow_service as service
 from app.database import get_db
 from app.models.user import User
-from app.schemas.workflow import WorkflowRequest
+from app.schemas.workflow import WorkflowCreate, WorkflowRequest
 
 
 logger = logging.getLogger(__name__)
@@ -35,3 +35,13 @@ def get_workflow_lookup(
     current_user: User = Depends(get_current_user)
 ):
     return service.workflow_lookup(db, current_user.organization_id, search)
+
+
+
+@router.post("/create", response_model=None)
+def create(
+    data : WorkflowCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.save_workflow(db, current_user.organization_id, data)

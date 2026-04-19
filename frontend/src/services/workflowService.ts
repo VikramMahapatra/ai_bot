@@ -31,6 +31,12 @@ export interface WorkflowListResponse {
     };
 }
 
+export interface WorkflowUpdateResponse {
+    message: string;
+    id: string;
+    success: boolean;
+}
+
 export const workflowService = {
     async listWorkflows(params: WorkflowFilters = {}): Promise<WorkflowListResponse> {
         const response = await api.get('/api/workflows/all', { params });
@@ -39,6 +45,12 @@ export const workflowService = {
 
     async getWorkflowLookup(): Promise<WorkflowLookupItem[]> {
         const response = await api.get<WorkflowLookupItem[]>('/api/workflows/lookup');
+        return response.data;
+    },
+
+
+    async createWorkflow(payload: any): Promise<WorkflowUpdateResponse> {
+        const response = await api.post<WorkflowUpdateResponse>('/api/workflows/create', payload);
         return response.data;
     },
 };

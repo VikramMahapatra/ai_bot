@@ -3,9 +3,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.models.workflows import Workflow
-
-
+from app.models.workflows import Workflow, WorkflowEdge, WorkflowStep, WorkflowStepOutcome
+from app.schemas.workflow import WorkflowCreate
 
 def get_all(
     db: Session,
@@ -45,6 +44,62 @@ def get_all(
             "limit": limit
         }
     }
+    
+def save_workflow(db: Session, organization_id: int, payload: WorkflowCreate):
+
+    workflow = Workflow(
+        name=payload.name,
+        description=payload.description,
+        organization_id=organization_id
+    )
+
+    db.add(workflow)
+    db.flush()  # get workflow.id
+    
+    step_map = {}
+    
+    for node in payload.nodes:
+        step = WorkflowStep(
+            workflow_id=workflow.id,
+            node_type=node.type,
+            title=node.title,
+            step_number=node.stepNumber,
+            position=node.position.model_dump()
+        )
+
+        db.add(step)
+        db.flush()
+
+        step_map[node.id] = step.id
+        
+    for node in payload.nodes:
+        step_id = step_map[node.id]
+
+        for o in node.outcomes:
+            db.add(WorkflowStepOutcome(
+                step_id=step_id,
+                call_status=o.branch,
+                outcome=o.outcome,
+                step_type=o.stepType,
+                agent_id=o.agentId,
+                template_id=o.templateId,
+                delay=o.delay,
+                delay_unit=o.delayUnit
+            ))
+            
+    for edge in payload.edges:
+        db.add(WorkflowEdge(
+            workflow_id=workflow.id,
+            source_step_id=step_map[edge.source],
+            target_step_id=step_map[edge.target],
+            branch=edge.branch,
+            condition=edge.condition
+        ))
+        
+    db.commit()
+    db.refresh(workflow)
+
+    return workflow
 
 
 def workflow_lookup(

@@ -9,9 +9,10 @@ import { useEffect, useState } from "react";
 import { CallingAgentLookup, callingAgentService } from "../../../services/callingAgentService";
 import { messageTemplateService } from "../../../services/messageTemplateService";
 import { UserRound, FileText, Clock } from "lucide-react";
+import AddIcon from "@mui/icons-material/Add";
 
 export default function CustomStepNode({ data, id }: any) {
-    const { onEditNode, onDeleteNode, edges, onDeleteEdge, setNodes } = useFlow();
+    const { onEditOutcome, onDeleteNode, edges, onDeleteEdge, setNodes, onAddOutcome } = useFlow();
     const [agents, setAgents] = useState<CallingAgentLookup[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
     const isConnected = edges.some(
@@ -62,13 +63,11 @@ export default function CustomStepNode({ data, id }: any) {
         loadTemplateLookup();
     }, [id]);
 
-    const selectedAgent = agents.find(
-        (a: any) => a.id === data.agentId
-    );
-
-    const selectedTemplate = templates.find(
-        (t: any) => t.id === data.templateId
-    );
+    const titleCase = (value: string) =>
+        value
+            .split("_")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
 
     return (
         <div
@@ -167,77 +166,18 @@ export default function CustomStepNode({ data, id }: any) {
                 </div>
 
 
-                {data.isEditing && (
-                    <StepEditNode data={data} id={id} agents={agents} templates={templates} />
+                {!!data.editingOutcomeId && (
+                    <StepEditNode
+                        data={data}
+                        id={id}
+                        outcomeId={data.editingOutcomeId}
+                        agents={agents}
+                        templates={templates}
+                    />
                 )}
 
-                {!data.isEditing && (
+                {!data.editingOutcomeId && (
                     <>
-                        {/* Summary Section */}
-                        {(selectedAgent || selectedTemplate) && (
-                            <Box
-                                sx={{
-                                    mt: 1,
-                                    px: 1,
-                                    py: 0.8,
-                                    borderRadius: 2,
-                                    backgroundColor: "#f9fafb",
-                                    border: "1px solid #f3f4f6",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 0.5
-                                }}
-                            >
-                                {/* Agent */}
-                                {data.stepType === "call" && selectedAgent && (
-                                    <Typography
-                                        sx={{
-                                            fontSize: 11,
-                                            color: "#374151",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 0.5,
-                                        }}
-                                    >
-                                        <UserRound size={14} color="#2563eb" />
-                                        Agent: <b>{selectedAgent.name}</b>
-                                    </Typography>
-                                )}
-
-                                {["sms", "whatsapp", "email"].includes(data.stepType) &&
-                                    selectedTemplate && (
-                                        <Typography
-                                            sx={{
-                                                fontSize: 11,
-                                                color: "#374151",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 0.5,
-                                            }}
-                                        >
-                                            <FileText size={14} color="#6366f1" />
-                                            Template: <b>{selectedTemplate.name}</b>
-                                        </Typography>
-                                    )}
-
-                                {/* Delay */}
-                                {data.delay !== undefined && data.delay !== "" && data.delay > 0 && (
-                                    <Typography
-                                        sx={{
-                                            fontSize: 11,
-                                            color: "#374151",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 0.5,
-                                        }}
-                                    >
-                                        <Clock size={14} color="#f59e0b" />
-                                        Delay: <b>{data.delay} {data.delayUnit || "minutes"}</b>
-                                    </Typography>
-                                )}
-                            </Box>
-                        )}
-
                         <Box
                             sx={{
                                 display: "flex",
@@ -248,8 +188,9 @@ export default function CustomStepNode({ data, id }: any) {
                         >
 
                             {/* Edit */}
+                            {/* Add Outcome */}
                             <Box
-                                onClick={() => onEditNode(id)}
+                                onClick={() => onAddOutcome(id)}
                                 sx={{
                                     display: "flex",
                                     alignItems: "center",
@@ -259,21 +200,23 @@ export default function CustomStepNode({ data, id }: any) {
                                     borderRadius: 2,
                                     fontSize: 11,
                                     fontWeight: 500,
-                                    color: "primary.main",
+                                    color: "#16a34a",
                                     border: "1px solid #e5e7eb",
                                     backgroundColor: "#fff",
                                     cursor: "pointer",
                                     transition: "all 0.2s",
                                     "&:hover": {
-                                        backgroundColor: "#eff6ff",
-                                        borderColor: "#bfdbfe",
-                                        color: "#2563eb",
+                                        backgroundColor: "#f0fdf4",
+                                        borderColor: "#86efac",
+                                        color: "#15803d",
                                         transform: "translateY(-1px)"
                                     }
                                 }}
                             >
-                                <EditIcon sx={{ fontSize: 14 }} />
-                                Edit
+                                <AddIcon sx={{ fontSize: 14 }} />
+                                {data.branch === "not_connected"
+                                    ? "Add Action"
+                                    : "Add Outcome"}
                             </Box>
 
 
@@ -306,11 +249,146 @@ export default function CustomStepNode({ data, id }: any) {
                                 Delete
                             </Box>
 
-
-
-
-
                         </Box>
+
+                        {/* Summary Section */}
+                        {data.outcomes?.map((outcome: any) => {
+
+                            const selectedAgent = agents?.find(
+                                (agent: any) => agent.id === outcome.agentId
+                            );
+
+                            const selectedTemplate = templates?.find(
+                                (template: any) => template.id === outcome.templateId
+                            );
+
+                            return (
+                                <Box
+                                    key={outcome.id}
+                                    sx={{
+                                        mt: 1,
+                                        px: 1.2,
+                                        py: 0.9,
+                                        borderRadius: 2,
+                                        backgroundColor: "#f9fafb",
+                                        border: "1px solid #f3f4f6",
+                                    }}
+                                >
+
+                                    {/* HEADER */}
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            mb: 0.5
+                                        }}
+                                    >
+                                        {/* Outcome Label */}
+                                        <Box
+                                            sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 0.8
+                                            }}
+                                        >
+                                            <Box
+                                                sx={{
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius: "50%",
+                                                    backgroundColor:
+                                                        outcome.outcome === "positive"
+                                                            ? "#22c55e"
+                                                            : outcome.outcome === "neutral"
+                                                                ? "#f59e0b"
+                                                                : outcome.outcome === "negative"
+                                                                    ? "#ef4444"
+                                                                    : "#9ca3af"
+                                                }}
+                                            />
+
+                                            <Typography
+                                                sx={{
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                    color: "#374151",
+                                                    letterSpacing: 0.2
+                                                }}
+                                            >
+                                                {data.branch === "not_connected"
+                                                    ? "ACTION"
+                                                    : titleCase(outcome.outcome) || "Outcome"}
+
+                                            </Typography>
+                                        </Box>
+
+                                        {/* EDIT BUTTON */}
+                                        <Box
+                                            onClick={() => onEditOutcome(id, outcome.id)}
+                                            sx={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 0.4,
+                                                px: 0.8,
+                                                py: 0.3,
+                                                borderRadius: 1.5,
+                                                fontSize: 10,
+                                                fontWeight: 500,
+                                                color: "primary.main",
+                                                cursor: "pointer",
+                                                "&:hover": {
+                                                    backgroundColor: "#eff6ff"
+                                                }
+                                            }}
+                                        >
+                                            <EditIcon sx={{ fontSize: 12 }} />
+                                            Edit
+                                        </Box>
+                                    </Box>
+
+
+                                    {/* BODY */}
+                                    <Box display="flex" flexDirection="column" gap={0.2}>
+                                        <Typography
+                                            sx={{
+                                                fontSize: 10,
+                                                fontWeight: 700,
+                                                color: "#6b7280",
+                                                textTransform: "uppercase",
+                                                letterSpacing: 0.4
+                                            }}
+                                        >
+                                            {outcome.stepType || "ACTION"}
+                                        </Typography>
+
+                                        {/* Agent */}
+                                        {outcome.stepType === "call" && selectedAgent && (
+                                            <Typography fontSize={11} color="#374151">
+                                                Agent: <b>{selectedAgent.name}</b>
+                                            </Typography>
+                                        )}
+
+                                        {/* Template */}
+                                        {["sms", "whatsapp", "email"].includes(outcome.stepType) &&
+                                            selectedTemplate && (
+                                                <Typography fontSize={11} color="#374151">
+                                                    Template: <b>{selectedTemplate.name}</b>
+                                                </Typography>
+                                            )}
+
+                                        {/* Delay */}
+                                        {outcome.delay > 0 && (
+                                            <Typography fontSize={11} color="#374151">
+                                                Delay: <b>{outcome.delay} {outcome.delayUnit || "minutes"}</b>
+                                            </Typography>
+                                        )}
+
+                                    </Box>
+
+                                </Box>
+                            );
+                        })}
                         {/* Branch Section */}
                         <Box sx={{ mt: 2, borderTop: "1px solid #eee", pt: 1.5 }}>
 

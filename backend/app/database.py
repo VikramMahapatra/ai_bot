@@ -37,10 +37,13 @@ Base = declarative_base()
 
 
 def get_db():
-    """Dependency for getting database session"""
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -732,5 +735,13 @@ def init_db():
                 FOREIGN KEY (workflow_execution_id)
                 REFERENCES workflow_executions(id);
             """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                    ALTER TABLE contacts 
+                    ADD COLUMN IF NOT EXISTS session_id VARCHAR(100) 
+                """))
         except:
             pass
