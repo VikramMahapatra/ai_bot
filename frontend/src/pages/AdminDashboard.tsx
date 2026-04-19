@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -19,14 +19,18 @@ import {
   TableRow,
   Tabs,
   Typography,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import AdminLayout from '../components/Layout/AdminLayout';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
-import WidgetsIcon from '@mui/icons-material/Widgets';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
+} from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import AdminLayout from "../components/Layout/AdminLayout";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
+import WidgetsIcon from "@mui/icons-material/Widgets";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import CallIcon from "@mui/icons-material/Call";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
+import CampaignIcon from "@mui/icons-material/Campaign";
 import {
   ResponsiveContainer,
   LineChart,
@@ -41,8 +45,10 @@ import {
   Pie,
   Cell,
   Legend,
-} from 'recharts';
-import { dashboardService } from '../services/dashboardService';
+} from "recharts";
+import { dashboardService } from "../services/dashboardService";
+import type { AnalyticsSummary } from "../services/callService";
+import { callService } from "../services/callService";
 
 interface PlanUsage {
   used: {
@@ -141,37 +147,37 @@ const numberOrZero = (value: unknown): number => {
 };
 
 const textOrDash = (value?: string | null): string => {
-  return value && value.trim() ? value : '-';
+  return value && value.trim() ? value : "-";
 };
 
 const shortText = (value: string, length: number): string => {
-  if (!value) return '-';
+  if (!value) return "-";
   return value.length > length ? `${value.slice(0, length)}...` : value;
 };
 
 const formatDate = (value?: string): string => {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString();
 };
 
 const formatDateTime = (value?: string): string => {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
 };
 
 const safeHexColor = (value?: string): string => {
-  const fallback = '#4e89d5';
+  const fallback = "#4e89d5";
   if (!value) return fallback;
   const trimmed = value.trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
 };
 
 const formatLimitValue = (value: number | null): string => {
-  if (value === null || typeof value === 'undefined') return '∞';
+  if (value === null || typeof value === "undefined") return "∞";
   return value.toLocaleString();
 };
 
@@ -180,22 +186,33 @@ const AdminDashboard: React.FC = () => {
 
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [dailyConversations, setDailyConversations] = useState<DailyConversationPoint[]>([]);
+  const [dailyConversations, setDailyConversations] = useState<
+    DailyConversationPoint[]
+  >([]);
   const [conversationTrend, setConversationTrend] = useState<TrendPoint[]>([]);
   const [leadsBySource, setLeadsBySource] = useState<LeadSourcePoint[]>([]);
   const [leadsFunnel, setLeadsFunnel] = useState<FunnelStagePoint[]>([]);
   const [recentLeads, setRecentLeads] = useState<LeadItem[]>([]);
   const [topSessions, setTopSessions] = useState<SessionItem[]>([]);
   const [widgets, setWidgets] = useState<WidgetItem[]>([]);
-  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<
+    KnowledgeSourceItem[]
+  >([]);
+  const [callSummary, setCallSummary] = useState<AnalyticsSummary | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      setError('');
+      setError("");
+
+      const today = new Date();
+      const callEnd = today.toISOString().split("T")[0];
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      const callStart = thirtyDaysAgo.toISOString().split("T")[0];
 
       const [
         statsRes,
@@ -207,6 +224,7 @@ const AdminDashboard: React.FC = () => {
         funnelRes,
         topSessionsRes,
         trendRes,
+        callAnalyticsRes,
       ] = await Promise.allSettled([
         dashboardService.getStats(),
         dashboardService.getDailyConversations(7),
@@ -217,9 +235,13 @@ const AdminDashboard: React.FC = () => {
         dashboardService.getLeadsFunnel(),
         dashboardService.getTopSessions(10),
         dashboardService.getConversationTrend(30),
+        callService.callAnalytics({
+          start_date: callStart,
+          end_date: callEnd,
+        }),
       ]);
 
-      if (statsRes.status === 'fulfilled') {
+      if (statsRes.status === "fulfilled") {
         const raw = (statsRes.value || {}) as Partial<DashboardStats>;
         setStats({
           total_conversations: numberOrZero(raw.total_conversations),
@@ -233,71 +255,103 @@ const AdminDashboard: React.FC = () => {
         });
       }
 
-      if (dailyRes.status === 'fulfilled') {
-        const data = Array.isArray((dailyRes.value as any)?.data) ? (dailyRes.value as any).data : [];
+      if (dailyRes.status === "fulfilled") {
+        const data = Array.isArray((dailyRes.value as any)?.data)
+          ? (dailyRes.value as any).data
+          : [];
         setDailyConversations(
           data.map((row: any) => ({
-            date: String(row?.date || ''),
+            date: String(row?.date || ""),
             count: numberOrZero(row?.count),
-          }))
+          })),
         );
       }
 
-      if (leadsRes.status === 'fulfilled') {
-        const data = Array.isArray((leadsRes.value as any)?.leads) ? (leadsRes.value as any).leads : [];
+      if (leadsRes.status === "fulfilled") {
+        const data = Array.isArray((leadsRes.value as any)?.leads)
+          ? (leadsRes.value as any).leads
+          : [];
         setRecentLeads(data as LeadItem[]);
       }
 
-      if (widgetsRes.status === 'fulfilled') {
-        const data = Array.isArray((widgetsRes.value as any)?.widgets) ? (widgetsRes.value as any).widgets : [];
+      if (widgetsRes.status === "fulfilled") {
+        const data = Array.isArray((widgetsRes.value as any)?.widgets)
+          ? (widgetsRes.value as any).widgets
+          : [];
         setWidgets(data as WidgetItem[]);
       }
 
-      if (sourcesRes.status === 'fulfilled') {
-        const data = Array.isArray((sourcesRes.value as any)?.sources) ? (sourcesRes.value as any).sources : [];
+      if (sourcesRes.status === "fulfilled") {
+        const data = Array.isArray((sourcesRes.value as any)?.sources)
+          ? (sourcesRes.value as any).sources
+          : [];
         setKnowledgeSources(data as KnowledgeSourceItem[]);
       }
 
-      if (bySourceRes.status === 'fulfilled') {
-        const data = Array.isArray((bySourceRes.value as any)?.data) ? (bySourceRes.value as any).data : [];
+      if (bySourceRes.status === "fulfilled") {
+        const data = Array.isArray((bySourceRes.value as any)?.data)
+          ? (bySourceRes.value as any).data
+          : [];
         setLeadsBySource(
           data.map((row: any) => ({
-            source: String(row?.source || 'Unknown'),
+            source: String(row?.source || "Unknown"),
             count: numberOrZero(row?.count),
-          }))
+          })),
         );
       }
 
-      if (funnelRes.status === 'fulfilled') {
-        const data = Array.isArray((funnelRes.value as any)?.data) ? (funnelRes.value as any).data : [];
+      if (funnelRes.status === "fulfilled") {
+        const data = Array.isArray((funnelRes.value as any)?.data)
+          ? (funnelRes.value as any).data
+          : [];
         setLeadsFunnel(
           data.map((row: any) => ({
-            stage_key: String(row?.stage_key || 'unassigned'),
-            stage_name: String(row?.stage_name || 'Unassigned'),
-            color: String(row?.color || '#9aa8bb'),
+            stage_key: String(row?.stage_key || "unassigned"),
+            stage_name: String(row?.stage_name || "Unassigned"),
+            color: String(row?.color || "#9aa8bb"),
             position: numberOrZero(row?.position),
             count: numberOrZero(row?.count),
             conversion_rate: numberOrZero(row?.conversion_rate),
-          }))
+          })),
         );
       }
 
-      if (topSessionsRes.status === 'fulfilled') {
-        const data = Array.isArray((topSessionsRes.value as any)?.sessions) ? (topSessionsRes.value as any).sessions : [];
+      if (topSessionsRes.status === "fulfilled") {
+        const data = Array.isArray((topSessionsRes.value as any)?.sessions)
+          ? (topSessionsRes.value as any).sessions
+          : [];
         setTopSessions(data as SessionItem[]);
       }
 
-      if (trendRes.status === 'fulfilled') {
-        const data = Array.isArray((trendRes.value as any)?.data) ? (trendRes.value as any).data : [];
+      if (trendRes.status === "fulfilled") {
+        const data = Array.isArray((trendRes.value as any)?.data)
+          ? (trendRes.value as any).data
+          : [];
         setConversationTrend(
           data.map((row: any) => ({
-            date: String(row?.date || ''),
+            date: String(row?.date || ""),
             conversations: numberOrZero(row?.conversations),
             leads: numberOrZero(row?.leads),
-          }))
+          })),
         );
       } else {
-        setError('Some chart sections could not be loaded right now.');
+        setError("Some chart sections could not be loaded right now.");
+      }
+
+      if (callAnalyticsRes.status === "fulfilled") {
+        const s = (callAnalyticsRes.value as { summary?: AnalyticsSummary })
+          ?.summary;
+        if (s) {
+          setCallSummary({
+            total_calls: numberOrZero(s.total_calls),
+            successful_calls: numberOrZero(s.successful_calls),
+            pickup_rate: numberOrZero(s.pickup_rate),
+            conversion_rate: numberOrZero(s.conversion_rate),
+            total_duration: numberOrZero(s.total_duration),
+            active_campaigns: numberOrZero(s.active_campaigns),
+            recent_calls: Array.isArray(s.recent_calls) ? s.recent_calls : [],
+          });
+        }
       }
 
       setLoading(false);
@@ -305,77 +359,110 @@ const AdminDashboard: React.FC = () => {
 
     load().catch(() => {
       setLoading(false);
-      setError('Failed to load dashboard. Please refresh.');
+      setError("Failed to load dashboard. Please refresh.");
     });
   }, []);
 
   const pieColors = useMemo(
-    () => [
-      '#4e89d5',
-      '#67a4e8',
-      '#3d75d9',
-      '#79b4f1',
-      '#5f99dd',
-      '#7f93b8',
-    ],
-    []
+    () => ["#4e89d5", "#67a4e8", "#3d75d9", "#79b4f1", "#5f99dd", "#7f93b8"],
+    [],
   );
 
   const glassPanelSx = {
-    borderRadius: '18px',
+    borderRadius: "18px",
     border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
     background: `linear-gradient(150deg, ${alpha(theme.palette.common.white, 0.66)} 0%, ${alpha(
       theme.palette.background.paper,
-      0.76
-    )} 66%, ${alpha('#dbe9fa', 0.72)} 100%)`,
+      0.76,
+    )} 66%, ${alpha("#dbe9fa", 0.72)} 100%)`,
     boxShadow: `0 16px 32px ${alpha(theme.palette.primary.dark, 0.13)}`,
-    backdropFilter: 'blur(12px)',
-    position: 'relative',
-    overflow: 'hidden',
-    '&::before': {
+    backdropFilter: "blur(12px)",
+    position: "relative",
+    overflow: "hidden",
+    "&::before": {
       content: '""',
-      position: 'absolute',
+      position: "absolute",
       inset: 0,
-      pointerEvents: 'none',
+      pointerEvents: "none",
       background:
-        'linear-gradient(138deg, rgba(255,255,255,0.22) 10%, transparent 28%), linear-gradient(28deg, transparent 52%, rgba(120,168,223,0.14) 53%, transparent 76%)',
+        "linear-gradient(138deg, rgba(255,255,255,0.22) 10%, transparent 28%), linear-gradient(28deg, transparent 52%, rgba(120,168,223,0.14) 53%, transparent 76%)",
     },
   } as const;
 
   const kpis = [
     {
-      label: 'Total Conversations',
+      label: "Total Conversations",
       value: numberOrZero(stats?.total_conversations),
       hint: `${numberOrZero(stats?.conversations_7d)} in last 7 days`,
-      icon: <ChatBubbleOutlineIcon sx={{ color: theme.palette.primary.dark }} />,
-      gradient: `linear-gradient(130deg, ${alpha('#9cc3f3', 0.64)} 0%, ${alpha('#dce9ff', 0.76)} 100%)`,
+      icon: (
+        <ChatBubbleOutlineIcon sx={{ color: theme.palette.primary.dark }} />
+      ),
+      gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
       wave: theme.palette.primary.main,
     },
     {
-      label: 'Total Leads',
+      label: "Total Leads",
       value: numberOrZero(stats?.total_leads),
       hint: `${numberOrZero(stats?.leads_7d)} in last 7 days`,
       icon: <PersonAddAlt1Icon sx={{ color: theme.palette.primary.dark }} />,
-      gradient: `linear-gradient(130deg, ${alpha('#9fcbf6', 0.64)} 0%, ${alpha('#deedff', 0.76)} 100%)`,
+      gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
       wave: theme.palette.secondary.main,
     },
     {
-      label: 'Conversion Rate',
+      label: "Conversion Rate",
       value: `${numberOrZero(stats?.conversion_rate)}%`,
-      hint: 'Leads from conversations',
+      hint: "Leads from conversations",
       icon: <TrendingUpIcon sx={{ color: theme.palette.primary.dark }} />,
-      gradient: `linear-gradient(130deg, ${alpha('#a9d2fb', 0.64)} 0%, ${alpha('#e3f0ff', 0.78)} 100%)`,
-      wave: '#468ed4',
+      gradient: `linear-gradient(130deg, ${alpha("#a9d2fb", 0.64)} 0%, ${alpha("#e3f0ff", 0.78)} 100%)`,
+      wave: "#468ed4",
     },
     {
-      label: 'Active Agents',
+      label: "Active Agents",
       value: numberOrZero(stats?.total_widgets),
       hint: `${numberOrZero(stats?.total_knowledge_sources)} sources connected`,
       icon: <WidgetsIcon sx={{ color: theme.palette.primary.dark }} />,
-      gradient: `linear-gradient(130deg, ${alpha('#a1c8f4', 0.64)} 0%, ${alpha('#dceaff', 0.76)} 100%)`,
-      wave: '#4b84ce',
+      gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
+      wave: "#4b84ce",
     },
   ];
+
+  const callingKpis = useMemo(
+    () => [
+      {
+        label: "Total Calls",
+        value: numberOrZero(callSummary?.total_calls),
+        hint: "Last 30 days",
+        icon: <CallIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
+        wave: theme.palette.primary.main,
+      },
+      {
+        label: "Successful Calls",
+        value: numberOrZero(callSummary?.successful_calls),
+        hint: "Last 30 days",
+        icon: <CheckCircleIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
+        wave: theme.palette.secondary.main,
+      },
+      {
+        label: "Pickup Rate",
+        value: `${numberOrZero(callSummary?.pickup_rate)}%`,
+        hint: "Last 30 days",
+        icon: <PhoneInTalkIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#a9d2fb", 0.64)} 0%, ${alpha("#e3f0ff", 0.78)} 100%)`,
+        wave: "#468ed4",
+      },
+      {
+        label: "Active Call Campaigns",
+        value: numberOrZero(callSummary?.active_campaigns),
+        hint: "Last 30 days",
+        icon: <CampaignIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
+        wave: "#4b84ce",
+      },
+    ],
+    [callSummary, theme],
+  );
 
   const funnelData = useMemo(
     () =>
@@ -385,49 +472,69 @@ const AdminDashboard: React.FC = () => {
           ...item,
           fill: safeHexColor(item.color),
         })),
-    [leadsFunnel]
+    [leadsFunnel],
   );
 
   return (
     <AdminLayout>
-      <Box sx={{ maxWidth: 1380, mx: 'auto', px: { xs: 0, md: 0.5 }, position: 'relative' }}>
+      <Box
+        sx={{
+          maxWidth: 1380,
+          mx: "auto",
+          px: { xs: 0, md: 0.5 },
+          position: "relative",
+        }}
+      >
         <Box
           sx={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
-            pointerEvents: 'none',
+            pointerEvents: "none",
             zIndex: 0,
             background:
-              'linear-gradient(130deg, transparent 18%, rgba(132,172,228,0.18) 19%, transparent 38%), linear-gradient(36deg, transparent 52%, rgba(111,165,229,0.14) 53%, transparent 74%)',
+              "linear-gradient(130deg, transparent 18%, rgba(132,172,228,0.18) 19%, transparent 38%), linear-gradient(36deg, transparent 52%, rgba(111,165,229,0.14) 53%, transparent 74%)",
           }}
         />
         <Paper
           elevation={0}
           sx={{
-            position: 'relative',
+            position: "relative",
             zIndex: 1,
             p: { xs: 2, md: 2.8 },
             mb: 3,
-            borderRadius: '24px',
+            borderRadius: "24px",
             border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-            background: `linear-gradient(125deg, ${alpha('#deebfb', 0.9)} 0%, ${alpha(
+            background: `linear-gradient(125deg, ${alpha("#deebfb", 0.9)} 0%, ${alpha(
               theme.palette.background.paper,
-              0.82
-            )} 74%, ${alpha('#a9bfdc', 0.96)} 100%)`,
-            color: 'text.primary',
-            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,            
+              0.82,
+            )} 74%, ${alpha("#a9bfdc", 0.96)} 100%)`,
+            color: "text.primary",
+            boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
           }}
         >
-          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.4, color: 'text.primary' }}>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              mb: 0.4,
+              color: "text.primary",
+            }}
+          >
             Dashboard
           </Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-            Real-time view of conversations, leads, agent performance, and knowledge growth.
+          <Typography variant="body1" sx={{ color: "text.secondary" }}>
+            Real-time view of conversations, leads, agent performance, and
+            knowledge growth.
           </Typography>
         </Paper>
 
         {loading && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
-        {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
 
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
           {kpis.map((kpi) => (
@@ -437,33 +544,48 @@ const AdminDashboard: React.FC = () => {
                 sx={{
                   zIndex: 1,
                   p: 2,
-                  borderRadius: '18px',
+                  borderRadius: "18px",
                   background: kpi.gradient,
-                  color: 'text.primary',
+                  color: "text.primary",
                   minHeight: 142,
                   border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
                   boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&::before': {
+                  position: "relative",
+                  overflow: "hidden",
+                  "&::before": {
                     content: '""',
-                    position: 'absolute',
+                    position: "absolute",
                     inset: 0,
-                    pointerEvents: 'none',
+                    pointerEvents: "none",
                     background:
-                      'linear-gradient(140deg, rgba(255,255,255,0.18) 6%, transparent 22%), linear-gradient(28deg, transparent 58%, rgba(74,137,213,0.14) 59%, transparent 82%)',
+                      "linear-gradient(140deg, rgba(255,255,255,0.18) 6%, transparent 22%), linear-gradient(28deg, transparent 58%, rgba(74,137,213,0.14) 59%, transparent 82%)",
                   },
                 }}
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
+                >
                   <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 700, color: "text.primary" }}
+                    >
                       {kpi.label}
                     </Typography>
-                    <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.35, color: 'text.primary' }}>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 800, mt: 0.35, color: "text.primary" }}
+                    >
                       {kpi.value}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.2 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "text.secondary", mt: 0.2 }}
+                    >
                       {kpi.hint}
                     </Typography>
                   </Box>
@@ -472,9 +594,9 @@ const AdminDashboard: React.FC = () => {
                       width: 44,
                       height: 44,
                       borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       bgcolor: alpha(theme.palette.primary.main, 0.14),
                       border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
                     }}
@@ -484,7 +606,7 @@ const AdminDashboard: React.FC = () => {
                 </Box>
                 <Box
                   sx={{
-                    position: 'absolute',
+                    position: "absolute",
                     left: 14,
                     right: 14,
                     bottom: 12,
@@ -492,7 +614,112 @@ const AdminDashboard: React.FC = () => {
                     opacity: 0.95,
                   }}
                 >
-                  <svg width="100%" height="100%" viewBox="0 0 220 30" preserveAspectRatio="none" aria-hidden="true">
+                  <svg
+                    width="100%"
+                    height="100%"
+                    viewBox="0 0 220 30"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M0,22 C18,8 34,28 52,18 C70,8 86,28 104,16 C124,4 142,28 160,14 C178,3 196,20 220,10"
+                      fill="none"
+                      stroke={alpha(kpi.wave, 0.9)}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          {callingKpis.map((kpi) => (
+            <Grid item xs={12} sm={6} lg={3} key={kpi.label}>
+              <Paper
+                elevation={0}
+                sx={{
+                  zIndex: 1,
+                  p: 2,
+                  borderRadius: "18px",
+                  background: kpi.gradient,
+                  color: "text.primary",
+                  minHeight: 142,
+                  border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
+                  boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                  position: "relative",
+                  overflow: "hidden",
+                  "&::before": {
+                    content: '""',
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                    background:
+                      "linear-gradient(140deg, rgba(255,255,255,0.18) 6%, transparent 22%), linear-gradient(28deg, transparent 58%, rgba(74,137,213,0.14) 59%, transparent 82%)",
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 700, color: "text.primary" }}
+                    >
+                      {kpi.label}
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 800, mt: 0.35, color: "text.primary" }}
+                    >
+                      {kpi.value}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "text.secondary", mt: 0.2 }}
+                    >
+                      {kpi.hint}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 3,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      bgcolor: alpha(theme.palette.primary.main, 0.14),
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
+                    }}
+                  >
+                    {kpi.icon}
+                  </Box>
+                </Box>
+                <Box
+                  sx={{
+                    position: "absolute",
+                    left: 14,
+                    right: 14,
+                    bottom: 12,
+                    height: 30,
+                    opacity: 0.95,
+                  }}
+                >
+                  <svg
+                    width="100%"
+                    height="100%"
+                    viewBox="0 0 220 30"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
                     <path
                       d="M0,22 C18,8 34,28 52,18 C70,8 86,28 104,16 C124,4 142,28 160,14 C178,3 196,20 220,10"
                       fill="none"
@@ -510,12 +737,25 @@ const AdminDashboard: React.FC = () => {
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
           <Grid item xs={12} lg={8}>
             <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Daily Conversations (7 days)</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Daily Conversations (7 days)
+              </Typography>
               <ResponsiveContainer width="100%" height={290}>
                 <LineChart data={dailyConversations}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} />
-                  <YAxis stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
                   <ChartTooltip
                     contentStyle={{
                       borderRadius: 12,
@@ -524,18 +764,37 @@ const AdminDashboard: React.FC = () => {
                       boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
                     }}
                   />
-                  <Line type="monotone" dataKey="count" stroke="#4e89d5" strokeWidth={3.4} dot={{ r: 3 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    stroke="#4e89d5"
+                    strokeWidth={3.4}
+                    dot={{ r: 3 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </Paper>
 
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Conversations vs Leads Trend</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Conversations vs Leads Trend
+              </Typography>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={conversationTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} />
-                  <YAxis stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
                   <ChartTooltip
                     contentStyle={{
                       borderRadius: 12,
@@ -545,7 +804,11 @@ const AdminDashboard: React.FC = () => {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="conversations" fill="#4e89d5" radius={[7, 7, 0, 0]} />
+                  <Bar
+                    dataKey="conversations"
+                    fill="#4e89d5"
+                    radius={[7, 7, 0, 0]}
+                  />
                   <Bar dataKey="leads" fill="#67a4e8" radius={[7, 7, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -554,18 +817,37 @@ const AdminDashboard: React.FC = () => {
 
           <Grid item xs={12} lg={4}>
             <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Leads by Source</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                Leads by Source
+              </Typography>
               {leadsBySource.length > 0 ? (
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={leadsBySource} dataKey="count" nameKey="source" cx="50%" cy="45%" outerRadius={88} innerRadius={46}>
+                    <Pie
+                      data={leadsBySource}
+                      dataKey="count"
+                      nameKey="source"
+                      cx="50%"
+                      cy="45%"
+                      outerRadius={88}
+                      innerRadius={46}
+                    >
                       {leadsBySource.map((_, idx) => (
-                        <Cell key={`lead-source-${idx}`} fill={pieColors[idx % pieColors.length]} />
+                        <Cell
+                          key={`lead-source-${idx}`}
+                          fill={pieColors[idx % pieColors.length]}
+                        />
                       ))}
                     </Pie>
                     <ChartTooltip
-                      formatter={(value: number | string | undefined, _name, item) => {
-                        const sourceName = (item?.payload as LeadSourcePoint)?.source || 'Source';
+                      formatter={(
+                        value: number | string | undefined,
+                        _name,
+                        item,
+                      ) => {
+                        const sourceName =
+                          (item?.payload as LeadSourcePoint)?.source ||
+                          "Source";
                         return [`${numberOrZero(value)} leads`, sourceName];
                       }}
                     />
@@ -573,17 +855,33 @@ const AdminDashboard: React.FC = () => {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <Typography variant="body2" color="text.secondary">No lead source data available.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  No lead source data available.
+                </Typography>
               )}
             </Paper>
 
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>Funnel Dashboard</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                Funnel Dashboard
+              </Typography>
               {funnelData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={290}>
-                  <BarChart data={funnelData} layout="vertical" margin={{ top: 6, right: 18, left: 8, bottom: 6 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-                    <XAxis type="number" stroke={theme.palette.text.secondary} tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <BarChart
+                    data={funnelData}
+                    layout="vertical"
+                    margin={{ top: 6, right: 18, left: 8, bottom: 6 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke={alpha(theme.palette.text.secondary, 0.2)}
+                    />
+                    <XAxis
+                      type="number"
+                      stroke={theme.palette.text.secondary}
+                      tick={{ fontSize: 12 }}
+                      allowDecimals={false}
+                    />
                     <YAxis
                       type="category"
                       dataKey="stage_name"
@@ -592,20 +890,29 @@ const AdminDashboard: React.FC = () => {
                       tick={{ fontSize: 11 }}
                     />
                     <ChartTooltip
-                      formatter={(value: number | string | undefined, _name, item) => [
+                      formatter={(
+                        value: number | string | undefined,
+                        _name,
+                        item,
+                      ) => [
                         `${numberOrZero(value)} leads`,
-                        String((item?.payload as any)?.stage_name || 'Stage'),
+                        String((item?.payload as any)?.stage_name || "Stage"),
                       ]}
                     />
                     <Bar dataKey="count" radius={[0, 6, 6, 0]}>
                       {funnelData.map((entry, idx) => (
-                        <Cell key={`funnel-stage-bar-${entry.stage_key}-${idx}`} fill={entry.fill} />
+                        <Cell
+                          key={`funnel-stage-bar-${entry.stage_key}-${idx}`}
+                          fill={entry.fill}
+                        />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <Typography variant="body2" color="text.secondary">No funnel data available.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  No funnel data available.
+                </Typography>
               )}
             </Paper>
           </Grid>
@@ -617,7 +924,10 @@ const AdminDashboard: React.FC = () => {
             onChange={(_, value: number) => setTab(value)}
             variant="scrollable"
             scrollButtons="auto"
-            sx={{ borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`, mb: 0.5 }}
+            sx={{
+              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+              mb: 0.5,
+            }}
           >
             <Tab label="Top Conversations" />
             <Tab label="Recent Leads" />
@@ -626,6 +936,64 @@ const AdminDashboard: React.FC = () => {
           </Tabs>
 
           <TabPanel value={tab} index={0}>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="center">
+                      Messages
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      Last Activity
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {topSessions.length ? (
+                    topSessions.map((session) => (
+                      <TableRow key={session.session_id} hover>
+                        <TableCell sx={{ fontFamily: "monospace" }}>
+                          {shortText(session.session_id, 28)}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            label={session.message_count}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {session.has_lead ? (
+                            <Chip
+                              label={textOrDash(session.lead_name)}
+                              size="small"
+                              color="success"
+                            />
+                          ) : (
+                            <Chip label="No" size="small" variant="outlined" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {formatDateTime(session.last_message_at)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        No conversation sessions yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={tab} index={1}>
             <TableContainer>
               <Table>
                 <TableHead>
@@ -650,46 +1018,9 @@ const AdminDashboard: React.FC = () => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} align="center">No recent leads.</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </TabPanel>
-
-          <TabPanel value={tab} index={1}>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }} align="center">Messages</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Last Activity</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {topSessions.length ? (
-                    topSessions.map((session) => (
-                      <TableRow key={session.session_id} hover>
-                        <TableCell sx={{ fontFamily: 'monospace' }}>{shortText(session.session_id, 28)}</TableCell>
-                        <TableCell align="center">
-                          <Chip label={session.message_count} size="small" color="primary" variant="outlined" />
-                        </TableCell>
-                        <TableCell>
-                          {session.has_lead ? (
-                            <Chip label={textOrDash(session.lead_name)} size="small" color="success" />
-                          ) : (
-                            <Chip label="No" size="small" variant="outlined" />
-                          )}
-                        </TableCell>
-                        <TableCell>{formatDateTime(session.last_message_at)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} align="center">No conversation sessions yet.</TableCell>
+                      <TableCell colSpan={5} align="center">
+                        No recent leads.
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -701,33 +1032,86 @@ const AdminDashboard: React.FC = () => {
             <Grid container spacing={2}>
               {widgets.length ? (
                 widgets.map((widget, idx) => (
-                  <Grid item xs={12} sm={6} md={4} key={widget.widget_id || String(widget.id || idx)}>
-                    <Card sx={{ borderRadius: 2.5, border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}` }}>
+                  <Grid
+                    item
+                    xs={12}
+                    sm={6}
+                    md={4}
+                    key={widget.widget_id || String(widget.id || idx)}
+                  >
+                    <Card
+                      sx={{
+                        borderRadius: 2.5,
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+                      }}
+                    >
                       <CardContent>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{ fontWeight: 700, mb: 1 }}
+                        >
                           {widget.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block", mb: 1.5 }}
+                        >
                           {widget.widget_id}
                         </Typography>
 
                         <Box sx={{ mb: 1.5 }}>
-                          <Typography variant="caption" color="text.secondary">Conversations: {numberOrZero(widget.conversations_count)}</Typography>
-                          <LinearProgress variant="determinate" value={Math.min(numberOrZero(widget.conversations_count) * 10, 100)} sx={{ mt: 0.4, borderRadius: 1 }} />
+                          <Typography variant="caption" color="text.secondary">
+                            Conversations:{" "}
+                            {numberOrZero(widget.conversations_count)}
+                          </Typography>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(
+                              numberOrZero(widget.conversations_count) * 10,
+                              100,
+                            )}
+                            sx={{ mt: 0.4, borderRadius: 1 }}
+                          />
                         </Box>
 
                         <Box sx={{ mb: 1.5 }}>
-                          <Typography variant="caption" color="text.secondary">Leads: {numberOrZero(widget.leads_count)}</Typography>
-                          <LinearProgress variant="determinate" value={Math.min(numberOrZero(widget.leads_count) * 10, 100)} sx={{ mt: 0.4, borderRadius: 1 }} />
+                          <Typography variant="caption" color="text.secondary">
+                            Leads: {numberOrZero(widget.leads_count)}
+                          </Typography>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(
+                              numberOrZero(widget.leads_count) * 10,
+                              100,
+                            )}
+                            sx={{ mt: 0.4, borderRadius: 1 }}
+                          />
                         </Box>
 
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                          <Chip size="small" label={textOrDash(widget.position)} variant="outlined" />
+                        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                           <Chip
                             size="small"
-                            label={widget.lead_capture_enabled ? 'Lead Capture On' : 'Lead Capture Off'}
-                            color={widget.lead_capture_enabled ? 'success' : 'default'}
-                            variant={widget.lead_capture_enabled ? 'filled' : 'outlined'}
+                            label={textOrDash(widget.position)}
+                            variant="outlined"
+                          />
+                          <Chip
+                            size="small"
+                            label={
+                              widget.lead_capture_enabled
+                                ? "Lead Capture On"
+                                : "Lead Capture Off"
+                            }
+                            color={
+                              widget.lead_capture_enabled
+                                ? "success"
+                                : "default"
+                            }
+                            variant={
+                              widget.lead_capture_enabled
+                                ? "filled"
+                                : "outlined"
+                            }
                           />
                         </Box>
                       </CardContent>
@@ -736,7 +1120,9 @@ const AdminDashboard: React.FC = () => {
                 ))
               ) : (
                 <Grid item xs={12}>
-                  <Typography color="text.secondary" align="center">No agents found.</Typography>
+                  <Typography color="text.secondary" align="center">
+                    No agents found.
+                  </Typography>
                 </Grid>
               )}
             </Grid>
@@ -758,20 +1144,34 @@ const AdminDashboard: React.FC = () => {
                     knowledgeSources.map((source) => (
                       <TableRow key={source.id} hover>
                         <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
                             <MenuBookIcon fontSize="small" color="primary" />
                             {source.name}
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Chip label={source.source_type} size="small" variant="outlined" />
+                          <Chip
+                            label={source.source_type}
+                            size="small"
+                            variant="outlined"
+                          />
                         </TableCell>
                         <TableCell>
                           <Chip
                             label={source.status}
                             size="small"
-                            color={source.status === 'active' ? 'success' : 'default'}
-                            variant={source.status === 'active' ? 'filled' : 'outlined'}
+                            color={
+                              source.status === "active" ? "success" : "default"
+                            }
+                            variant={
+                              source.status === "active" ? "filled" : "outlined"
+                            }
                           />
                         </TableCell>
                         <TableCell>{formatDate(source.created_at)}</TableCell>
@@ -779,7 +1179,9 @@ const AdminDashboard: React.FC = () => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">No knowledge sources yet.</TableCell>
+                      <TableCell colSpan={4} align="center">
+                        No knowledge sources yet.
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -789,7 +1191,7 @@ const AdminDashboard: React.FC = () => {
         </Paper>
 
         {loading && !stats && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
             <CircularProgress />
           </Box>
         )}
@@ -799,5 +1201,3 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
-
-
