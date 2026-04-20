@@ -45,6 +45,8 @@ import {
   getMetaWhatsAppEmbeddedSignupUrl,
 } from '../config/env';
 import type { CrawlJobStatus } from '../types';
+import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
+import { useCredits } from "../context/CreditsContext";
 
 interface WidgetConfig {
   widget_id: string;
@@ -194,6 +196,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [showWidgetPreview, setShowWidgetPreview] = useState(true);
   const [botIcon, setBotIcon] = useState('bot-robot');
   const [userIcon, setUserIcon] = useState('user-person');
+  const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
 
   const integrationSteps = useMemo(
     () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
@@ -709,6 +712,10 @@ const CreateChatAgentPage: React.FC = () => {
         setCrawlJobStatus(nextStatus);
 
         if (nextStatus.status === 'completed') {
+          if (nextStatus.chunks_embedded > 0) {
+            console.log("total chunks", nextStatus?.chunks_embedded);
+            deductCredits(FEATURE_CODES.KB_CHUNK, nextStatus.chunks_embedded, "crawling", crawlJobStatus.job_id)
+          }
           setKnowledgeActionsDone((v) => v + 1);
           setSuccess(nextStatus.message || 'Website knowledge embedded successfully.');
           setError('');
@@ -889,6 +896,11 @@ const CreateChatAgentPage: React.FC = () => {
 
     if (crawlJobActive) {
       setError('A crawl/embed job is already running. Please wait for it to finish.');
+      return;
+    }
+
+    if (!validateCrawlingCredits()) {
+      setError(CREDIT_ERRORS.BELOW_MIN_RESERVED)
       return;
     }
 
@@ -1140,6 +1152,17 @@ const CreateChatAgentPage: React.FC = () => {
     } finally {
       setWhatsappTesting(false);
     }
+  };
+
+  const validateCrawlingCredits = () => {
+    const credits = getRequiredCreditInfo(FEATURE_CODES.KB_CHUNK);
+
+    if (credits.minReservedCredits != null && totalCredits < credits.minReservedCredits) {
+      setError(CREDIT_ERRORS.BELOW_MIN_RESERVED);
+      return false;
+    }
+
+    return true;
   };
 
   if (isEditMode && initializingEdit) {

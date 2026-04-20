@@ -14,6 +14,7 @@ import {
   CircularProgress,
   IconButton,
   Stack,
+  Snackbar,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -29,6 +30,7 @@ import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import TuneIcon from "@mui/icons-material/Tune";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
+import SendIcon from '@mui/icons-material/Send';
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -75,6 +77,8 @@ const SettingsPage: React.FC = () => {
   const [twilioHasAuthToken, setTwilioHasAuthToken] = useState(false);
   const [twilioError, setTwilioError] = useState("");
   const [twilioSuccess, setTwilioSuccess] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   const getToday = () => {
     const today = new Date();
@@ -240,6 +244,73 @@ const SettingsPage: React.FC = () => {
     setOrgSaving(false);
   };
 
+  const handleSendTestEmail = async () => {
+    setError("");
+    setSuccess("");
+
+    // Validation
+    if (!orgSettings.smtp_host) {
+      setError("SMTP Host is required");
+      return;
+    }
+
+    if (!orgSettings.smtp_port) {
+      setError("SMTP Port is required");
+      return;
+    }
+
+    if (!orgSettings.smtp_username) {
+      setError("SMTP Username is required");
+      return;
+    }
+
+    if (!orgSettings.smtp_password) {
+      setError("SMTP Password is required");
+      return;
+    }
+
+    if (!orgSettings.smtp_sender_email) {
+      setError("Sender Email is required");
+      return;
+    }
+
+    if (!testEmail) {
+      setError("Test Email is required");
+      return;
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(testEmail)) {
+      setError("Invalid test email format");
+      return;
+    }
+
+    try {
+      setSendingTestEmail(true);
+
+      // Call API here
+      await organizationService.sendTestEmail({
+        smtp_host: orgSettings.smtp_host,
+        smtp_port: orgSettings.smtp_port,
+        smtp_username: orgSettings.smtp_username,
+        smtp_password: orgSettings.smtp_password,
+        smtp_sender_email: orgSettings.smtp_sender_email,
+        smtp_use_tls: orgSettings.smtp_use_tls,
+        test_email: testEmail,
+      })
+
+      setSuccess("Test email sent successfully");
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail || "Failed to send test email"
+      );
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   const showError = (message: string) => {
     setSuccess("");
     setError(message);
@@ -312,21 +383,32 @@ const SettingsPage: React.FC = () => {
             </Box>
           </Box>
         </Card>
-        {(success || error) && (
-          <Stack mb={2}>
+        <Snackbar
+          open={Boolean(success || error)}
+          autoHideDuration={4000}
+          onClose={() => {
+            setSuccess("");
+            setError("");
+          }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        >
+          <Stack>
             {error && (
               <Alert
                 severity="error"
                 sx={{
                   borderRadius: "14px",
-                  boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
+                  boxShadow: `0 10px 18px ${alpha(
+                    theme.palette.error.dark,
+                    0.12
+                  )}`,
                 }}
                 action={
                   <IconButton
                     aria-label="close"
                     color="inherit"
                     size="small"
-                    onClick={() => setError("")} // clears the error
+                    onClick={() => setError("")}
                   >
                     <CloseIcon fontSize="inherit" />
                   </IconButton>
@@ -335,19 +417,23 @@ const SettingsPage: React.FC = () => {
                 {error}
               </Alert>
             )}
+
             {success && (
               <Alert
                 severity="success"
                 sx={{
                   borderRadius: "14px",
-                  boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}`,
+                  boxShadow: `0 10px 18px ${alpha(
+                    theme.palette.success.dark,
+                    0.12
+                  )}`,
                 }}
                 action={
                   <IconButton
                     aria-label="close"
                     color="inherit"
                     size="small"
-                    onClick={() => setSuccess("")} // clears the success message
+                    onClick={() => setSuccess("")}
                   >
                     <CloseIcon fontSize="inherit" />
                   </IconButton>
@@ -357,7 +443,7 @@ const SettingsPage: React.FC = () => {
               </Alert>
             )}
           </Stack>
-        )}
+        </Snackbar>
         <Paper
           sx={{
             mb: 3,
@@ -664,12 +750,13 @@ const SettingsPage: React.FC = () => {
                         type="number"
                         helperText="Common: 25, 587, 465"
                         value={orgSettings.smtp_port}
-                        onChange={(e) =>
-                          {console.log("SMTP PORT : ",parseInt(e.target.value)),
-                          handleOrgFieldChange(
-                            "smtp_port",
-                            parseInt(e.target.value),
-                          )}
+                        onChange={(e) => {
+                          console.log("SMTP PORT : ", parseInt(e.target.value)),
+                            handleOrgFieldChange(
+                              "smtp_port",
+                              parseInt(e.target.value),
+                            )
+                        }
                         }
                         InputLabelProps={{ shrink: true }}
                       />
@@ -736,97 +823,50 @@ const SettingsPage: React.FC = () => {
                       </Box>
                     </Grid>
                   </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12}>
-              <Card sx={{ boxShadow: 2 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <SupportAgentIcon color="primary" />
-                    <Typography variant="h6" fontWeight={600}>
-                      Chat Escalation Settings
+                  {/* Divider */}
+                  <Divider sx={{ my: 3 }} />
+
+                  {/* Test Email Section */}
+                  <Box mb={2}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Test SMTP Configuration
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mb: 2 }}
+                    >
+                      Send a test email to verify your SMTP settings
                     </Typography>
                   </Box>
 
-                  <Typography
-                    variant="body2"
-                    sx={{ mb: 3, color: "text.secondary" }}
-                  >
-                    Configure escalation contacts when AI cannot resolve queries
-                  </Typography>
-
-                  <Grid container spacing={3}>
-                    {/* Level 1 */}
-                    <Grid item xs={12}>
-                      <Box
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          border: "1px solid",
-                          borderColor: "divider",
-                          backgroundColor: "background.default",
-                        }}
-                      >
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <SupportAgentIcon color="primary" fontSize="small" />
-                          <Typography fontWeight={600}>
-                            Level 1 — Support Team
-                          </Typography>
-                        </Box>
-
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Support Team: Name | email | phone"
-                          value={orgSettings.default_escalation_level_1}
-                          onChange={(e) =>
-                            handleOrgFieldChange(
-                              "default_escalation_level_1",
-                              e.target.value,
-                            )
-                          }
-                          helperText="Primary support escalation contact"
-                        />
-                      </Box>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} md={8}>
+                      <TextField
+                        fullWidth
+                        label="Test Email Address"
+                        size="small"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                      />
                     </Grid>
 
-                    {/* Level 2 */}
-                    <Grid item xs={12}>
-                      <Box
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          border: "1px solid",
-                          borderColor: "divider",
-                          backgroundColor: "background.default",
-                        }}
+                    <Grid item xs={12} md={4}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        startIcon={<SendIcon />}
+                        onClick={handleSendTestEmail}
+                        disabled={sendingTestEmail}
                       >
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <PriorityHighIcon color="warning" fontSize="small" />
-                          <Typography fontWeight={600}>
-                            Level 2 — Escalation Manager
-                          </Typography>
-                        </Box>
-
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="Escalation Manager: Name | email | phone"
-                          value={orgSettings.default_escalation_level_2}
-                          onChange={(e) =>
-                            handleOrgFieldChange(
-                              "default_escalation_level_2",
-                              e.target.value,
-                            )
-                          }
-                          helperText="Secondary escalation contact"
-                        />
-                      </Box>
+                        {sendingTestEmail ? "Sending..." : "Send Test Email"}
+                      </Button>
                     </Grid>
                   </Grid>
                 </CardContent>
               </Card>
+
             </Grid>
             <Grid item xs={12}>
               <Box display="flex" justifyContent="flex-end">

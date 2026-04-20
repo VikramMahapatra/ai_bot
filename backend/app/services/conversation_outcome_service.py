@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
+from fastapi import HTTPException
 from openai import OpenAI
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -17,6 +18,8 @@ from app.services.call_campaign_service import sync_campaign_from_echoleads
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.lead_activities import LeadActivity
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,7 @@ def _build_transcript(rows: List[Conversation]) -> str:
 def _classify_outcome_with_llm(transcript: str) -> str:
     if not transcript.strip():
         return "other"
+    
 
     response = client.chat.completions.create(
         model=settings.OUTCOME_CLASSIFICATION_MODEL,
@@ -85,7 +89,7 @@ def _classify_outcome_with_llm(transcript: str) -> str:
         ],
     )
 
-    content = response.choices[0].message.content if response.choices else None
+    content = response.choices[0].message.content if response.choices else None    
     return _normalize_outcome(content)
 
 
@@ -158,6 +162,17 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
 
     for org_id, session_id in pending_sessions:
         try:
+            valid = organization_credit_service.validate_feature_usage(
+                db, org_id, FeatureCodes.AI_SENTIMENT, 1
+            )
+
+            if not valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient credits. Please add more credits to continue.",
+                )
+        
+        
             rows = db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
@@ -168,6 +183,16 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
 
             transcript = _build_transcript(rows)
             outcome = _classify_outcome_with_llm(transcript)
+            
+            if transcript.strip():
+                organization_credit_service.deduct_credits(
+                db=db,
+                organization_id=org_id,
+                feature_code=FeatureCodes.AI_SENTIMENT,
+                quantity=1,
+                reference_type="conversation",
+                reference_id=session_id
+            )
 
             if org_id not in funnel_categories_by_org:
                 funnel_categories_by_org[org_id] = db.query(FunnelCategory).filter(

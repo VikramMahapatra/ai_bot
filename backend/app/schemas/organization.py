@@ -110,3 +110,14 @@ class CreditParameters(BaseModel):
     quantity: Optional[float] = None
     reference_type: Optional[str] =None,
     reference_id: Optional[str] =None
+
+
+
+class SMTPTestRequest(BaseModel):
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_sender_email: str
+    smtp_use_tls: bool
+    test_email: str

@@ -5,6 +5,7 @@ import smtplib
 import logging
 import socket
 import re
+from sqlalchemy.orm import Session
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import make_msgid, formatdate
@@ -15,8 +16,9 @@ from email_validator import EmailNotValidError, validate_email
 from typing import Iterable, Optional
 from urllib.parse import quote
 from app.config import settings
-from app.services.organization_setting_service import get_org_smtp_config
+from app.services.organization_setting_service import get_org_settings, get_org_smtp_config
 from app.models.organization_settings import OrganizationSettings
+from app.models.user import Organization
 
 logger = logging.getLogger(__name__)
 SMTP_TIMEOUT_SECONDS = 20
@@ -739,6 +741,42 @@ def send_widget_test_link_email(
     except Exception as exc:
         logger.error("Failed widget test-link email to %s: %s", normalized_email, str(exc), exc_info=True)
         return False, str(exc)
+    
+    
+def send_smtp_test_email(
+    recipient_email: str,
+    org_name: str,
+    settings: OrganizationSettings
+) -> tuple[bool, str | None]:
+    """
+    Send SMTP test email to verify configuration
+    """
+    subject = f"Test Email - {org_name} SMTP Configuration"
+
+    message_body = f"""
+    Hello,
+
+    This is a test email to verify your SMTP configuration.
+
+    If you're receiving this email, your SMTP settings are working correctly.
+
+    SMTP Details:
+    Host: {settings.smtp_host}
+    Port: {settings.smtp_port}
+    TLS Enabled: {"Yes" if settings.smtp_use_tls else "No"}
+
+    You can now send emails from {org_name}.
+
+    Best Regards  
+    Zentrixel AI Platform
+    """
+
+    return send_widget_test_link_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        message_body=message_body,
+        settings=settings
+    )
 
 
 def send_appointment_rescheduled_notification(
