@@ -85,6 +85,7 @@ import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -1524,9 +1525,7 @@ const LeadManager: React.FC = () => {
                   background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
                 }}
               >
-                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Outcome</TableCell>
@@ -1547,9 +1546,54 @@ const LeadManager: React.FC = () => {
                     },
                   }}
                 >
-                  <TableCell>{lead.name || "-"}</TableCell>
-                  <TableCell>{lead.email || "-"}</TableCell>
-                  <TableCell>{lead.phone || "-"}</TableCell>
+                  <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                      {lead.name?.trim() || "—"}
+                    </Typography>
+                    <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                      {lead.email?.trim() ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            lineHeight: 1.35,
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                            {lead.email}
+                          </Box>
+                        </Typography>
+                      ) : null}
+                      {lead.phone?.trim() ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            lineHeight: 1.35,
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                            {lead.phone}
+                          </Box>
+                        </Typography>
+                      ) : null}
+                      {!lead.email?.trim() && !lead.phone?.trim() ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                          No email or phone on file
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </TableCell>
                   <TableCell>{lead.product_name || "-"}</TableCell>
                   <TableCell>
                     <Chip
@@ -1650,7 +1694,7 @@ const LeadManager: React.FC = () => {
               ))}
               {displayLeads.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {leads.length === 0
                         ? "No leads found for the selected filters."
@@ -2064,6 +2108,30 @@ const LeadManager: React.FC = () => {
         {loadingActivities ? (
           <Box display="flex" justifyContent="center" mt={4}>
             <CircularProgress size={24} />
+          </Box>
+        ) : activities.length === 0 ? (
+          <Box
+            sx={{
+              bgcolor: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 2,
+              p: 3,
+              textAlign: "center",
+            }}
+          >
+            <InfoOutlinedIcon
+              sx={{
+                fontSize: 40,
+                color: "#9ca3af",
+                mb: 1,
+              }}
+            />
+            <Typography variant="body2" color="text.secondary">
+              No activity data found.
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              Timeline entries will appear when this lead has engagements.
+            </Typography>
           </Box>
         ) : (
           <Timeline
