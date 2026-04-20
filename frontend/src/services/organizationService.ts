@@ -73,7 +73,7 @@ export interface UserListResponse {
 }
 
 export interface UsersFilters {
-   // pagination
+  // pagination
   search?: String;
   skip?: number;
   limit?: number;
@@ -171,5 +171,10 @@ export const organizationService = {
   async updateOrgSettings(data: any) {
     const res = await api.put("/api/organization-settings", data);
     return res.data;
+  },
+
+  async sendTestEmail(data: any): Promise<any> {
+    const response = await api.post<User>('/api/organizations/smtp/test', data);
+    return response.data;
   },
 };

@@ -512,7 +512,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )     
     else:
         message = "Campaign created successfully"
@@ -523,7 +523,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )
         
     db.commit()    

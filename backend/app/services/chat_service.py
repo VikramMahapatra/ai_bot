@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from openai import OpenAI
 from app.config import settings
 from app.services.rag import chroma_client
@@ -14,6 +15,8 @@ from threading import Lock
 from urllib.parse import parse_qs, unquote, urlparse
 
 from app.models.campaign import Contact
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -1213,6 +1216,16 @@ def persist_conversation(
     retrieval_trace: Optional[Dict] = None,
 ) -> None:
     
+    valid = organization_credit_service.validate_feature_usage(
+        db, organization_id, FeatureCodes.CORE_CHATBOT_WEB_MESSAGE, 1
+    )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
+    
     contact = db.query(Contact).filter(Contact.session_id == session_id).first()
     
     conversation = Conversation(
@@ -1228,6 +1241,15 @@ def persist_conversation(
     )
     db.add(conversation)
     db.flush()
+    
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=organization_id,
+        feature_code=FeatureCodes.CORE_CHATBOT_WEB_MESSAGE,
+        quantity=1,
+        reference_type="chat",
+        reference_id=session_id
+    )
 
     if retrieval_trace:
         trace_record = RetrievalTrace(

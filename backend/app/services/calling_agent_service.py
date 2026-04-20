@@ -250,7 +250,7 @@ def create_agent(
             feature_code=get_agent_feature_code(agent.type),
             quantity=1,
             reference_type="agent",
-            reference_id=db_agent.id
+            reference_id=str(db_agent.id)
         )        
     else:
         organization_credit_service.deduct_credits(
@@ -259,7 +259,7 @@ def create_agent(
             feature_code=get_agent_feature_code(agent.type),
             quantity=1,
             reference_type="agent",
-            reference_id=db_agent.id
+            reference_id=str(db_agent.id)
         )
         
     db.commit()
@@ -677,7 +677,7 @@ def test_call(
             feature_code=feature_code,
             quantity=1,
             reference_type="calling_agent_test_call",
-            reference_id=test_call.id
+            reference_id=str(test_call.id)
         )
     
     db.commit()

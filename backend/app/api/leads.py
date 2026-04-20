@@ -23,6 +23,8 @@ from app.models.campaign import Contact
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.api.chat import _get_or_create_agent_contact_list, _normalize_phone
 from app.models.conversation import Conversation
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +221,16 @@ async def create_lead(
             "closed_won",
             "closed_lost",
         }:
+            
+            valid = organization_credit_service.validate_feature_usage(
+                db, org_id, FeatureCodes.AI_LEAD_GEN, 1
+            )
+
+            if not valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient credits. Please add more credits to continue.",
+                )
 
             contact = (
                 db.query(Contact).filter(Contact.session_id == lead.session_id).first()
@@ -237,7 +249,7 @@ async def create_lead(
                 lead=new_lead,
                 source=lead.source,
                 session_id=lead.session_id,
-                summary="Lead created from campaign engagement",
+                summary="Lead created from chatbot",
             )
 
             if contact:
@@ -246,6 +258,15 @@ async def create_lead(
                 )
                 db.add(mapping)
                 db.flush()
+                
+            organization_credit_service.deduct_credits(
+                db=db,
+                organization_id=org_id,
+                feature_code=FeatureCodes.AI_LEAD_GEN,
+                quantity=1,
+                reference_type="lead",
+                reference_id=str(new_lead.id)
+            )
 
             if org_id:
                 increment_usage(db, org_id, leads_count=1)

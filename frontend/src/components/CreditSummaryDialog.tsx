@@ -15,6 +15,11 @@ import LockIcon from "@mui/icons-material/Lock";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
+const formatDecimal = (val: any) => {
+    const num = Number(val || 0);
+    return num % 1 === 0 ? num : num.toFixed(1);
+};
+
 const CreditSummaryDialog = ({
     open,
     onClose,
@@ -81,46 +86,78 @@ const CreditSummaryDialog = ({
                 >
                     Used Credit Breakdown
                 </Typography>
-
-                {credits
-                    ?.filter((c: any) => c.used > 0)
-                    .map((c: any) => (
-
+                <Box
+                    sx={{
+                        maxHeight: 350,
+                        overflowY: "auto",
+                        pr: 1
+                    }}
+                >
+                    {credits?.length === 0 ? (
                         <Box
-                            key={c.feature_code}
                             sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                mb: 1,
-                                p: 1.5,
+                                p: 3,
+                                textAlign: "center",
                                 borderRadius: 2,
                                 background: "#f8f9fb",
-                                border: "1px solid #eef0f3"
+                                border: "1px dashed #e0e3e8"
                             }}
                         >
-                            <Box>
-                                <Typography fontWeight={600}>
-                                    {c.sub_module}
-                                </Typography>
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                fontWeight={500}
+                            >
+                                No credits used yet
+                            </Typography>
 
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                >
-                                    {c.module}
-                                </Typography>
-                            </Box>
-
-                            <Chip
-                                size="small"
-                                label={`${c.used} Used`}
-                                color="primary"
-                            />
-
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                            >
+                                Credits will appear here once features are used
+                            </Typography>
                         </Box>
-                    ))}
+                    ) : (
+                        credits?.filter((c: any) => c.used > 0)
+                            .map((c: any) => (
 
+                                <Box
+                                    key={c.feature_code}
+                                    sx={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        mb: 1,
+                                        p: 1.5,
+                                        borderRadius: 2,
+                                        background: "#f8f9fb",
+                                        border: "1px solid #eef0f3"
+                                    }}
+                                >
+                                    <Box>
+                                        <Typography fontWeight={600}>
+                                            {c.sub_module}
+                                        </Typography>
+
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                        >
+                                            {c.module}
+                                        </Typography>
+                                    </Box>
+
+                                    <Chip
+                                        size="small"
+                                        label={`${formatDecimal(c.used)} Used`}
+                                        color="primary"
+                                    />
+
+                                </Box>
+                            ))
+                    )}
+                </Box>
             </DialogContent>
         </Dialog>
     );
@@ -204,7 +241,7 @@ const SummaryCard = ({ label, value, icon, highlight }: any) => {
                         fontWeight={700}
                         sx={{ color: theme.color }}
                     >
-                        {value || 0}
+                        {formatDecimal(value)}
                     </Typography>
                 </Box>
 

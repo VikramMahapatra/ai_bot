@@ -47,8 +47,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import ContactsIcon from "@mui/icons-material/Contacts";
-import PhoneIcon from "@mui/icons-material/Phone";
 import EmailIcon from "@mui/icons-material/Email";
+import CallIcon from "@mui/icons-material/Call";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import InfoIcon from "@mui/icons-material/Info";
 import ErrorIcon from "@mui/icons-material/Error";
@@ -828,9 +828,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                 <Table>
                                     <TableHead>
                                         <TableRow sx={{ background: `linear-gradient(110deg, ${alpha('#e7f0ff', 0.8)} 0%, ${alpha('#d8e9ff', 0.68)} 100%)` }}>
-                                            <TableCell>Name</TableCell>
-                                            <TableCell>Email</TableCell>
-                                            <TableCell>Phone</TableCell>
+                                            <TableCell>Contact</TableCell>
                                             <TableCell>Company</TableCell>
                                             <TableCell>Created</TableCell>
                                             <TableCell>Actions</TableCell>
@@ -840,9 +838,54 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                         {contacts.length ? (
                                             contacts.map((contact) => (
                                                 <TableRow key={contact.id} hover sx={{ '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) } }}>
-                                                    <TableCell>{contact.name || '-'}</TableCell>
-                                                    <TableCell>{contact.email || '-'}</TableCell>
-                                                    <TableCell>{contact.phone || '-'}</TableCell>
+                                                    <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
+                                                        <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                                            {contact.name?.trim() || "—"}
+                                                        </Typography>
+                                                        <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                                            {contact.email?.trim() ? (
+                                                                <Typography
+                                                                    variant="caption"
+                                                                    color="text.secondary"
+                                                                    sx={{
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        gap: 0.5,
+                                                                        lineHeight: 1.35,
+                                                                        fontSize: "0.7rem",
+                                                                    }}
+                                                                >
+                                                                    <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                                    <Box component="span" sx={{ wordBreak: "break-word" }}>
+                                                                        {contact.email}
+                                                                    </Box>
+                                                                </Typography>
+                                                            ) : null}
+                                                            {contact.phone?.trim() ? (
+                                                                <Typography
+                                                                    variant="caption"
+                                                                    color="text.secondary"
+                                                                    sx={{
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        gap: 0.5,
+                                                                        lineHeight: 1.35,
+                                                                        fontSize: "0.7rem",
+                                                                    }}
+                                                                >
+                                                                    <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                                    <Box component="span" sx={{ wordBreak: "break-word" }}>
+                                                                        {contact.phone}
+                                                                    </Box>
+                                                                </Typography>
+                                                            ) : null}
+                                                            {!contact.email?.trim() && !contact.phone?.trim() ? (
+                                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                                                    No email or phone on file
+                                                                </Typography>
+                                                            ) : null}
+                                                        </Stack>
+                                                    </TableCell>
                                                     <TableCell>{contact.company || '-'}</TableCell>
                                                     <TableCell>{formatDate(contact.created_at)}</TableCell>
                                                     <TableCell>
@@ -864,7 +907,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                             ))
                                         ) : (
                                             <TableRow>
-                                                <TableCell colSpan={6} align="center">No contacts found.</TableCell>
+                                                <TableCell colSpan={4} align="center">No contacts found.</TableCell>
                                             </TableRow>
                                         )}
                                     </TableBody>
@@ -973,18 +1016,57 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                 <Table size="small">
                                     <TableHead>
                                         <TableRow>
-                                            <TableCell>Name</TableCell>
-                                            <TableCell>Email</TableCell>
-                                            <TableCell>Phone</TableCell>
+                                            <TableCell>Contact</TableCell>
                                             <TableCell>Company</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
                                         {manualContacts.map((item, idx) => (
                                             <TableRow key={`${item.email}-${item.phone}-${idx}`}>
-                                                <TableCell>{item.name || '-'}</TableCell>
-                                                <TableCell>{item.email || '-'}</TableCell>
-                                                <TableCell>{item.phone || '-'}</TableCell>
+                                                <TableCell sx={{ minWidth: 180, maxWidth: 280, verticalAlign: "top" }}>
+                                                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                                        {item.name?.trim() || "—"}
+                                                    </Typography>
+                                                    <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                                        {item.email?.trim() ? (
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                                sx={{
+                                                                    display: "flex",
+                                                                    alignItems: "center",
+                                                                    gap: 0.5,
+                                                                    lineHeight: 1.35,
+                                                                    fontSize: "0.7rem",
+                                                                }}
+                                                            >
+                                                                <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                                <Box component="span" sx={{ wordBreak: "break-word" }}>{item.email}</Box>
+                                                            </Typography>
+                                                        ) : null}
+                                                        {item.phone?.trim() ? (
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                                sx={{
+                                                                    display: "flex",
+                                                                    alignItems: "center",
+                                                                    gap: 0.5,
+                                                                    lineHeight: 1.35,
+                                                                    fontSize: "0.7rem",
+                                                                }}
+                                                            >
+                                                                <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                                <Box component="span" sx={{ wordBreak: "break-word" }}>{item.phone}</Box>
+                                                            </Typography>
+                                                        ) : null}
+                                                        {!item.email?.trim() && !item.phone?.trim() ? (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                                                No email or phone
+                                                            </Typography>
+                                                        ) : null}
+                                                    </Stack>
+                                                </TableCell>
                                                 <TableCell>{item.company || '-'}</TableCell>
                                             </TableRow>
                                         ))}
@@ -1252,7 +1334,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
                                 <TableRow>
                                     <TableCell>Contact List</TableCell>
-                                    <TableCell>Name</TableCell>
+                                    <TableCell>Contact</TableCell>
                                     <TableCell>Company</TableCell>
                                     <TableCell width={120}>Actions</TableCell>
                                 </TableRow>
@@ -1291,21 +1373,49 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                             {/* Contact List */}
                                             <TableCell>{contact.contact_list_name}</TableCell>
 
-                                            {/* Name + Phone + Email */}
-                                            <TableCell>
-                                                <Typography fontWeight={600}>{contact.name}</Typography>
-                                                <Box display="flex" alignItems="center" gap={1}>
-                                                    <PhoneIcon fontSize="small" color="action" />
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        {contact.phone || "N/A"}
-                                                    </Typography>
-                                                </Box>
-                                                <Box display="flex" alignItems="center" gap={1}>
-                                                    <EmailIcon fontSize="small" color="action" />
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        {contact.email || "N/A"}
-                                                    </Typography>
-                                                </Box>
+                                            <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
+                                                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                                    {contact.name?.trim() || "—"}
+                                                </Typography>
+                                                <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                                    {contact.phone?.trim() ? (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: 0.5,
+                                                                lineHeight: 1.35,
+                                                                fontSize: "0.7rem",
+                                                            }}
+                                                        >
+                                                            <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.phone}</Box>
+                                                        </Typography>
+                                                    ) : null}
+                                                    {contact.email?.trim() ? (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: 0.5,
+                                                                lineHeight: 1.35,
+                                                                fontSize: "0.7rem",
+                                                            }}
+                                                        >
+                                                            <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.email}</Box>
+                                                        </Typography>
+                                                    ) : null}
+                                                    {!contact.phone?.trim() && !contact.email?.trim() ? (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                                            No email or phone on file
+                                                        </Typography>
+                                                    ) : null}
+                                                </Stack>
                                             </TableCell>
 
                                             {/* Company */}

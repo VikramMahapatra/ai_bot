@@ -54,20 +54,22 @@ export const organizationCreditService = {
         return res.data;
     },
 
-    async deductCredits(feature_code: string, requiredCredits: number) {
+    async deductCredits(feature_code: string, quantity: number, referenceType?: string, referenceId?: string) {
         const res = await api.post("/api/organizations/credits/deduct", {
             feature_code,
-            required_credits: requiredCredits
+            reference_type: referenceType,
+            reference_id: referenceId,
+            quantity: quantity,
         });
         return res.data;
     },
 
-    async reserveCredits(feature_code: string, referenceType: string, referenceId: string, requiredCredits: number) {
+    async reserveCredits(feature_code: string, referenceType: string, referenceId: string, quantity: number) {
         const res = await api.post("/api/organizations/credits/reserve", {
             feature_code,
             reference_type: referenceType,
             reference_id: referenceId,
-            required_credits: requiredCredits
+            quantity: quantity
         });
         return res.data;
     },
@@ -77,7 +79,7 @@ export const organizationCreditService = {
             feature_code,
             reference_type: referenceType,
             reference_id: referenceId,
-            actual_quantity
+            quantity: actual_quantity
         });
         return res.data;
     },

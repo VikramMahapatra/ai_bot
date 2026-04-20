@@ -251,7 +251,7 @@ def deduct_credits(
     feature_code: str,
     quantity: float,
     reference_type: str | None = None,
-    reference_id: int | None = None
+    reference_id: str | None = None
 ):
 
     item = db.query(PriceMatrixItem).filter(
@@ -280,7 +280,7 @@ def deduct_credits(
         used_quantity=quantity,
         credits_used=credits_required,
         reference_type=reference_type,
-        reference_id=reference_id,
+        reference_id=str(reference_id) if reference_id else None,
         status="consumed"
     )
 
@@ -336,7 +336,7 @@ def reserve_credits(
         credits_used=credits_required,
         status="reserved",
         reference_type=reference_type,
-        reference_id=reference_id
+        reference_id=str(reference_id) if reference_id else None
     )
 
     db.add(usage)
@@ -353,7 +353,7 @@ def consume_reserved_credits(
 
     usage = db.query(OrganizationCreditUsage).filter(
         OrganizationCreditUsage.reference_type == reference_type,
-        OrganizationCreditUsage.reference_id == reference_id,
+        OrganizationCreditUsage.reference_id == str(reference_id) if reference_id else None,
         OrganizationCreditUsage.status == "reserved"
     ).first()
 
@@ -399,7 +399,7 @@ def release_reserved_credits(
 
     usages = db.query(OrganizationCreditUsage).filter(
         OrganizationCreditUsage.reference_type == reference_type,
-        OrganizationCreditUsage.reference_id == reference_id,
+        OrganizationCreditUsage.reference_id == str(reference_id) if reference_id else None,
         OrganizationCreditUsage.status == "reserved"
     ).all()
 

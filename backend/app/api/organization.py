@@ -32,7 +32,11 @@ from app.models.calling_agents import CallingAgent
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Campaign
 from app.services import organization_credit_service
-from app.schemas.organization import CreditParameters
+from app.schemas.organization import CreditParameters, SMTPTestRequest
+from app.enums.credit_feature_codes import FeatureCodes
+from app.models.organization_settings import OrganizationSettings
+from app.services import email_service
+from app.services.organization_setting_service import get_org_settings
 
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
@@ -355,6 +359,16 @@ def create_user(
     Create a new user in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
+    
+    valid = organization_credit_service.validate_feature_usage(
+        db, org_id, FeatureCodes.PLATFORM_USER, 1
+    )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
 
     # Check if username already exists within the organization
     existing_user = (
@@ -414,8 +428,17 @@ def create_user(
         is_active=True,
     )
     db.add(new_user)
-
     db.flush()
+    
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=org_id,
+        feature_code=FeatureCodes.PLATFORM_USER,
+        quantity=1,
+        reference_type="user",
+        reference_id=str(new_user.id)
+    )
+    
     if selected_role == UserRole.USER_HANDOFF:
         _replace_user_widget_assignments(db, new_user.id, assigned_widget_ids)
 
@@ -960,7 +983,12 @@ def deduct_credits(
     db: Session = Depends(get_db),
 ):
     return organization_credit_service.deduct_credits(
-        db, current_user.organization_id, params.feature_code
+        db, 
+        current_user.organization_id, 
+        params.feature_code,
+        params.quantity,
+        params.reference_type,
+        params.reference_id
     )
 
 
@@ -992,3 +1020,37 @@ def consume_credits(
         params.reference_id,
         params.quantity
     )
+
+
+@router.post("/smtp/test")
+def send_test_email(
+    payload: SMTPTestRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    org_name = (
+        db.query(Organization.name)
+        .filter(Organization.id == current_user.organization_id)
+        .scalar()
+    )
+
+    # Build temporary settings object
+    settings = OrganizationSettings(
+        smtp_host=payload.smtp_host,
+        smtp_port=payload.smtp_port,
+        smtp_username=payload.smtp_username,
+        smtp_password=payload.smtp_password,
+        smtp_sender_email=payload.smtp_sender_email,
+        smtp_use_tls=payload.smtp_use_tls,
+    )
+
+    success, error = email_service.send_smtp_test_email(
+        payload.test_email,
+        org_name,
+        settings
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+
+    return {"message": "Test email sent successfully"}
