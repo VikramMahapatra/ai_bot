@@ -23,8 +23,9 @@ import { Tabs, Tab, Paper } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
 import HubIcon from "@mui/icons-material/Hub";
 import CloseIcon from "@mui/icons-material/Close";
-import SupportAgentIcon from "@mui/icons-material/SupportAgent";
-import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
+// Chat Escalation Settings (commented section below)
+// import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+// import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import TuneIcon from "@mui/icons-material/Tune";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
@@ -739,6 +740,7 @@ const SettingsPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
+            {/* Chat Escalation Settings — hidden for now
             <Grid item xs={12}>
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
@@ -757,7 +759,6 @@ const SettingsPage: React.FC = () => {
                   </Typography>
 
                   <Grid container spacing={3}>
-                    {/* Level 1 */}
                     <Grid item xs={12}>
                       <Box
                         sx={{
@@ -791,7 +792,6 @@ const SettingsPage: React.FC = () => {
                       </Box>
                     </Grid>
 
-                    {/* Level 2 */}
                     <Grid item xs={12}>
                       <Box
                         sx={{
@@ -828,6 +828,7 @@ const SettingsPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
+            */}
             <Grid item xs={12}>
               <Box display="flex" justifyContent="flex-end">
                 <Button
