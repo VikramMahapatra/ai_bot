@@ -183,7 +183,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         } else {
             const id = snapshot.campaign.id;
             if (id) {
-                onDeleteCampaign(id);
+                await onDeleteCampaign(id);
                 await loadCampaigns();
                 await loadCampaignStats();
             }
@@ -657,8 +657,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     {confirmDialog?.type === "delete"
                         ? "Delete campaign?"
                         : confirmDialog?.campaign.status === "running"
-                          ? "Pause campaign?"
-                          : "Start campaign?"}
+                            ? "Pause campaign?"
+                            : "Start campaign?"}
                 </DialogTitle>
                 <DialogContent dividers>
                     {confirmDialog?.type === "delete" ? (
@@ -693,8 +693,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                             ? "Delete"
                             : confirmDialog?.type === "toggleStatus" &&
                                 confirmDialog.campaign.status === "running"
-                              ? "Pause"
-                              : "Start"}
+                                ? "Pause"
+                                : "Start"}
                     </Button>
                 </DialogActions>
             </Dialog>

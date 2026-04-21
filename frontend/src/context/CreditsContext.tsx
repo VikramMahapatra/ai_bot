@@ -6,7 +6,6 @@ import React, {
     useCallback,
     ReactNode,
 } from "react";
-import axios from "axios";
 import { CreditItem, CreditMonthlySummary, organizationCreditService, PriceMatrixItem } from "../services/organizationCreditService";
 
 // Types

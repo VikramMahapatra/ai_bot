@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import case, func
 from app.config import settings
-from fastapi import File, HTTPException, UploadFile, requests
+from fastapi import BackgroundTasks, File, HTTPException, UploadFile, requests
 
 from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from sqlalchemy.orm import Session
@@ -393,15 +393,10 @@ def update_agent(
         "message": message,
         "agent_id": db_agent.id
     }
-
-# Read All Agents
-def read_agents(
+    
+def sync_agents(
     db: Session,
-    organization_id: int,
-    search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 10,
-    sort_by: str = "newest"
+    organization_id: int
 ):
     org = db.query(Organization).filter(
         Organization.id == organization_id
@@ -411,9 +406,6 @@ def read_agents(
         raise ValueError("Organization not found")
     
     total_org_agents = db.query(CallingAgent).filter(CallingAgent.organization_id == organization_id).count()
-    
-    ## SYNC ALL ORG AGENTS
-    echo_failed = False
     echo_leads = EcholeadsClient()
     try:
         echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
@@ -483,6 +475,23 @@ def read_agents(
             
     except Exception as e:
         print(f"Sync failed: {str(e)}")
+
+# Read All Agents
+def read_agents(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    organization_id: int,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    sort_by: str = "newest"
+):
+    ## SYNC ALL ORG AGENTS
+    background_tasks.add_task(
+        sync_agents,
+        db,
+        organization_id
+    )
     
     query = (
         db.query(
@@ -520,7 +529,6 @@ def read_agents(
     total = query.count()
 
     # SORT
-    print(sort_by)
     if sort_by == "oldest":
         query = query.order_by(CallingAgent.created_at.asc())
     else:

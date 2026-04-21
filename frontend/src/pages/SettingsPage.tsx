@@ -32,6 +32,10 @@ import TuneIcon from "@mui/icons-material/Tune";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
 import SendIcon from '@mui/icons-material/Send';
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import { launchWhatsAppEmbeddedSignup, loadFacebookSdk } from "../services/metaEmbeddedSignup";
+import axios from "axios";
+import { whatsappService } from "../services/whatsappService";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -80,6 +84,7 @@ const SettingsPage: React.FC = () => {
   const [twilioSuccess, setTwilioSuccess] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const getToday = () => {
     const today = new Date();
@@ -225,6 +230,42 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  // START WHATSAPP
+
+  const handleConnectWhatsApp = async () => {
+    try {
+      setLoading(true);
+
+      const appId = import.meta.env.VITE_META_APP_ID;
+      const configId = import.meta.env.VITE_META_EMBEDDED_SIGNUP_CONFIG_ID;
+
+      if (!appId || !configId) {
+        throw new Error("Meta configuration missing");
+      }
+
+      await loadFacebookSdk(appId);
+
+      const code = await launchWhatsAppEmbeddedSignup(configId);
+
+      // Send to backend
+      const exchange = await whatsappService.exchangeEmbeddedSignupCode({
+        code,
+        auto_save: true,
+      });
+
+      console.log(exchange)
+
+      setSuccess("WhatsApp Connected Successfully");
+
+    } catch (error: any) {
+      console.error(error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // END WHATSAPP
   const handleOrgFieldChange = (key: string, value: any) => {
     setOrgSettings((prev) => ({
       ...prev,
@@ -1128,6 +1169,108 @@ const SettingsPage: React.FC = () => {
                       </Grid>
                     </>
                   )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} mt={2}>
+              <Card sx={{ boxShadow: 2 }}>
+                <CardContent>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                    <WhatsAppIcon sx={{ color: "#25D366" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      WhatsApp Integration
+                    </Typography>
+                  </Box>
+
+                  <Typography
+                    variant="body2"
+                    sx={{ mb: 3, color: "text.secondary" }}
+                  >
+                    Connect your WhatsApp Business account to enable automated messaging.
+                    Perfect for customer support and engagement.
+                  </Typography>
+
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 2,
+                      mb: 3,
+                      p: 2
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            background: "#25D366",
+                            borderRadius: 2,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "white"
+                          }}
+                        >
+                          <WhatsAppIcon />
+                        </Box>
+
+                        <Box>
+                          <Typography fontWeight={600}>WhatsApp</Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Not Connected
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Button
+                        variant="contained"
+                        onClick={handleConnectWhatsApp}
+                        disabled={loading}
+                        sx={{
+                          background: "#25D366",
+                          "&:hover": { background: "#1ebe5d" }
+                        }}
+                      >
+                        {loading ? "Connecting..." : "Connect WhatsApp"}
+                      </Button>
+                    </Box>
+                  </Card>
+
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ fontWeight: 600, mb: 2 }}
+                  >
+                    Requirements
+                  </Typography>
+
+                  <Stack spacing={1.5}>
+                    <Alert severity="info">
+                      You must have a valid dedicated phone number
+                    </Alert>
+
+                    <Alert severity="info">
+                      Phone number must not be linked to another provider
+                    </Alert>
+
+                    <Alert severity="info">
+                      You need a personal Facebook account
+                    </Alert>
+
+                    <Alert severity="warning">
+                      Verify your Meta Business Account
+                    </Alert>
+                  </Stack>
                 </CardContent>
               </Card>
             </Grid>

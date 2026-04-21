@@ -23,12 +23,13 @@ def get_campaign_stats(db: Session = Depends(get_db), current_user: User = Depen
 
 @router.get("/all")
 def list_campaigns( 
+    background_tasks: BackgroundTasks,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)):
-    return service.list_campaigns(db, current_user.organization_id, search, skip, limit)
+    return service.list_campaigns(background_tasks, db, current_user.organization_id, search, skip, limit)
 
 @router.get("/{campaign_id:int}")
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):

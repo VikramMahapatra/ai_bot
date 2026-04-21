@@ -1,139 +1,26 @@
-import React, { useEffect, useState } from "react";
-import { Box, CircularProgress, Paper, Stack, Typography } from "@mui/material";
+import React from "react";
+import { Box, Paper, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import { chatService } from "../../services/chatService";
+import { allMenuItems } from "./Sidebar";
 import AdminLayout from "../Layout/AdminLayout";
 
-/** Keys aligned with Sidebar `featureKey` and `/api/admin/features`. */
-export type ModuleFeatureFlagKey =
-  | "module_knowledge_enabled"
-  | "module_leads_enabled"
-  | "module_analytics_enabled"
-  | "module_advanced_analytics_enabled"
-  | "module_reports_enabled"
-  | "module_campaigns_enabled"
-  | "module_appointments_enabled"
-  | "module_products_enabled"
-  | "module_users_enabled"
-  | "human_handoff_enabled"
-  | "module_contact_book_enabled"
-  | "module_workflows_enabled"
-  | "module_message_templates_enabled";
 
-interface ModuleAccessGateProps {
-  featureKey: ModuleFeatureFlagKey;
-  /** Shown above the title (e.g. "Leads") */
-  moduleLabel: string;
-  children: React.ReactNode;
+interface RestrictedFeaturePageProps {
+  modulePath: string
 }
 
-function RestrictedBackdrop({ children }: { children: React.ReactNode }) {
+const RestrictedFeaturePage: React.FC<RestrictedFeaturePageProps> = ({ modulePath }) => {
   const theme = useTheme();
-  return (
-    <Box
-      sx={{
-        width: "100%",
-        position: "relative",
-        overflow: "hidden",
-        bgcolor: alpha(theme.palette.primary.main, 0.04),
-        background: `linear-gradient(165deg, ${alpha("#e8f1fc", 0.95)} 0%, ${alpha(
-          theme.palette.background.default,
-          1,
-        )} 42%, ${alpha("#eef6ff", 0.92)} 100%)`,
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          top: "-18%",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "min(920px, 140%)",
-          height: "52%",
-          background: `radial-gradient(ellipse at center, ${alpha(theme.palette.primary.main, 0.14)} 0%, transparent 68%)`,
-          pointerEvents: "none",
-        },
-        "&::after": {
-          content: '""',
-          position: "absolute",
-          bottom: "-8%",
-          right: "-6%",
-          width: "min(420px, 55vw)",
-          height: "min(420px, 55vw)",
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${alpha(theme.palette.primary.light, 0.2)} 0%, transparent 70%)`,
-          pointerEvents: "none",
-        },
-      }}
-    >
-      <Box
-        sx={{
-          position: "relative",
-          zIndex: 1,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "flex-start",
-          pt: { xs: 3.5, md: 5 },
-          px: 2,
-          pb: 4,
-        }}
-      >
-        {children}
-      </Box>
-    </Box>
+
+  const activeMenuItem = allMenuItems.find((item) =>
+    modulePath.startsWith(item.path)
   );
-}
 
-/**
- * When a module flag is false for the org, still render the route but show a clear
- * "Access restricted" panel instead of the real page (direct URL / bookmark friendly).
- */
-const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ featureKey, moduleLabel, children }) => {
-  const theme = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [allowed, setAllowed] = useState(true);
+  const activeModuleLabel = activeMenuItem?.text ?? "";
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const flags = await chatService.getFeatureFlags();
-        if (cancelled) return;
-        const raw = (flags as unknown as Record<string, boolean | undefined>)[featureKey];
-        setAllowed(raw !== false);
-      } catch {
-        if (!cancelled) setAllowed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [featureKey]);
-
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: "100vh",
-          width: "100%",
-          bgcolor: alpha(theme.palette.primary.main, 0.04),
-          background: `linear-gradient(165deg, ${alpha("#e8f1fc", 0.95)} 0%, ${alpha(
-            theme.palette.background.default,
-            1,
-          )} 50%, ${alpha("#eef6ff", 0.92)} 100%)`,
-        }}
-      >
-        <CircularProgress size={36} thickness={4} sx={{ color: "primary.main" }} />
-      </Box>
-    );
-  }
-
-  if (!allowed) {
-    const card = (
+  return (
+    <AdminLayout>
       <Paper
         elevation={0}
         sx={{
@@ -201,7 +88,7 @@ const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ featureKey, moduleL
                 opacity: 0.9,
               }}
             >
-              {moduleLabel}
+              {activeModuleLabel}
             </Typography>
             <Typography
               variant="h4"
@@ -239,16 +126,10 @@ const ModuleAccessGate: React.FC<ModuleAccessGateProps> = ({ featureKey, moduleL
           </Typography>
         </Stack>
       </Paper>
-    );
+    </AdminLayout>
 
-    return (
-      <AdminLayout>
-        <RestrictedBackdrop>{card}</RestrictedBackdrop>
-      </AdminLayout>
-    );
-  }
+  );
 
-  return <>{children}</>;
 };
 
-export default ModuleAccessGate;
+export default RestrictedFeaturePage;

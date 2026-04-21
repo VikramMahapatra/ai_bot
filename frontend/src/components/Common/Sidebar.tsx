@@ -68,7 +68,7 @@ interface MenuItem {
   | 'module_message_templates_enabled';
 }
 
-const allMenuItems: MenuItem[] = [
+export const allMenuItems: MenuItem[] = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin', requiredRole: 'ADMIN' },
   { text: 'Chat Agents', icon: <SmartToyIcon />, path: '/widgets', requiredRole: 'ADMIN' },
   // { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', requiredRole: 'ALL' },
