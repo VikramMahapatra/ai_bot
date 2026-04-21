@@ -177,4 +177,11 @@ export const organizationService = {
     const response = await api.post<User>('/api/organizations/smtp/test', data);
     return response.data;
   },
+
+  async checkFeatureAccess(path: string): Promise<any> {
+    const res = await api.get("/api/organizations/feature-access", {
+      params: { path },
+    });
+    return res.data;
+  },
 };

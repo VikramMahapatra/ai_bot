@@ -1097,13 +1097,6 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         )
         return
     
-    log_event(
-        db=db,
-        execution_id=execution.id,
-        step_id=edge.target_step_id,
-        event_type="workflow_completed"
-    )
-    
     schedule_workflow_step(
         db,
         execution,

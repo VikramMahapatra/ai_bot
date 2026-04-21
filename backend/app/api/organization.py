@@ -37,10 +37,21 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.models.organization_settings import OrganizationSettings
 from app.services import email_service
 from app.services.organization_setting_service import get_org_settings
+from app.models.organization_limits import OrganizationLimits
 
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
+ROUTE_MODULE_MAP = {
+    "/leads": "module_leads_enabled",
+    "/analytics": "module_analytics_enabled",
+    "/analytics/advanced": "module_advanced_analytics_enabled",
+    "/reports": "module_reports_enabled",
+    "/campaigns": "module_campaigns_enabled",
+    "/appointments": "module_appointments_enabled",
+    "/products": "module_products_enabled",
+    "/users": "module_users_enabled",
+}
 
 class OrganizationMeetingSettingsResponse(BaseModel):
     default_meet_link: str
@@ -636,7 +647,7 @@ def delete_user(
 # ======================== Organization by ID ========================
 
 
-@router.get("/{org_id}", response_model=OrganizationResponse)
+@router.get("/{org_id:int}", response_model=OrganizationResponse)
 def get_organization(
     org_id: int,
     current_user: User = Depends(get_current_user),
@@ -1054,3 +1065,26 @@ def send_test_email(
         raise HTTPException(status_code=400, detail=error)
 
     return {"message": "Test email sent successfully"}
+
+
+@router.get("/feature-access")
+def check_feature_access(
+    path: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == current_user.organization_id
+    ).first()
+
+    module = ROUTE_MODULE_MAP.get(path)
+
+    if not module:
+        return {"allowed": True}
+
+    allowed = getattr(limits, module, False)
+
+    return {
+        "allowed": allowed,
+        "module": module
+    }
