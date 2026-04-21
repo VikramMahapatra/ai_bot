@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks
 from psycopg2 import IntegrityError
-from sqlalchemy import Integer, case, cast, func, or_
+from sqlalchemy import Integer, and_, case, cast, exists, func, literal_column, or_, select, true
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -60,13 +60,14 @@ def get_call_logs(
         params.agent_id
     )
     
+    
     conversation_subq = (
-        db.query(Conversation)
-        .filter(Conversation.session_id == CallLog.call_session_id)
-        .order_by(Conversation.created_at.desc())   # or desc if "latest" needed
+        select(Conversation)
+        .where(Conversation.session_id == CallLog.call_session_id)
+        .order_by(Conversation.created_at.desc())
         .limit(1)
-        .correlate(CallLog)
-        .subquery()
+        .lateral()
+        .alias("conversation_subq")
     )
 
     query = (
@@ -80,10 +81,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(
-            conversation_subq,
-            conversation_subq.c.session_id == CallLog.call_session_id
-        )
+        .outerjoin(conversation_subq, true())
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -125,7 +123,15 @@ def get_call_logs(
 
     # SENTIMENT
     if params.sentiment:
-        query = query.filter(conversation_subq.c.outcome == params.sentiment)
+        query = query.filter(
+            exists().where(
+                and_(
+                    Conversation.session_id == CallLog.call_session_id,
+                    func.lower(func.trim(Conversation.outcome))
+                    == params.sentiment.lower()
+                )
+            )
+        )
 
     # EVALUATION (boolean)
     if params.evaluation is not None:
@@ -1041,10 +1047,9 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         db=db,
         execution_id=execution.id,
         step_id=initial_step.id,
-        event_type="workflow_triggered"
+        event_type="workflow_triggered",
+        metadata={"call_status": call_status, "outcome":outcome}
     )
-
-    print(f"Trigger workflow for {call_status} and {outcome}")
 
     # Get edge from INITIAL step
     edge = db.query(WorkflowEdge).filter(
@@ -1270,18 +1275,23 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
         tz = ZoneInfo("Asia/Kolkata")  # fallback
 
     local_time = scheduled_at.astimezone(tz)
-    
-    print("local time : ", local_time)
+    timezone = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
     
     echo_client = EcholeadsClient()
-    response = echo_client.reschedule_contact_call(campaign.external_campaign_id, contact.external_contact_id, local_time)
+    response = echo_client.reschedule_contact_call(
+        campaign.external_campaign_id,
+        contact.external_contact_id, 
+        local_time, 
+        timezone
+    )
+    
     print("reshedule response :", response)
     return response
 
 def get_call_result(call):
     from app.services.conversation_outcome_service import _classify_outcome_with_llm
     
-    if call.get("transcript") and int(call.get("duration") or 0) > 10:
+    if call.get("transcript") and int(call.get("duration") or 0) > 0:
         call_status = "connected"
     else:
         call_status = "not_connected"

@@ -308,6 +308,7 @@ const CampaignBuilder = () => {
         finally {
             setLoading(false);
         }
+
     };
 
     const handleBackToList = () => {

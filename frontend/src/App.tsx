@@ -406,6 +406,9 @@ const ProtectedRoute: React.FC<{
 
     React.useEffect(() => {
       const checkAccess = async () => {
+        if (userRole == 'SUPERADMIN')
+          return;
+
         try {
           const response = await organizationService.checkFeatureAccess(pathname);
           setAccess(response);
