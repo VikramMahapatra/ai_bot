@@ -683,7 +683,7 @@ def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCam
             print(f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}")
             org_settings = get_org_settings(db, campaign.organization_id)
             try:
-                success, error = send_campaign_email(
+                success, error, message_id = send_campaign_email(
                     campaign_name=campaign.name,
                     subject=template.subject or "Update",
                     message_template=message,
