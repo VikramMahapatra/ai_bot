@@ -85,6 +85,8 @@ class CampaignUpdate(BaseModel):
     retry_on_voicemail: Optional[bool] = None
     
     instant_reply: Optional[bool] = None
+    instant_reply_modes: Optional[List[CampaignInstantReplyMode]] = []
+    instant_reply_templates: Optional[InstantReplyTemplates] = None
     
     @field_validator("max_retry_attempts", "retry_interval", mode="before")
     def empty_string_to_none(cls, v):
