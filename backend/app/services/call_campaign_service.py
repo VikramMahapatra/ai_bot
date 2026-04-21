@@ -556,10 +556,8 @@ def update_campaign(
 
     # Determine campaign status
     if data.start_datetime or data.active_days:
-        campaign.status = "scheduled"
         send_option = "schedule"
     else:
-        campaign.status = "active"
         send_option = "instant"
 
     # Fetch agent external id if agent updated
