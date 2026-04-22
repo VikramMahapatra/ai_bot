@@ -13,11 +13,11 @@ class EcholeadsClient:
             "Content-Type": "application/json"
         }
 
-    def _post(self, endpoint: str, payload: dict):
+    def _post(self, endpoint: str, payload: dict = None):
         try:
             response = requests.post(
                 f"{self.base_url}{endpoint}",
-                json=payload,
+                json=payload or {},
                 headers=self.headers,
                 timeout=15
             )
@@ -177,7 +177,7 @@ class EcholeadsClient:
         return self._put(f"/campaigns/{campaign_id}", payload)
     
     def start_campaign(self, campaign_id: int):
-        return self._put(f"/campaigns/{campaign_id}/start")
+        return self._post(f"/campaigns/{campaign_id}/start")
     
     def create_contact(self, payload: dict):
         return self._post("/contact", payload)

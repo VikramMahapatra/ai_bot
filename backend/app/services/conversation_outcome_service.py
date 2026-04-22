@@ -313,6 +313,8 @@ def process_pending_lead_outcomes(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
+    ).filter(
+        Lead.lead_outcome.is_(None)
     )
 
     if organization_id is not None:
@@ -386,6 +388,8 @@ def process_pending_lead_funnel_tags(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
+    ).filter(
+        Lead.funnel_stage.is_(None)
     )
 
     if organization_id is not None:
@@ -426,6 +430,8 @@ def process_pending_lead_funnel_tags(
                     FunnelCategory.organization_id == org_id,
                     FunnelCategory.is_active == True,
                 ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
+                
+            logger.info(f"Running llm for lead : {lead_id}")
 
             inferred_funnel_stage = _classify_funnel_stage_with_llm(
                 _build_transcript(rows),
