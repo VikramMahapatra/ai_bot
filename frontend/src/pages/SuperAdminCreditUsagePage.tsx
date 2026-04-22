@@ -20,6 +20,8 @@ import { alpha, useTheme } from "@mui/material/styles";
 import SuperAdminLayout from "../components/Layout/SuperAdminLayout";
 import { OrgCreditAdminMonthSummary } from "../types/orgCreditBilling";
 import { SuperAdminOrganization } from "../types";
+import { superadminService } from "../services/superadminService";
+import OrganizationCard from "./SuperAdminAgentCard";
 
 const toCurrency = (value: number): string =>
   value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -61,20 +63,22 @@ function delay(ms: number) {
     setTimeout(resolve, ms);
   });
 }
+type OrgFilter = 'all' | number;
 
 const SuperAdminCreditUsagePage: React.FC = () => {
   const theme = useTheme();
-  const [organizations] =
-    useState<SuperAdminOrganization[]>(MOCK_ORGANIZATIONS);
-  const [selectedOrgId, setSelectedOrgId] = useState<number | "">(
-    MOCK_ORGANIZATIONS[0]?.id ?? "",
-  );
+
   const [billingPeriod, setBillingPeriod] = useState("");
   const [summary, setSummary] = useState<OrgCreditAdminMonthSummary | null>(
     null,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>(
+    [],
+  );
+  const [orgFilter, setOrgFilter] = useState<OrgFilter>('all');
 
   const billingPeriodLabel = useMemo(() => {
     const t = billingPeriod.trim();
@@ -85,34 +89,45 @@ const SuperAdminCreditUsagePage: React.FC = () => {
     return `${y}-${m}`;
   }, [billingPeriod]);
 
-  const fetchSummary = useCallback(async () => {
-    if (selectedOrgId === "") {
-      setSummary(null);
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      await delay(400);
-      const org = organizations.find((o) => o.id === selectedOrgId);
-      if (!org) {
-        setError("Organization not found");
-        setSummary(null);
-        return;
-      }
-      setSummary(buildMockSummary(org, billingPeriodLabel));
-    } catch {
-      setError("Failed to load credit summary");
-      setSummary(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedOrgId, billingPeriodLabel, organizations]);
+  // const fetchSummary = useCallback(async () => {
+  //   if (selectedOrgId === "") {
+  //     setSummary(null);
+  //     return;
+  //   }
+  //   setLoading(true);
+  //   setError("");
+  //   try {
+  //     await delay(400);
+  //     const org = organizations.find((o) => o.id === selectedOrgId);
+  //     if (!org) {
+  //       setError("Organization not found");
+  //       setSummary(null);
+  //       return;
+  //     }
+  //     // setSummary(buildMockSummary(org, billingPeriodLabel));
+  //   } catch {
+  //     setError("Failed to load credit summary");
+  //     setSummary(null);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }, [selectedOrgId, billingPeriodLabel, organizations]);
+
+  const loadOrganizations = async () => {
+    const data = await superadminService.listOrganizations();
+    setOrganizations(data);
+  };
+
+
 
   useEffect(() => {
-    if (selectedOrgId === "") return;
-    fetchSummary();
-  }, [selectedOrgId, billingPeriodLabel, fetchSummary]);
+    loadOrganizations();
+  }, []);
+
+  // useEffect(() => {
+  //   if (selectedOrgId === "") return;
+  //   fetchSummary();
+  // }, [selectedOrgId, billingPeriodLabel, fetchSummary]);
 
   const usagePercent = useMemo(() => {
     if (!summary || summary.total_credit <= 0) return 0;
@@ -122,9 +137,8 @@ const SuperAdminCreditUsagePage: React.FC = () => {
     );
   }, [summary]);
 
-  const handleOrgChange = (e: SelectChangeEvent<number | "">) => {
-    const v = e.target.value;
-    setSelectedOrgId(v === "" ? "" : Number(v));
+  const handleOrgChange = (value: string) => {
+   // setSelectedOrgId(value === "" ? "" : Number(value));
   };
 
   return (
@@ -172,7 +186,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
             spacing={1}
             sx={{ minWidth: { md: 360 } }}
           >
-            <FormControl size="small" fullWidth sx={{ minWidth: { sm: 200 } }}>
+            {/* <FormControl size="small" fullWidth sx={{ minWidth: { sm: 200 } }}>
               <InputLabel id="superadmin-credit-org-label">
                 Organization
               </InputLabel>
@@ -189,8 +203,8 @@ const SuperAdminCreditUsagePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </Select>
-            </FormControl>
-            <TextField
+            </FormControl>  */}
+            {/* <TextField
               size="small"
               label="Billing period (optional)"
               placeholder="YYYY-MM"
@@ -205,7 +219,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
               disabled={loading || selectedOrgId === ""}
             >
               {loading ? "Loading..." : "Refresh"}
-            </Button>
+            </Button> */}
           </Stack>
         </Stack>
       </Paper>
@@ -281,7 +295,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
             </Grid>
           </Grid>
 
-          <Card variant="outlined" sx={{ borderRadius: "14px" }}>
+          {/* <Card variant="outlined" sx={{ borderRadius: "14px" }}>
             <CardContent>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.6 }}>
                 {summary.organization_name} | {summary.billing_period}
@@ -305,9 +319,91 @@ const SuperAdminCreditUsagePage: React.FC = () => {
                 automatically after month close.
               </Typography>
             </CardContent>
-          </Card>
+          </Card> */}
         </>
       ) : null}
+
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        alignItems={{ xs: "stretch", sm: "center" }}
+        justifyContent="space-between"
+        mb={2}
+        width="100%"
+      >
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} flex={1}>
+          {/* Search box bigger */}
+          <TextField
+            fullWidth
+            size="small"
+            label="Search"
+            variant="outlined"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            //sx={{ flex: 1 }} // take 3/4 of the row
+          />
+
+          {/* Orgnization Filter */}
+          <FormControl fullWidth size="small">
+                        <InputLabel>Organization Filter</InputLabel>
+                        <Select
+                          value={orgFilter}
+                          label="Organization Filter"
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setOrgFilter(value === 'all' ? 'all' : Number(value));
+                          }}
+                        >
+                          <MenuItem value="all">All Organizations</MenuItem>
+                          {organizations.map((org) => (
+                            <MenuItem key={org.id} value={org.id}>
+                              {org.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+          <TextField
+            size="small"
+            label="Billing period (optional)"
+            placeholder="YYYY-MM"
+            value={billingPeriod}
+            onChange={(e) => setBillingPeriod(e.target.value)}
+            helperText="Leave blank for current month"
+            sx={{ minWidth: { sm: 200 } }}
+          />
+        </Stack>
+      </Stack>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <OrganizationCard
+            name="Agent B"
+            date="Apr 2026"
+            usage={15}
+            invoice={3}
+            credits={{
+              allocated: 50,
+              used: 20,
+              remaining: 30,
+            }}
+          />
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <OrganizationCard
+            name="Agent A"
+            date="Mar 2026"
+            usage={10}
+            invoice={2}
+            credits={{
+              allocated: 150,
+              used: 50,
+              remaining: 100,
+            }}
+          />
+        </Grid>
+      </Grid>
     </SuperAdminLayout>
   );
 };
