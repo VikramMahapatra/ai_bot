@@ -288,7 +288,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       </Box>
       {/* STATS */}
       <Grid container spacing={2} mb={3}>
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="body2">Total Contacts</Typography>
@@ -299,7 +299,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="body2">Calls Made</Typography>
@@ -309,19 +309,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} md={2.4}>
-          <Card>
-            <CardContent>
-              <Typography variant="body2">Scheduled</Typography>
-              <Typography variant="h5">
-                {campaign?.scheduled_calls || 0}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="body2">Success Rate</Typography>
@@ -332,7 +320,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={2.4}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="body2">Progress</Typography>
@@ -591,7 +579,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       color: "primary.main",
                       fontWeight: 500,
                     }}
-                    //onClick={() => onEdit(campaign?.agent_id)}
+                  //onClick={() => onEdit(campaign?.agent_id)}
                   >
                     {campaign?.calling_no || "-"}
                   </Box>
@@ -695,7 +683,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             color: "error.main",
                             fontWeight: 500,
                           }}
-                          //onClick={() => onEdit(campaign?.agent_id)}
+                        //onClick={() => onEdit(campaign?.agent_id)}
                         >
                           {formatEndedReason(log.ended_reason)}
                         </Box>

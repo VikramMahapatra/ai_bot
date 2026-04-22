@@ -1104,23 +1104,30 @@ def update_campaign_status(
                 status_code=400,
                 detail=f"Only paused campaign can be started"
             )
+    elif data.status.lower() == "cancelled":
+        if campaign.status not in ("paused", "running"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only running/paused campaign can be cancelled"
+            )
             
     payload = {
-        "status": data.status
+        "status": "paused" if data.status.lower() == "cancelled" else data.status 
     }
 
     client = EcholeadsClient()
     echo_success = True
     try:
         
-        if data.status.lower() == "running": 
+        if data.status.lower() == "paused": 
             response = client.update_campaign(
                 campaign.external_campaign_id,
                 payload
             )
             
             if response and "campaign" in response:
-                campaign.status = response["campaign"].get("status", campaign.status)
+                echo_status = response["campaign"].get("status", campaign.status)
+                campaign.status = "cancelled" if data.status.lower() == "cancelled" else echo_status
             else:
                 echo_success = False
         else:
@@ -1135,7 +1142,17 @@ def update_campaign_status(
     db.commit()
     db.refresh(campaign)
     
-    error_status_code = "start" if data.status.lower() == "paused" else "pause"
+    status = data.status.lower()
+    
+
+    if status == "paused":
+        error_status_code = "pause"
+    elif status == "running":
+        error_status_code = "start"
+    elif status == "cancelled":
+        error_status_code = "cancel"
+    else:
+        error_status_code = "update"
 
     return {
         "message": "Campaign status updated" if echo_success else f"Failed to {error_status_code} the campaign",
@@ -1420,7 +1437,7 @@ def sync_campaign_from_echoleads(
         # -------------------------
         # Update Basic Campaign Data
         # -------------------------
-        campaign.status = campaign_data.get("status", campaign.status)
+        campaign.status = "cancelled" if campaign.status == "cancelled" else campaign_data.get("status", campaign.status)
         campaign.external_campaign_id = campaign_data.get(
             "id", campaign.external_campaign_id
         )

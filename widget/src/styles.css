@@ -14,17 +14,18 @@
   align-items: center;
   justify-content: center;
 
-  transition: all 0.25s ease;
-
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.32);
+  transition: box-shadow 0.25s ease, filter 0.25s ease, background 0.25s ease;
+  will-change: box-shadow;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
-/* hover = color shift + lift */
 .chat-launcher:hover {
-  transform: translateY(-2px) scale(1.03);
-
-  filter: brightness(1.1);
+  filter: brightness(1.08);
+  box-shadow: 0 22px 42px rgba(15, 23, 42, 0.38);
 }
+
 
 /* active press effect */
 .chat-launcher:active {
@@ -104,6 +105,8 @@
   font-size: 13px;
   letter-spacing: 0.1px;
   transition: background 0.3s, color 0.3s;
+  transform: none !important;
+  will-change: auto;
 }
 
 /* Dark mode support */
