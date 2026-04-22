@@ -47,6 +47,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SearchIcon from "@mui/icons-material/Search";
+import { useCredits } from '../context/CreditsContext';
+import { FEATURE_CODES, CREDIT_ERRORS } from '../types/creditModules';
 
 interface User extends OrganizationUser {
   organization_id?: number;
@@ -84,6 +86,8 @@ const UserManagementPage: React.FC = () => {
   const [userTotal, setUserTotal] = useState(0);
   const [userPage, setUserPage] = useState(0);
   const [userRowsPerPage, setUserRowsPerPage] = useState(10);
+
+  const { getRequiredCredits, totalCredits, refreshCredits } = useCredits();
 
   useEffect(() => {
     if (!isAdmin) {
@@ -134,6 +138,17 @@ const UserManagementPage: React.FC = () => {
     });
   };
 
+  const validateUserCredits = () => {
+    const required = getRequiredCredits(FEATURE_CODES.PLATFORM_USER);
+
+    if (totalCredits < required) {
+      setError(CREDIT_ERRORS.INSUFFICIENT_CREDITS);
+      return false;
+    }
+
+    return true;
+  };
+
   const handleOpenDialog = (user?: User) => {
     if (user) {
       setEditingUser(user);
@@ -145,6 +160,11 @@ const UserManagementPage: React.FC = () => {
         assigned_widget_ids: user.assigned_widget_ids || [],
       });
     } else {
+
+      if (!validateUserCredits()) {
+        return;
+      }
+
       setEditingUser(null);
       setFormData({
         username: "",
@@ -196,6 +216,7 @@ const UserManagementPage: React.FC = () => {
       setError(null);
       handleCloseDialog();
       fetchUsers();
+      refreshCredits();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create user");
     }
@@ -494,13 +515,13 @@ const UserManagementPage: React.FC = () => {
                               ))}
                               {(!user.assigned_widget_ids ||
                                 user.assigned_widget_ids.length === 0) && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  No agents assigned
-                                </Typography>
-                              )}
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    No agents assigned
+                                  </Typography>
+                                )}
                             </Box>
                           ) : (
                             <Typography

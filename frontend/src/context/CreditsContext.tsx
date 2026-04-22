@@ -6,7 +6,6 @@ import React, {
     useCallback,
     ReactNode,
 } from "react";
-import axios from "axios";
 import { CreditItem, CreditMonthlySummary, organizationCreditService, PriceMatrixItem } from "../services/organizationCreditService";
 
 // Types
@@ -27,7 +26,8 @@ interface CreditsContextType {
     getRequiredCredits: (featureCode: string) => number;
     getRequiredCreditInfo: (featureCode: string) => CreditInfo;
     reserveCredits: (feature_code: string, referenceType: string, referenceId: string, requiredCredits: number) => Promise<void>;
-    consumeCredits: (feature_code: string, referenceType: string, referenceId: string, quantity: number) => Promise<void>;
+    consumeCredits: (feature_code: string, referenceType: string, referenceId: string, actual_quantity: number) => Promise<void>;
+    deductCredits: (feature_code: string, quantity: number, referenceType?: string, referenceId?: string) => Promise<void>;
 }
 
 // Context
@@ -129,11 +129,39 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
         }
     };
 
+    const deductCredits = async (
+        feature_code: string,
+        quantity: number,
+        referenceType?: string,
+        referenceId?: string
+    ) => {
+
+        try {
+
+            const success = await organizationCreditService.deductCredits(
+                feature_code,
+                quantity,
+                referenceType,
+                referenceId
+            );
+
+            if (success) {
+                await fetchCredits();
+            }
+
+            return success;
+
+        } catch (err) {
+            console.error("Consume credits failed", err);
+            return false;
+        }
+    };
+
     const consumeCredits = async (
         feature_code: string,
         referenceType: string,
         referenceId: string,
-        quantity: number
+        actual_quantity: number
     ) => {
 
         try {
@@ -142,7 +170,7 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
                 feature_code,
                 referenceType,
                 referenceId,
-                quantity
+                actual_quantity
             );
 
             if (success) {
@@ -170,6 +198,7 @@ export const CreditsProvider: React.FC<CreditsProviderProps> = ({ children }) =>
                 getRequiredCreditInfo,
                 reserveCredits,
                 consumeCredits,
+                deductCredits
             }}
         >
             {children}

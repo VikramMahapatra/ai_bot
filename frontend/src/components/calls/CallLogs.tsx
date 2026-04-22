@@ -514,6 +514,8 @@ export const CallLogsTab = () => {
                 <MenuItem value="positive">Positive</MenuItem>
                 <MenuItem value="negative">Negative</MenuItem>
                 <MenuItem value="neutral">Neutral</MenuItem>
+                <MenuItem value="satisfactory">Satisfactory</MenuItem>
+                <MenuItem value="unresolved">Unresolved</MenuItem>
               </TextField>
             </Grid>
 

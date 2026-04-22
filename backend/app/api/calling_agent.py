@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Annotated, List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentRead, CallingAgentUpdate, TestCallRequest
 from app.database import get_db
 from sqlalchemy.orm import Session
@@ -45,6 +45,7 @@ def update_agent(
 
 @router.get("/all")
 def read_agents(
+    background_tasks: BackgroundTasks,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10,
@@ -52,7 +53,7 @@ def read_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return service.read_agents(db, current_user.organization_id, search, skip, limit, sortBy)
+    return service.read_agents(background_tasks, db, current_user.organization_id, search, skip, limit, sortBy)
     
 @router.get("/{agent_id:int}", response_model=CallingAgentRead)
 def get_agent(agent_id: int, db: Session = Depends(get_db)):

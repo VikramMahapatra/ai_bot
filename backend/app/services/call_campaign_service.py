@@ -72,14 +72,13 @@ def get_campaign_stats(db: Session, organization_id: int):
 
     return result
 
-def list_campaigns(
+def sync_campaigns(
     db: Session,
-    organization_id:int,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10
 ):
-    ###SYNC FROM ECHOLEAD
     campaign_models = db.query(CallCampaign).filter(
         CallCampaign.is_deleted == False,
         CallCampaign.organization_id == organization_id
@@ -99,6 +98,24 @@ def list_campaigns(
             sync_campaign_from_echoleads(db, echolead_client, campaign)
 
     db.commit()
+
+def list_campaigns(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    organization_id:int,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10
+):
+    ###SYNC FROM ECHOLEAD
+    background_tasks.add_task(
+        sync_campaigns,
+        db,
+        organization_id,
+        search,
+        skip,
+        limit
+    )
 
     contact_count_subq = (
         db.query(
@@ -143,9 +160,7 @@ def list_campaigns(
 
     # TOTAL COUNT (before pagination)
     total = base_query.count()
-    
-    print(total)
-
+   
     # PAGINATION
     campaigns = (
         base_query
@@ -512,7 +527,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )     
     else:
         message = "Campaign created successfully"
@@ -523,7 +538,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )
         
     db.commit()    
@@ -556,10 +571,8 @@ def update_campaign(
 
     # Determine campaign status
     if data.start_datetime or data.active_days:
-        campaign.status = "scheduled"
         send_option = "schedule"
     else:
-        campaign.status = "active"
         send_option = "instant"
 
     # Fetch agent external id if agent updated
