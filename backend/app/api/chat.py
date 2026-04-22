@@ -2888,7 +2888,10 @@ async def get_history(
     )
     if widget_id:
         query = query.filter(Conversation.widget_id == widget_id)
-    conversations = query.order_by(Conversation.created_at).all()
+    conversations = query.order_by(
+        Conversation.created_at,
+         Conversation.id
+        ).all()
     
     return conversations
 

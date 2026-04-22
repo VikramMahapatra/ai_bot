@@ -53,6 +53,18 @@ def send_sms(message: str, to_number: str, organization_id: int | None = None) -
         message_text=message,
         is_active=True,
     )
+    
+def send_sms_using_twilio(db:Session, message: str, to_number: str, organization_id: int | None = None) -> tuple[bool, Optional[str]]:
+    """Send SMS using bootstrap Twilio configuration from env settings."""
+    twilio_config = get_twilio_sms_config(db=db, organization_id=organization_id)
+    return send_twilio_sms_with_credentials(
+        account_sid=twilio_config["account_sid"],
+        auth_token=twilio_config["has_auth_token"],
+        from_number=twilio_config["from_phone_number"],
+        to_number=to_number,
+        message_text=message,
+        is_active=True,
+    )
 
 
 def send_bootstrap_test_sms(to_number: str) -> tuple[bool, Optional[str]]:

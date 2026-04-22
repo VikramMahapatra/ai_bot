@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Body, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -388,8 +388,7 @@ async def get_admin_org_credit_current_month_summary(
 @router.get("/widget/config/{widget_id}")
 async def get_widget_config(
     widget_id: str,
-    db: Session = Depends(get_db),
-    settings: OrganizationSettings = Depends(get_settings),
+    db: Session = Depends(get_db)
 ):
     """Get widget configuration (public endpoint)"""
     from app.models import WidgetConfig
@@ -397,6 +396,8 @@ async def get_widget_config(
     config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
+    
+    settings = get_org_settings(db, config.organization_id)
 
     if _ensure_widget_escalation_contacts(config, settings):
         db.commit()
@@ -617,6 +618,7 @@ async def update_widget_config(
 
 @router.post("/outcomes/process")
 async def run_outcome_processing_now(
+    background_tasks: BackgroundTasks,
     payload: Optional[dict] = Body(None),
     current_user: User = Depends(require_admin),
 ):
@@ -632,12 +634,15 @@ async def run_outcome_processing_now(
         else settings.OUTCOME_DAEMON_MAX_BATCHES
     )
 
-    processed, failed = run_outcome_processing_batches(
+    background_tasks.add_task(
+        run_outcome_processing_batches,
         batch_size=batch_size,
         max_batches=max_batches,
         organization_id=current_user.organization_id,
     )
-    return {"processed": processed, "failed": failed}
+    return {
+        "message": "Outcome processing has started. Results will be available shortly."
+    }
 
 
 @router.get("/widgets")
