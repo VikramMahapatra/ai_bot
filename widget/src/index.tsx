@@ -94,12 +94,12 @@ async function initWidget() {
       <ChatWidget
         widgetId={config.widgetId}
         apiUrl={config.apiUrl}
-        name={config.name || remoteConfig?.name}
-        welcomeMessage={config.welcomeMessage || remoteConfig?.welcome_message}
-        primaryColor={config.primaryColor || remoteConfig?.primary_color}
-        secondaryColor={config.secondaryColor || remoteConfig?.secondary_color}
+        name={remoteConfig?.name || config.name}
+        welcomeMessage={remoteConfig?.welcome_message || config.welcomeMessage}
+        primaryColor={remoteConfig?.primary_color || config.primaryColor}
+        secondaryColor={remoteConfig?.secondary_color || config.secondaryColor}
         chatHeaderFontColor={config.chatHeaderFontColor || iconSelection.chatHeaderFontColor}
-        position={config.position || remoteConfig?.position}
+        position={remoteConfig?.position || config.position}
         botIcon={config.botIcon || iconSelection.botIcon}
         userIcon={config.userIcon || iconSelection.userIcon}
         shop={shopifyShop}

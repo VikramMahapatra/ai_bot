@@ -9,7 +9,7 @@ from app.models.user import Organization
 from app.config import settings
 from app.services.limits_service import get_or_create_usage
 from app.services.funnel_category_service import get_funnel_categories
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 import logging
 
@@ -292,7 +292,7 @@ def get_report_summary(
     # Calculate aggregations
     total_conversations = len(metrics)
     total_messages = sum(m.total_messages for m in metrics)
-    total_tokens = sum(m.total_tokens for m in metrics)
+    total_tokens = sum(m.total_tokens or 0 for m in metrics)
     average_tokens = total_tokens / total_conversations if total_conversations > 0 else 0
     total_leads = sum(1 for m in metrics if m.has_lead == 1)
     average_duration = sum(m.conversation_duration for m in metrics) / total_conversations if total_conversations > 0 else 0
@@ -702,8 +702,8 @@ def sync_conversation_metrics(
         ).first()
         
         # Get lead info if exists
-        lead = db.query(Lead).filter(
-            Lead.session_id == session_id
+        lead = db.query(Lead).join(LeadContactMapping, LeadContactMapping.lead_id == Lead.id).filter(
+            LeadContactMapping.contact_id == conversation.contact_id
         ).first()
 
         session_start, session_end, session_turns = db.query(
@@ -770,3 +770,137 @@ def sync_conversation_metrics(
         db.commit()
     except Exception as e:
         logger.error(f"Error syncing conversation metrics: {str(e)}", exc_info=True)
+        
+def sync_voice_metrics_from_conversation(
+    db: Session,
+    session_id: str,
+    organization_id: int,
+    token_usage: Optional[Dict] = None,
+):
+    """Voice-safe metrics using Conversation table (not perfect but consistent)"""
+
+    try:
+
+        conversations = db.query(Conversation).filter(
+            Conversation.organization_id == organization_id,
+            Conversation.session_id == session_id,
+            Conversation.source == "voice"
+        ).order_by(Conversation.created_at.asc()).all()
+
+        if not conversations:
+            return
+
+        # -------------------------
+        # REAL COUNTS (FIXED)
+        # -------------------------
+        user_msgs = 0
+        agent_msgs = 0
+
+        for c in conversations:
+            if c.message and c.message.strip():
+                user_msgs += 1
+            if c.response and c.response.strip():
+                agent_msgs += 1
+
+        total_messages = user_msgs + agent_msgs
+        total_turns = min(user_msgs, agent_msgs)
+
+        # -------------------------
+        # TIME RANGE
+        # -------------------------
+        session_start = conversations[0].created_at
+        session_end = conversations[-1].created_at
+        
+        session_start = normalize_dt(session_start)
+        session_end = normalize_dt(session_end)
+
+        duration = (
+            (session_end - session_start).total_seconds()
+            if session_start and session_end else 0
+        )
+
+        # -------------------------
+        # LEAD INFO
+        # -------------------------
+        lead = db.query(Lead).join(LeadContactMapping).filter(
+            LeadContactMapping.contact_id == conversations[0].contact_id
+        ).first()
+
+        # -------------------------
+        # UPSERT METRICS
+        # -------------------------
+        existing = db.query(ConversationMetrics).filter(
+            ConversationMetrics.session_id == session_id,
+            ConversationMetrics.organization_id == organization_id
+        ).first()
+
+        prompt_tokens = token_usage.get("prompt_tokens", 0) if token_usage else 0
+        completion_tokens = token_usage.get("completion_tokens", 0) if token_usage else 0
+        total_tokens = token_usage.get("total_tokens", 0) if token_usage else 0
+
+        if existing:
+
+            existing.total_messages = total_messages
+            existing.total_user_messages = user_msgs
+            existing.total_ai_messages = agent_msgs
+            existing.total_turns = total_turns
+
+            existing.conversation_start = session_start
+            existing.conversation_end = session_end
+            existing.conversation_duration = duration
+
+            existing.has_lead = 1 if lead else 0
+            existing.lead_name = lead.name if lead else None
+            existing.lead_email = lead.email if lead else None
+            existing.lead_company = lead.company if lead else None
+
+            existing.total_tokens = total_tokens
+            existing.prompt_tokens = prompt_tokens
+            existing.completion_tokens = completion_tokens
+
+        else:
+
+            metrics = ConversationMetrics(
+                conversation_id=None,  # IMPORTANT: voice should not depend on single row
+                session_id=session_id,
+                organization_id=organization_id,
+                widget_id=conversations[0].widget_id,
+                user_id=None,
+
+                total_messages=total_messages,
+                total_user_messages=user_msgs,
+                total_ai_messages=agent_msgs,
+                total_turns=total_turns,
+
+                conversation_start=session_start,
+                conversation_end=session_end,
+                conversation_duration=duration,
+
+                has_lead=1 if lead else 0,
+                lead_name=lead.name if lead else None,
+                lead_email=lead.email if lead else None,
+                lead_company=lead.company if lead else None,
+
+                total_tokens=total_tokens,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+
+            db.add(metrics)
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Voice metrics sync failed: {str(e)}", exc_info=True)
+
+
+def normalize_dt(dt):
+    if not dt:
+        return None
+
+    # if naive → assume UTC
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+
+    return dt
