@@ -605,7 +605,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                         )}
                                                     </IconButton>
                                                 </Tooltip>
-                                                {/* <Tooltip title="Cancel Campaign">
+                                                <Tooltip title="Cancel Campaign">
                                                     <IconButton
                                                         size="small"
                                                         color="error"
@@ -616,7 +616,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                     >
                                                         <CancelIcon />
                                                     </IconButton>
-                                                </Tooltip> */}
+                                                </Tooltip>
                                             </>
                                         )}
                                         <Tooltip title="View Analytics">
