@@ -1142,6 +1142,7 @@ def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: Cal
     ).first()
 
     if not edge:
+        execution.status = "completed"
         log_event(
             db=db,
             execution_id=execution.id,
@@ -1162,6 +1163,7 @@ def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: Cal
     ).first()
 
     if not step_outcome:
+        execution.status = "completed"
         log_event(
             db=db,
             execution_id=execution.id,
@@ -1202,8 +1204,6 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         event_type="scheduled",
         metadata={"delay": delay, "step_type": step_outcome.step_type}
     )
-    
-   
 
     # If action is call → schedule call
     if step_outcome.step_type == "call":
@@ -1223,7 +1223,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         
         if call_log.contact_id:
             contact = db.query(Contact).filter(
-                Contact.external_contact_id == call_log.contact_id
+                Contact.id == call_log.contact_id
             ).first()
             
         template  = db.query(MessageTemplate).filter(
