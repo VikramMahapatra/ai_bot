@@ -301,6 +301,85 @@ def deduct_credits(
 
     db.flush()
     return True
+
+def refund_credits(
+    db,
+    organization_id: int,
+    feature_code: str,
+    quantity: float,
+    reference_type: str | None = None,
+    reference_id: str | None = None
+):
+    item = db.query(PriceMatrixItem).filter(
+        PriceMatrixItem.feature_code == feature_code,
+        PriceMatrixItem.is_active == True
+    ).first()
+
+    if not item:
+        raise Exception("Invalid feature")
+
+    credits_to_refund = quantity * item.credits_per_unit
+
+    # -------------------------
+    # Prevent over-refund
+    # -------------------------
+    consumed = db.query(
+        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
+    ).filter(
+        OrganizationCreditUsage.organization_id == organization_id,
+        OrganizationCreditUsage.feature_code == feature_code,
+        OrganizationCreditUsage.reference_id == str(reference_id),
+        OrganizationCreditUsage.status == "consumed"
+    ).scalar()
+
+    refunded = db.query(
+        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
+    ).filter(
+        OrganizationCreditUsage.organization_id == organization_id,
+        OrganizationCreditUsage.feature_code == feature_code,
+        OrganizationCreditUsage.reference_id == str(reference_id),
+        OrganizationCreditUsage.status == "refunded"
+    ).scalar()
+
+    # refunded will be negative if you follow ledger style
+    net_consumed = consumed + refunded
+
+    if credits_to_refund > net_consumed:
+        raise Exception("Refund exceeds consumed credits")
+
+    # -------------------------
+    # Create refund entry (ledger style)
+    # -------------------------
+    usage = OrganizationCreditUsage(
+        organization_id=organization_id,
+        price_matrix_item_id=item.id,
+        used_quantity=quantity,
+        credits_used=-credits_to_refund,  # 🔥 negative entry
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+        status="refunded"
+    )
+
+    db.add(usage)
+
+    # -------------------------
+    # Update balance
+    # -------------------------
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).with_for_update().first()
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    balance.used_credit -= credits_to_refund
+    balance.remaining_credit = balance.total_credit - balance.used_credit
+
+    db.flush()
+    return True
     
 def reserve_credits(
     db,

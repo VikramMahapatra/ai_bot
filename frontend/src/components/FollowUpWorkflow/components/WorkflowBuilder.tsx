@@ -152,7 +152,7 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
     useEffect(() => {
         if (!workflowId) {
             setNodes(initialNodes as any);
-            setEdges(initialEdges as any);
+            setEdges([]);
             return;
         }
 

@@ -302,7 +302,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="body2">Calls Made</Typography>
+              <Typography variant="body2">Calls Completed</Typography>
               <Typography variant="h5">
                 {campaign?.completed_calls || 0}/{campaign?.total_calls || 0}
               </Typography>
