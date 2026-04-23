@@ -1131,7 +1131,7 @@ def update_campaign_status(
     echo_success = True
     try:
         
-        if data.status.lower() == "paused": 
+        if data.status.lower() in ("paused", "cancelled"): 
             response = client.update_campaign(
                 campaign.external_campaign_id,
                 payload
