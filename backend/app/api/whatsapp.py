@@ -14,6 +14,7 @@ from app.services.limits_service import get_effective_limits, increment_usage
 from app.services.whatsapp_service import (
     WhatsAppEmbeddedSignupError,
     exchange_meta_embedded_signup_code,
+    send_whatsapp_test_message,
     send_whatsapp_text_message,
     verify_meta_signature,
 )
@@ -145,7 +146,7 @@ async def send_test_whatsapp_message(
     if not config:
         raise HTTPException(status_code=404, detail="WhatsApp channel is not configured or inactive")
 
-    result = send_whatsapp_text_message(
+    result = send_whatsapp_test_message(
         phone_number_id=config.phone_number_id,
         access_token=config.access_token,
         to_number=payload.to_number,
