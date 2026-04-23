@@ -561,7 +561,7 @@ def process_call(db, call, agent):
                 continue_workflow_from_call(db, execution, call_log, call)
                 return
             
-            print("new workflow trigger")
+            print(f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}")
             trigger_workflow_from_call(
                 db,
                 campaign.workflow_id,
@@ -1295,14 +1295,14 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
         tz = ZoneInfo("Asia/Kolkata")  # fallback
 
     local_time = scheduled_at.astimezone(tz)
-    timezone = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
+    timezone_str  = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
     
     echo_client = EcholeadsClient()
     response = echo_client.reschedule_contact_call(
         campaign.external_campaign_id,
         contact.external_contact_id, 
         local_time, 
-        timezone
+        timezone_str 
     )
     
     print("reshedule response :", response)

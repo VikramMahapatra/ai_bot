@@ -194,7 +194,7 @@ class EcholeadsClient:
     def fetch_bookings(self):
         return self._get("/calendar-booking")
     
-    def reschedule_contact_call(self, campaign_id, contact_id, scheduled_at, timezone):
+    def reschedule_contact_call(self, campaign_id, contact_id, scheduled_at, timezone_str ):
         schedule_date = scheduled_at.strftime("%Y-%m-%d")
         schedule_time = scheduled_at.strftime("%H:%M")
         payload = {
@@ -203,7 +203,7 @@ class EcholeadsClient:
             "send_option": "schedule",
             "schedule_date": schedule_date,
             "schedule_time": schedule_time,
-            "timezone": timezone
+            "timezone": timezone_str 
         }
         
         print("payload", payload)
