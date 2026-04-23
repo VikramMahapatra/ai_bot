@@ -195,7 +195,7 @@ const CreditSummaryDialog = ({
                                             >
                                                 {formatDecimal(c.consumed)} consumed •{" "}
                                                 <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>
-                                                    -{formatDecimal(c.refunded)} refunded
+                                                    {formatDecimal(c.refunded)} refunded
                                                 </Box>
                                             </Typography>
                                         )}
