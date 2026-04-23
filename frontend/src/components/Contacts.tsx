@@ -33,7 +33,8 @@ import {
     InputLabel,
     Select,
     Autocomplete,
-    Drawer
+    Drawer,
+    Snackbar
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
@@ -201,11 +202,9 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     };
 
     useEffect(() => {
-        loadContactLists();
-         loadAllContacts();
-         loadContactListLookup();
+        loadAllContacts();
         setUploadResult(null);
-    }, [allContactSearch]);
+    }, [allContactSearch, allContactPage, allContactRowsPerPage]);
 
     /* ---------------------------
     Search Filter
@@ -298,8 +297,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
             await loadAllContacts();
         } catch (err: any) {
             showError(err?.response?.data?.detail || 'Failed to delete contact');
+
         } finally {
             setLoading(false);
+            window.scrollTo({ top: 0, behavior: 'auto' });
         }
     };
 
@@ -591,46 +592,33 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
     return (
         <>
-            {(success || error) && (
-                <Stack
-                    mb={2}
+            <Snackbar
+                open={Boolean(success || error)}
+                autoHideDuration={4000}
+                onClose={() => {
+                    setError("");
+                    setSuccess("");
+                }}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            >
+                <Alert
+                    severity={error ? "error" : "success"}
+                    onClose={() => {
+                        setError("");
+                        setSuccess("");
+                    }}
+                    sx={{
+                        borderRadius: '14px',
+                        boxShadow: (theme) =>
+                            `0 10px 18px ${error
+                                ? theme.palette.error.dark
+                                : theme.palette.success.dark
+                            }20`,
+                    }}
                 >
-                    {error && (
-                        <Alert severity="error"
-                            sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}
-                            action={
-                                <IconButton
-                                    aria-label="close"
-                                    color="inherit"
-                                    size="small"
-                                    onClick={() => setError("")} // clears the error
-                                >
-                                    <CloseIcon fontSize="inherit" />
-                                </IconButton>
-                            }
-                        >
-                            {error}
-                        </Alert>
-                    )}
-                    {success && (
-                        <Alert severity="success"
-                            sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}
-                            action={
-                                <IconButton
-                                    aria-label="close"
-                                    color="inherit"
-                                    size="small"
-                                    onClick={() => setSuccess("")} // clears the success message
-                                >
-                                    <CloseIcon fontSize="inherit" />
-                                </IconButton>
-                            }
-                        >
-                            {success}
-                        </Alert>
-                    )}
-                </Stack>
-            )}
+                    {error || success}
+                </Alert>
+            </Snackbar>
             <Paper sx={{ ...sectionPanelSx, borderRadius: '16px' }}>
                 <Tabs
                     value={tab}

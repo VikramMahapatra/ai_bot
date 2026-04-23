@@ -86,14 +86,15 @@ def get_credit_summary(
         func.coalesce(
             func.sum(
                 case(
-                    (OrganizationCreditUsage.status == "consumed",
-                     OrganizationCreditUsage.credits_used),
+                    (
+                        OrganizationCreditUsage.status.in_(["consumed", "refunded"]),
+                        OrganizationCreditUsage.credits_used
+                    ),
                     else_=0
                 )
             ),
             0
         ).label("used")
-
     ).outerjoin(
         OrganizationCreditUsage,
         OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id
