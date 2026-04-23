@@ -843,7 +843,6 @@ def sync_voice_metrics_from_conversation(
             existing.total_messages = total_messages
             existing.total_user_messages = user_msgs
             existing.total_ai_messages = agent_msgs
-            existing.total_turns = total_turns
 
             existing.conversation_start = session_start
             existing.conversation_end = session_end
@@ -870,7 +869,6 @@ def sync_voice_metrics_from_conversation(
                 total_messages=total_messages,
                 total_user_messages=user_msgs,
                 total_ai_messages=agent_msgs,
-                total_turns=total_turns,
 
                 conversation_start=session_start,
                 conversation_end=session_end,
