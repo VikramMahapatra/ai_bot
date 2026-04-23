@@ -86,6 +86,7 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import CloseIcon from "@mui/icons-material/Close";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -2099,9 +2100,25 @@ const LeadManager: React.FC = () => {
         onClose={() => setActivityOpen(false)}
         PaperProps={{ sx: { width: 420, p: 2 } }}
       >
-        <Typography variant="h6" mb={1}>
-          Lead Activity Timeline
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+          }}
+        >
+          <Typography variant="h6">
+            Lead Activity Timeline
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => setActivityOpen(false)}
+            aria-label="Close"
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
 
         <Divider sx={{ my: 2 }} />
 
