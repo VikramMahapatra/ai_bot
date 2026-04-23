@@ -69,6 +69,8 @@ const getStatusColor = (status: string) => {
             return "warning";
         case "completed":
             return "primary";
+        case "cancelled":
+            return "error";
         default:
             return "default";
     }
@@ -217,13 +219,18 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const getStatusBg = (status: string) => {
         switch (status) {
             case "active":
-                return "#dcfce7";
             case "running":
                 return "#dcfce7";
+
             case "paused":
                 return "#fef3c7";
+
             case "completed":
                 return "#dbeafe";
+
+            case "cancelled":
+                return "#fee2e2"; // light red
+
             default:
                 return "#f3f4f6";
         }
@@ -232,11 +239,18 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const getStatusText = (status: string) => {
         switch (status) {
             case "active":
+            case "running":
                 return "#15803d";
+
             case "paused":
                 return "#b45309";
+
             case "completed":
                 return "#1d4ed8";
+
+            case "cancelled":
+                return "#b91c1c"; // dark red
+
             default:
                 return "#374151";
         }
@@ -691,28 +705,34 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                 <DialogTitle>
                     {confirmDialog?.type === "delete"
                         ? "Delete campaign?"
-                        : confirmDialog?.campaign.status === "running"
-                            ? "Pause campaign?"
-                            : "Start campaign?"}
+                        : confirmDialog?.type === "cancel"
+                            ? "Cancel campaign?"
+                            : confirmDialog?.campaign.status === "running"
+                                ? "Pause campaign?" : "Start campaign?"}
                 </DialogTitle>
                 <DialogContent dividers>
-                    {confirmDialog?.type === "delete" ? (
-                        <Typography variant="body2" color="text.secondary">
-                            Delete draft campaign &quot;{confirmDialog.campaign.name}&quot;? This cannot be undone.
-                        </Typography>
-                    ) : confirmDialog?.type === "toggleStatus" ? (
-                        confirmDialog.campaign.status === "running" ? (
+                    {
+                        confirmDialog?.type === "delete" ? (
                             <Typography variant="body2" color="text.secondary">
-                                Pause &quot;{confirmDialog.campaign.name}&quot;? Outbound activity for this campaign
-                                will stop until you start it again.
+                                Delete draft campaign &quot;{confirmDialog.campaign.name}&quot;? This cannot be undone.
                             </Typography>
-                        ) : (
+                        ) : confirmDialog?.type === "cancel" ? (
                             <Typography variant="body2" color="text.secondary">
-                                Start &quot;{confirmDialog.campaign.name}&quot;? Calls or messages may begin according to
-                                your schedule and contact list.
+                                Cancel campaign &quot;{confirmDialog.campaign.name}&quot;? This cannot be undone.
                             </Typography>
-                        )
-                    ) : null}
+                        ) : confirmDialog?.type === "toggleStatus" ? (
+                            confirmDialog.campaign.status === "running" ? (
+                                <Typography variant="body2" color="text.secondary">
+                                    Pause &quot;{confirmDialog.campaign.name}&quot;? Outbound activity for this campaign
+                                    will stop until you start it again.
+                                </Typography>
+                            ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                    Start &quot;{confirmDialog.campaign.name}&quot;? Calls or messages may begin according to
+                                    your schedule and contact list.
+                                </Typography>
+                            )) : null
+                    }
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={closeConfirmDialog} disabled={loading}>
@@ -726,10 +746,12 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     >
                         {confirmDialog?.type === "delete"
                             ? "Delete"
-                            : confirmDialog?.type === "toggleStatus" &&
-                                confirmDialog.campaign.status === "running"
-                                ? "Pause"
-                                : "Start"}
+                            : confirmDialog?.type === "cancel"
+                                ? "Update"
+                                : confirmDialog?.type === "toggleStatus" &&
+                                    confirmDialog.campaign.status === "running"
+                                    ? "Pause"
+                                    : "Start"}
                     </Button>
                 </DialogActions>
             </Dialog>

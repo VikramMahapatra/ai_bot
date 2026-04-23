@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from requests import Session
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func
 from app.models.organization_credit_allocation import OrganizationCreditAllocation
 from app.models.organization_credit_profile import OrganizationCreditProfile
 from app.models.organization_credit_usages import OrganizationCreditUsage
@@ -72,34 +72,68 @@ def get_credit_summary(
         PriceMatrixItem.sub_module,
         PriceMatrixItem.feature_code,
 
+        # -------------------------
+        # Reserved
+        # -------------------------
         func.coalesce(
             func.sum(
                 case(
                     (OrganizationCreditUsage.status == "reserved",
-                     OrganizationCreditUsage.credits_used),
+                    OrganizationCreditUsage.credits_used),
                     else_=0
                 )
             ),
             0
         ).label("reserved"),
 
+        # -------------------------
+        # Consumed (positive only)
+        # -------------------------
         func.coalesce(
             func.sum(
                 case(
-                    (
-                        OrganizationCreditUsage.status.in_(["consumed", "refunded"]),
-                        OrganizationCreditUsage.credits_used
-                    ),
+                    (OrganizationCreditUsage.status == "consumed",
+                    OrganizationCreditUsage.credits_used),
+                    else_=0
+                )
+            ),
+            0
+        ).label("consumed"),
+
+        # -------------------------
+        # Refunded (convert to positive for UI)
+        # -------------------------
+        func.coalesce(
+            func.sum(
+                case(
+                    (OrganizationCreditUsage.status == "refunded",
+                    -OrganizationCreditUsage.credits_used),  
+                    else_=0
+                )
+            ),
+            0
+        ).label("refunded"),
+
+        # -------------------------
+        # Net Used (ledger sum)
+        # -------------------------
+        func.coalesce(
+            func.sum(
+                case(
+                    (OrganizationCreditUsage.status != "reserved",
+                    OrganizationCreditUsage.credits_used),
                     else_=0
                 )
             ),
             0
         ).label("used")
+
     ).outerjoin(
         OrganizationCreditUsage,
-        OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id
+        and_(
+            OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
+            OrganizationCreditUsage.organization_id == organization_id  # ✅ move filter here
+        )
     ).group_by(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
@@ -138,11 +172,12 @@ def get_credit_summary(
                 "sub_module": row.sub_module,
                 "feature_code": row.feature_code,
                 "reserved": row.reserved,
+                "consumed": row.consumed,
+                "refunded": row.refunded,
                 "used": row.used
             }
             for row in feature_summary
         ],
-
         "monthly_summary": {
             "month": datetime.utcnow().strftime("%B %Y"),
             "allocated": total_allocated,
@@ -328,7 +363,7 @@ def refund_credits(
         func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
     ).filter(
         OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.feature_code == feature_code,
+        OrganizationCreditUsage.price_matrix_item_id == item.id,
         OrganizationCreditUsage.reference_id == str(reference_id),
         OrganizationCreditUsage.status == "consumed"
     ).scalar()
@@ -337,7 +372,7 @@ def refund_credits(
         func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
     ).filter(
         OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.feature_code == feature_code,
+        OrganizationCreditUsage.price_matrix_item_id == item.id,
         OrganizationCreditUsage.reference_id == str(reference_id),
         OrganizationCreditUsage.status == "refunded"
     ).scalar()
@@ -355,7 +390,7 @@ def refund_credits(
         organization_id=organization_id,
         price_matrix_item_id=item.id,
         used_quantity=quantity,
-        credits_used=-credits_to_refund,  # 🔥 negative entry
+        credits_used=-credits_to_refund,  
         reference_type=reference_type,
         reference_id=str(reference_id) if reference_id else None,
         status="refunded"
