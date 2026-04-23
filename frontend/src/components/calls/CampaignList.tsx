@@ -39,6 +39,7 @@ import InsightsIcon from "@mui/icons-material/Insights";
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import CancelIcon from "@mui/icons-material/Cancel";
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
@@ -94,7 +95,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState<
-        null | { type: "toggleStatus"; campaign: Campaign } | { type: "delete"; campaign: Campaign }
+        null | { type: "toggleStatus"; campaign: Campaign } | { type: "delete"; campaign: Campaign } | { type: "cancel"; campaign: Campaign }
     >(null);
 
 
@@ -172,6 +173,25 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         }
     };
 
+    const handleCancel = async (campaign: Campaign) => {
+        setLoading(true);
+        try {
+            const response = await callCampaignService.updateCampaignStatus(campaign.id!, "cancelled");
+
+            if (response.success) {
+                loadCampaigns();
+                showSuccess(response.message)
+            }
+            else {
+                showError(response.message)
+            }
+        } catch (error: any) {
+            showError(error?.response?.data?.detail || `Failed to update the status`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const closeConfirmDialog = () => setConfirmDialog(null);
 
     const executeConfirmDialog = async () => {
@@ -180,10 +200,13 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         setConfirmDialog(null);
         if (snapshot.type === "toggleStatus") {
             await handlePause(snapshot.campaign);
+        }
+        else if (snapshot.type === "cancel") {
+            await handleCancel(snapshot.campaign);
         } else {
             const id = snapshot.campaign.id;
             if (id) {
-                onDeleteCampaign(id);
+                await onDeleteCampaign(id);
                 await loadCampaigns();
                 await loadCampaignStats();
             }
@@ -582,6 +605,18 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                         )}
                                                     </IconButton>
                                                 </Tooltip>
+                                                {/* <Tooltip title="Cancel Campaign">
+                                                    <IconButton
+                                                        size="small"
+                                                        color="error"
+                                                        onClick={() => {
+                                                            scrollToTop();
+                                                            setConfirmDialog({ type: "cancel", campaign });
+                                                        }}
+                                                    >
+                                                        <CancelIcon />
+                                                    </IconButton>
+                                                </Tooltip> */}
                                             </>
                                         )}
                                         <Tooltip title="View Analytics">
@@ -657,8 +692,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     {confirmDialog?.type === "delete"
                         ? "Delete campaign?"
                         : confirmDialog?.campaign.status === "running"
-                          ? "Pause campaign?"
-                          : "Start campaign?"}
+                            ? "Pause campaign?"
+                            : "Start campaign?"}
                 </DialogTitle>
                 <DialogContent dividers>
                     {confirmDialog?.type === "delete" ? (
@@ -693,8 +728,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                             ? "Delete"
                             : confirmDialog?.type === "toggleStatus" &&
                                 confirmDialog.campaign.status === "running"
-                              ? "Pause"
-                              : "Start"}
+                                ? "Pause"
+                                : "Start"}
                     </Button>
                 </DialogActions>
             </Dialog>

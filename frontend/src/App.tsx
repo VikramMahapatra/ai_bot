@@ -397,20 +397,41 @@ const ProtectedRoute: React.FC<{
     const { isAuthenticated, userRole, isAuthLoading } = useAuth();
     const { pathname } = useLocation();
     const [loading, setLoading] = React.useState(true);
-    const [access, setAccess] = React.useState<{ allowed: boolean, module: string }>({
+    const [access, setAccess] = React.useState<{ allowed: boolean, module: string, fallback: boolean }>({
       allowed: true,
-      module: ""
+      module: "",
+      fallback: false
     });
 
     console.log("Protected Route activated")
 
     React.useEffect(() => {
       const checkAccess = async () => {
+        if (userRole == 'SUPERADMIN')
+          return;
+
         try {
           const response = await organizationService.checkFeatureAccess(pathname);
           setAccess(response);
-        } catch {
-          setAccess({ allowed: false, module: "" });
+        } catch (err: any) {
+          const isNetworkError =
+            !err.response && err.code !== "ECONNABORTED";
+
+          if (isNetworkError) {
+            setAccess({
+              allowed: true,   // fallback mode
+              module: "",
+              fallback: true,
+            });
+            return;
+          }
+
+          // backend responded but denied
+          setAccess({
+            allowed: false,
+            module: "",
+            fallback: false,
+          });
         } finally {
           setLoading(false);
         }
@@ -443,7 +464,7 @@ const ProtectedRoute: React.FC<{
     }
 
 
-    if (userRole !== 'SUPERADMIN' && access && !access.allowed) {
+    if (userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
       return <RestrictedFeaturePage modulePath={access.module} />
     }
 

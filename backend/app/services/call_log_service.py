@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks
 from psycopg2 import IntegrityError
-from sqlalchemy import Integer, case, cast, func, or_
+from sqlalchemy import Integer, and_, case, cast, exists, func, literal_column, or_, select, true
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.services.conversation_decision_service import analyze_conversation
-from app.services.sms_service import get_twilio_sms_config, send_sms
+from app.services.sms_service import get_twilio_sms_config, send_sms, send_sms_using_twilio
 from app.services.email_service import send_campaign_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
@@ -34,6 +34,7 @@ from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowExecutionLog, WorkflowStep, WorkflowStepOutcome
 from app.models.message_templates import MessageTemplate
+from app.services.report_service import sync_conversation_metrics, sync_voice_metrics_from_conversation
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -60,13 +61,14 @@ def get_call_logs(
         params.agent_id
     )
     
+    
     conversation_subq = (
-        db.query(Conversation)
-        .filter(Conversation.session_id == CallLog.call_session_id)
-        .order_by(Conversation.created_at.desc())   # or desc if "latest" needed
+        select(Conversation)
+        .where(Conversation.session_id == CallLog.call_session_id)
+        .order_by(Conversation.created_at.desc())
         .limit(1)
-        .correlate(CallLog)
-        .subquery()
+        .lateral()
+        .alias("conversation_subq")
     )
 
     query = (
@@ -80,10 +82,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(
-            conversation_subq,
-            conversation_subq.c.session_id == CallLog.call_session_id
-        )
+        .outerjoin(conversation_subq, true())
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -125,7 +124,15 @@ def get_call_logs(
 
     # SENTIMENT
     if params.sentiment:
-        query = query.filter(conversation_subq.c.outcome == params.sentiment)
+        query = query.filter(
+            exists().where(
+                and_(
+                    Conversation.session_id == CallLog.call_session_id,
+                    func.lower(func.trim(Conversation.outcome))
+                    == params.sentiment.lower()
+                )
+            )
+        )
 
     # EVALUATION (boolean)
     if params.evaluation is not None:
@@ -554,7 +561,7 @@ def process_call(db, call, agent):
                 continue_workflow_from_call(db, execution, call_log, call)
                 return
             
-            print("new workflow trigger")
+            print(f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}")
             trigger_workflow_from_call(
                 db,
                 campaign.workflow_id,
@@ -647,7 +654,8 @@ def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCam
         if reply.mode == "sms":
             print(f"Sending SMS to {contact.phone} with message: {message}")
             try:
-                success, error = send_sms(
+                success, error = send_sms_using_twilio(
+                    db=db,
                     message=message,
                     to_number=contact.phone,
                     organization_id=campaign.organization_id
@@ -875,15 +883,14 @@ def get_next_attempt(db, lead_id, source):
     )
 
     return count + 1
-
-    
+        
 def create_conversation_from_transcripts(db, call_log, agent):
-    # Skip if already exists
+
     exists = db.query(Conversation.id).filter(
-        Conversation.session_id == (call_log.call_session_id),
+        Conversation.session_id == call_log.call_session_id,
         Conversation.organization_id == call_log.organization_id
     ).first()
-    
+
     if exists:
         return
 
@@ -894,49 +901,68 @@ def create_conversation_from_transcripts(db, call_log, agent):
         .all()
     )
 
-    conversations = []
-    current_message = None
+    pending_conversation = None
 
     for t in transcripts:
-        role = "assistant" if t.speaker.lower() == "agent" else "user"
+        speaker = t.speaker.lower()
+        text = (t.text or "").strip()
 
-        if role == "user":
-            # Start new conversation row with user message
-            current_message = Conversation(
+        if not text:
+            continue
+
+        # -------------------------
+        # USER SPEAKS → create row
+        # -------------------------
+        if speaker != "agent":
+
+            pending_conversation = Conversation(
                 session_id=call_log.call_session_id,
                 widget_id=agent.widget_id,
                 organization_id=call_log.organization_id,
-                message=t.text,
+                message=text,
                 response="",
-                role="assistant",  # role of the “responder”
+                role="assistant",
                 created_at=t.created_at,
                 contact_id=call_log.contact_id,
                 source="voice"
             )
-            conversations.append(current_message)
 
-        elif role == "assistant":
-            if current_message:
-                # attach assistant response to last user message
-                current_message.response = t.text
+            db.add(pending_conversation)
+            db.flush()
+        # -------------------------
+        # AGENT SPEAKS → attach to last user row
+        # -------------------------
+        else:
+
+            if pending_conversation:
+                pending_conversation.response += (
+                    " " + text if pending_conversation.response else text
+                )
+                db.flush()
+
             else:
-                # First message is assistant, create a new row
-                current_message = Conversation(
+                # agent-first call (IMPORTANT FIX)
+                conv = Conversation(
                     session_id=call_log.call_session_id,
                     widget_id=agent.widget_id,
                     organization_id=call_log.organization_id,
                     message="",
-                    response=t.text,
+                    response=text,
                     role="assistant",
                     created_at=t.created_at,
                     contact_id=call_log.contact_id,
                     source="voice"
                 )
-                conversations.append(current_message)
 
-    if conversations:
-        db.add_all(conversations)
-        db.flush()  
+                db.add(conv)
+                db.flush()
+
+    sync_voice_metrics_from_conversation(
+        db,
+        organization_id=call_log.organization_id,
+        session_id=call_log.call_session_id,
+        token_usage=None
+    )
     
 def get_lead_quality_label(rate: int):
     for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():
@@ -1041,10 +1067,9 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         db=db,
         execution_id=execution.id,
         step_id=initial_step.id,
-        event_type="workflow_triggered"
+        event_type="workflow_triggered",
+        metadata={"call_status": call_status, "outcome":outcome}
     )
-
-    print(f"Trigger workflow for {call_status} and {outcome}")
 
     # Get edge from INITIAL step
     edge = db.query(WorkflowEdge).filter(
@@ -1117,6 +1142,7 @@ def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: Cal
     ).first()
 
     if not edge:
+        execution.status = "completed"
         log_event(
             db=db,
             execution_id=execution.id,
@@ -1137,6 +1163,7 @@ def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: Cal
     ).first()
 
     if not step_outcome:
+        execution.status = "completed"
         log_event(
             db=db,
             execution_id=execution.id,
@@ -1177,8 +1204,6 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         event_type="scheduled",
         metadata={"delay": delay, "step_type": step_outcome.step_type}
     )
-    
-   
 
     # If action is call → schedule call
     if step_outcome.step_type == "call":
@@ -1198,7 +1223,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         
         if call_log.contact_id:
             contact = db.query(Contact).filter(
-                Contact.external_contact_id == call_log.contact_id
+                Contact.id == call_log.contact_id
             ).first()
             
         template  = db.query(MessageTemplate).filter(
@@ -1270,18 +1295,23 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
         tz = ZoneInfo("Asia/Kolkata")  # fallback
 
     local_time = scheduled_at.astimezone(tz)
-    
-    print("local time : ", local_time)
+    timezone_str  = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
     
     echo_client = EcholeadsClient()
-    response = echo_client.reschedule_contact_call(campaign.external_campaign_id, contact.external_contact_id, local_time)
+    response = echo_client.reschedule_contact_call(
+        campaign.external_campaign_id,
+        contact.external_contact_id, 
+        local_time, 
+        timezone_str 
+    )
+    
     print("reshedule response :", response)
     return response
 
 def get_call_result(call):
     from app.services.conversation_outcome_service import _classify_outcome_with_llm
     
-    if call.get("transcript") and int(call.get("duration") or 0) > 10:
+    if call.get("transcript") and int(call.get("duration") or 0) > 0:
         call_status = "connected"
     else:
         call_status = "not_connected"

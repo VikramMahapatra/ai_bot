@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true, // allows external access
-    port: 5173, // your local dev port
+    port: 3000, // your local dev port
     strictPort: true,
     allowedHosts: [
       'localhost',

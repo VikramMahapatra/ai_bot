@@ -3,8 +3,9 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 from typing import Optional
 
-from app.models.workflows import Workflow, WorkflowEdge, WorkflowStep, WorkflowStepOutcome
+from app.models.workflows import Workflow, WorkflowEdge, WorkflowExecution, WorkflowStep, WorkflowStepOutcome
 from app.schemas.workflow import WorkflowCreate
+from app.models.call_campaigns import CallCampaign
 
 
 def get_all(
@@ -219,6 +220,14 @@ def update_workflow(
 
     if not workflow:
         return None
+    
+    active_execution = db.query(WorkflowExecution).filter(
+        WorkflowExecution.workflow_id == workflow.id,
+        WorkflowExecution.status.in_(["pending"]),  # still to run
+    ).first()
+
+    if active_execution:
+        raise Exception("Cannot update workflow while executions are pending")
 
     # Update workflow details
     workflow.name = payload.name

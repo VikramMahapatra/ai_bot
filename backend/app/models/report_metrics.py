@@ -13,6 +13,7 @@ class ConversationMetrics(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     widget_id = Column(String, nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    source = Column(String(50), nullable=True, index=True)
     
     # Conversation metrics
     total_messages = Column(Integer, default=0)  # User + AI messages

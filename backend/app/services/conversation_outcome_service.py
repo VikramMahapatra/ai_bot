@@ -53,14 +53,48 @@ def _normalize_outcome(value: Optional[str]) -> str:
     return aliases.get(normalized, "other")
 
 
-def _build_transcript(rows: List[Conversation]) -> str:
-    lines: List[str] = []
+def _build_chat_transcript(rows: List[Conversation]) -> str:
+    lines = []
+
     for row in rows[:120]:
         if row.message and row.message.strip():
             lines.append(f"User: {row.message.strip()}")
         if row.response and row.response.strip():
             lines.append(f"Assistant: {row.response.strip()}")
+
     return "\n".join(lines)
+
+def _build_voice_transcript(rows):
+    lines = []
+
+    for r in rows:
+
+        msg = (r.message or "").strip()
+        resp = (r.response or "").strip()
+
+        # Case 1: proper Q/A
+        if msg and resp:
+            lines.append(f"User: {msg}")
+            lines.append(f"Assistant: {resp}")
+
+        # Case 2: agent only (voice-first)
+        elif resp and not msg:
+            lines.append(f"Assistant: {resp}")
+
+        # Case 3: user only fragment
+        elif msg and not resp:
+            lines.append(f"User: {msg}")
+
+    return "\n".join(lines)
+
+def _build_transcript(rows: List[Conversation]) -> str:
+    if not rows:
+        return ""
+
+    if rows[0].source == "voice":
+        return _build_voice_transcript(rows)
+
+    return _build_chat_transcript(rows)
 
 
 def _classify_outcome_with_llm(transcript: str) -> str:
@@ -77,9 +111,20 @@ def _classify_outcome_with_llm(transcript: str) -> str:
                 "role": "system",
                 "content": (
                     "You are a conversation-quality classifier. "
-                    "Classify the full session outcome into exactly one label from: "
-                    "positive, negative, satisfactory, neutral, unresolved, other. "
-                    "Return only the label, nothing else."
+                    "Classify the FULL conversation outcome into exactly one label from: "
+                    "positive, negative, satisfactory, neutral, unresolved, other.\n\n"
+                    
+                    "Rules:\n"
+                    "- positive: Customer confirmed purchase, appointment, or clear success\n"
+                    "- negative: Customer rejected, angry, or clearly declined\n"
+                    "- satisfactory: Query answered but no strong positive signal\n"
+                    "- neutral: Informational conversation without decision\n"
+                    "- unresolved: Conversation incomplete, cut-off, or no clear conclusion\n"
+                    "- other: Anything else\n\n"
+                    
+                    "If conversation ends abruptly or has no final decision → return 'unresolved'\n"
+                    
+                    "Return only one label. No explanation."
                 ),
             },
             {
@@ -268,6 +313,8 @@ def process_pending_lead_outcomes(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
+    ).filter(
+        Lead.lead_outcome.is_(None)
     )
 
     if organization_id is not None:
@@ -341,6 +388,8 @@ def process_pending_lead_funnel_tags(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
+    ).filter(
+        Lead.funnel_stage.is_(None)
     )
 
     if organization_id is not None:
@@ -381,6 +430,8 @@ def process_pending_lead_funnel_tags(
                     FunnelCategory.organization_id == org_id,
                     FunnelCategory.is_active == True,
                 ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
+                
+            logger.info(f"Running llm for lead : {lead_id}")
 
             inferred_funnel_stage = _classify_funnel_stage_with_llm(
                 _build_transcript(rows),
@@ -489,23 +540,21 @@ def _seconds_until_next_run(hour_utc: int, minute_utc: int) -> float:
 
 
 async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
-    """Run outcome processing once at startup, then once per day at configured UTC time."""
+    """Outcome daemon that never blocks event loop"""
+
     initial_delay = max(settings.OUTCOME_DAEMON_INITIAL_DELAY_SECONDS, 0)
     if initial_delay:
         await asyncio.sleep(initial_delay)
 
     try:
-        processed, failed = run_outcome_processing_batches(
+        processed, failed = await asyncio.to_thread(
+            run_outcome_processing_batches,
             batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
             max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
         )
-        logger.info(
-            "Initial outcome processing completed: processed=%s failed=%s",
-            processed,
-            failed,
-        )
+        logger.info("Initial outcome processing completed: %s %s", processed, failed)
     except Exception as exc:
-        logger.error("Initial outcome processing failed: %s", str(exc), exc_info=True)
+        logger.error("Initial outcome processing failed: %s", exc, exc_info=True)
 
     while not stop_event.is_set():
         wait_seconds = _seconds_until_next_run(
@@ -520,17 +569,20 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
             pass
 
         try:
-            processed, failed = run_outcome_processing_batches(
+            processed, failed = await asyncio.to_thread(
+                run_outcome_processing_batches,
                 batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
                 max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
             )
+
             logger.info(
-                "Scheduled outcome processing completed: processed=%s failed=%s",
+                "Scheduled outcome processing completed: %s %s",
                 processed,
                 failed,
             )
+
         except Exception as exc:
-            logger.error("Scheduled outcome processing failed: %s", str(exc), exc_info=True)
+            logger.error("Scheduled outcome processing failed: %s", exc, exc_info=True)
             
             
 def run_call_campaign_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
@@ -556,26 +608,32 @@ def run_call_campaign_processing_batches(batch_size: int, max_batches: int, orga
 
     return total_processed, total_failed
 
-
-
 async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
-    """Run call campaign fetching once at startup, then once per day at configured UTC time."""
+    """Call campaign daemon with non-blocking execution"""
+
     initial_delay = max(settings.OUTCOME_DAEMON_INITIAL_DELAY_SECONDS, 0)
     if initial_delay:
         await asyncio.sleep(initial_delay)
 
     try:
-        processed, failed = run_call_campaign_processing_batches(
+        processed, failed = await asyncio.to_thread(
+            run_call_campaign_processing_batches,
             batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
             max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
         )
+
         logger.info(
-            "Initial call campaign processing completed: processed=%s failed=%s",
+            "Initial call campaign processing completed: %s %s",
             processed,
             failed,
         )
+
     except Exception as exc:
-        logger.error("Initial call campaign processing failed: %s", str(exc), exc_info=True)
+        logger.error(
+            "Initial call campaign processing failed: %s",
+            exc,
+            exc_info=True,
+        )
 
     while not stop_event.is_set():
         wait_seconds = _seconds_until_next_run(
@@ -590,14 +648,21 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
             pass
 
         try:
-            processed, failed = run_call_campaign_processing_batches(
+            processed, failed = await asyncio.to_thread(
+                run_call_campaign_processing_batches,
                 batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
                 max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
             )
+
             logger.info(
-                "Scheduled call campaign processing completed: processed=%s failed=%s",
+                "Scheduled call campaign processing completed: %s %s",
                 processed,
                 failed,
             )
+
         except Exception as exc:
-            logger.error("Scheduled call campaign processing failed: %s", str(exc), exc_info=True)
+            logger.error(
+                "Scheduled call campaign processing failed: %s",
+                exc,
+                exc_info=True,
+            )

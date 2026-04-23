@@ -13,11 +13,11 @@ class EcholeadsClient:
             "Content-Type": "application/json"
         }
 
-    def _post(self, endpoint: str, payload: dict):
+    def _post(self, endpoint: str, payload: dict = None):
         try:
             response = requests.post(
                 f"{self.base_url}{endpoint}",
-                json=payload,
+                json=payload or {},
                 headers=self.headers,
                 timeout=15
             )
@@ -177,7 +177,7 @@ class EcholeadsClient:
         return self._put(f"/campaigns/{campaign_id}", payload)
     
     def start_campaign(self, campaign_id: int):
-        return self._put(f"/campaigns/{campaign_id}/start")
+        return self._post(f"/campaigns/{campaign_id}/start")
     
     def create_contact(self, payload: dict):
         return self._post("/contact", payload)
@@ -194,7 +194,7 @@ class EcholeadsClient:
     def fetch_bookings(self):
         return self._get("/calendar-booking")
     
-    def reschedule_contact_call(self, campaign_id, contact_id, scheduled_at):
+    def reschedule_contact_call(self, campaign_id, contact_id, scheduled_at, timezone_str ):
         schedule_date = scheduled_at.strftime("%Y-%m-%d")
         schedule_time = scheduled_at.strftime("%H:%M")
         payload = {
@@ -202,7 +202,8 @@ class EcholeadsClient:
             "contact_id": contact_id,
             "send_option": "schedule",
             "schedule_date": schedule_date,
-            "schedule_time": schedule_time
+            "schedule_time": schedule_time,
+            "timezone": timezone_str 
         }
         
         print("payload", payload)

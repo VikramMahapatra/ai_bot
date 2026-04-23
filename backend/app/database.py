@@ -747,6 +747,21 @@ def init_db():
                 """))
         except:
             pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE conversation_metrics
+                ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'chat'
+            """))
+
+            conn.execute(text("""
+                ALTER TABLE conversation_metrics
+                ALTER COLUMN conversation_id DROP NOT NULL
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
      
         
         
