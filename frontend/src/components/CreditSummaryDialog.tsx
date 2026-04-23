@@ -7,6 +7,7 @@ import {
     Grid,
     Divider,
     Chip,
+    IconButton,
     Stack
 } from "@mui/material";
 
@@ -14,6 +15,7 @@ import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import LockIcon from "@mui/icons-material/Lock";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
 
 const formatDecimal = (val: any) => {
     const num = Number(val || 0);
@@ -34,8 +36,21 @@ const CreditSummaryDialog = ({
             maxWidth="md"
             fullWidth
         >
-            <DialogTitle sx={{ fontWeight: 700 }}>
-                Credit Summary — {monthlySummary?.month}
+            <DialogTitle
+                sx={{
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    pr: 1,
+                }}
+            >
+                <Box component="span">
+                    Credit Summary — {monthlySummary?.month}
+                </Box>
+                <IconButton onClick={onClose} size="small" aria-label="Close">
+                    <CloseIcon fontSize="small" />
+                </IconButton>
             </DialogTitle>
 
             <DialogContent>

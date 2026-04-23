@@ -518,7 +518,13 @@ def process_call(db, call, agent):
                 save_transcripts(db, call_log, call.get("transcript"), campaign, contact)                        
                 
             except IntegrityError:
-                db.rollback()                      
+                db.rollback()    
+                call_log = db.query(CallLog).filter(
+                    CallLog.external_call_id == call["id"]
+                ).first()
+
+                if not call_log:
+                    raise  # something else went wrong                  
     else: 
         # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
         call_log = existing
@@ -553,15 +559,14 @@ def process_call(db, call, agent):
             execution = db.query(WorkflowExecution).filter(
                 WorkflowExecution.campaign_id == call_log.campaign_id,
                 WorkflowExecution.contact_id == call_log.contact_id,
-                WorkflowExecution.external_reference_id == call.get("id")
+                WorkflowExecution.external_reference_id == call.get("id"),
+                WorkflowExecution.status.in_(["pending", "scheduled"])
             ).order_by(WorkflowExecution.id.desc()).first()
 
-            if execution:
-                print("continue workflow")
+            if execution:              
                 continue_workflow_from_call(db, execution, call_log, call)
                 return
-            
-            print(f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}")
+                     
             trigger_workflow_from_call(
                 db,
                 campaign.workflow_id,
@@ -1036,8 +1041,8 @@ def render_template(template_body: str, contact):
 def trigger_workflow_from_call(db, workflow_id, call_log, call):
     
     if call.get("source") == "rescheduled_call":
-        return   
-
+        return      
+      
     call_status, outcome = get_call_result(call)
 
     # Get initial step
@@ -1048,6 +1053,8 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
 
     if not initial_step:
         return
+    
+    print(f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}")
 
     # Create execution 
     execution = WorkflowExecution(
@@ -1132,6 +1139,7 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
 
     
 def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: CallLog, call: dict):
+    print(f"workflow : {execution.id} continue")
 
     call_status, outcome = get_call_result(call)
     
@@ -1172,8 +1180,6 @@ def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: Cal
             metadata={"reason": "no further outcome"}
         )    
         return
-
-    
 
     schedule_workflow_step(
         db,
@@ -1217,7 +1223,8 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         if response.get("success"):
             execution.status = "scheduled"
             execution.external_reference_id = response.get("call_log_id")
-            print(f"Call scheduled at {scheduled_at}")
+            
+            print(f"Call id : {execution.external_reference_id} is scheduled at {scheduled_at}")
     else:
         contact = None
         
@@ -1253,7 +1260,8 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             
             campaign_name = db.query(CallCampaign.name).filter(
                  CallCampaign.id == call_log.campaign_id
-            )
+            ).scalar()
+            
             try:
                 send_campaign_email(
                     campaign_name=campaign_name,
