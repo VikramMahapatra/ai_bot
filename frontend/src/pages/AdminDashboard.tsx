@@ -57,6 +57,8 @@ import {
 } from "../constants/leadFilterChartColors";
 import type { AnalyticsSummary } from "../services/callService";
 import { callService } from "../services/callService";
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 
 interface PlanUsage {
   used: {
@@ -76,6 +78,9 @@ interface DashboardStats {
   conversations_7d: number;
   leads_7d: number;
   plan_usage: PlanUsage | null;
+  total_agents: number;
+  pipeline_leads: number;
+  pipeline_leads_7d: number;
 }
 
 interface DailyConversationPoint {
@@ -253,6 +258,9 @@ const AdminDashboard: React.FC = () => {
           conversations_7d: numberOrZero(raw.conversations_7d),
           leads_7d: numberOrZero(raw.leads_7d),
           plan_usage: raw.plan_usage || null,
+          total_agents: numberOrZero(raw.total_agents),
+          pipeline_leads: numberOrZero(raw.pipeline_leads),
+          pipeline_leads_7d: numberOrZero(raw.pipeline_leads_7d),
         });
       }
 
@@ -405,18 +413,18 @@ const AdminDashboard: React.FC = () => {
       wave: theme.palette.secondary.main,
     },
     {
-      label: "Conversion Rate",
-      value: `${numberOrZero(stats?.conversion_rate)}%`,
-      hint: "Leads from conversations",
-      icon: <TrendingUpIcon sx={{ color: theme.palette.primary.dark }} />,
+      label: "Pipeline Leads",
+      value: numberOrZero(stats?.pipeline_leads),
+      hint: `${numberOrZero(stats?.pipeline_leads_7d)} in last 7 days`,
+      icon: <FilterAltIcon sx={{ color: theme.palette.primary.dark }} />,
       gradient: `linear-gradient(130deg, ${alpha("#a9d2fb", 0.64)} 0%, ${alpha("#e3f0ff", 0.78)} 100%)`,
       wave: "#468ed4",
     },
     {
-      label: "Active Agents",
-      value: numberOrZero(stats?.total_widgets),
-      hint: `${numberOrZero(stats?.total_knowledge_sources)} sources connected`,
-      icon: <WidgetsIcon sx={{ color: theme.palette.primary.dark }} />,
+      label: "Total Agents",
+      value: numberOrZero(stats?.total_widgets) + numberOrZero(stats?.total_agents),
+      hint: `Chats is ${numberOrZero(stats?.total_widgets)} and Calls is ${numberOrZero(stats?.total_agents)}`,
+      icon: <SupportAgentIcon sx={{ color: theme.palette.primary.dark }} />,
       gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
       wave: "#4b84ce",
     },
