@@ -36,12 +36,21 @@ import {
 } from '../types';
 import { OrgCreditAdminMonthSummary } from '../types/orgCreditBilling';
 
-export interface SummaryFilters {
-    ord_id?: number,
+export interface CreditUsageFilters {
+    organization_id?: number,
     billing_period?: string,
     search?: string;
     skip?: number;
     limit?: number;
+}
+
+export interface CrediUsageListResponse {
+    items: OrgCreditAdminMonthSummary[];
+    pagination: {
+        total: number;
+        skip: number;
+        limit: number;
+    };
 }
 
 export const superadminService = {
@@ -60,8 +69,8 @@ export const superadminService = {
     return response.data;
   },
 
-  async getSummary(params?: SummaryFilters): Promise<OrgCreditAdminMonthSummary> {
-      const response = await api.get<OrgCreditAdminMonthSummary>(`/api/superadmin/summary`, { params });
+  async listCreditUsage(params?: CreditUsageFilters): Promise<CrediUsageListResponse> {
+      const response = await api.get<CrediUsageListResponse>(`/api/superadmin/org-credit-usage`, { params });
       return response.data;
   },
 

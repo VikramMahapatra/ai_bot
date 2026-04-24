@@ -51,7 +51,9 @@ def _normalize_billing_period(period: str) -> str:
     year = int(year_part)
     month = int(month_part)
     if month < 1 or month > 12:
-        raise HTTPException(status_code=400, detail="billing_period month must be between 01 and 12")
+        raise HTTPException(
+            status_code=400, detail="billing_period month must be between 01 and 12"
+        )
     return f"{year:04d}-{month:02d}"
 
 
@@ -61,7 +63,9 @@ def _shift_billing_period(period: str, month_delta: int) -> str:
     month = int(normalized[5:7])
     index = (year * 12 + (month - 1)) + month_delta
     if index < 0:
-        raise HTTPException(status_code=400, detail="billing_period is out of supported range")
+        raise HTTPException(
+            status_code=400, detail="billing_period is out of supported range"
+        )
     shifted_year = index // 12
     shifted_month = (index % 12) + 1
     return f"{shifted_year:04d}-{shifted_month:02d}"
@@ -92,7 +96,9 @@ def _clean_optional_text(value: Optional[str]) -> Optional[str]:
     return cleaned or None
 
 
-def _extract_total_credit_and_payable_from_estimator(share: CreditEstimatorShare) -> Tuple[float, float, str]:
+def _extract_total_credit_and_payable_from_estimator(
+    share: CreditEstimatorShare,
+) -> Tuple[float, float, str]:
     try:
         estimate_payload = json.loads(share.estimate_json or "{}")
     except Exception:
@@ -161,26 +167,40 @@ def _get_organization_or_404(db: Session, organization_id: int) -> Organization:
 
 
 def _get_organization_admin_email(db: Session, organization_id: int) -> Optional[str]:
-    admin_user = db.query(User).filter(
-        User.organization_id == organization_id,
-        User.role == UserRole.ADMIN,
-    ).order_by(User.id.asc()).first()
+    admin_user = (
+        db.query(User)
+        .filter(
+            User.organization_id == organization_id,
+            User.role == UserRole.ADMIN,
+        )
+        .order_by(User.id.asc())
+        .first()
+    )
     if admin_user and admin_user.email:
         return str(admin_user.email).strip()
 
-    any_user = db.query(User).filter(
-        User.organization_id == organization_id,
-    ).order_by(User.id.asc()).first()
+    any_user = (
+        db.query(User)
+        .filter(
+            User.organization_id == organization_id,
+        )
+        .order_by(User.id.asc())
+        .first()
+    )
     if any_user and any_user.email:
         return str(any_user.email).strip()
     return None
 
 
 def _get_estimator_or_404(db: Session, estimator_id: int) -> CreditEstimatorShare:
-    estimator = db.query(CreditEstimatorShare).filter(
-        CreditEstimatorShare.id == estimator_id,
-        CreditEstimatorShare.is_active == True,
-    ).first()
+    estimator = (
+        db.query(CreditEstimatorShare)
+        .filter(
+            CreditEstimatorShare.id == estimator_id,
+            CreditEstimatorShare.is_active == True,
+        )
+        .first()
+    )
     if not estimator:
         raise HTTPException(status_code=404, detail="Estimator not found")
     return estimator
@@ -223,7 +243,9 @@ def _create_invoice_for_credit(
     invoice_amount_override: Optional[float] = None,
 ) -> OrgCreditInvoice:
     invoice_amount = _round2(
-        invoice_amount_override if invoice_amount_override is not None else _resolve_invoice_amount_for_org_credit(db, org_credit)
+        invoice_amount_override
+        if invoice_amount_override is not None
+        else _resolve_invoice_amount_for_org_credit(db, org_credit)
     )
     invoice = OrgCreditInvoice(
         organization_id=org_credit.organization_id,
@@ -245,14 +267,22 @@ def _create_invoice_for_credit(
 def _recompute_balance(balance: OrgCreditBalance) -> None:
     balance.total_credit = _round2(balance.total_credit or 0)
     balance.used_credit = _round2(balance.used_credit or 0)
-    balance.remaining_credit = _round2((balance.total_credit or 0) - (balance.used_credit or 0))
+    balance.remaining_credit = _round2(
+        (balance.total_credit or 0) - (balance.used_credit or 0)
+    )
 
 
-def _get_or_create_balance(db: Session, organization_id: int, billing_period: str) -> OrgCreditBalance:
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == billing_period,
-    ).first()
+def _get_or_create_balance(
+    db: Session, organization_id: int, billing_period: str
+) -> OrgCreditBalance:
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .first()
+    )
     if balance:
         return balance
 
@@ -268,17 +298,27 @@ def _get_or_create_balance(db: Session, organization_id: int, billing_period: st
     return balance
 
 
-def _credited_amount_for_period(db: Session, organization_id: int, billing_period: str) -> float:
-    invoices = db.query(OrgCreditInvoice).filter(
-        OrgCreditInvoice.organization_id == organization_id,
-        OrgCreditInvoice.billing_month == billing_period,
-    ).all()
+def _credited_amount_for_period(
+    db: Session, organization_id: int, billing_period: str
+) -> float:
+    invoices = (
+        db.query(OrgCreditInvoice)
+        .filter(
+            OrgCreditInvoice.organization_id == organization_id,
+            OrgCreditInvoice.billing_month == billing_period,
+        )
+        .all()
+    )
 
     credited_total = 0.0
     for invoice in invoices:
-        payment_rows = db.query(OrgCreditPayment).filter(
-            OrgCreditPayment.invoice_id == invoice.id,
-        ).all()
+        payment_rows = (
+            db.query(OrgCreditPayment)
+            .filter(
+                OrgCreditPayment.invoice_id == invoice.id,
+            )
+            .all()
+        )
         if payment_rows:
             credited_total += sum(float(row.actual_credit or 0) for row in payment_rows)
         elif invoice.payment_done_flag:
@@ -287,7 +327,9 @@ def _credited_amount_for_period(db: Session, organization_id: int, billing_perio
     return _round2(credited_total)
 
 
-def _recalculate_balance_for_period(db: Session, organization_id: int, billing_period: str) -> OrgCreditBalance:
+def _recalculate_balance_for_period(
+    db: Session, organization_id: int, billing_period: str
+) -> OrgCreditBalance:
     balance = _get_or_create_balance(db, organization_id, billing_period)
     credited_total = _credited_amount_for_period(db, organization_id, billing_period)
     balance.total_credit = credited_total
@@ -298,10 +340,14 @@ def _recalculate_balance_for_period(db: Session, organization_id: int, billing_p
 
 def _refresh_org_credit_payment_status(db: Session, org_credit_id: int) -> None:
     row = _get_org_credit_or_404(db, org_credit_id)
-    has_open_invoice = db.query(OrgCreditInvoice.id).filter(
-        OrgCreditInvoice.org_credit_id == org_credit_id,
-        OrgCreditInvoice.payment_done_flag == False,
-    ).first()
+    has_open_invoice = (
+        db.query(OrgCreditInvoice.id)
+        .filter(
+            OrgCreditInvoice.org_credit_id == org_credit_id,
+            OrgCreditInvoice.payment_done_flag == False,
+        )
+        .first()
+    )
     row.payment_status = "unpaid" if has_open_invoice else "paid"
     db.flush()
 
@@ -317,25 +363,35 @@ def create_org_credit_entry(
     is_auto_generated: bool = False,
 ) -> Tuple[OrgCredit, OrgCreditInvoice]:
     if billing_cycle.lower() != "monthly":
-        raise HTTPException(status_code=400, detail="Only monthly billing_cycle is supported")
+        raise HTTPException(
+            status_code=400, detail="Only monthly billing_cycle is supported"
+        )
     if payment_status not in {"paid", "unpaid"}:
-        raise HTTPException(status_code=400, detail="payment_status must be paid or unpaid")
+        raise HTTPException(
+            status_code=400, detail="payment_status must be paid or unpaid"
+        )
 
     _get_organization_or_404(db, organization_id)
     estimator = _get_estimator_or_404(db, estimator_id)
-    total_credit, payable_amount, _ = _extract_total_credit_and_payable_from_estimator(estimator)
+    total_credit, payable_amount, _ = _extract_total_credit_and_payable_from_estimator(
+        estimator
+    )
 
     start = billing_start_date or datetime.now(timezone.utc).date()
     end = _month_end(start)
     period = _billing_period(start)
 
-    duplicate = db.query(OrgCredit).filter(
-        OrgCredit.organization_id == organization_id,
-        OrgCredit.estimator_id == estimator_id,
-        OrgCredit.billing_start_date == start,
-        OrgCredit.billing_end_date == end,
-        OrgCredit.is_topup == False,
-    ).first()
+    duplicate = (
+        db.query(OrgCredit)
+        .filter(
+            OrgCredit.organization_id == organization_id,
+            OrgCredit.estimator_id == estimator_id,
+            OrgCredit.billing_start_date == start,
+            OrgCredit.billing_end_date == end,
+            OrgCredit.is_topup == False,
+        )
+        .first()
+    )
     if duplicate:
         raise HTTPException(
             status_code=409,
@@ -381,17 +437,27 @@ def list_org_credits(
     query = db.query(OrgCredit)
     if organization_id is not None:
         query = query.filter(OrgCredit.organization_id == organization_id)
-    return query.order_by(OrgCredit.billing_start_date.desc(), OrgCredit.id.desc()).all()
+    return query.order_by(
+        OrgCredit.billing_start_date.desc(), OrgCredit.id.desc()
+    ).all()
 
 
 def delete_org_credit_entry(db: Session, org_credit_id: int) -> int:
     row = _get_org_credit_or_404(db, org_credit_id)
 
-    invoice_rows = db.query(OrgCreditInvoice).filter(OrgCreditInvoice.org_credit_id == row.id).all()
+    invoice_rows = (
+        db.query(OrgCreditInvoice)
+        .filter(OrgCreditInvoice.org_credit_id == row.id)
+        .all()
+    )
     invoice_ids = [invoice.id for invoice in invoice_rows]
     if invoice_ids:
-        db.query(OrgCreditPayment).filter(OrgCreditPayment.invoice_id.in_(invoice_ids)).delete(synchronize_session=False)
-        db.query(OrgCreditInvoice).filter(OrgCreditInvoice.id.in_(invoice_ids)).delete(synchronize_session=False)
+        db.query(OrgCreditPayment).filter(
+            OrgCreditPayment.invoice_id.in_(invoice_ids)
+        ).delete(synchronize_session=False)
+        db.query(OrgCreditInvoice).filter(OrgCreditInvoice.id.in_(invoice_ids)).delete(
+            synchronize_session=False
+        )
 
     period = row.billing_month
     organization_id = row.organization_id
@@ -414,7 +480,9 @@ def add_topup_credit(
     if topup_credit <= 0:
         raise HTTPException(status_code=400, detail="topup_credit must be positive")
     if payment_status not in {"paid", "unpaid"}:
-        raise HTTPException(status_code=400, detail="payment_status must be paid or unpaid")
+        raise HTTPException(
+            status_code=400, detail="payment_status must be paid or unpaid"
+        )
 
     parent = _get_org_credit_or_404(db, org_credit_id)
 
@@ -459,10 +527,14 @@ def generate_invoice(
 ) -> OrgCreditInvoice:
     row = _get_org_credit_or_404(db, org_credit_id)
 
-    existing = db.query(OrgCreditInvoice).filter(
-        OrgCreditInvoice.org_credit_id == row.id,
-        OrgCreditInvoice.reference_invoice_id.is_(None),
-    ).first()
+    existing = (
+        db.query(OrgCreditInvoice)
+        .filter(
+            OrgCreditInvoice.org_credit_id == row.id,
+            OrgCreditInvoice.reference_invoice_id.is_(None),
+        )
+        .first()
+    )
     if existing:
         return existing
 
@@ -489,13 +561,17 @@ def list_invoices(
         query = query.filter(OrgCreditInvoice.organization_id == organization_id)
     if org_credit_id is not None:
         query = query.filter(OrgCreditInvoice.org_credit_id == org_credit_id)
-    return query.order_by(OrgCreditInvoice.invoice_date.desc(), OrgCreditInvoice.id.desc()).all()
+    return query.order_by(
+        OrgCreditInvoice.invoice_date.desc(), OrgCreditInvoice.id.desc()
+    ).all()
 
 
 def delete_invoice(db: Session, invoice_id: int) -> int:
     invoice = _get_invoice_or_404(db, invoice_id)
 
-    db.query(OrgCreditPayment).filter(OrgCreditPayment.invoice_id == invoice.id).delete(synchronize_session=False)
+    db.query(OrgCreditPayment).filter(OrgCreditPayment.invoice_id == invoice.id).delete(
+        synchronize_session=False
+    )
     org_credit_id = invoice.org_credit_id
     organization_id = invoice.organization_id
     period = invoice.billing_month
@@ -521,16 +597,23 @@ def mark_invoice_payment_status(
     invoice = _get_invoice_or_404(db, invoice_id)
 
     if payment_done_flag:
-        outstanding = _round2((invoice.invoice_amount or 0) - (invoice.paid_amount or 0))
+        outstanding = _round2(
+            (invoice.invoice_amount or 0) - (invoice.paid_amount or 0)
+        )
         if outstanding > 0:
             payment_mode_clean = _clean_optional_text(payment_mode)
             payment_reference_clean = _clean_optional_text(payment_reference)
             payment_other_details_clean = _clean_optional_text(payment_other_details)
 
             if not payment_mode_clean:
-                raise HTTPException(status_code=400, detail="payment_mode is required for mark paid")
+                raise HTTPException(
+                    status_code=400, detail="payment_mode is required for mark paid"
+                )
             if not payment_reference_clean:
-                raise HTTPException(status_code=400, detail="payment_reference is required for mark paid")
+                raise HTTPException(
+                    status_code=400,
+                    detail="payment_reference is required for mark paid",
+                )
 
             payment = OrgCreditPayment(
                 organization_id=invoice.organization_id,
@@ -573,7 +656,10 @@ def add_payment(
     partial_strategy: str = "keep_open",
 ) -> Tuple[OrgCreditPayment, OrgCreditInvoice, Optional[OrgCreditInvoice]]:
     if partial_strategy not in {"keep_open", "create_invoice", "full_payment"}:
-        raise HTTPException(status_code=400, detail="partial_strategy must be keep_open, create_invoice, or full_payment")
+        raise HTTPException(
+            status_code=400,
+            detail="partial_strategy must be keep_open, create_invoice, or full_payment",
+        )
 
     invoice = _get_invoice_or_404(db, invoice_id)
     outstanding = _round2((invoice.invoice_amount or 0) - (invoice.paid_amount or 0))
@@ -592,14 +678,18 @@ def add_payment(
     payment_mode_clean = _clean_optional_text(payment_mode)
     payment_reference_clean = _clean_optional_text(payment_reference)
     payment_other_details_clean = _clean_optional_text(payment_other_details)
-    payment_details_clean = payment_other_details_clean or _clean_optional_text(payment_details)
+    payment_details_clean = payment_other_details_clean or _clean_optional_text(
+        payment_details
+    )
 
     if not payment_mode_clean:
         raise HTTPException(status_code=400, detail="payment_mode is required")
     if not payment_reference_clean:
         raise HTTPException(status_code=400, detail="payment_reference is required")
 
-    credit_to_apply = _round2(actual_credit if actual_credit is not None else actual_payment)
+    credit_to_apply = _round2(
+        actual_credit if actual_credit is not None else actual_payment
+    )
     if credit_to_apply <= 0:
         raise HTTPException(status_code=400, detail="actual_credit must be positive")
 
@@ -668,17 +758,25 @@ def list_payments(
         query = query.filter(OrgCreditPayment.organization_id == organization_id)
     if invoice_id is not None:
         query = query.filter(OrgCreditPayment.invoice_id == invoice_id)
-    return query.order_by(OrgCreditPayment.payment_date.desc(), OrgCreditPayment.id.desc()).all()
+    return query.order_by(
+        OrgCreditPayment.payment_date.desc(), OrgCreditPayment.id.desc()
+    ).all()
 
 
 def delete_payment(db: Session, payment_id: int) -> int:
-    payment = db.query(OrgCreditPayment).filter(OrgCreditPayment.id == payment_id).first()
+    payment = (
+        db.query(OrgCreditPayment).filter(OrgCreditPayment.id == payment_id).first()
+    )
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
     invoice = _get_invoice_or_404(db, payment.invoice_id)
-    invoice.paid_amount = _round2(max(0, (invoice.paid_amount or 0) - (payment.actual_payment or 0)))
-    invoice.payment_done_flag = invoice.paid_amount >= _round2(invoice.invoice_amount or 0)
+    invoice.paid_amount = _round2(
+        max(0, (invoice.paid_amount or 0) - (payment.actual_payment or 0))
+    )
+    invoice.payment_done_flag = invoice.paid_amount >= _round2(
+        invoice.invoice_amount or 0
+    )
 
     db.delete(payment)
     db.flush()
@@ -695,7 +793,9 @@ def get_available_credit(
     billing_period: Optional[str] = None,
 ) -> OrgCreditBalance:
     _get_organization_or_404(db, organization_id)
-    period = _normalize_billing_period(billing_period or _billing_period(datetime.now(timezone.utc).date()))
+    period = _normalize_billing_period(
+        billing_period or _billing_period(datetime.now(timezone.utc).date())
+    )
     current_period = _billing_period(datetime.now(timezone.utc).date())
 
     balance = _get_or_create_balance(db, organization_id, period)
@@ -717,10 +817,14 @@ def track_credit_usage(
         raise HTTPException(status_code=400, detail="used_credit must be positive")
 
     _get_organization_or_404(db, organization_id)
-    period = _normalize_billing_period(billing_period or _billing_period(datetime.now(timezone.utc).date()))
+    period = _normalize_billing_period(
+        billing_period or _billing_period(datetime.now(timezone.utc).date())
+    )
     current_period = _billing_period(datetime.now(timezone.utc).date())
     if period < current_period:
-        raise HTTPException(status_code=400, detail="Cannot track usage for expired billing period")
+        raise HTTPException(
+            status_code=400, detail="Cannot track usage for expired billing period"
+        )
 
     balance = _get_or_create_balance(db, organization_id, period)
     balance.used_credit = _round2((balance.used_credit or 0) + used_credit)
@@ -737,7 +841,9 @@ def get_admin_month_summary(
     billing_period: Optional[str] = None,
 ) -> Dict[str, object]:
     organization = _get_organization_or_404(db, organization_id)
-    period = _normalize_billing_period(billing_period or _billing_period(datetime.now(timezone.utc).date()))
+    period = _normalize_billing_period(
+        billing_period or _billing_period(datetime.now(timezone.utc).date())
+    )
     current_period = _billing_period(datetime.now(timezone.utc).date())
 
     balance = _recalculate_balance_for_period(db, organization_id, period)
@@ -747,20 +853,28 @@ def get_admin_month_summary(
     remaining_credit = 0.0 if period < current_period else raw_remaining
 
     previous_period = _shift_billing_period(period, -1)
-    previous_balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == previous_period,
-    ).first()
+    previous_balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == previous_period,
+        )
+        .first()
+    )
     previous_lapsed = 0.0
     if previous_balance:
         prev_total = _round2(previous_balance.total_credit or 0)
         prev_used = _round2(previous_balance.used_credit or 0)
         previous_lapsed = _raw_remaining_credit(prev_total, prev_used)
 
-    period_invoices = db.query(OrgCreditInvoice).filter(
-        OrgCreditInvoice.organization_id == organization_id,
-        OrgCreditInvoice.billing_month == period,
-    ).all()
+    period_invoices = (
+        db.query(OrgCreditInvoice)
+        .filter(
+            OrgCreditInvoice.organization_id == organization_id,
+            OrgCreditInvoice.billing_month == period,
+        )
+        .all()
+    )
     invoices_count = len(period_invoices)
     paid_invoices_count = len([row for row in period_invoices if row.payment_done_flag])
     open_invoices_count = max(0, invoices_count - paid_invoices_count)
@@ -768,10 +882,101 @@ def get_admin_month_summary(
     payments_collected = 0.0
     if period_invoices:
         invoice_ids = [row.id for row in period_invoices]
-        payment_rows = db.query(OrgCreditPayment).filter(
-            OrgCreditPayment.invoice_id.in_(invoice_ids)
-        ).all()
-        payments_collected = _round2(sum(float(row.actual_payment or 0) for row in payment_rows))
+        payment_rows = (
+            db.query(OrgCreditPayment)
+            .filter(OrgCreditPayment.invoice_id.in_(invoice_ids))
+            .all()
+        )
+        payments_collected = _round2(
+            sum(float(row.actual_payment or 0) for row in payment_rows)
+        )
+
+    db.commit()
+    db.refresh(balance)
+    return {
+        "organization_id": organization_id,
+        "organization_name": organization.name,
+        "billing_period": period,
+        "total_credit": total_credit,
+        "used_credit": used_credit,
+        "remaining_credit": remaining_credit,
+        "lapsed_previous_month": previous_lapsed,
+        "invoices_count": invoices_count,
+        "paid_invoices_count": paid_invoices_count,
+        "open_invoices_count": open_invoices_count,
+        "payments_collected": payments_collected,
+        "no_rollover_policy": True,
+        "generated_at": datetime.now(timezone.utc),
+    }
+
+
+# organization_id: Optional[int] = None,
+# ) -> List[OrgCredit]:
+#     query = db.query(OrgCredit)
+#     if organization_id is not None:
+#         query = query.filter(OrgCredit.organization_id == organization_id)
+
+
+def get_organization_summary(
+    db: Session,
+    skip: int = 0,
+    limit: int = 10,
+    search: str | None = None,
+    organization_id: Optional[int] = None,
+    billing_period: Optional[str] = None,
+) -> Dict[str, object]:
+    query = db.query(OrgCreditBalance)
+    if organization_id is not None:
+        query = query.filter(OrgCreditBalance.organization_id == organization_id)
+    period = _normalize_billing_period(
+        billing_period or _billing_period(datetime.now(timezone.utc).date())
+    )
+    current_period = _billing_period(datetime.now(timezone.utc).date())
+
+    balance = _recalculate_balance_for_period(db, organization_id, period)
+    total_credit = _round2(balance.total_credit or 0)
+    used_credit = _round2(balance.used_credit or 0)
+    raw_remaining = _raw_remaining_credit(total_credit, used_credit)
+    remaining_credit = 0.0 if period < current_period else raw_remaining
+
+    previous_period = _shift_billing_period(period, -1)
+    previous_balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == previous_period,
+        )
+        .first()
+    )
+    previous_lapsed = 0.0
+    if previous_balance:
+        prev_total = _round2(previous_balance.total_credit or 0)
+        prev_used = _round2(previous_balance.used_credit or 0)
+        previous_lapsed = _raw_remaining_credit(prev_total, prev_used)
+
+    period_invoices = (
+        db.query(OrgCreditInvoice)
+        .filter(
+            OrgCreditInvoice.organization_id == organization_id,
+            OrgCreditInvoice.billing_month == period,
+        )
+        .all()
+    )
+    invoices_count = len(period_invoices)
+    paid_invoices_count = len([row for row in period_invoices if row.payment_done_flag])
+    open_invoices_count = max(0, invoices_count - paid_invoices_count)
+
+    payments_collected = 0.0
+    if period_invoices:
+        invoice_ids = [row.id for row in period_invoices]
+        payment_rows = (
+            db.query(OrgCreditPayment)
+            .filter(OrgCreditPayment.invoice_id.in_(invoice_ids))
+            .all()
+        )
+        payments_collected = _round2(
+            sum(float(row.actual_payment or 0) for row in payment_rows)
+        )
 
     db.commit()
     db.refresh(balance)
@@ -798,14 +1003,20 @@ def get_lapse_report(
     months: int = 6,
     organization_id: Optional[int] = None,
 ) -> Dict[str, object]:
-    end_period = _normalize_billing_period(billing_period or _billing_period(datetime.now(timezone.utc).date()))
+    end_period = _normalize_billing_period(
+        billing_period or _billing_period(datetime.now(timezone.utc).date())
+    )
     current_period = _billing_period(datetime.now(timezone.utc).date())
-    period_window = [_shift_billing_period(end_period, -idx) for idx in reversed(range(months))]
+    period_window = [
+        _shift_billing_period(end_period, -idx) for idx in reversed(range(months))
+    ]
 
     org_query = db.query(Organization)
     if organization_id is not None:
         org_query = org_query.filter(Organization.id == organization_id)
-    organizations = org_query.order_by(Organization.name.asc(), Organization.id.asc()).all()
+    organizations = org_query.order_by(
+        Organization.name.asc(), Organization.id.asc()
+    ).all()
     if organization_id is not None and not organizations:
         raise HTTPException(status_code=404, detail="Organization not found")
 
@@ -814,14 +1025,23 @@ def get_lapse_report(
 
     for org in organizations:
         for period in period_window:
-            existing_balance = db.query(OrgCreditBalance).filter(
-                OrgCreditBalance.organization_id == org.id,
-                OrgCreditBalance.billing_period == period,
-            ).first()
-            has_invoice = db.query(OrgCreditInvoice.id).filter(
-                OrgCreditInvoice.organization_id == org.id,
-                OrgCreditInvoice.billing_month == period,
-            ).first() is not None
+            existing_balance = (
+                db.query(OrgCreditBalance)
+                .filter(
+                    OrgCreditBalance.organization_id == org.id,
+                    OrgCreditBalance.billing_period == period,
+                )
+                .first()
+            )
+            has_invoice = (
+                db.query(OrgCreditInvoice.id)
+                .filter(
+                    OrgCreditInvoice.organization_id == org.id,
+                    OrgCreditInvoice.billing_month == period,
+                )
+                .first()
+                is not None
+            )
 
             if not existing_balance and not has_invoice:
                 continue
@@ -869,10 +1089,14 @@ def get_lapse_report(
     }
 
 
-def _get_or_create_org_email_settings(db: Session, organization_id: int) -> OrganizationSettings:
-    settings_row = db.query(OrganizationSettings).filter(
-        OrganizationSettings.organization_id == organization_id
-    ).first()
+def _get_or_create_org_email_settings(
+    db: Session, organization_id: int
+) -> OrganizationSettings:
+    settings_row = (
+        db.query(OrganizationSettings)
+        .filter(OrganizationSettings.organization_id == organization_id)
+        .first()
+    )
     if settings_row:
         return settings_row
 
@@ -887,11 +1111,20 @@ def get_invoice_document(db: Session, invoice_id: int) -> Dict[str, object]:
     org_credit = _get_org_credit_or_404(db, invoice.org_credit_id)
     organization = _get_organization_or_404(db, invoice.organization_id)
     estimator = _get_estimator_or_404(db, org_credit.estimator_id)
-    payments = db.query(OrgCreditPayment).filter(
-        OrgCreditPayment.invoice_id == invoice.id,
-    ).order_by(OrgCreditPayment.payment_date.asc(), OrgCreditPayment.id.asc()).all()
-    outstanding_amount = _round2(max(0, (invoice.invoice_amount or 0) - (invoice.paid_amount or 0)))
-    organization_admin_email = _get_organization_admin_email(db, invoice.organization_id)
+    payments = (
+        db.query(OrgCreditPayment)
+        .filter(
+            OrgCreditPayment.invoice_id == invoice.id,
+        )
+        .order_by(OrgCreditPayment.payment_date.asc(), OrgCreditPayment.id.asc())
+        .all()
+    )
+    outstanding_amount = _round2(
+        max(0, (invoice.invoice_amount or 0) - (invoice.paid_amount or 0))
+    )
+    organization_admin_email = _get_organization_admin_email(
+        db, invoice.organization_id
+    )
 
     return {
         "invoice": invoice,
@@ -909,7 +1142,9 @@ def get_invoice_document(db: Session, invoice_id: int) -> Dict[str, object]:
 
 
 def get_payment_receipt(db: Session, payment_id: int) -> Dict[str, object]:
-    payment = db.query(OrgCreditPayment).filter(OrgCreditPayment.id == payment_id).first()
+    payment = (
+        db.query(OrgCreditPayment).filter(OrgCreditPayment.id == payment_id).first()
+    )
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
@@ -917,7 +1152,9 @@ def get_payment_receipt(db: Session, payment_id: int) -> Dict[str, object]:
     org_credit = _get_org_credit_or_404(db, invoice.org_credit_id)
     organization = _get_organization_or_404(db, payment.organization_id)
     estimator = _get_estimator_or_404(db, org_credit.estimator_id)
-    organization_admin_email = _get_organization_admin_email(db, payment.organization_id)
+    organization_admin_email = _get_organization_admin_email(
+        db, payment.organization_id
+    )
 
     return {
         "payment": payment,
@@ -956,9 +1193,7 @@ def _build_invoice_email_html(document: Dict[str, object]) -> str:
                 "</tr>"
             )
     else:
-        payment_rows_html = (
-            "<tr><td colspan='5' style='padding:8px; border:1px solid #dbe4f3; text-align:center;'>No payments yet</td></tr>"
-        )
+        payment_rows_html = "<tr><td colspan='5' style='padding:8px; border:1px solid #dbe4f3; text-align:center;'>No payments yet</td></tr>"
 
     return f"""
     <html>
@@ -1051,9 +1286,16 @@ def send_invoice_email(
 
     html = _build_invoice_email_html(document)
     if body and body.strip():
-        html = html.replace("</div>\n        </div>", f"<p><strong>Note:</strong> {body.strip()}</p></div>\n        </div>")
+        html = html.replace(
+            "</div>\n        </div>",
+            f"<p><strong>Note:</strong> {body.strip()}</p></div>\n        </div>",
+        )
 
-    email_subject = subject.strip() if subject and subject.strip() else f"Invoice #{invoice.id} - {document['organization_name']}"
+    email_subject = (
+        subject.strip()
+        if subject and subject.strip()
+        else f"Invoice #{invoice.id} - {document['organization_name']}"
+    )
     ok, error_message, _ = send_campaign_email(
         recipient_email=to_email,
         recipient_name=str(document["organization_name"]),
@@ -1063,7 +1305,9 @@ def send_invoice_email(
         settings=settings_row,
     )
     if not ok:
-        raise HTTPException(status_code=400, detail=error_message or "Failed to send invoice email")
+        raise HTTPException(
+            status_code=400, detail=error_message or "Failed to send invoice email"
+        )
 
     db.commit()
     return {"message": "Invoice email sent successfully"}
@@ -1082,9 +1326,16 @@ def send_payment_receipt_email(
 
     html = _build_receipt_email_html(receipt)
     if body and body.strip():
-        html = html.replace("</div>\n        </div>", f"<p><strong>Note:</strong> {body.strip()}</p></div>\n        </div>")
+        html = html.replace(
+            "</div>\n        </div>",
+            f"<p><strong>Note:</strong> {body.strip()}</p></div>\n        </div>",
+        )
 
-    email_subject = subject.strip() if subject and subject.strip() else f"Receipt #{payment.id} - Invoice #{payment.invoice_id}"
+    email_subject = (
+        subject.strip()
+        if subject and subject.strip()
+        else f"Receipt #{payment.id} - Invoice #{payment.invoice_id}"
+    )
     ok, error_message, _ = send_campaign_email(
         recipient_email=to_email,
         recipient_name=str(receipt["organization_name"]),
@@ -1094,7 +1345,9 @@ def send_payment_receipt_email(
         settings=settings_row,
     )
     if not ok:
-        raise HTTPException(status_code=400, detail=error_message or "Failed to send receipt email")
+        raise HTTPException(
+            status_code=400, detail=error_message or "Failed to send receipt email"
+        )
 
     db.commit()
     return {"message": "Receipt email sent successfully"}
@@ -1118,20 +1371,26 @@ def _build_next_cycle_if_needed(
         next_end = _month_end(next_start)
         next_period = _billing_period(next_start)
 
-        existing = db.query(OrgCredit).filter(
-            OrgCredit.organization_id == current.organization_id,
-            OrgCredit.estimator_id == current.estimator_id,
-            OrgCredit.is_topup == False,
-            OrgCredit.billing_start_date == next_start,
-            OrgCredit.billing_end_date == next_end,
-        ).first()
+        existing = (
+            db.query(OrgCredit)
+            .filter(
+                OrgCredit.organization_id == current.organization_id,
+                OrgCredit.estimator_id == current.estimator_id,
+                OrgCredit.is_topup == False,
+                OrgCredit.billing_start_date == next_start,
+                OrgCredit.billing_end_date == next_end,
+            )
+            .first()
+        )
 
         if existing:
             current = existing
             continue
 
         estimator = _get_estimator_or_404(db, current.estimator_id)
-        total_credit, payable_amount, _ = _extract_total_credit_and_payable_from_estimator(estimator)
+        total_credit, payable_amount, _ = (
+            _extract_total_credit_and_payable_from_estimator(estimator)
+        )
 
         new_row = OrgCredit(
             organization_id=current.organization_id,
@@ -1169,9 +1428,18 @@ def _build_next_cycle_if_needed(
 def run_billing_automation(db: Session, today: Optional[date] = None) -> Dict[str, int]:
     current_day = today or datetime.now(timezone.utc).date()
 
-    rows = db.query(OrgCredit).filter(
-        OrgCredit.is_topup == False,
-    ).order_by(OrgCredit.organization_id.asc(), OrgCredit.estimator_id.asc(), OrgCredit.billing_end_date.desc()).all()
+    rows = (
+        db.query(OrgCredit)
+        .filter(
+            OrgCredit.is_topup == False,
+        )
+        .order_by(
+            OrgCredit.organization_id.asc(),
+            OrgCredit.estimator_id.asc(),
+            OrgCredit.billing_end_date.desc(),
+        )
+        .all()
+    )
 
     latest_by_key: Dict[Tuple[int, int], OrgCredit] = {}
     for row in rows:
@@ -1183,7 +1451,9 @@ def run_billing_automation(db: Session, today: Optional[date] = None) -> Dict[st
     generated_invoices = 0
     for latest_row in latest_by_key.values():
         try:
-            entry_count, invoice_count, _ = _build_next_cycle_if_needed(db, latest_row, current_day)
+            entry_count, invoice_count, _ = _build_next_cycle_if_needed(
+                db, latest_row, current_day
+            )
             generated_entries += entry_count
             generated_invoices += invoice_count
         except Exception as exc:
@@ -1233,7 +1503,9 @@ async def run_daily_org_credit_billing_daemon(stop_event: asyncio.Event) -> None
             result["generated_invoices"],
         )
     except Exception as exc:
-        logger.error("Initial org-credit billing automation failed: %s", str(exc), exc_info=True)
+        logger.error(
+            "Initial org-credit billing automation failed: %s", str(exc), exc_info=True
+        )
 
     while not stop_event.is_set():
         wait_seconds = _seconds_until_next_run(
@@ -1256,4 +1528,8 @@ async def run_daily_org_credit_billing_daemon(stop_event: asyncio.Event) -> None
                 result["generated_invoices"],
             )
         except Exception as exc:
-            logger.error("Scheduled org-credit billing automation failed: %s", str(exc), exc_info=True)
+            logger.error(
+                "Scheduled org-credit billing automation failed: %s",
+                str(exc),
+                exc_info=True,
+            )
