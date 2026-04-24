@@ -26,6 +26,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   React.useEffect(() => {
     const checkAccess = async () => {
+
+      if (userRole == 'SUPERADMIN')
+        return
+
       try {
         const response = await organizationService.checkFeatureAccess(pathname);
         setAccess(response);
@@ -61,7 +65,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" replace />;
   }
 
-  if (access && !access.allowed) {
+  if (userRole != 'SUPERADMIN' && access && !access.allowed) {
     return <RestrictedFeaturePage modulePath={access.module} />
   }
 

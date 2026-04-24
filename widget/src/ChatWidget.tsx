@@ -196,7 +196,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const chatAPI = useRef(new ChatAPI(apiUrl));
   const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS['bot-robot'];
   const userIconGlyph = USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS['user-person'];
-  const headerTextColor = (chatHeaderFontColor || '').trim() || '#ffffff';
+  // const headerTextColor = (chatHeaderFontColor || '').trim() || '#ffffff';
 
   const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
     const safeRoom = encodeURIComponent(roomId);
@@ -954,6 +954,30 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     window.open(getMeetingUrl(callRoomId, callMode), '_blank', 'noopener,noreferrer');
   };
 
+  const basePositionMap: Record<string, React.CSSProperties> = {
+    'bottom-left': { left: 0, bottom: 0 },
+    'bottom-right': { right: 0, bottom: 0 },
+    'top-left': { left: 0, top: 0 },
+    'top-right': { right: 0, top: 0 },
+  };
+  const launcherPositionSx = {
+    ...basePositionMap[position],
+    bottom: position.includes('bottom') ? 16 : undefined,
+    top: position.includes('top') ? 16 : undefined,
+    left: position.includes('left') ? 16 : undefined,
+    right: position.includes('right') ? 16 : undefined,
+  };
+
+  const panelPositionMap: Record<string, React.CSSProperties> = {
+    'bottom-left': { left: 16, bottom: 20 },
+    'bottom-right': { right: 16, bottom: 20 },
+    'top-left': { left: 16, top: 20 },
+    'top-right': { right: 16, top: 20 },
+  };
+
+  const panelPositionSx =
+    panelPositionMap[position] || panelPositionMap['bottom-right'];
+
   return (
     <div
       className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
@@ -961,26 +985,56 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     >
       {!isOpen && (
         <button
-          className="chatbot-widget-button chatbot-fade-in"
           onClick={() => setIsOpen(true)}
-          style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+          className="chat-launcher"
+          style={{
+            position: 'fixed',
+            ...launcherPositionSx,
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+          }}
         >
-          💬
+          <div className="icon-wrapper">
+            💬
+          </div>
         </button>
       )}
 
       {isOpen && (
-        <div className="chatbot-widget-window chatbot-slide-in">
+        <div
+          className={`chatbot-widget-window ${darkMode ? 'dark' : ''}`}
+          style={{
+            position: 'fixed',
+            ...panelPositionSx,
+            width: window.innerWidth < 600 ? 'calc(100vw - 32px)' : 360,
+            height: window.innerWidth < 600 ? '66vh' : 550,
+            borderRadius: 16,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 1300,
+            backgroundColor: darkMode ? '#111827' : '#ffffff',
+            boxShadow: darkMode
+              ? '0 24px 54px rgba(2,6,23,0.5)'
+              : '0 28px 62px rgba(15,23,42,0.34)',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'inherit',
+            border: darkMode
+              ? '1px solid rgba(148,163,184,0.22)'
+              : '1px solid #cbd5e1',
+          }}
+        >
           <div
             className="chatbot-widget-header"
             style={{
               background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
-              color: headerTextColor,
+              color: chatHeaderFontColor,
             }}
           >
-            <h3>{name}</h3>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>
+              {name}
+            </h3>
             <div className="chatbot-widget-header-actions">
-              <button
+              {/* <button
                 className="chatbot-widget-header-btn chatbot-widget-call-btn"
                 onClick={handleRequestVideoCall}
                 title="Request video call"
@@ -1003,7 +1057,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 disabled={callBusy || callStatus !== 'active'}
               >
                 <span className="chatbot-header-emoji" aria-hidden="true">📵</span>
-              </button>
+              </button> */}
               <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>
               <button className="chatbot-widget-header-btn" onClick={() => setShowEmailForm((v) => !v)} title="Email this conversation">✉</button>
               <button className="chatbot-widget-header-btn" onClick={openAppointmentForm} title="Book appointment">📅</button>

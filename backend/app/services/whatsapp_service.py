@@ -60,6 +60,33 @@ def send_whatsapp_text_message(
     return response.json()
 
 
+def send_whatsapp_test_message(
+    phone_number_id: str,
+    access_token: str,
+    to_number: str,
+    message_text: str,
+) -> dict:
+    url = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "template",
+        "template": {
+            "name": "hello_world",
+            "language": {"code": "en_US"}
+        }
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=20)
+    if response.status_code >= 400:
+        raise WhatsAppSendError(f"Meta send failed: {response.status_code} {response.text}")
+    return response.json()
+
+
 def _graph_version() -> str:
     return (settings.WHATSAPP_GRAPH_VERSION or "v19.0").strip()
 

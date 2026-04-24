@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from requests import Session
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func
 from app.models.organization_credit_allocation import OrganizationCreditAllocation
 from app.models.organization_credit_profile import OrganizationCreditProfile
 from app.models.organization_credit_usages import OrganizationCreditUsage
@@ -72,22 +72,56 @@ def get_credit_summary(
         PriceMatrixItem.sub_module,
         PriceMatrixItem.feature_code,
 
+        # -------------------------
+        # Reserved
+        # -------------------------
         func.coalesce(
             func.sum(
                 case(
                     (OrganizationCreditUsage.status == "reserved",
-                     OrganizationCreditUsage.credits_used),
+                    OrganizationCreditUsage.credits_used),
                     else_=0
                 )
             ),
             0
         ).label("reserved"),
 
+        # -------------------------
+        # Consumed (positive only)
+        # -------------------------
         func.coalesce(
             func.sum(
                 case(
                     (OrganizationCreditUsage.status == "consumed",
-                     OrganizationCreditUsage.credits_used),
+                    OrganizationCreditUsage.credits_used),
+                    else_=0
+                )
+            ),
+            0
+        ).label("consumed"),
+
+        # -------------------------
+        # Refunded (convert to positive for UI)
+        # -------------------------
+        func.coalesce(
+            func.sum(
+                case(
+                    (OrganizationCreditUsage.status == "refunded",
+                    -OrganizationCreditUsage.credits_used),  
+                    else_=0
+                )
+            ),
+            0
+        ).label("refunded"),
+
+        # -------------------------
+        # Net Used (ledger sum)
+        # -------------------------
+        func.coalesce(
+            func.sum(
+                case(
+                    (OrganizationCreditUsage.status != "reserved",
+                    OrganizationCreditUsage.credits_used),
                     else_=0
                 )
             ),
@@ -96,9 +130,10 @@ def get_credit_summary(
 
     ).outerjoin(
         OrganizationCreditUsage,
-        OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id
+        and_(
+            OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
+            OrganizationCreditUsage.organization_id == organization_id  # ✅ move filter here
+        )
     ).group_by(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
@@ -137,11 +172,12 @@ def get_credit_summary(
                 "sub_module": row.sub_module,
                 "feature_code": row.feature_code,
                 "reserved": row.reserved,
+                "consumed": row.consumed,
+                "refunded": row.refunded,
                 "used": row.used
             }
             for row in feature_summary
         ],
-
         "monthly_summary": {
             "month": datetime.utcnow().strftime("%B %Y"),
             "allocated": total_allocated,
@@ -297,6 +333,85 @@ def deduct_credits(
         raise Exception("Credit balance not found")
 
     balance.used_credit += credits_required
+    balance.remaining_credit = balance.total_credit - balance.used_credit
+
+    db.flush()
+    return True
+
+def refund_credits(
+    db,
+    organization_id: int,
+    feature_code: str,
+    quantity: float,
+    reference_type: str | None = None,
+    reference_id: str | None = None
+):
+    item = db.query(PriceMatrixItem).filter(
+        PriceMatrixItem.feature_code == feature_code,
+        PriceMatrixItem.is_active == True
+    ).first()
+
+    if not item:
+        raise Exception("Invalid feature")
+
+    credits_to_refund = quantity * item.credits_per_unit
+
+    # -------------------------
+    # Prevent over-refund
+    # -------------------------
+    consumed = db.query(
+        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
+    ).filter(
+        OrganizationCreditUsage.organization_id == organization_id,
+        OrganizationCreditUsage.price_matrix_item_id == item.id,
+        OrganizationCreditUsage.reference_id == str(reference_id),
+        OrganizationCreditUsage.status == "consumed"
+    ).scalar()
+
+    refunded = db.query(
+        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
+    ).filter(
+        OrganizationCreditUsage.organization_id == organization_id,
+        OrganizationCreditUsage.price_matrix_item_id == item.id,
+        OrganizationCreditUsage.reference_id == str(reference_id),
+        OrganizationCreditUsage.status == "refunded"
+    ).scalar()
+
+    # refunded will be negative if you follow ledger style
+    net_consumed = consumed + refunded
+
+    if credits_to_refund > net_consumed:
+        raise Exception("Refund exceeds consumed credits")
+
+    # -------------------------
+    # Create refund entry (ledger style)
+    # -------------------------
+    usage = OrganizationCreditUsage(
+        organization_id=organization_id,
+        price_matrix_item_id=item.id,
+        used_quantity=quantity,
+        credits_used=-credits_to_refund,  
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+        status="refunded"
+    )
+
+    db.add(usage)
+
+    # -------------------------
+    # Update balance
+    # -------------------------
+    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    balance = db.query(OrgCreditBalance).filter(
+        OrgCreditBalance.organization_id == organization_id,
+        OrgCreditBalance.billing_period == billing_period
+    ).with_for_update().first()
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    balance.used_credit -= credits_to_refund
     balance.remaining_credit = balance.total_credit - balance.used_credit
 
     db.flush()

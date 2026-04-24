@@ -35,6 +35,7 @@ class SuggestedQuestionsResponse(BaseModel):
 
 
 class ConversationHistoryItem(BaseModel):
+    source: str
     role: str
     message: str
     response: str

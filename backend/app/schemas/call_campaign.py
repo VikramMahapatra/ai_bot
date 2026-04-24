@@ -95,7 +95,7 @@ class CampaignUpdate(BaseModel):
         return v
     
 class CampaignStatusUpdate(BaseModel):
-    status: str  # Active | Paused | Draft
+    status: str  # Active | Paused | Draft | Cancelled
     
     
 class ContactCreate(BaseModel):

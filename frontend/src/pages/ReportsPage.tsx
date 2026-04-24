@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 import AdminLayout from "../components/Layout/AdminLayout";
 import {
   Box,
@@ -255,9 +255,7 @@ const ReportsPage: React.FC = () => {
       const res = await reportService.runOutcomeProcessingNow();
       // Refresh conversations after processing
       if (tabValue === reportTabIndexes.conversations) fetchConversations();
-      setOutcomeSnackbarMessage(
-        `Outcome processing completed: processed=${res.processed}, failed=${res.failed}`,
-      );
+      setOutcomeSnackbarMessage(res.message!);
       setOutcomeSnackbarOpen(true);
     } catch (err: any) {
       setError(err.message || "Failed to run outcome processing");
@@ -2150,42 +2148,63 @@ const ReportsPage: React.FC = () => {
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {sessionMessages.map((item, idx) => (
                   <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: "block", mb: 1 }}
-                    >
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
                       {new Date(item.created_at).toLocaleString()}
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontWeight: 600, mb: 0.5 }}
-                    >
-                      User
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ mb: 1.5, whiteSpace: "pre-wrap" }}
-                    >
-                      {item.message || "â€”"}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontWeight: 600, mb: 0.5 }}
-                    >
-                      Assistant
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                      {item.response || "â€”"}
-                    </Typography>
+
+                    {/* ---------------- VOICE ---------------- */}
+                    {item.source === "voice" ? (
+                      <Box>
+                        {item.message?.trim() && (
+                          <>
+                            <Typography fontWeight={600} mb={0.5}>
+                              User
+                            </Typography>
+                            <Typography sx={{ whiteSpace: "pre-wrap" }}>
+                              {item.message}
+                            </Typography>
+                          </>
+                        )}
+                        {item.response?.trim() && (
+                          <>
+                            <Typography fontWeight={600} mb={0.5}>
+                              Assistant
+                            </Typography>
+                            <Typography sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}>
+                              {item.response}
+                            </Typography>
+                          </>
+                        )}
+
+
+                      </Box>
+                    ) : (
+                      /* ---------------- CHAT ---------------- */
+                      <Box>
+                        <Typography fontWeight={600} mb={0.5}>
+                          User
+                        </Typography>
+                        <Typography sx={{ mb: 1.5, whiteSpace: "pre-wrap" }}>
+                          {item.message || "-"}
+                        </Typography>
+
+                        <Typography fontWeight={600} mb={0.5}>
+                          Assistant
+                        </Typography>
+                        <Typography sx={{ whiteSpace: "pre-wrap" }}>
+                          {item.response || "-"}
+                        </Typography>
+                      </Box>
+                    )}
                   </Paper>
                 ))}
               </Box>
             )}
           </DialogContent>
-        </Dialog>
-      </Box>
-    </AdminLayout>
+        </Dialog >
+      </Box >
+    </AdminLayout >
   );
 };
 

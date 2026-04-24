@@ -41,7 +41,7 @@ export interface Campaign {
     product_name?: string;
     calling_no?: string;
     category?: string;
-    status: "draft" | "pending" | "running" | "paused" | "completed" | "scheduled";
+    status: "draft" | "pending" | "running" | "paused" | "completed" | "scheduled" | "cancelled";
     contacts?: number;
     progress?: number;
     created_at?: string;

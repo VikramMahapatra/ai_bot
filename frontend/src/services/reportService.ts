@@ -53,6 +53,7 @@ export interface ConversationMetric {
 }
 
 export interface SessionMessage {
+  source: string;
   role: string;
   message: string;
   response: string;
@@ -254,7 +255,7 @@ export const reportService = {
     return response.data;
   },
 
-  async runOutcomeProcessingNow(params?: { batch_size?: number; max_batches?: number }): Promise<{ processed: number; failed: number }> {
+  async runOutcomeProcessingNow(params?: { batch_size?: number; max_batches?: number }): Promise<{ message?: string }> {
     const response = await api.post('/api/admin/outcomes/process', params || {});
     return response.data;
   },
