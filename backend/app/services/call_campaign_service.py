@@ -96,7 +96,7 @@ def sync_campaigns(
 
     for campaign in campaign_models:
         if should_sync(campaign):
-            sync_campaign_from_echoleads(db, echolead_client, campaign)
+            sync_campaign_from_echoleads(db, echolead_client, campaign.id)
 
     db.commit()
 
@@ -281,15 +281,15 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     if not campaign:
         return None
     
+    campaign_obj, product_name, schedule = campaign
+     
     echolead_client = EcholeadsClient()
     background_tasks.add_task(
             sync_campaign_from_echoleads,
             db,
             echolead_client,
-            campaign
+            campaign_obj.id
     )
-
-    campaign_obj, product_name, schedule = campaign
     
     send_option = "scheduled" if schedule and (schedule.start_datetime or schedule.active_days) else "instant"
 
@@ -1118,7 +1118,7 @@ def update_campaign_status(
             )
         #SYNC LATEST CAMPAIGN DETAILS
         try:
-            sync_campaign_from_echoleads(db, client, campaign)
+            sync_campaign_from_echoleads(db, client, campaign.id)
         except Exception as e:
             print(f"EchoLeads Campaign Sync API failed: {str(e)}")
             echo_success = False
@@ -1434,12 +1434,18 @@ def normalize_phone(phone: str):
 def sync_campaign_from_echoleads(
     db: Session,
     echolead_client: EcholeadsClient,
-    campaign: CallCampaign
+    campaign_id: int
 ):
     try:
         # Fetch Campaign
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.id == campaign_id
+        ).first()
+
+        if not campaign:
+            return
+    
         if campaign.external_campaign_name and not campaign.external_campaign_id:
-            
             response = echolead_client.get_campaign_by_name(
                 campaign.external_campaign_name
             )

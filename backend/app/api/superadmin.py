@@ -89,6 +89,8 @@ from app.models.call_logs import CallLog
 from app.models.calling_agents import CallingAgent
 from app.api.organization_setting import get_settings
 from app.models.organization_settings import OrganizationSettings
+from app.schemas.org_credit_billing import OrgCreditAdminMonthSummaryResponse
+from app.services import org_credit_billing_service
 
 logger = logging.getLogger(__name__)
 
@@ -3195,3 +3197,40 @@ def organization_calling_report(
         )
 
     return {"items": report, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/org-credit-usage")
+async def get_admin_org_credit_current_month_summary(
+    billing_period: Optional[str] = Query(default=None),
+    organization_id: Optional[int] = Query(default=None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+
+    org_query = db.query(Organization)
+
+    if organization_id:
+        org_query = org_query.filter(Organization.id == organization_id)
+
+    if search:
+        search_term = f"%{search.strip()}%"
+        org_query = org_query.filter(Organization.name.ilike(search_term))
+
+    total = org_query.count()
+
+    all_orgs = org_query.offset(skip).limit(limit).all()
+
+    org_list = []
+
+    for org in all_orgs:
+        payload = org_credit_billing_service.get_admin_month_summary(
+            db=db,
+            organization_id=org.id,
+            billing_period=billing_period,
+        )
+        org_list.append(OrgCreditAdminMonthSummaryResponse(**payload))
+
+    return {"items": org_list, "total": total, "skip": skip, "limit": limit}

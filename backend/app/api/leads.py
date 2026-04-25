@@ -1,5 +1,7 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import or_
+from sqlalchemy import and_, case, exists, func, or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
@@ -25,6 +27,8 @@ from app.api.chat import _get_or_create_agent_contact_list, _normalize_phone
 from app.models.conversation import Conversation
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.models.call_campaigns import CallCampaign
+from app.models.campaign_contacts import CampaignContact
 
 logger = logging.getLogger(__name__)
 
@@ -325,24 +329,113 @@ async def list_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """List all leads (paginated)"""
-    query = db.query(Lead).filter(Lead.organization_id == current_user.organization_id)
+    EXCLUDED_STAGES = ["unassigned", "closed_won", "closed_lost"]
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    
+    filters = [Lead.organization_id == current_user.organization_id]
+
     if widget_id:
-        query = query.filter(Lead.widget_id == widget_id)
+        filters.append(Lead.widget_id == widget_id)
     if source:
-        query = query.filter(Lead.source == _normalize_source(source))
+        filters.append(Lead.source == _normalize_source(source))
     if funnel_stage:
         normalized_stage = _validate_funnel_stage_for_org(
             db, current_user.organization_id, funnel_stage
         )
-        query = query.filter(Lead.funnel_stage == normalized_stage)
+        filters.append(Lead.funnel_stage == normalized_stage)
     if product_id:
-        query = query.filter(Lead.product_id == product_id)
-
+        filters.append(Lead.product_id == product_id)
     if campaign_id:
-        query = query.filter(Lead.campaign_id == campaign_id)
+        if source == "voice":
+            filters.append(
+                exists().where(
+                    (LeadContactMapping.lead_id == Lead.id) &
+                    (LeadContactMapping.contact_id == CampaignContact.contact_id) &
+                    (CampaignContact.campaign_id == campaign_id)
+                )
+            )
+        else:
+            campaign_contact_list_id = db.query(CallCampaign.contact_list_id).filter(
+                CallCampaign.id == campaign_id,
+                CallCampaign.organization_id == current_user.organization_id
+            ).scalar()
+            
+            if not campaign_contact_list_id:
+                 return {
+                    "items": [],
+                    "pagination": {"total": 0, "skip": skip, "limit": limit},
+                    "summary": {
+                        "total_leads": 0,
+                        "conversion_leads": 0,
+                        "week_leads": 0,
+                    },
+                }
+                
+            filters.append(
+                    exists()
+                    .select_from(LeadContactMapping)
+                    .join(Contact, Contact.id == LeadContactMapping.contact_id)
+                    .where(
+                        LeadContactMapping.lead_id == Lead.id,
+                        Contact.contact_list_id == campaign_contact_list_id
+                    )
+                )
+    
+    """List all leads (paginated)"""
+    query = db.query(Lead).filter(*filters)
 
     total = query.count()
+    
+    summary = db.query(
+        # total pipeline leads
+        func.count(
+            case(
+                (
+                    and_(
+                        Lead.funnel_stage.isnot(None),
+                        ~Lead.funnel_stage.in_(EXCLUDED_STAGES)
+                    ),
+                    1
+                )
+            )
+        ).label("total_pipeline_leads"),
+
+        # conversion leads (email OR phone)
+        func.count(
+            case(
+                (
+                    and_(
+                        Lead.funnel_stage.isnot(None),
+                        ~Lead.funnel_stage.in_(EXCLUDED_STAGES),
+                        or_(
+                            Lead.email.isnot(None),
+                            Lead.phone.isnot(None)
+                        )
+                    ),
+                    1
+                )
+            )
+        ).label("conversion_leads"),
+
+        # leads in last 7 days
+        func.count(
+            case(
+                (
+                    and_(
+                        Lead.funnel_stage.isnot(None),
+                        ~Lead.funnel_stage.in_(EXCLUDED_STAGES),
+                        Lead.created_at >= week_ago
+                    ),
+                    1
+                )
+            )
+        ).label("week_leads"),
+    ).select_from(Lead)
+
+    # reuse filters
+    summary = summary.filter(*filters)
+
+    summary_result = summary.one()
 
     leads = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -375,6 +468,11 @@ async def list_leads(
     return {
         "items": leads,
         "pagination": {"total": total, "skip": skip, "limit": limit},
+        "summary": {
+            "total_leads": summary_result.total_pipeline_leads or 0,
+            "conversion_leads": summary_result.conversion_leads or 0,
+            "week_leads": summary_result.week_leads or 0,
+        }
     }
 
 

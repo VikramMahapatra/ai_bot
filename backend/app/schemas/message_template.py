@@ -14,12 +14,16 @@ class TemplateCreate(BaseModel):
     type: TemplateType
     subject: Optional[str] = None
     content: str
+    category: Optional[str] = None
+    language: Optional[str] = None
 
 
 class TemplateUpdate(BaseModel):
     name: Optional[str]
     subject: Optional[str]
     content: Optional[str]
+    category: Optional[str] = None
+    language: Optional[str] = None
 
 
 class TemplateRequest(BaseModel):

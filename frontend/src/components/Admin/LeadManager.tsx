@@ -179,6 +179,7 @@ const LeadManager: React.FC = () => {
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [closeDateOpen, setCloseDateOpen] = useState(false);
   const [closeDate, setCloseDate] = useState("");
+  const [summary, setSummary] = useState<any>({});
 
   const panelSx = {
     borderRadius: "18px",
@@ -205,23 +206,12 @@ const LeadManager: React.FC = () => {
     },
   } as const;
 
-  const totalLeads = leads.length;
-  const contactableLeads = useMemo(
-    () => leads.filter((lead) => Boolean(lead.email || lead.phone)).length,
-    [leads],
-  );
-  const companyLeads = useMemo(
-    () => leads.filter((lead) => Boolean(lead.company)).length,
-    [leads],
-  );
-  const weekLeads = useMemo(() => {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return leads.filter(
-      (lead) => new Date(lead.created_at).getTime() >= weekAgo,
-    ).length;
-  }, [leads]);
+  const totalLeads = summary.total_leads || 0;
+  const contactableLeads = summary.conversion_leads || 0;
+  const weekLeads = summary.week_leads || 0;
+
   const conversionRate = totalLeads
-    ? Math.round((contactableLeads / totalLeads) * 100)
+    ? Math.round((contactableLeads / leadsTotal) * 100)
     : 0;
 
   const activeFunnelCategories = useMemo(
@@ -250,12 +240,22 @@ const LeadManager: React.FC = () => {
     return stageNameByKey.get(stage) || stageLabel(stage);
   };
 
+
+
   const kpis = useMemo(
     () => [
       {
         label: "Total Leads",
-        value: totalLeads.toLocaleString(),
+        value: leadsTotal.toLocaleString(),
         hint: "All captured lead records",
+        icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
+        wave: theme.palette.secondary.main,
+      },
+      {
+        label: "Pipeline Leads",
+        value: totalLeads.toLocaleString(),
+        hint: "All pipeline lead records",
         icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
         wave: theme.palette.secondary.main,
@@ -271,22 +271,14 @@ const LeadManager: React.FC = () => {
       {
         label: "Leads This Week",
         value: weekLeads.toLocaleString(),
-        hint: "New leads in last 7 days",
+        hint: "New pipeline leads in last 7 days",
         icon: <CalendarMonthIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
         wave: theme.palette.primary.main,
       },
-      {
-        label: "Companies Captured",
-        value: companyLeads.toLocaleString(),
-        hint: "Leads that include company",
-        icon: <BusinessIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
-        wave: "#4b84ce",
-      },
     ],
     [
-      companyLeads,
+      leadsTotal,
       contactableLeads,
       conversionRate,
       theme.palette.primary.dark,
@@ -412,8 +404,9 @@ const LeadManager: React.FC = () => {
         campaignType,
       );
       setLeads(data.items);
-
       setLeadsTotal(data.pagination?.total || 0);
+      setSummary(data.summary || {});
+
     } catch {
       setError("Failed to load leads");
     } finally {

@@ -34,6 +34,24 @@ import {
   BillingInvoiceBackfillResponse,
   BillingBill
 } from '../types';
+import { OrgCreditAdminMonthSummary } from '../types/orgCreditBilling';
+
+export interface CreditUsageFilters {
+    organization_id?: number,
+    billing_period?: string,
+    search?: string;
+    skip?: number;
+    limit?: number;
+}
+
+export interface CrediUsageListResponse {
+    items: OrgCreditAdminMonthSummary[];
+    pagination: {
+        total: number;
+        skip: number;
+        limit: number;
+    };
+}
 
 export const superadminService = {
   async login(credentials: SuperAdminLoginRequest): Promise<SuperAdminLoginResponse> {
@@ -49,6 +67,11 @@ export const superadminService = {
   async listOrganizations(): Promise<SuperAdminOrganization[]> {
     const response = await api.get<SuperAdminOrganization[]>('/api/superadmin/organizations');
     return response.data;
+  },
+
+  async listCreditUsage(params?: CreditUsageFilters): Promise<CrediUsageListResponse> {
+      const response = await api.get<CrediUsageListResponse>(`/api/superadmin/org-credit-usage`, { params });
+      return response.data;
   },
 
   async createOrganization(payload: {

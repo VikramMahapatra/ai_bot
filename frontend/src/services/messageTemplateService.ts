@@ -9,10 +9,17 @@ export interface Template {
   type: TemplateType;
   subject?: string;
   content: string;
+
   status: "Active" | "Inactive";
   created_at: string;
-}
 
+  // WhatsApp fields
+  category?: string;
+  language?: string;
+  meta_status?: "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+  meta_template_id?: string;
+  rejection_reason?: string;
+}
 
 export interface TemplateFilters {
   // pagination
@@ -41,6 +48,33 @@ export interface TemplateUpdateResponse {
   success: boolean;
 }
 
+type TemplatePayload = {
+  name: string;
+  type: string;
+  subject?: string;
+  content: string;
+
+  // WhatsApp only
+  category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
+  language?: string;
+};
+
+const buildPayload = (data: TemplatePayload) => {
+  const payload: any = {
+    name: data.name,
+    type: data.type,
+    subject: data.subject,
+    content: data.content,
+  };
+
+  if (data.type === "whatsapp") {
+    payload.category = data.category;
+    payload.language = data.language;
+  }
+
+  return payload;
+};
+
 export const messageTemplateService = {
 
   async listTemplates(params: TemplateFilters = {}): Promise<TemplateListResponse> {
@@ -48,31 +82,24 @@ export const messageTemplateService = {
     return response.data;
   },
 
-  async createTemplate(data: {
-    name: string;
-    type: string;
-    subject?: string;
-    content: string;
-  }): Promise<TemplateUpdateResponse> {
-    const response = await api.post<TemplateUpdateResponse>('/api/templates/create', {
-      name: data.name,
-      type: data.type,
-      subject: data.subject,
-      content: data.content
-    });
+  async createTemplate(data: TemplatePayload): Promise<TemplateUpdateResponse> {
+    const response = await api.post<TemplateUpdateResponse>(
+      "/api/templates/create",
+      buildPayload(data)
+    );
+
     return response.data;
   },
 
   async updateTemplate(
     templateId: number,
-    data: {
-      name: string;
-      type: string;
-      subject?: string;
-      content: string;
-    }
+    data: TemplatePayload
   ): Promise<TemplateUpdateResponse> {
-    const response = await api.put<TemplateUpdateResponse>(`/api/templates/update/${templateId}`, data);
+    const response = await api.put<TemplateUpdateResponse>(
+      `/api/templates/update/${templateId}`,
+      buildPayload(data)
+    );
+
     return response.data;
   },
 
