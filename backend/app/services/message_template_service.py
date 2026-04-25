@@ -151,11 +151,9 @@ def get_templates(
                 MessageTemplate.name.ilike(search_term),
                 cast(MessageTemplate.type, String).ilike(search_term),
                 MessageTemplate.subject.ilike(search_term),
-                # MessageTemplate.content.ilike(search_term)
             )
         )
 
-        # 🎯 Type filter (exact match)
     if template_type and template_type != "all":
         query = query.filter(MessageTemplate.type == template_type)
 
