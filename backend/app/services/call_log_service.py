@@ -35,6 +35,7 @@ from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowExecutionLog, WorkflowStep, WorkflowStepOutcome
 from app.models.message_templates import MessageTemplate
 from app.services.report_service import sync_conversation_metrics, sync_voice_metrics_from_conversation
+from app.models.campaign_contacts import CampaignContact
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -194,6 +195,7 @@ def get_call_logs(
         transcripts = (
             db.query(CallTranscript)
             .filter(CallTranscript.call_log_id == log.id)
+            .order_by(CallTranscript.created_at.asc())
             .all()
         )
 
@@ -419,11 +421,21 @@ def process_call(db, call, agent):
             ).first()
             
         contact = None
-        
-        if call.get("contact_id"):
-            contact = db.query(Contact).filter(
-                Contact.external_contact_id == call.get("contact_id")
-            ).first()
+        external_contact_id = call.get("contact_id")
+            
+        if campaign and external_contact_id:
+            campaign_contact = (
+                db.query(CampaignContact)
+                .join(Contact, CampaignContact.contact_id == Contact.id)
+                .filter(
+                    CampaignContact.campaign_id == campaign.id,
+                    Contact.external_contact_id == external_contact_id
+                )
+                .first()
+            )
+
+            if campaign_contact:
+                contact = campaign_contact.contact
 
         # Prepare common values
         duration = int(call.get("duration")) if call.get("duration") else None

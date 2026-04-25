@@ -28,6 +28,7 @@ import {
   Alert,
   LinearProgress,
   InputAdornment,
+  Tooltip,
 } from "@mui/material";
 
 import { alpha, useTheme } from "@mui/material/styles";
@@ -39,6 +40,18 @@ import {
   TemplateType,
 } from "../services/messageTemplateService";
 import SearchIcon from "@mui/icons-material/Search";
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+
+type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
+
+const emptyTemplateForm = {
+  name: "",
+  type: "whatsapp",
+  category: "MARKETING" as WhatsAppCategory,
+  language: "en",
+  subject: "",
+  content: "",
+}
 
 function TemplateList() {
   const theme = useTheme();
@@ -64,13 +77,17 @@ function TemplateList() {
     content: "",
   });
 
-  const [form, setForm] = useState({
-    name: "",
-    type: "sms" as TemplateType,
-    subject: "",
-    content: "",
-  });
+
+
+  const [form, setForm] = useState(emptyTemplateForm);
   const [type, setType] = useState("all");
+
+  const formatTemplateName = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, "_")       // spaces → _
+      .replace(/[^a-z0-9_]/g, ""); // remove invalid chars
+  };
 
   const handleOpen = (item?: Template) => {
     if (item) {
@@ -78,19 +95,21 @@ function TemplateList() {
       setForm({
         name: item.name,
         type: item.type,
+        category: "MARKETING" as WhatsAppCategory,
+        language: "en",
         subject: item.subject || "",
         content: item.content,
       });
     } else {
       setEditItem(null);
-      setForm({ name: "", type: "sms", subject: "", content: "" });
+      setForm(emptyTemplateForm);
     }
     setOpen(true);
   };
 
   useEffect(() => {
     fetchTemplates();
-  }, [search, templatePage, templateRowsPerPage,type]);
+  }, [search, templatePage, templateRowsPerPage, type]);
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -174,6 +193,7 @@ function TemplateList() {
       content: "",
     };
 
+    // 🔹 Basic validations (existing)
     if (!form.name.trim()) {
       newErrors.name = "Template name is required";
       valid = false;
@@ -194,10 +214,82 @@ function TemplateList() {
       valid = false;
     }
 
+    // WhatsApp-specific validation
+    if (form.type === "whatsapp") {
+      const content = form.content;
+
+      //Extract variables like {{1}}, {{2}}
+      const matches = content.match(/{{\d+}}/g) || [];
+      const variables = matches.map((v) =>
+        parseInt(v.replace(/[{}]/g, ""))
+      );
+
+      //Check named variables (invalid)
+      if (/{{[a-zA-Z]+}}/.test(content)) {
+        newErrors.content =
+          "Use numbered variables like {{1}}, {{2}} only.";
+        valid = false;
+      }
+
+      //Max 10 variables
+      if (variables.length > 10) {
+        newErrors.content =
+          "Maximum 10 variables allowed ({{1}} to {{10}})";
+        valid = false;
+      }
+
+      //Sequential check
+      const uniqueSorted = [...new Set(variables)].sort((a, b) => a - b);
+
+      for (let i = 0; i < uniqueSorted.length; i++) {
+        if (uniqueSorted[i] !== i + 1) {
+          newErrors.content =
+            "Variables must be sequential like {{1}}, {{2}}, {{3}}";
+          valid = false;
+          break;
+        }
+      }
+
+      //Spam keyword check
+      const spamWords = [
+        "buy now",
+        "free!!!",
+        "guaranteed",
+        "click here",
+        "urgent",
+      ];
+
+      const hasSpam = spamWords.some((word) =>
+        content.toLowerCase().includes(word)
+      );
+
+      if (hasSpam) {
+        newErrors.content =
+          "Message contains restricted or spam keywords.";
+        valid = false;
+      }
+
+      //Category alignment (only if you added category field)
+      if (form.category === "AUTHENTICATION") {
+        if (!/otp|code|password/i.test(content)) {
+          newErrors.content =
+            "Authentication templates must include OTP or verification context.";
+          valid = false;
+        }
+      }
+
+      if (form.category === "UTILITY") {
+        if (!/order|invoice|payment|delivery|update/i.test(content)) {
+          newErrors.content =
+            "Utility templates should relate to transaction updates.";
+          valid = false;
+        }
+      }
+    }
+
     setErrors(newErrors);
     return valid;
   };
-
   return (
     <AdminLayout>
       <Box sx={{ p: 3 }}>
@@ -274,6 +366,7 @@ function TemplateList() {
                 <TableCell>Type</TableCell>
                 <TableCell>Subject</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Meta Status</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -295,17 +388,53 @@ function TemplateList() {
                     <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
 
                     <TableCell>
-                      <Chip label={t.type.toUpperCase()} size="small" />
+                      <Chip
+                        label={t.type === "whatsapp" ? "WHATSAPP" : t.type.toUpperCase()}
+                        size="small"
+                        color={t.type === "whatsapp" ? "primary" : "default"}
+                      />
                     </TableCell>
 
                     <TableCell>{t.subject || "-"}</TableCell>
 
                     <TableCell>
+
                       <Chip
                         label={t.status}
                         color={t.status === "Active" ? "success" : "default"}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>
+                      {t.type === "whatsapp" ? (
+                        t.meta_status ? (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip
+                              label={t.meta_status}
+                              size="small"
+                              color={
+                                t.meta_status === "APPROVED"
+                                  ? "success"
+                                  : t.meta_status === "REJECTED" || t.meta_status === "FAILED"
+                                    ? "error"
+                                    : "warning"
+                              }
+                            />
+
+                            {/* 🔥 Tooltip for BOTH REJECTED and FAILED */}
+                            {(t.meta_status === "REJECTED" || t.meta_status === "FAILED") &&
+                              t.rejection_reason && (
+                                <Tooltip title={t.rejection_reason}>
+                                  <ErrorOutlineIcon color="error" fontSize="small" />
+                                </Tooltip>
+                              )}
+                          </Stack>
+                        ) : (
+                          <Chip label="NOT SUBMITTED" size="small" color="default" />
+                        )
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
 
                     <TableCell>{t.created_at}</TableCell>
@@ -341,6 +470,17 @@ function TemplateList() {
                 helperText={errors.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
+              {form.type === "whatsapp" && (
+                <TextField
+                  label="WhatsApp Template Name"
+                  value={formatTemplateName(form.name || "")}
+                  fullWidth
+                  InputProps={{
+                    readOnly: true,
+                  }}
+                  helperText="Auto-generated from Template Name (lowercase, underscores only)"
+                />
+              )}
 
               <TextField
                 select
@@ -369,6 +509,35 @@ function TemplateList() {
                   }
                 />
               )}
+              {form.type === "whatsapp" && (
+                <Stack spacing={1}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextField
+                      select
+                      label="Category"
+                      value={form.category || "MARKETING"}
+                      onChange={(e) =>
+                        setForm({ ...form, category: e.target.value as any })
+                      }
+                      fullWidth
+                    >
+                      <MenuItem value="MARKETING">Marketing</MenuItem>
+                      <MenuItem value="UTILITY">Utility</MenuItem>
+                      <MenuItem value="AUTHENTICATION">Authentication</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      label="Language"
+                      value={form.language || "en"}
+                      onChange={(e) =>
+                        setForm({ ...form, language: e.target.value })
+                      }
+                      fullWidth
+                      helperText="e.g. en, en_US"
+                    />
+                  </Stack>
+                </Stack>
+              )}
 
               <TextField
                 label="Message Content"
@@ -377,16 +546,28 @@ function TemplateList() {
                 fullWidth
                 InputLabelProps={{ shrink: true }}
                 placeholder={
-                  "Hi {{name}},\nThanks for your interest. We’ll contact you on {{phone}}.\n— Team"
+                  form.type === "whatsapp"
+                    ? "Hello {{1}}, your order {{2}} is confirmed."
+                    : form.type === "email"
+                      ? "Hi {{name}},\nThanks for your interest. We’ll contact you on {{phone}}.\n— Team"
+                      : "Hi {{name}}, your request has been received."
                 }
                 value={form.content}
                 error={!!errors.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
               />
               <Alert severity="info">
-                In <b>Message Content</b>, you can use dynamic placeholders in
-                the format {"{{key}}"}. The key name should match the contact
-                data columns (e.g., {"{{name}}"}, {"{{email}}"}, {"{{phone}}"}).
+                In <b>Message Content</b>,
+                {form.type === "whatsapp" ? (
+                  <>
+                    Use numbered variables like <b>{"{{1}}, {{2}}"}</b> as required by WhatsApp.
+                  </>
+                ) : (
+                  <>
+                    Use dynamic placeholders like <b>{"{{name}}, {{phone}}"}</b>.  The key name should match the contact
+                    data columns
+                  </>
+                )}
               </Alert>
             </Stack>
           </DialogContent>

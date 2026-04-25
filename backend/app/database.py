@@ -762,6 +762,21 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS whatsapp_template_name VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS category VARCHAR(50),
+                ADD COLUMN IF NOT EXISTS language VARCHAR(20),
+                ADD COLUMN IF NOT EXISTS meta_template_id VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS meta_status VARCHAR(50) DEFAULT 'PENDING',
+                ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
      
         
         

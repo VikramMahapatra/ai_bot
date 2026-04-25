@@ -60,6 +60,7 @@ class Contact(Base):
     external_contact_id = Column(Integer, nullable=True)
 
     contact_list = relationship("ContactList", back_populates="contacts")
+    campaign_links = relationship("CampaignContact", back_populates="contact")
 
     __table_args__ = (
         Index("idx_contact_external_id", "external_contact_id"),

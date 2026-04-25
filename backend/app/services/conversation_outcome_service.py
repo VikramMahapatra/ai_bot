@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 from fastapi import HTTPException
 from openai import OpenAI
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -20,6 +20,7 @@ from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.lead_activities import LeadActivity
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.models.workflows import WorkflowExecution
 
 logger = logging.getLogger(__name__)
 
@@ -472,10 +473,25 @@ def process_call_campaigns_data(
     last_id: Optional[int] = None,
 ) -> Tuple[int, int, Optional[int]]:
     SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
+    
+    pending_execution_exists = (
+        db.query(WorkflowExecution.id)
+        .filter(
+            WorkflowExecution.campaign_id == CallCampaign.id,
+            WorkflowExecution.status == "pending"
+        )
+        .exists()
+    )
 
     query = db.query(CallCampaign).filter(
         CallCampaign.is_deleted == False,
-        CallCampaign.status.in_(SYNC_STATUSES)
+        or_(
+            CallCampaign.status.in_(SYNC_STATUSES),
+            and_(
+                CallCampaign.status == "completed",
+                pending_execution_exists
+            )
+        )
     )
 
     if last_id:
@@ -489,7 +505,7 @@ def process_call_campaigns_data(
 
     for campaign in campaign_models:
         try:
-            sync_campaign_from_echoleads(db, echolead_client, campaign)
+            sync_campaign_from_echoleads(db, echolead_client, campaign.id)
             synced += 1
         except Exception as exc:
             failed += 1
