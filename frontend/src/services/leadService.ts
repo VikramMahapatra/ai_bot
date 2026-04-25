@@ -8,6 +8,11 @@ export interface LeadListResponse {
     skip: number;
     limit: number;
   };
+  summary: {
+    total_leads: number;
+    conversion_leads: number;
+    week_leads: number
+  }
 }
 
 export interface LeadActivity {
@@ -74,7 +79,7 @@ export const leadService = {
     return response.data;
   },
 
-   async setLeadCloseDate(leadId: number, closeDate: string): Promise<Lead> {
+  async setLeadCloseDate(leadId: number, closeDate: string): Promise<Lead> {
     const response = await api.patch<Lead>(
       `/api/admin/leads/${leadId}/close-date`,
       {
