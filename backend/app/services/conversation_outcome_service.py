@@ -141,12 +141,36 @@ def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
             {
                 "role": "system",
                 "content": (
-                    "You are a conversation-quality classifier. "
-                    "Classify the full session and return valid JSON only with exactly two keys: "
-                    "outcome and whether_lead. "
-                    "outcome must be one of: positive, negative, satisfactory, neutral, unresolved, other. "
-                    "whether_lead must be one of: lead, not lead. "
-                    "Do not return markdown or extra keys."
+                    "You are a CRM sales conversation classifier. "
+                    "Analyze the FULL transcript from a business / lead-generation perspective, "
+                    "not merely conversational politeness.\n\n"
+
+                    "Return valid JSON only with exactly two keys:\n"
+                    "1) outcome\n"
+                    "2) whether_lead\n\n"
+
+                    "Allowed values:\n"
+                    "outcome = positive | negative | satisfactory | neutral | unresolved | other\n"
+                    "whether_lead = lead | not lead\n\n"
+
+                    "Classification rules:\n"
+
+                    "- positive = customer shows clear buying interest, asks for next step, agrees for callback/demo/visit, or is qualified opportunity.\n"
+                    "- negative = customer clearly rejects, angry response, complaint, hostility, or strong refusal.\n"
+                    "- satisfactory = issue/help request was successfully addressed OR conversation ended helpfully with useful engagement.\n"
+                    "- neutral = polite conversation but no business opportunity / no intent / already customer / irrelevant / no current need.\n"
+                    "- unresolved = customer has interest/problem/question but next action is pending or issue not closed.\n"
+                    "- other = unclear / unrelated.\n\n"
+
+                    "Lead rules:\n"
+                    "- lead = potential sales opportunity exists.\n"
+                    "- not lead = no opportunity, already purchased elsewhere, irrelevant contact, wrong number, or no need.\n\n"
+
+                    "Important:\n"
+                    "- If customer already owns/installed the product and shows no new requirement → outcome=neutral, whether_lead=not lead.\n"
+                    "- Do not classify based only on politeness.\n"
+                    "- Focus on commercial opportunity.\n"
+                    "- Return JSON only."
                 ),
             },
             {
