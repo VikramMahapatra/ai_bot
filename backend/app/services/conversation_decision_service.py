@@ -145,10 +145,32 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
         "Use exactly these keys:\n"
         "1) instant_reply_decision -> one of [send_now, do_not_send_now]\n"
         "2) next_3_recommendation_steps -> list of exactly 3 items, each with keys [key, value]\n"
+
         "Allowed key values are strictly [step_1, step_2, step_3].\n"
         "Allowed recommendation values are strictly: "
         "[send_product_link, confirm_preferred_channel, schedule_follow_up, acknowledge_and_close, pause_outreach, ask_size_or_requirement, recommend_relevant_products, ask_purchase_readiness].\n"
-        "Do not include markdown, explanation, or extra keys."
+
+        "Decision Rules for instant_reply_decision:\n"
+        "- Return 'send_now' if ANY of the following occur:\n"
+        "  • User explicitly asks to receive SMS, email, WhatsApp, or details\n"
+        "  • User shares contact information (phone/email) for follow-up\n"
+        "  • User shows interest in receiving information, even if demo or decision is postponed\n"
+
+        "- Return 'do_not_send_now' if:\n"
+        "  • User clearly refuses communication\n"
+        "  • User asks NOT to be contacted\n"
+        "  • No contact info is provided AND user has not asked to receive anything\n"
+
+        "Priority Rule:\n"
+        "- If user requests SMS/email AND provides contact details, ALWAYS return 'send_now'\n"
+        "- Even if the user says 'I will check later' or 'tell you later', it STILL counts as 'send_now' if they requested details earlier\n"
+
+        "Guidelines for next_3_recommendation_steps:\n"
+        "- If decision is 'send_now', include steps that progress communication (e.g., confirm_preferred_channel, send_product_link, schedule_follow_up)\n"
+        "- If decision is 'do_not_send_now', include steps like pause_outreach or acknowledge_and_close\n"
+        "- Always return exactly 3 steps with unique keys step_1, step_2, step_3\n"
+
+        "Do not include markdown, explanation, or extra keys. Return only valid JSON."
     )
 
     try:

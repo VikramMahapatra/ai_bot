@@ -1,6 +1,7 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from openai import OpenAI
@@ -35,6 +36,11 @@ VALID_OUTCOMES = {
     "other",
 }
 
+VALID_LEAD_STATUSES = {
+    "lead",
+    "not lead",
+}
+
 
 def _normalize_outcome(value: Optional[str]) -> str:
     if not value:
@@ -52,6 +58,31 @@ def _normalize_outcome(value: Optional[str]) -> str:
         "unknown": "other",
     }
     return aliases.get(normalized, "other")
+
+
+def _normalize_lead_status(value: Optional[str]) -> str:
+    if not value:
+        return "not lead"
+
+    normalized = value.strip().lower().replace("_", " ").replace("-", " ")
+    if normalized in VALID_LEAD_STATUSES:
+        return normalized
+
+    aliases = {
+        "notlead": "not lead",
+        "non lead": "not lead",
+        "nonlead": "not lead",
+        "potential lead": "lead",
+        "qualified lead": "lead",
+    }
+    return aliases.get(normalized, "not lead")
+
+
+def _normalize_outcome_payload(raw: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "outcome": _normalize_outcome(str(raw.get("outcome", ""))),
+        "whether_lead": _normalize_lead_status(str(raw.get("whether_lead", ""))),
+    }
 
 
 def _build_chat_transcript(rows: List[Conversation]) -> str:
@@ -98,34 +129,48 @@ def _build_transcript(rows: List[Conversation]) -> str:
     return _build_chat_transcript(rows)
 
 
-def _classify_outcome_with_llm(transcript: str) -> str:
+def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
     if not transcript.strip():
-        return "other"
-    
+        return {"outcome": "other", "whether_lead": "not lead"}
 
     response = client.chat.completions.create(
         model=settings.OUTCOME_CLASSIFICATION_MODEL,
         temperature=0,
-        max_tokens=12,
+        max_tokens=64,
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are a conversation-quality classifier. "
-                    "Classify the FULL conversation outcome into exactly one label from: "
-                    "positive, negative, satisfactory, neutral, unresolved, other.\n\n"
-                    
-                    "Rules:\n"
-                    "- positive: Customer confirmed purchase, appointment, or clear success\n"
-                    "- negative: Customer rejected, angry, or clearly declined\n"
-                    "- satisfactory: Query answered but no strong positive signal\n"
-                    "- neutral: Informational conversation without decision\n"
-                    "- unresolved: Conversation incomplete, cut-off, or no clear conclusion\n"
-                    "- other: Anything else\n\n"
-                    
-                    "If conversation ends abruptly or has no final decision → return 'unresolved'\n"
-                    
-                    "Return only one label. No explanation."
+                    "You are a CRM sales conversation classifier. "
+                    "Analyze the FULL transcript from a business / lead-generation perspective, "
+                    "not merely conversational politeness.\n\n"
+
+                    "Return valid JSON only with exactly two keys:\n"
+                    "1) outcome\n"
+                    "2) whether_lead\n\n"
+
+                    "Allowed values:\n"
+                    "outcome = positive | negative | satisfactory | neutral | unresolved | other\n"
+                    "whether_lead = lead | not lead\n\n"
+
+                    "Classification rules:\n"
+
+                    "- positive = customer shows clear buying interest, asks for next step, agrees for callback/demo/visit, or is qualified opportunity.\n"
+                    "- negative = customer clearly rejects, angry response, complaint, hostility, or strong refusal.\n"
+                    "- satisfactory = issue/help request was successfully addressed OR conversation ended helpfully with useful engagement.\n"
+                    "- neutral = polite conversation but no business opportunity / no intent / already customer / irrelevant / no current need.\n"
+                    "- unresolved = customer has interest/problem/question but next action is pending or issue not closed.\n"
+                    "- other = unclear / unrelated.\n\n"
+
+                    "Lead rules:\n"
+                    "- lead = potential sales opportunity exists.\n"
+                    "- not lead = no opportunity, already purchased elsewhere, irrelevant contact, wrong number, or no need.\n\n"
+
+                    "Important:\n"
+                    "- If customer already owns/installed the product and shows no new requirement → outcome=neutral, whether_lead=not lead.\n"
+                    "- Do not classify based only on politeness.\n"
+                    "- Focus on commercial opportunity.\n"
+                    "- Return JSON only."
                 ),
             },
             {
@@ -135,8 +180,19 @@ def _classify_outcome_with_llm(transcript: str) -> str:
         ],
     )
 
-    content = response.choices[0].message.content if response.choices else None    
-    return _normalize_outcome(content)
+    content = response.choices[0].message.content if response.choices else ""
+    if not content:
+        return {"outcome": "other", "whether_lead": "not lead"}
+
+    parsed: Dict[str, Any]
+    try:
+        candidate = json.loads(content)
+        parsed = candidate if isinstance(candidate, dict) else {}
+    except json.JSONDecodeError:
+        # Backward compatibility for plain-text responses from older prompts.
+        parsed = {"outcome": content, "whether_lead": "not lead"}
+
+    return _normalize_outcome_payload(parsed)
 
 
 def _classify_funnel_stage_with_llm(transcript: str, categories: List[FunnelCategory]) -> Optional[str]:
@@ -228,7 +284,9 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                 continue
 
             transcript = _build_transcript(rows)
-            outcome = _classify_outcome_with_llm(transcript)
+            classification = _classify_outcome_with_llm(transcript)
+            outcome = classification["outcome"]
+            whether_lead = classification["whether_lead"]
             
             if transcript.strip():
                 organization_credit_service.deduct_credits(
@@ -286,6 +344,14 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                     lead.lead_outcome = outcome
                 if inferred_funnel_stage and not (lead.funnel_stage or '').strip():
                     lead.funnel_stage = inferred_funnel_stage
+
+            logger.info(
+                "Outcome classification resolved for org=%s session=%s: outcome=%s whether_lead=%s",
+                org_id,
+                session_id,
+                outcome,
+                whether_lead,
+            )
 
             db.commit()
             processed += 1
