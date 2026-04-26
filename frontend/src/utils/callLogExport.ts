@@ -16,7 +16,7 @@ export const ExportToExcel = (data: CallLogListResponse, fileName: string) => {
         Status: log.status,
         Duration: log.duration,
         Sentiment: log.sentiment,
-        "Conversion Status": log.lead_qualified_status,
+        "Conversion Outcome": log.lead_qualified_status,
         "End Reason": formatEndedReason(log.ended_reason),
         "Test Call": log.testCall ? "Yes" : "No",
         Date: formatDateTime(log.date),
