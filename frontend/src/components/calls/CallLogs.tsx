@@ -532,7 +532,7 @@ export const CallLogsTab = () => {
                 select
                 fullWidth
                 size="small"
-                label="Lead Conversion"
+                label="Conversion Outcome"
                 value={leadQualified}
                 onChange={(e) => setLeadQualified(e.target.value)}
               >

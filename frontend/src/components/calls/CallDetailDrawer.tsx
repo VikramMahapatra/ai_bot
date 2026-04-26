@@ -224,7 +224,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 />
 
                                 <Typography variant="body2" color="text.secondary">
-                                    Conversion Status:
+                                    Conversion Outcome:
                                 </Typography>
 
                                 <Typography
