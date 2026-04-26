@@ -28,6 +28,7 @@ import PickupTrendChart from "./charts/PickupTrendChart";
 import CallOutcomesChart from "./charts/CallOutcomesChart";
 import IntentChart from "./charts/IntentChart";
 import LiveCalls from "./charts/LiveCalls";
+import PeopleIcon from '@mui/icons-material/People';
 import {
   CallAnalytics,
   CallAnalyticsFilters,
@@ -51,6 +52,7 @@ const CampaignAnalytics = () => {
   const [analytics, setAnalytics] = useState<CallAnalytics>({
     summary: {
       total_calls: 0,
+      attempted_calls: 0,
       successful_calls: 0,
       pickup_rate: 0,
       conversion_rate: 0,
@@ -85,6 +87,7 @@ const CampaignAnalytics = () => {
 
   useEffect(() => {
     loadCampaignList();
+    loadAnalytics();
   }, []);
 
   const validateDates = () => {
@@ -99,16 +102,26 @@ const CampaignAnalytics = () => {
     }
 
     setError("");
-    loadAnalytics();
   };
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = async (override?: {
+    fromDate?: string;
+    endDate?: string;
+    campaignId?: string;
+  }) => {
     setLoading(true);
+
+    const finalFromDate = override?.fromDate ?? fromDate;
+    const finalEndDate = override?.endDate ?? endDate;
+    const finalCampaignId = override?.campaignId ?? campaignId;
+
     const filters: CallAnalyticsFilters = {};
-    if (fromDate) filters.start_date = fromDate;
-    if (endDate) filters.end_date = endDate;
-    if (campaignId && campaignId !== "all")
-      filters.campaign_id = parseInt(campaignId);
+
+    if (finalFromDate) filters.start_date = finalFromDate;
+    if (finalEndDate) filters.end_date = finalEndDate;
+    if (finalCampaignId && finalCampaignId !== "all") {
+      filters.campaign_id = parseInt(finalCampaignId);
+    }
 
     try {
       const response = await callService.callAnalytics(filters);
@@ -142,13 +155,19 @@ const CampaignAnalytics = () => {
   };
 
   const resetFilters = () => {
-    setCampaignId("all");
-    setFromDate(start);
-    setEndDate(end);
+    const newCampaignId = "all";
+    const newFromDate = start;
+    const newEndDate = end;
 
-    setTimeout(() => {
-      loadAnalytics();
-    }, 0);
+    setCampaignId(newCampaignId);
+    setFromDate(newFromDate);
+    setEndDate(newEndDate);
+
+    loadAnalytics({
+      campaignId: newCampaignId,
+      fromDate: newFromDate,
+      endDate: newEndDate,
+    });
   };
 
   return (
@@ -269,11 +288,24 @@ const CampaignAnalytics = () => {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Total Calls</Typography>
-                <CallIcon color="primary" />
+                <Typography variant="subtitle2">Total Contacts</Typography>
+                <PeopleIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {summary.total_calls || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={2}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Initiated Calls</Typography>
+                <CallIcon color="primary" />
+              </Box>
+              <Typography variant="h5" mt={1}>
+                {summary.attempted_calls || 0}
               </Typography>
             </CardContent>
           </Card>
@@ -321,7 +353,7 @@ const CampaignAnalytics = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={2}>
+        {/* <Grid item xs={12} md={2}>
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
@@ -333,7 +365,7 @@ const CampaignAnalytics = () => {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
+        </Grid> */}
 
         <Grid item xs={12} md={2}>
           <Card>

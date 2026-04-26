@@ -553,6 +553,8 @@ def process_call(db, call, agent):
                 Contact.id == call_log.contact_id
         ).first() 
         
+        
+        
         lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
 
         if lead:
@@ -755,7 +757,7 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
         }
 
     # If existing & not closed → update
-    if existing and existing.funnel_stage not in ["closed_won", "closed_lost"]:
+    if existing and existing.funnel_stage not in ["closed_won", "closed_lost"] or call_log.is_lead_qualified:
 
         existing.session_id = call_log.call_session_id
         existing.widget_id = agent.widget_id

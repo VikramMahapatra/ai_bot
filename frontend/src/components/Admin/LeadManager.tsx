@@ -87,6 +87,9 @@ import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseIcon from "@mui/icons-material/Close";
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -206,13 +209,9 @@ const LeadManager: React.FC = () => {
     },
   } as const;
 
-  const totalLeads = summary.total_leads || 0;
-  const contactableLeads = summary.conversion_leads || 0;
-  const weekLeads = summary.week_leads || 0;
-
-  const conversionRate = totalLeads
-    ? Math.round((contactableLeads / leadsTotal) * 100)
-    : 0;
+  const pipelineLeads = summary.total_pipeline_leads || 0;
+  const wonLeads = summary.closed_won_leads || 0;
+  const lostLeads = summary.closed_lost_leads || 0;
 
   const activeFunnelCategories = useMemo(
     () =>
@@ -240,54 +239,36 @@ const LeadManager: React.FC = () => {
     return stageNameByKey.get(stage) || stageLabel(stage);
   };
 
-
-
-  const kpis = useMemo(
-    () => [
-      {
-        label: "Total Leads",
-        value: leadsTotal.toLocaleString(),
-        hint: "All captured lead records",
-        icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
-        wave: theme.palette.secondary.main,
-      },
-      {
-        label: "Pipeline Leads",
-        value: totalLeads.toLocaleString(),
-        hint: "All pipeline lead records",
-        icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
-        wave: theme.palette.secondary.main,
-      },
-      {
-        label: "Total Conversion",
-        value: `${conversionRate}%`,
-        hint: `${contactableLeads.toLocaleString()} leads with contact info`,
-        icon: <TrendingUpIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#a9d2fb", 0.64)} 0%, ${alpha("#e3f0ff", 0.78)} 100%)`,
-        wave: "#468ed4",
-      },
-      {
-        label: "Leads This Week",
-        value: weekLeads.toLocaleString(),
-        hint: "New pipeline leads in last 7 days",
-        icon: <CalendarMonthIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
-        wave: theme.palette.primary.main,
-      },
-    ],
-    [
-      leadsTotal,
-      contactableLeads,
-      conversionRate,
-      theme.palette.primary.dark,
-      theme.palette.primary.main,
-      theme.palette.secondary.main,
-      totalLeads,
-      weekLeads,
-    ],
-  );
+  const kpis = useMemo(() => [
+    {
+      label: "Total",
+      value: leadsTotal.toLocaleString(),
+      hint: "All captured lead records",
+      icon: <GroupIcon sx={{ color: "#fff" }} />,
+      gradient: "linear-gradient(135deg, #0d47a1, #1976d2)",
+    },
+    {
+      label: "Pipeline Leads",
+      value: pipelineLeads.toLocaleString(),
+      hint: "Leads in progress",
+      icon: <AccountTreeIcon sx={{ color: "#fff" }} />,
+      gradient: "linear-gradient(135deg, #7b1fa2, #ba68c8)", // 🟣 Purple
+    },
+    {
+      label: "Closed Leads",
+      value: wonLeads.toLocaleString(),
+      hint: "Successfully converted",
+      icon: <CheckCircleIcon sx={{ color: "#fff" }} />,
+      gradient: "linear-gradient(135deg, #2e7d32, #66bb6a)", // 🟢 Green
+    },
+    {
+      label: "Lost Leads",
+      value: lostLeads.toLocaleString(),
+      hint: "Unsuccessful leads",
+      icon: <CancelIcon sx={{ color: "#fff" }} />,
+      gradient: "linear-gradient(135deg, #c62828, #ef5350)", // 🔴 Red
+    },
+  ], [leadsTotal, pipelineLeads, wonLeads, lostLeads]);
 
   const displayLeads = useMemo(() => {
     const startMs = filterStartDate
@@ -383,16 +364,20 @@ const LeadManager: React.FC = () => {
   };
 
   const loadLeads = async (
-    widgetId?: string,
-    source?: string,
-    funnelStage?: string,
-    productId?: string,
-    campaignId?: string,
-    campaignType?: string,
+    widgetId: any,
+    source: any,
+    funnelStage: any,
+    productId: any,
+    campaignId: any,
+    campaignType: any,
+    search: any,
+    startDate: any,
+    endDate: any
   ) => {
     try {
       setLoading(true);
       setError("");
+
       const data = await leadService.listLeads(
         leadsPage * leadsRowsPerPage,
         leadsRowsPerPage,
@@ -402,11 +387,14 @@ const LeadManager: React.FC = () => {
         productId,
         campaignId,
         campaignType,
+        search,
+        startDate,
+        endDate
       );
+
       setLeads(data.items);
       setLeadsTotal(data.pagination?.total || 0);
       setSummary(data.summary || {});
-
     } catch {
       setError("Failed to load leads");
     } finally {
@@ -533,6 +521,7 @@ const LeadManager: React.FC = () => {
       selectedCampaignId === "all" ? undefined : selectedCampaignId;
     const campaignType =
       selectedCampaignType === "all" ? undefined : selectedCampaignType;
+
     loadLeads(
       widgetId,
       source,
@@ -540,6 +529,9 @@ const LeadManager: React.FC = () => {
       productId,
       campaignId,
       campaignType,
+      leadSearch,      // ✅ ADD
+      filterStartDate,      // ✅ ADD
+      filterEndDate         // ✅ ADD
     );
   }, [
     selectedWidgetId,
@@ -550,6 +542,9 @@ const LeadManager: React.FC = () => {
     selectedCampaignType,
     leadsPage,
     leadsRowsPerPage,
+    leadSearch,        // ✅ ADD
+    filterStartDate,        // ✅ ADD
+    filterEndDate           // ✅ ADD
   ]);
 
   const handleExport = async () => {
@@ -1319,64 +1314,12 @@ const LeadManager: React.FC = () => {
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
         {kpis.map((kpi) => (
           <Grid item xs={12} sm={6} lg={3} key={kpi.label}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 2,
-                borderRadius: "18px",
-                background: kpi.gradient,
-                minHeight: 142,
-                border: `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
-                boxShadow: `0 12px 26px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  position: "relative",
-                  zIndex: 1,
-                }}
-              >
-                <Box>
-                  <Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 700, color: "text.primary" }}
-                  >
-                    {kpi.label}
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    sx={{ fontWeight: 800, mt: 0.35, color: "text.primary" }}
-                  >
-                    {kpi.value}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "text.secondary", mt: 0.2 }}
-                  >
-                    {kpi.hint}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    bgcolor: alpha(theme.palette.primary.main, 0.14),
-                    border: `1px solid ${alpha(theme.palette.common.white, 0.48)}`,
-                  }}
-                >
-                  {kpi.icon}
-                </Box>
-              </Box>
-            </Paper>
+            <SummaryCard
+              label={kpi.label}
+              value={kpi.value}
+              icon={kpi.icon}
+              hint={kpi.hint}
+            />
           </Grid>
         ))}
       </Grid>
@@ -2271,3 +2214,113 @@ const LeadManager: React.FC = () => {
 };
 
 export default LeadManager;
+
+
+const SummaryCard = ({ label, value, icon, hint }: any) => {
+
+  const getColor = () => {
+    switch (label) {
+      case "Total":
+        return {
+          bg: "#eff6ff",
+          iconBg: "#dbeafe",
+          color: "#2563eb"
+        };
+
+      case "Pipeline Leads":
+        return {
+          bg: "#f5f3ff",
+          iconBg: "#ede9fe",
+          color: "#7c3aed"
+        };
+
+      case "Closed Leads":
+        return {
+          bg: "#ecfdf5",
+          iconBg: "#d1fae5",
+          color: "#059669"
+        };
+
+      case "Lost Leads":
+        return {
+          bg: "#fef2f2",
+          iconBg: "#fee2e2",
+          color: "#dc2626"
+        };
+
+      default:
+        return {
+          bg: "#f8fafc",
+          iconBg: "#f1f5f9",
+          color: "#334155"
+        };
+    }
+  };
+
+  const theme = getColor();
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        borderRadius: "16px",
+        background: theme.bg,
+        border: "1px solid #eef0f3",
+        minHeight: 142,
+        transition: "all 0.2s ease",
+        "&:hover": {
+          transform: "translateY(-4px)",
+          boxShadow: "0 10px 24px rgba(0,0,0,0.08)"
+        }
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+        }}
+      >
+        <Box>
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: 700, color: "text.primary" }}
+          >
+            {label}
+          </Typography>
+
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 800, mt: 0.5, color: theme.color }}
+          >
+            {value}
+          </Typography>
+
+          <Typography
+            variant="body2"
+            sx={{ color: "text.secondary", mt: 0.2 }}
+          >
+            {hint}
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 2,
+            background: theme.iconBg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: `1px solid ${theme.color}30`, // 🔥 adds contrast
+          }}
+        >
+          {React.cloneElement(icon, {
+            sx: { color: theme.color, fontSize: 22 }
+          })}
+        </Box>
+      </Box>
+    </Box>
+  );
+};

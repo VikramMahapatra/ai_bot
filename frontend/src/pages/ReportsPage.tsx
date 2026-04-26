@@ -872,7 +872,7 @@ const ReportsPage: React.FC = () => {
                 size="small"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.5}>
+            {/* <Grid item xs={12} sm={6} md={2.5}>
               <TextField
                 label="Widget ID"
                 value={widgetId}
@@ -881,11 +881,11 @@ const ReportsPage: React.FC = () => {
                 fullWidth
                 size="small"
               />
-            </Grid>
+            </Grid> */}
             <Grid item xs={12} sm={6} md={2.5}>
               <Button
                 variant="contained"
-                onClick={fetchSummary}
+                onClick={fetchConversations}
                 fullWidth
                 sx={{ height: 40 }}
               >
@@ -1462,7 +1462,7 @@ const ReportsPage: React.FC = () => {
                 variant="scrollable"
                 scrollButtons="auto"
               >
-                <Tab label="Marketing" />
+                <Tab label="Text" />
                 <Tab label="Voice" />
               </Tabs>
             </Paper>

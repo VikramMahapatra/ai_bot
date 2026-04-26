@@ -15,6 +15,7 @@ import logging
 
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.campaign import Contact
+from app.models.campaign_contacts import CampaignContact
 
 logger = logging.getLogger(__name__)
 
@@ -543,14 +544,20 @@ def get_voice_campaign_report(
         Lead.created_at.label("created_at"),
         Product.name.label("product_name"),
     ).join(
+        LeadContactMapping, 
+        Lead.id ==LeadContactMapping.lead_id 
+    ).join(
+        CampaignContact,
+        LeadContactMapping.contact_id == CampaignContact.contact_id
+    ).join(
+        CallCampaign,
+        CallCampaign.id == CampaignContact.campaign_id,
+    ).join(
         CallingAgent,
-        Lead.widget_id == CallingAgent.external_agent_a_id,
+        CallCampaign.agent_id == CallingAgent.id,
     ).join(
         Organization,
         Lead.organization_id == Organization.id,
-    ).join(
-        CallCampaign,
-        CallCampaign.organization_id == CallingAgent.organization_id,
     ).outerjoin(
         Product,
         Lead.product_id == cast(Product.id, String),

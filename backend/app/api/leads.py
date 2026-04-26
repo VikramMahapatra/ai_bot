@@ -326,6 +326,9 @@ async def list_leads(
     funnel_stage: Optional[str] = None,
     product_id: Optional[str] = None,
     campaign_id: Optional[int] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -333,6 +336,27 @@ async def list_leads(
     week_ago = datetime.utcnow() - timedelta(days=7)
     
     filters = [Lead.organization_id == current_user.organization_id]
+    
+    
+    if search:
+        search_term = f"%{search.strip()}%"
+        filters.append(
+            or_(
+                Lead.name.ilike(search_term),
+                Lead.phone.ilike(search_term),
+                Lead.email.ilike(search_term),
+            )
+        )
+    
+    if start_date:
+        filters.append(
+            Lead.created_at >= datetime.strptime(start_date, "%Y-%m-%d")
+        )
+
+    if end_date:
+        filters.append(
+            Lead.created_at <= datetime.strptime(end_date, "%Y-%m-%d")
+        )
 
     if widget_id:
         filters.append(Lead.widget_id == widget_id)
@@ -400,36 +424,31 @@ async def list_leads(
             )
         ).label("total_pipeline_leads"),
 
-        # conversion leads (email OR phone)
+        # closed won leads
         func.count(
             case(
                 (
                     and_(
                         Lead.funnel_stage.isnot(None),
-                        ~Lead.funnel_stage.in_(EXCLUDED_STAGES),
-                        or_(
-                            Lead.email.isnot(None),
-                            Lead.phone.isnot(None)
-                        )
+                        Lead.funnel_stage == "closed_won"
                     ),
                     1
                 )
             )
-        ).label("conversion_leads"),
+        ).label("closed_won_leads"),
 
-        # leads in last 7 days
+        # closed lost leads
         func.count(
             case(
                 (
                     and_(
                         Lead.funnel_stage.isnot(None),
-                        ~Lead.funnel_stage.in_(EXCLUDED_STAGES),
-                        Lead.created_at >= week_ago
+                        Lead.funnel_stage == "closed_lost"
                     ),
                     1
                 )
             )
-        ).label("week_leads"),
+        ).label("closed_lost_leads"),
     ).select_from(Lead)
 
     # reuse filters
@@ -469,9 +488,9 @@ async def list_leads(
         "items": leads,
         "pagination": {"total": total, "skip": skip, "limit": limit},
         "summary": {
-            "total_leads": summary_result.total_pipeline_leads or 0,
-            "conversion_leads": summary_result.conversion_leads or 0,
-            "week_leads": summary_result.week_leads or 0,
+            "total_pipeline_leads": summary_result.total_pipeline_leads or 0,
+            "closed_won_leads": summary_result.closed_won_leads or 0,
+            "closed_lost_leads": summary_result.closed_lost_leads or 0,
         }
     }
 
