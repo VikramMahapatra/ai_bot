@@ -352,7 +352,7 @@ const CampaignAnalytics = () => {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Conversion Rate</Typography>
+                <Typography variant="subtitle2">Success Rate</Typography>
                 <TrendingUpIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
