@@ -247,7 +247,16 @@ const CampaignAnalytics = () => {
             />
 
             {/* Apply Button */}
-            <Button variant="contained" size="small" onClick={loadAnalytics}>
+            <Button
+              variant="contained"
+              onClick={() =>
+                loadAnalytics({
+                  fromDate,
+                  endDate,
+                  campaignId,
+                })
+              }
+            >
               Apply
             </Button>
           </Box>
@@ -347,7 +356,9 @@ const CampaignAnalytics = () => {
                 <TrendingUpIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
-                {summary.conversion_rate ? `${summary.conversion_rate}%` : "0%"}
+                {summary.conversion_rate
+                  ? `${Number(summary.conversion_rate).toFixed(2)}%`
+                  : "0%"}
               </Typography>
             </CardContent>
           </Card>

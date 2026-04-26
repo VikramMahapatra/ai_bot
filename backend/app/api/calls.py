@@ -25,6 +25,7 @@ from app.models.lead import Lead
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.services.calling_agent_service import test_call
+from app.models.conversation import Conversation
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +140,44 @@ def call_analytics(
     ) if total_attempted_calls else 0
     
     # Conversion rate = average of all campaigns' success_rate
-    conversion_rate = round(
-        sum(c.success_rate or 0 for c in campaigns) / len(campaigns), 2
+    latest_conv_subq = (
+        db.query(
+            Conversation.session_id,
+            Conversation.is_lead,
+            func.row_number().over(
+                partition_by=Conversation.session_id,
+                order_by=Conversation.created_at.desc()
+            ).label("rn")
+        )
+        .filter(Conversation.organization_id == org_id)
+        .subquery()
+    )
+    
+    latest_conv = (
+        db.query(
+            latest_conv_subq.c.session_id,
+            latest_conv_subq.c.is_lead
+        )
+        .filter(latest_conv_subq.c.rn == 1)
+        .subquery()
+    )
+    
+    converted_calls = (
+        db.query(func.count(CallLog.id))
+        .join(
+            latest_conv,
+            latest_conv.c.session_id == CallLog.call_session_id
+        )
+        .filter(
+            *filters,
+            latest_conv.c.is_lead == True
+        )
+        .scalar()
+    )
+    
+    conversion_rate = (
+        (converted_calls / total_attempted_calls) * 100
+        if total_attempted_calls else 0
     )
     
     # Total duration in minutes

@@ -281,6 +281,13 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       console.error("Export failed", error);
     }
   };
+
+  const titleCase = (value: string) =>
+    value
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
   return (
     <Box sx={{ p: 3, bgcolor: "#f5f7fa", minHeight: "100vh" }}>
       {/* LOADING */}
@@ -741,7 +748,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       <TableCell>{log.phone}</TableCell>
                       <TableCell>
                         <Chip
-                          label={log.status}
+                          label={titleCase(log.status)}
                           color={getStatusColor(log.status) as any}
                           size="small"
                         />
@@ -761,7 +768,19 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       <TableCell>
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
-                      <TableCell>{log.sentiment || "-"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={titleCase(log.sentiment || "-")}
+                          color={
+                            log.sentiment?.toLowerCase() === "positive"
+                              ? "success"
+                              : log.sentiment?.toLowerCase() === "negative"
+                                ? "error"
+                                : "default"
+                          }
+                          size="small"
+                        />
+                      </TableCell>
 
                       <TableCell>
                         {log.date ? formatDateTime(log.date) : "-"}

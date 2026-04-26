@@ -292,6 +292,14 @@ export const CallLogsTab = () => {
     }
   };
 
+
+  const titleCase = (value: string) =>
+    value
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+
   return (
     <Box>
       {/* Filters */}
@@ -364,7 +372,7 @@ export const CallLogsTab = () => {
                                     <CircularProgress size={18} color="inherit" />
                                 ) : (
                                     <SyncIcon />
-                                )   
+                                )
                             }
                             onClick={handleSyncCalls}
                             disabled={syncing}
@@ -419,7 +427,7 @@ export const CallLogsTab = () => {
         <Collapse in={showFilters}>
           <Grid container spacing={2} mt={1}>
             {/* Agent */}
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <TextField
                 select
                 label="Agent"
@@ -443,7 +451,7 @@ export const CallLogsTab = () => {
             </Grid>
 
             {/* Campaign */}
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <TextField
                 select
                 label="Campaign"
@@ -458,8 +466,6 @@ export const CallLogsTab = () => {
                 ))}
               </TextField>
             </Grid>
-          </Grid>
-          <Grid container spacing={2} mt={1}>
             {/* Status */}
             <Grid item xs={12} md={4}>
               <TextField
@@ -477,6 +483,9 @@ export const CallLogsTab = () => {
                 <MenuItem value="scheduled">Scheduled</MenuItem>
               </TextField>
             </Grid>
+          </Grid>
+          <Grid container spacing={2} mt={1}>
+
             {/* Call End Reason */}
             <Grid item xs={12} sm={6} md={4}>
               <TextField
@@ -518,6 +527,20 @@ export const CallLogsTab = () => {
                 <MenuItem value="unresolved">Unresolved</MenuItem>
               </TextField>
             </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="Lead Conversion"
+                value={leadQualified}
+                onChange={(e) => setLeadQualified(e.target.value)}
+              >
+                <MenuItem value="All">All</MenuItem>
+                <MenuItem value="true">Positive</MenuItem>
+                <MenuItem value="false">Negative</MenuItem>
+              </TextField>
+            </Grid>
 
             {/* Evaluation
                         <Grid item xs={12} sm={6} md={3}>
@@ -533,7 +556,7 @@ export const CallLogsTab = () => {
                                 <MenuItem value="true">True</MenuItem>
                                 <MenuItem value="false">False</MenuItem>
                             </TextField>
-                        </Grid> 
+                        </Grid>
 
                         <Grid item xs={12} sm={6} md={3}>
                             <TextField
@@ -552,20 +575,7 @@ export const CallLogsTab = () => {
                             </TextField>
                         </Grid>
 
-                        <Grid item xs={12} sm={6} md={3}>
-                            <TextField
-                                select
-                                fullWidth
-                                size="small"
-                                label="Lead Qualified"
-                                value={leadQualified}
-                                onChange={(e) => setLeadQualified(e.target.value)}
-                            >
-                                <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="true">Yes</MenuItem>
-                                <MenuItem value="false">No</MenuItem>
-                            </TextField>
-                        </Grid> */}
+                       */}
           </Grid>
         </Collapse>
       </Paper>
@@ -793,7 +803,7 @@ export const CallLogsTab = () => {
                   <TableCell>
                     {log.sentiment && log.sentiment !== "N/A" ? (
                       <Chip
-                        label={log.sentiment}
+                        label={titleCase(log.sentiment)}
                         color={
                           log.sentiment.toLowerCase() === "positive"
                             ? "success"
@@ -809,7 +819,7 @@ export const CallLogsTab = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={log.status}
+                      label={titleCase(log.status)}
                       color={getStatusColor(log.status) as any}
                       size="small"
                     />

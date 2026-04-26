@@ -572,7 +572,7 @@ async def export_leads(
                     "email": lead.email,
                     "phone": lead.phone,
                     "company": lead.company,
-                    "lead_outcome": lead.lead_outcome,
+                    "sentiment": lead.lead_outcome,
                     "source": lead.source,
                     "funnel_stage": lead.funnel_stage,
                     "created_at": (

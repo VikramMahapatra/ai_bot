@@ -1465,7 +1465,7 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Outcome</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Sentiment</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>

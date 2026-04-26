@@ -101,6 +101,7 @@ def get_session_conversations_report(
         func.count(Conversation.id).label("turn_count"),
         func.max(Conversation.outcome).label("outcome"),
         func.max(Conversation.source).label("source"),
+        func.bool_or(Conversation.is_lead).label("is_lead")
     ).filter(
         *conversation_filters
     ).group_by(
@@ -182,9 +183,10 @@ def get_session_conversations_report(
         leads_subquery.c.funnel_stage.label("funnel_stage"),
         func.coalesce(contact_subquery.c.contact_name, "Guest").label("contact_name"),
         case(
-            (leads_subquery.c.lead_id.isnot(None), "yes"),
-            else_="no"
-        ).label("lead_conversion"),
+            (sessions_subquery.c.is_lead == True, "positive"),
+            (sessions_subquery.c.is_lead == False, "negative"),
+            else_="pending"
+        ).label("lead_conversion")
     ).select_from(
         sessions_subquery
     ).outerjoin(

@@ -153,7 +153,7 @@ def get_call_logs(
         
     if params.is_lead_qualified is not None:
         query = query.filter(
-            CallLog.is_lead_qualified == params.is_lead_qualified
+            conversation_subq.c.is_lead == params.is_lead_qualified
         )
 
     # TOTAL COUNT
@@ -205,21 +205,22 @@ def get_call_logs(
             duration = int((log.end_time - log.start_time).total_seconds())
             
         # Determine lead status for grid
-        lead_exists = db.query(Lead.id).join(
-            LeadContactMapping,
-            LeadContactMapping.lead_id == Lead.id
-        ).join(
-            Conversation,
-            Conversation.contact_id == LeadContactMapping.contact_id
-        ).filter(
-            Conversation.session_id == log.call_session_id,
-            Lead.organization_id == organization_id
-        ).limit(1).scalar()
+        is_lead = (
+            db.query(Conversation.is_lead)
+            .filter(
+                Conversation.session_id == log.call_session_id,
+                Conversation.organization_id == organization_id,
+                Conversation.outcome.isnot(None)  
+            )
+            .order_by(Conversation.created_at.desc())
+            .limit(1)
+            .scalar()
+        )
         
-        if log.is_lead_qualified:
-            lead_qualified_status = "Synced" if lead_exists else "Pending"
-        else:
-            lead_qualified_status = "Not Qualified" if log.campaign_id else "N/A"
+        lead_status = {
+            True: "positive",
+            False: "negative",
+        }.get(is_lead, "pending")
             
         rows.append({
             "id": log.id,
@@ -246,7 +247,7 @@ def get_call_logs(
             "follow_up_recommended": log.follow_up_recommended or [],
             "extract_data": log.extract_data or {},
             "lead_info": log.lead_info or {},
-            "lead_qualified_status": lead_qualified_status,
+            "lead_qualified_status": lead_status,
             "transcript": [
                 {
                     "speaker": t.speaker,
