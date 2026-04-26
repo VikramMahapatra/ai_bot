@@ -9,9 +9,9 @@ export interface LeadListResponse {
     limit: number;
   };
   summary: {
-    total_leads: number;
-    conversion_leads: number;
-    week_leads: number
+    total_pipeline_leads: number;
+    closed_won_leads: number;
+    closed_lost_leads: number
   }
 }
 
@@ -45,6 +45,9 @@ export const leadService = {
     productId?: string,
     campaignId?: string,
     campaignType?: string,
+    search?: string,
+    startDate?: string,
+    endDate?: string
   ): Promise<LeadListResponse> {
     const params = new URLSearchParams({
       skip: String(skip),
@@ -56,6 +59,10 @@ export const leadService = {
     if (productId) params.append("product_id", productId);
     if (campaignId) params.append("campaign_id", campaignId);
     if (campaignType) params.append("campaign_type", campaignType);
+    if (search) params.append("search", search);
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+
     const response = await api.get<LeadListResponse>(
       `/api/admin/leads?${params.toString()}`,
     );

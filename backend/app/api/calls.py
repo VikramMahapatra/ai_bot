@@ -8,7 +8,7 @@ from typing import Optional
 from app.auth import get_current_user
 from app.models.user import User
 from app.models.call_campaigns import CallCampaign
-from app.models.call_logs import CallLog
+from app.models.call_logs import CallLog, CallTranscript
 import logging
 from app.database import get_db
 from app.services.call_log_service import sync_call_logs
@@ -25,6 +25,7 @@ from app.models.lead import Lead
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.services.calling_agent_service import test_call
+from app.models.conversation import Conversation
 
 logger = logging.getLogger(__name__)
 
@@ -90,19 +91,100 @@ def call_analytics(
     
     campaign_ids = [c.id for c in campaigns]
     
+    filters = [CallLog.campaign_id.in_(campaign_ids)]
+
+    if start_date:
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        filters.append(CallLog.start_time >= start_date)
+
+    if end_date:
+        end_date = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        filters.append(CallLog.start_time < end_date)
+    
+    attempted_calls_data = (
+        db.query(
+            CallLog.campaign_id,
+            func.count(CallLog.id).label("attempted_calls")
+        )
+        .filter(*filters)
+        .group_by(CallLog.campaign_id)
+        .all()
+    )
+    
+    attempted_calls_map = {
+        row.campaign_id: row.attempted_calls
+        for row in attempted_calls_data
+    }
+    
+    successful_calls_data = (
+        db.query(
+            CallLog.campaign_id,
+            func.count(func.distinct(CallLog.id)).label("successful_calls")
+        )
+        .join(CallTranscript, CallTranscript.call_log_id == CallLog.id)
+        .filter(*filters)
+        .group_by(CallLog.campaign_id)
+        .all()
+    )
+    
+    successful_calls_map = {
+        row.campaign_id: row.successful_calls
+        for row in successful_calls_data
+    }
+    
     total_calls = sum(c.total_calls or 0 for c in campaigns)
-    successful_calls = sum(c.completed_calls or 0 for c in campaigns)
-    pickup_rate = (successful_calls / total_calls * 100) if total_calls else 0
+    total_attempted_calls = sum(attempted_calls_map.get(c.id, 0) for c in campaigns)
+    successful_calls = sum(successful_calls_map.get(c.id, 0) for c in campaigns)
+    pickup_rate = (
+        successful_calls / total_attempted_calls * 100
+    ) if total_attempted_calls else 0
     
     # Conversion rate = average of all campaigns' success_rate
-    conversion_rate = round(
-        sum(c.success_rate or 0 for c in campaigns) / len(campaigns), 2
+    latest_conv_subq = (
+        db.query(
+            Conversation.session_id,
+            Conversation.is_lead,
+            func.row_number().over(
+                partition_by=Conversation.session_id,
+                order_by=Conversation.created_at.desc()
+            ).label("rn")
+        )
+        .filter(Conversation.organization_id == org_id)
+        .subquery()
+    )
+    
+    latest_conv = (
+        db.query(
+            latest_conv_subq.c.session_id,
+            latest_conv_subq.c.is_lead
+        )
+        .filter(latest_conv_subq.c.rn == 1)
+        .subquery()
+    )
+    
+    converted_calls = (
+        db.query(func.count(CallLog.id))
+        .join(
+            latest_conv,
+            latest_conv.c.session_id == CallLog.call_session_id
+        )
+        .filter(
+            *filters,
+            latest_conv.c.is_lead == True
+        )
+        .scalar()
+    )
+    
+    conversion_rate = (
+        (converted_calls / total_attempted_calls) * 100
+        if total_attempted_calls else 0
     )
     
     # Total duration in minutes
-    total_duration_sec = db.query(func.coalesce(func.sum(CallLog.duration), 0)).filter(
-        CallLog.campaign_id.in_(campaign_ids)
-    ).scalar()
+    total_duration_sec = db.query(
+        func.coalesce(func.sum(CallLog.duration), 0)
+    ).filter(*filters).scalar()
+    
     total_duration = total_duration_sec // 60
     
     # Active campaigns
@@ -112,20 +194,15 @@ def call_analytics(
         CallCampaign.is_deleted == False
     ).count()
     
-    call_query = db.query(CallLog).filter(CallLog.campaign_id.in_(campaign_ids))
-    if start_date:
-        call_query = call_query.filter(CallLog.start_time >= start_date)
-    if end_date:
-        call_query = call_query.filter(CallLog.start_time <= end_date)
-    
     # Recent calls
     # Define how far back you consider "recent"
     now = datetime.now(timezone.utc)
     recent_window = now - timedelta(minutes=30)  # last 30 minutes
 
     recent_call_logs = (
-        call_query
+        db.query(CallLog)
         .filter(
+            *filters,
             CallLog.organization_id == org_id,
             CallLog.start_time >= recent_window
         )
@@ -166,7 +243,7 @@ def call_analytics(
             extract("hour", CallLog.start_time).label("hour"),
             func.count(CallLog.id).label("calls")
         )
-        .filter(CallLog.campaign_id.in_(campaign_ids))
+        .filter(*filters)
         .group_by("hour")
         .order_by("hour")
         .all()
@@ -185,11 +262,11 @@ def call_analytics(
     
     pickup_trend_data = (
         db.query(
-            extract("dow", CallLog.start_time).label("weekday"),  # 0=Sun, 1=Mon, ..., 6=Sat
+            extract("dow", CallLog.start_time).label("weekday"),
             func.count(CallLog.id).label("total"),
             func.count(func.nullif(CallLog.status != "ended", True)).label("ended")
         )
-        .filter(CallLog.campaign_id.in_(campaign_ids))
+        .filter(*filters)
         .group_by("weekday")
         .order_by("weekday")
         .all()
@@ -214,10 +291,8 @@ def call_analytics(
         
     # Call Outcomes
     # Fetch all call logs for the selected campaign
-    call_logs = db.query(CallLog.ended_reason).filter(
-        CallLog.campaign_id.in_(campaign_ids)
-    ).all()
-
+    call_logs = db.query(CallLog.ended_reason).filter(*filters).all()
+    
     # Map to user-friendly status
     mapped_status = [
         ENDED_REASON_GROUP.get(r.ended_reason, "Other") for r in call_logs
@@ -236,9 +311,15 @@ def call_analytics(
         )
         .join(CallLog, CallLog.call_session_id == Lead.session_id)
         .filter(CallLog.campaign_id.in_(campaign_ids))
-        .group_by(Lead.lead_outcome)
-        .all()
     )
+
+    if start_date:
+        lead_outcome_distribution = lead_outcome_distribution.filter(CallLog.start_time >= start_date)
+
+    if end_date:
+        lead_outcome_distribution = lead_outcome_distribution.filter(CallLog.start_time < end_date)
+
+    lead_outcome_distribution = lead_outcome_distribution.group_by(Lead.lead_outcome).all()
     
     lead_outcome_data = [
         {
@@ -252,6 +333,7 @@ def call_analytics(
     return {
         "summary": {
             "total_calls": total_calls,
+            "attempted_calls": total_attempted_calls,
             "successful_calls": successful_calls,
             "pickup_rate": round(pickup_rate, 2),
             "conversion_rate": conversion_rate,

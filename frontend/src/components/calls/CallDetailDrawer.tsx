@@ -9,7 +9,8 @@ import {
     Stack,
     Button,
     Tooltip,
-    Avatar
+    Avatar,
+    Chip
 } from '@mui/material';
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
@@ -29,12 +30,38 @@ import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
 import { formatDateTime } from '../../utils/dateUtils';
 import LeadIcon from "@mui/icons-material/HowToReg";
+import SentimentDissatisfiedIcon from "@mui/icons-material/SentimentDissatisfied";
+import SentimentNeutralIcon from "@mui/icons-material/SentimentNeutral";
+import SentimentVerySatisfiedIcon from "@mui/icons-material/SentimentVerySatisfied";
+import SentimentVeryDissatisfiedIcon from "@mui/icons-material/SentimentVeryDissatisfied";
+
+
+
+const sentimentConfig: Record<
+    string,
+    { color: "success" | "error" | "warning" | "info" | "text.primary"; icon: JSX.Element }
+> = {
+    positive: { color: "success", icon: <SentimentVerySatisfiedIcon /> },
+    negative: { color: "error", icon: <SentimentVeryDissatisfiedIcon /> },
+    neutral: { color: "warning", icon: <SentimentNeutralIcon /> },
+    satisfactory: { color: "info", icon: <SentimentSatisfiedAltIcon /> },
+    unresolved: { color: "error", icon: <SentimentDissatisfiedIcon /> },
+};
+
+
 
 interface CallDetailDrawerProps {
     open: boolean;
     onClose: () => void;
     selectedCall: any;
 }
+
+
+const titleCase = (value: string) =>
+    value
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 
 export const formatEndedReason = (reason?: string) => {
     if (!reason) return "-";
@@ -58,6 +85,12 @@ const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSi
 
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
+
+    const sentiment = selectedCall?.sentiment?.toLowerCase();
+    const config = sentimentConfig[sentiment] || {
+        color: "text.primary",
+        icon: <SentimentNeutralIcon />,
+    };
 
     return (
         <Drawer
@@ -163,27 +196,53 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     {selectedCall.contact || "N/A"}
                                 </Typography>
                             </Box>
-                            {/* <Box display="flex" alignItems="center" gap={1} mb={2}>
-                                <LeadIcon fontSize="small" color="success" />
+                            <Box display="flex" alignItems="center" gap={1}>
+                                {config.icon}
+
                                 <Typography variant="body2" color="text.secondary">
-                                    Lead Status:
+                                    Sentiment:
                                 </Typography>
-                                {selectedCall?.lead_qualified_status ? (
-                                    <Typography variant="body2" fontWeight={600} color={
-                                        selectedCall.lead_qualified_status === "Synced"
+
+                                <Typography
+                                    variant="body2"
+                                    fontWeight={600}
+                                    color={config.color}
+                                >
+                                    {titleCase(sentiment || "unknown")}
+                                </Typography>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1} mb={2}>
+                                <LeadIcon
+                                    fontSize="small"
+                                    color={
+                                        selectedCall?.lead_qualified_status === "positive"
                                             ? "success"
-                                            : selectedCall.lead_qualified_status === "Pending"
-                                                ? "warning"
-                                                : "default"
-                                    }>
-                                        {selectedCall.lead_qualified_status}
-                                    </Typography>
-                                ) : (
-                                    <Typography variant="body2" fontWeight={600}>
-                                        Not Qualified
-                                    </Typography>
-                                )}
-                            </Box> */}
+                                            : selectedCall?.lead_qualified_status === "negative"
+                                                ? "error"
+                                                : "disabled"
+                                    }
+                                />
+
+                                <Typography variant="body2" color="text.secondary">
+                                    Conversion Status:
+                                </Typography>
+
+                                <Typography
+                                    variant="body2"
+                                    fontWeight={600}
+                                    color={
+                                        selectedCall?.lead_qualified_status === "positive"
+                                            ? "success"
+                                            : selectedCall?.lead_qualified_status === "negative"
+                                                ? "error"
+                                                : "text.primary"
+                                    }
+                                >
+                                    {selectedCall?.lead_qualified_status
+                                        ? titleCase(selectedCall.lead_qualified_status)
+                                        : "Unknown"}
+                                </Typography>
+                            </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 <BugReportIcon fontSize="small" color="warning" />
                                 <Typography variant="body2" color="text.secondary">
@@ -204,15 +263,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         : "N/A"}
                                 </Typography>
                             </Box>
-                            <Box display="flex" alignItems="center" gap={1}>
-                                <SentimentSatisfiedAltIcon fontSize="small" color="info" />
-                                <Typography variant="body2" color="text.secondary">
-                                    Sentiment:
-                                </Typography>
-                                <Typography variant="body2" fontWeight={600}>
-                                    {selectedCall.sentiment}
-                                </Typography>
-                            </Box>
+
                             {/* <Box display="flex" alignItems="center" gap={1}>
                                 <AttachMoneyIcon fontSize="small" />
                                 <Typography variant="body2" color="text.secondary">

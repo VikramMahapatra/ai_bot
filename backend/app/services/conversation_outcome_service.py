@@ -287,6 +287,7 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
             classification = _classify_outcome_with_llm(transcript)
             outcome = classification["outcome"]
             whether_lead = classification["whether_lead"]
+            is_lead_value = 1 if whether_lead == "lead" else 0
             
             if transcript.strip():
                 organization_credit_service.deduct_credits(
@@ -313,7 +314,10 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                 Conversation.session_id == session_id,
                 Conversation.outcome.is_(None),
             ).update(
-                {Conversation.outcome: outcome},
+                {
+                    Conversation.outcome: outcome,
+                    Conversation.is_lead: is_lead_value,
+                },
                 synchronize_session=False,
             )
             

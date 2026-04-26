@@ -872,7 +872,7 @@ const ReportsPage: React.FC = () => {
                 size="small"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.5}>
+            {/* <Grid item xs={12} sm={6} md={2.5}>
               <TextField
                 label="Widget ID"
                 value={widgetId}
@@ -881,11 +881,11 @@ const ReportsPage: React.FC = () => {
                 fullWidth
                 size="small"
               />
-            </Grid>
+            </Grid> */}
             <Grid item xs={12} sm={6} md={2.5}>
               <Button
                 variant="contained"
-                onClick={fetchSummary}
+                onClick={fetchConversations}
                 fullWidth
                 sx={{ height: 40 }}
               >
@@ -1120,8 +1120,8 @@ const ReportsPage: React.FC = () => {
                     <TableCell align="right">Tokens</TableCell> */}
                     <TableCell align="right">Response Time</TableCell>
                     <TableCell>AI Funnel</TableCell>
+                    <TableCell>Sentiment</TableCell>
                     <TableCell>Outcome</TableCell>
-                    <TableCell align="center">Lead Conversion</TableCell>
                     <TableCell>Date</TableCell>
                     <TableCell align="center">Actions</TableCell>
                   </TableRow>
@@ -1167,7 +1167,7 @@ const ReportsPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={conv.outcome || "Pending"}
+                          label={titleCase(conv.outcome || "Pending")}
                           size="small"
                           color={conv.outcome ? "primary" : "default"}
                           variant={conv.outcome ? "filled" : "outlined"}
@@ -1175,9 +1175,15 @@ const ReportsPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={titleCase(conv.lead_conversion)}
+                          label={titleCase(conv.lead_conversion || "pending")}
                           size="small"
-                          variant="outlined"
+                          color={
+                            conv.lead_conversion === "positive"
+                              ? "success"
+                              : conv.lead_conversion === "negative"
+                                ? "error"
+                                : "warning"
+                          }
                         />
                       </TableCell>
                       <TableCell>
@@ -1462,7 +1468,7 @@ const ReportsPage: React.FC = () => {
                 variant="scrollable"
                 scrollButtons="auto"
               >
-                <Tab label="Marketing" />
+                <Tab label="Text" />
                 <Tab label="Voice" />
               </Tabs>
             </Paper>

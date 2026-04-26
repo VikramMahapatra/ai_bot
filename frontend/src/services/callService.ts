@@ -25,6 +25,7 @@ export interface RecentCall {
 
 export interface AnalyticsSummary {
     total_calls: number;
+    attempted_calls: number;
     successful_calls: number;
     pickup_rate: number;       // in percentage, e.g., 58
     conversion_rate: number;   // in percentage, e.g., 7.6

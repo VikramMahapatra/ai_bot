@@ -46,6 +46,12 @@ import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
 import { ExportToExcel } from "../../utils/callLogExport";
+import PeopleIcon from '@mui/icons-material/People';
+import CallIcon from "@mui/icons-material/Call";
+import ReplayIcon from '@mui/icons-material/Replay';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+
+
 interface Props {
   campaignId: number;
   onBack: () => void;
@@ -62,6 +68,46 @@ const getStatusColor = (status: string) => {
       return "error";
     default:
       return "default";
+  }
+};
+
+const getStatusBg = (status: string) => {
+  switch (status) {
+    case "active":
+    case "running":
+      return "#dcfce7";
+
+    case "paused":
+      return "#fef3c7";
+
+    case "completed":
+      return "#dbeafe";
+
+    case "cancelled":
+      return "#fee2e2"; // light red
+
+    default:
+      return "#f3f4f6";
+  }
+};
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case "active":
+    case "running":
+      return "#15803d";
+
+    case "paused":
+      return "#b45309";
+
+    case "completed":
+      return "#1d4ed8";
+
+    case "cancelled":
+      return "#b91c1c"; // dark red
+
+    default:
+      return "#374151";
   }
 };
 
@@ -210,7 +256,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   };
 
   const progress = campaign?.total_calls
-    ? (campaign.completed_calls / campaign.total_calls) * 100
+    ? (campaign.attempted_calls / campaign.total_contacts) * 100
     : 0;
 
   const handleExport = async () => {
@@ -235,6 +281,13 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       console.error("Export failed", error);
     }
   };
+
+  const titleCase = (value: string) =>
+    value
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
   return (
     <Box sx={{ p: 3, bgcolor: "#f5f7fa", minHeight: "100vh" }}>
       {/* LOADING */}
@@ -276,7 +329,17 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 Created {new Date(campaign?.created_at).toLocaleDateString()}
               </Typography>
 
-              <Chip label={campaign?.status} color="primary" size="small" />
+              <Chip
+                label={campaign?.status}
+                size="small"
+                sx={{
+                  borderRadius: "999px",
+                  fontWeight: 600,
+                  backgroundColor: getStatusBg(campaign?.status),
+                  color: getStatusText(campaign?.status)
+                }}
+                variant="outlined"
+              />
             </Box>
           </Box>
         </Box>
@@ -291,8 +354,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="body2">Total Contacts</Typography>
-              <Typography variant="h5">
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Total Contacts</Typography>
+                <PeopleIcon color="primary" />
+              </Box>
+              <Typography variant="h5" mt={1}>
                 {campaign?.total_contacts || 0}
               </Typography>
             </CardContent>
@@ -302,9 +368,12 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="body2">Calls Completed</Typography>
-              <Typography variant="h5">
-                {campaign?.completed_calls || 0}/{campaign?.total_calls || 0}
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Initiated Calls</Typography>
+                <CallIcon color="primary" />
+              </Box>
+              <Typography variant="h5" mt={1}>
+                {campaign?.attempted_calls || 0}
               </Typography>
             </CardContent>
           </Card>
@@ -312,9 +381,12 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="body2">Success Rate</Typography>
-              <Typography variant="h5">
-                {campaign?.success_rate || 0}%
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Rescheduled Calls</Typography>
+                <ReplayIcon color="primary" />
+              </Box>
+              <Typography variant="h5" mt={1}>
+                {campaign?.rescheduled_calls || 0}
               </Typography>
             </CardContent>
           </Card>
@@ -323,8 +395,13 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="body2">Progress</Typography>
-              <Typography variant="h5">{Math.round(progress)}%</Typography>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Pending Scheduled</Typography>
+                <ScheduleIcon color="primary" />
+              </Box>
+              <Typography variant="h5" mt={1}>
+                {campaign?.pending_scheduled_calls || 0}
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -335,8 +412,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <CardContent>
           <Typography fontWeight="bold">Campaign Progress</Typography>
           <Typography variant="body2" mb={1}>
-            {campaign?.completed_calls || 0} of {campaign?.total_calls || 0}{" "}
-            calls completed
+            {campaign?.attempted_calls || 0} of {campaign?.total_calls || 0}{" "}
+            contacts reached
           </Typography>
           <LinearProgress variant="determinate" value={progress} />
         </CardContent>
@@ -450,7 +527,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </Typography>
                 </Grid>
 
-                <Grid item xs={12} md={3}>
+                {/* <Grid item xs={12} md={3}>
                   <Typography variant="caption" color="text.secondary">
                     Interval
                   </Typography>
@@ -459,7 +536,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       ? `${campaign.call_interval} mins`
                       : "-"}
                   </Typography>
-                </Grid>
+                </Grid> */}
 
                 <Grid item xs={12} md={3}>
                   <Typography variant="caption" color="text.secondary">
@@ -671,7 +748,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       <TableCell>{log.phone}</TableCell>
                       <TableCell>
                         <Chip
-                          label={log.status}
+                          label={titleCase(log.status)}
                           color={getStatusColor(log.status) as any}
                           size="small"
                         />
@@ -691,7 +768,19 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       <TableCell>
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
-                      <TableCell>{log.sentiment || "-"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={titleCase(log.sentiment || "-")}
+                          color={
+                            log.sentiment?.toLowerCase() === "positive"
+                              ? "success"
+                              : log.sentiment?.toLowerCase() === "negative"
+                                ? "error"
+                                : "default"
+                          }
+                          size="small"
+                        />
+                      </TableCell>
 
                       <TableCell>
                         {log.date ? formatDateTime(log.date) : "-"}

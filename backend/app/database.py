@@ -679,6 +679,7 @@ def init_db():
             conn.execute(text("""
                 ALTER TABLE conversations 
                 ADD COLUMN IF NOT EXISTS contact_id INTEGER,
+                ADD COLUMN IF NOT EXISTS is_lead BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS source VARCHAR(50);
             """))
         except:

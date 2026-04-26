@@ -7,7 +7,7 @@ from typing import List, Optional
 from urllib import response
 from uuid import uuid4
 from fastapi import BackgroundTasks, HTTPException
-from sqlalchemy import case, func, literal, or_
+from sqlalchemy import case, exists, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
@@ -297,11 +297,31 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     total_contacts = db.query(CampaignContact).filter(
         CampaignContact.campaign_id == campaign_id
     ).count()
+    
+    attempted_calls = (
+        db.query(CallLog)
+        .filter(CallLog.campaign_id == campaign_id)
+        .count()
+    )
+    
+    successful_calls = (
+        db.query(CallLog)
+        .join(CallTranscript, CallTranscript.call_log_id == CallLog.id)
+        .filter(CallLog.campaign_id == campaign_id)
+        .all()
+    )
 
-    scheduled_calls = db.query(CallLog).filter(
-        CallLog.campaign_id == campaign_id,
-        CallLog.status == "Scheduled"
-    ).count()
+    pending_scheduled_calls = (
+        db.query(CampaignContact)
+        .filter(
+            CampaignContact.campaign_id == campaign_id,
+            ~exists().where(
+                (CallLog.campaign_id == campaign_id) &
+                (CallLog.contact_id == CampaignContact.contact_id)
+            )
+        )
+        .count()
+    )
     
     instant_reply_modes = []
     instant_reply_templates = {}
@@ -339,7 +359,9 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         "response_rate": campaign_obj.response_rate,
 
         "total_contacts": total_contacts,
-        "scheduled_calls": scheduled_calls,
+        "attempted_calls": attempted_calls,
+        "successful_calls": successful_calls,
+        "pending_scheduled_calls": pending_scheduled_calls,
         "instant_reply": len(instant_reply_modes) > 0,
         "instant_reply_modes": instant_reply_modes,
         "instant_reply_templates": instant_reply_templates

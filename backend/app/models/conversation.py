@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Boolean, Column, Identity, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -18,6 +18,7 @@ class Conversation(Base):
     response = Column(Text, nullable=False)
     role = Column(String, nullable=False)  # 'user' or 'assistant'
     outcome = Column(String, nullable=True, index=True)  # Session-level outcome status (positive/negative/satisfactory/etc.)
+    is_lead = Column(Boolean, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
