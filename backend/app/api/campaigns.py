@@ -54,6 +54,7 @@ from app.services.limits_service import get_effective_limits
 from app.services.organization_setting_service import get_org_settings
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.models.lead_contact_mapping import LeadContactMapping
 
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -655,7 +656,7 @@ def _execute_campaign_now(
     organization_credit_service.consume_reserved_credits(
         db=db,
         reference_type="campaign",
-        reference_id=campaign.id,
+        reference_id=str(campaign.id),
         actual_quantity=sent_count,
     )
 
@@ -1883,6 +1884,16 @@ async def delete_contact(
 
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    
+    mapping_exists = db.query(LeadContactMapping.id).filter(
+        LeadContactMapping.contact_id == contact_id
+    ).first()
+
+    if mapping_exists:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete contact: linked to existing lead"
+        )
 
     db.delete(contact)
     db.commit()

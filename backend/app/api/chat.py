@@ -35,6 +35,8 @@ import re
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
 from app.models.organization_settings import OrganizationSettings
 from app.services.organization_setting_service import get_settings, get_org_settings
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +277,7 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
         return None
 
     candidate = text.strip()
+    parsed = datetime.strptime(candidate, fmt)
     now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
 
     lower = candidate.lower()
@@ -298,7 +301,9 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
 
     if re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", candidate):
         try:
-            return datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            return datetime.fromisoformat(candidate.replace("Z", "+00:00")).astimezone(
+                ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
+            )
         except Exception:
             pass
 
@@ -320,6 +325,7 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
     for fmt in formats:
         try:
             parsed = datetime.strptime(candidate, fmt)
+            parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
             if "%Y" not in fmt:
                 parsed = parsed.replace(year=now_local.year)
                 if parsed < now_local:
@@ -1091,6 +1097,7 @@ def _sync_appointment_contact_to_agent_list(db: Session, widget_config: WidgetCo
         name=cleaned_name,
         email=cleaned_email or None,
         phone=cleaned_phone or None,
+        session_id=appointment.session_id if appointment and appointment.session_id else None
     ))
 
 
@@ -1343,18 +1350,29 @@ def _get_subscription_session_count(db: Session, organization_id: int, usage) ->
     """Count distinct sessions in the active subscription window for accurate conversation limits."""
     if not usage:
         return 0
+    
+    period_start = usage.period_start
+    period_end = usage.period_end
+
+    # normalize if naive
+    if period_start and period_start.tzinfo is None:
+        period_start = period_start.replace(tzinfo=timezone.utc)
+
+    if period_end and period_end.tzinfo is None:
+        period_end = period_end.replace(tzinfo=timezone.utc)
 
     query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         Conversation.organization_id == organization_id,
-        Conversation.created_at >= usage.period_start,
-        Conversation.created_at <= usage.period_end,
+        Conversation.created_at >= period_start,
+        Conversation.created_at <= period_end,
     )
     return int(query.scalar() or 0)
 
 
 def _get_monthly_session_count(db: Session, organization_id: int) -> int:
-    now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    
     query = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         Conversation.organization_id == organization_id,
         Conversation.created_at >= month_start,
@@ -1490,8 +1508,6 @@ async def chat(
         if message.customer_id and message.shop_domain:
             is_valid_customer  = await verify_shopify_customer(db, message.shop_domain, int(message.customer_id))
             use_shopify = is_valid_customer
-            
-        print(f"Shopify customer verified: {use_shopify}")
         
         # Resolve organization for scoping
         user = db.query(User).filter(User.id == user_id).first()
@@ -1915,8 +1931,11 @@ async def chat_stream(
             )
 
         user = db.query(User).filter(User.id == user_id).first()
+        
         if not user:
             raise HTTPException(status_code=404, detail="User not found for chat context")
+        
+        organization_id = user.organization_id
         org_settings = get_org_settings(db, user.organization_id)
 
         limits = get_effective_limits(db, user.organization_id)
@@ -1974,7 +1993,7 @@ async def chat_stream(
                             session_id=message.session_id,
                             widget_id=message.widget_id,
                             user_id=user_id,
-                            organization_id=user.organization_id,
+                            organization_id=organization_id,
                             message=message.message,
                             response_text=waiting_response,
                             token_usage=token_usage,
@@ -2019,7 +2038,7 @@ async def chat_stream(
 
             direct_lead_prompt = _handoff_lead_capture_prompt_for_direct_request(
                 db,
-                user.organization_id,
+                organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
@@ -2036,7 +2055,7 @@ async def chat_stream(
                             session_id=message.session_id,
                             widget_id=message.widget_id,
                             user_id=user_id,
-                            organization_id=user.organization_id,
+                            organization_id=organization_id,
                             message=message.message,
                             response_text=direct_lead_prompt,
                             token_usage=token_usage,
@@ -2065,7 +2084,7 @@ async def chat_stream(
 
             direct_handoff = _create_direct_handoff_request(
                 db,
-                user.organization_id,
+                organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
@@ -2085,7 +2104,7 @@ async def chat_stream(
                             session_id=message.session_id,
                             widget_id=message.widget_id,
                             user_id=user_id,
-                            organization_id=user.organization_id,
+                            organization_id=organization_id,
                             message=message.message,
                             response_text=waiting_response,
                             token_usage=token_usage,
@@ -2103,7 +2122,7 @@ async def chat_stream(
                         )
                         increment_usage(
                             db,
-                            user.organization_id,
+                            organization_id,
                             conversations_count=1 if is_new_session else 0,
                             messages_count=2,
                             tokens_used=0,
@@ -2129,7 +2148,7 @@ async def chat_stream(
 
             lead_prompt = _handoff_lead_capture_prompt_if_needed(
                 db,
-                user.organization_id,
+                organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
@@ -2146,7 +2165,7 @@ async def chat_stream(
                             session_id=message.session_id,
                             widget_id=message.widget_id,
                             user_id=user_id,
-                            organization_id=user.organization_id,
+                            organization_id=organization_id,
                             message=message.message,
                             response_text=lead_prompt,
                             token_usage=token_usage,
@@ -2164,7 +2183,7 @@ async def chat_stream(
                         )
                         increment_usage(
                             db,
-                            user.organization_id,
+                            organization_id,
                             conversations_count=1 if is_new_session else 0,
                             messages_count=2,
                             tokens_used=0,
@@ -2175,7 +2194,7 @@ async def chat_stream(
 
             confirmed_handoff = _create_handoff_after_user_confirmation(
                 db,
-                user.organization_id,
+                organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
@@ -2195,7 +2214,7 @@ async def chat_stream(
                             session_id=message.session_id,
                             widget_id=message.widget_id,
                             user_id=user_id,
-                            organization_id=user.organization_id,
+                            organization_id=organization_id,
                             message=message.message,
                             response_text=waiting_response,
                             token_usage=token_usage,
@@ -2213,7 +2232,7 @@ async def chat_stream(
                         )
                         increment_usage(
                             db,
-                            user.organization_id,
+                            organization_id,
                             conversations_count=1 if is_new_session else 0,
                             messages_count=2,
                             tokens_used=0,
@@ -2260,7 +2279,7 @@ async def chat_stream(
                         session_id=message.session_id,
                         widget_id=message.widget_id,
                         user_id=user_id,
-                        organization_id=user.organization_id,
+                        organization_id=organization_id,
                         message=message.message,
                         response_text=intake_response,
                         token_usage=token_usage,
@@ -2278,7 +2297,7 @@ async def chat_stream(
                     )
                     increment_usage(
                         db,
-                        user.organization_id,
+                        organization_id,
                         conversations_count=1 if is_new_session else 0,
                         messages_count=2,
                         tokens_used=0
@@ -2317,7 +2336,7 @@ async def chat_stream(
                     message.session_id,
                     message.widget_id,
                     user_id,
-                    user.organization_id,
+                    organization_id,
                     db,
                     language_code=message.language_code,
                     language_label=message.language_label,
@@ -2370,7 +2389,7 @@ async def chat_stream(
                     session_id=message.session_id,
                     widget_id=message.widget_id,
                     user_id=user_id,
-                    organization_id=user.organization_id,
+                    organization_id=organization_id,
                     message=message.message,
                     response_text=full_text,
                     token_usage=usage_tokens,
@@ -2378,7 +2397,7 @@ async def chat_stream(
                 )
                 increment_usage(
                     db,
-                    user.organization_id,
+                    organization_id,
                     conversations_count=1 if is_new_session else 0,
                     messages_count=2,
                     tokens_used=usage_tokens.get("total_tokens", 0)
@@ -2410,6 +2429,16 @@ async def book_appointment(
     ).first()
     if not widget_config:
         raise HTTPException(status_code=400, detail="Invalid widget_id")
+    
+    valid = organization_credit_service.validate_feature_usage(
+        db, widget_config.organization_id, FeatureCodes.AI_BOOKING, 1
+    )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
 
     appointment_time = request.appointment_at
     now = datetime.now(timezone.utc) if appointment_time.tzinfo else datetime.utcnow()
@@ -2435,6 +2464,15 @@ async def book_appointment(
     _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
     db.commit()
     db.refresh(appointment)
+    
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=widget_config.organization_id,
+        feature_code=FeatureCodes.CORE_CHATBOT_WEB_MESSAGE,
+        quantity=1,
+        reference_type="booking",
+        reference_id=str(appointment.id)
+    )
 
     appointment_dt = appointment.appointment_at
     if appointment_dt.tzinfo is None:
@@ -2850,7 +2888,10 @@ async def get_history(
     )
     if widget_id:
         query = query.filter(Conversation.widget_id == widget_id)
-    conversations = query.order_by(Conversation.created_at).all()
+    conversations = query.order_by(
+        Conversation.created_at,
+         Conversation.id
+        ).all()
     
     return conversations
 

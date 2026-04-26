@@ -283,6 +283,16 @@ def sync_bookings(
 
     for booking in bookings:
         
+        valid = organization_credit_service.validate_feature_usage(
+            db, current_user.organization_id, FeatureCodes.AI_BOOKING, 1
+        )
+
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue.",
+            )
+        
         call_id = booking.get("call_id")
         
         call_log = db.query(CallLog).filter(
@@ -346,7 +356,7 @@ def sync_bookings(
             feature_code=FeatureCodes.AI_BOOKING,
             quantity=1,
             reference_type="call_log_bookings",
-            reference_id=appointment.id
+            reference_id=str(appointment.id)
         )
 
     db.commit()

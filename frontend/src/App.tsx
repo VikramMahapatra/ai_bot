@@ -27,6 +27,7 @@ import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminPriceMatrixPage from './pages/SuperAdminPriceMatrixPage';
 import SuperAdminCreditEstimatorPage from './pages/SuperAdminCreditEstimatorPage';
 import SuperAdminOrgCreditBillingPage from './pages/SuperAdminOrgCreditBillingPage';
+import SuperAdminCreditUsagePage from './pages/SuperAdminCreditUsagePage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 import CallsPage from './pages/CallsPage';
@@ -38,6 +39,8 @@ import CreditsLayout from './components/Layout/CreditsLayout.tsx';
 import AdminCreditUsagePage from './pages/AdminCreditUsagePage';
 import FollowUpWorkflowPage from './pages/FollowUpWorkflowPage.tsx';
 import TemplatePage from './pages/TemplatePage.tsx';
+import { organizationService } from './services/organizationService.ts';
+import RestrictedFeaturePage from './components/Common/RestrictedModulePage.tsx';
 
 type ColorMode = 'light' | 'dark';
 
@@ -392,6 +395,50 @@ const ProtectedRoute: React.FC<{
   requiredRole = 'ALL'
 }) => {
     const { isAuthenticated, userRole, isAuthLoading } = useAuth();
+    const { pathname } = useLocation();
+    const [loading, setLoading] = React.useState(true);
+    const [access, setAccess] = React.useState<{ allowed: boolean, module: string, fallback: boolean }>({
+      allowed: true,
+      module: "",
+      fallback: false
+    });
+
+    console.log("Protected Route activated")
+
+    React.useEffect(() => {
+      const checkAccess = async () => {
+        if (userRole == 'SUPERADMIN')
+          return;
+
+        try {
+          const response = await organizationService.checkFeatureAccess(pathname);
+          setAccess(response);
+        } catch (err: any) {
+          const isNetworkError =
+            !err.response && err.code !== "ECONNABORTED";
+
+          if (isNetworkError) {
+            setAccess({
+              allowed: true,   // fallback mode
+              module: "",
+              fallback: true,
+            });
+            return;
+          }
+
+          // backend responded but denied
+          setAccess({
+            allowed: false,
+            module: "",
+            fallback: false,
+          });
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      checkAccess();
+    }, [pathname]);
 
     if (isAuthLoading) {
       return (
@@ -406,6 +453,19 @@ const ProtectedRoute: React.FC<{
         return <Navigate to="/superadmin/login" replace />;
       }
       return <Navigate to="/login" replace />;
+    }
+
+    if (loading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+
+    if (userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
+      return <RestrictedFeaturePage modulePath={access.module} />
     }
 
     // If admin-only route, check role
@@ -461,6 +521,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminOrgCreditBillingPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/credit-usage"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminCreditUsagePage />
           </ProtectedRoute>
         }
       />
@@ -620,7 +688,7 @@ function AppRoutes() {
         <Route
           path="/integrations/whatsapp"
           element={
-            <ProtectedRoute requiredRole="ADMIN">
+            <ProtectedRoute requiredRole="ALL">
               <WhatsAppIntegrationPage />
             </ProtectedRoute>
           }

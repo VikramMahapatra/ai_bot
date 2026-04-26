@@ -5,6 +5,7 @@ import smtplib
 import logging
 import socket
 import re
+from sqlalchemy.orm import Session
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import make_msgid, formatdate
@@ -15,8 +16,9 @@ from email_validator import EmailNotValidError, validate_email
 from typing import Iterable, Optional
 from urllib.parse import quote
 from app.config import settings
-from app.services.organization_setting_service import get_org_smtp_config
+from app.services.organization_setting_service import get_org_settings, get_org_smtp_config
 from app.models.organization_settings import OrganizationSettings
+from app.models.user import Organization
 
 logger = logging.getLogger(__name__)
 SMTP_TIMEOUT_SECONDS = 20
@@ -386,7 +388,7 @@ def send_new_lead_notification(
     lead_phone: str,
     lead_company: str = None,
     admin_emails: list = None,
-    settings: OrganizationSettings = None
+    org_settings: OrganizationSettings = None
 ) -> bool:
     """
     Send notification email when new lead is captured
@@ -447,10 +449,10 @@ def send_new_lead_notification(
 
         plain_content = _html_to_plain_text(html_content)
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+        with _open_smtp_server(get_org_smtp_config(org_settings)) as server:
 
-            if settings.smtp_username and settings.smtp_password:
-                server.login(settings.smtp_username, settings.smtp_password)
+            if org_settings.smtp_username and org_settings.smtp_password:
+                server.login(org_settings.smtp_username, org_settings.smtp_password)
 
             for admin_email in admin_emails:
 
@@ -458,7 +460,7 @@ def send_new_lead_notification(
 
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = f"🎉 New Lead: {lead_name}"
-                    msg["From"] = settings.smtp_sender_email
+                    msg["From"] = org_settings.smtp_sender_email
                     msg["To"] = admin_email
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
@@ -739,6 +741,42 @@ def send_widget_test_link_email(
     except Exception as exc:
         logger.error("Failed widget test-link email to %s: %s", normalized_email, str(exc), exc_info=True)
         return False, str(exc)
+    
+    
+def send_smtp_test_email(
+    recipient_email: str,
+    org_name: str,
+    settings: OrganizationSettings
+) -> tuple[bool, str | None]:
+    """
+    Send SMTP test email to verify configuration
+    """
+    subject = f"Test Email - {org_name} SMTP Configuration"
+
+    message_body = f"""
+    Hello,
+
+    This is a test email to verify your SMTP configuration.
+
+    If you're receiving this email, your SMTP settings are working correctly.
+
+    SMTP Details:
+    Host: {settings.smtp_host}
+    Port: {settings.smtp_port}
+    TLS Enabled: {"Yes" if settings.smtp_use_tls else "No"}
+
+    You can now send emails from {org_name}.
+
+    Best Regards  
+    Zentrixel AI Platform
+    """
+
+    return send_widget_test_link_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        message_body=message_body,
+        settings=settings
+    )
 
 
 def send_appointment_rescheduled_notification(

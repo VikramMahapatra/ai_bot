@@ -18,6 +18,11 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+const formatDecimal = (val: any) => {
+  const num = Number(val || 0);
+  return num % 1 === 0 ? num : num.toFixed(1);
+};
+
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
@@ -157,7 +162,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   <Tooltip title={creditMessage} arrow>
                     <Chip
                       icon={<AccountBalanceWalletIcon />}
-                      label={`${totalCredits} Credits`}
+                      label={`${formatDecimal(totalCredits)} Credits`}
                       color={creditColor}
                       variant="outlined"
                       onClick={() => setCreditDialogOpen(true)}

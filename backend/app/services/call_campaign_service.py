@@ -25,6 +25,7 @@ from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.models.message_templates import MessageTemplate
+from app.models.organization_credit_usages import OrganizationCreditUsage
 
 
 STALE_MINUTES = 1
@@ -72,14 +73,13 @@ def get_campaign_stats(db: Session, organization_id: int):
 
     return result
 
-def list_campaigns(
+def sync_campaigns(
     db: Session,
-    organization_id:int,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10
 ):
-    ###SYNC FROM ECHOLEAD
     campaign_models = db.query(CallCampaign).filter(
         CallCampaign.is_deleted == False,
         CallCampaign.organization_id == organization_id
@@ -96,9 +96,27 @@ def list_campaigns(
 
     for campaign in campaign_models:
         if should_sync(campaign):
-            sync_campaign_from_echoleads(db, echolead_client, campaign)
+            sync_campaign_from_echoleads(db, echolead_client, campaign.id)
 
     db.commit()
+
+def list_campaigns(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    organization_id:int,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10
+):
+    ###SYNC FROM ECHOLEAD
+    background_tasks.add_task(
+        sync_campaigns,
+        db,
+        organization_id,
+        search,
+        skip,
+        limit
+    )
 
     contact_count_subq = (
         db.query(
@@ -143,9 +161,7 @@ def list_campaigns(
 
     # TOTAL COUNT (before pagination)
     total = base_query.count()
-    
-    print(total)
-
+   
     # PAGINATION
     campaigns = (
         base_query
@@ -265,15 +281,15 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     if not campaign:
         return None
     
+    campaign_obj, product_name, schedule = campaign
+     
     echolead_client = EcholeadsClient()
     background_tasks.add_task(
             sync_campaign_from_echoleads,
             db,
             echolead_client,
-            campaign
+            campaign_obj.id
     )
-
-    campaign_obj, product_name, schedule = campaign
     
     send_option = "scheduled" if schedule and (schedule.start_datetime or schedule.active_days) else "instant"
 
@@ -374,7 +390,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         product_id=data.product_id,
         status= "draft",
         external_campaign_name= unique_campaign_code,
-        instant_reply= data.instant_reply
+        instant_reply= data.instant_reply,
+        workflow_id=data.workflow_id
     )
 
     db.add(campaign)
@@ -511,7 +528,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )     
     else:
         message = "Campaign created successfully"
@@ -522,7 +539,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=campaign.id
+            reference_id=str(campaign.id)
         )
         
     db.commit()    
@@ -555,10 +572,8 @@ def update_campaign(
 
     # Determine campaign status
     if data.start_datetime or data.active_days:
-        campaign.status = "scheduled"
         send_option = "schedule"
     else:
-        campaign.status = "active"
         send_option = "instant"
 
     # Fetch agent external id if agent updated
@@ -832,17 +847,14 @@ def delete_campaign(
             detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted."
         )
     
-    # echoleads = EcholeadsClient()
-    
-    # echo_payload = {
-    #     "status": "paused"
-    # }
-
-    # # Update Echoleads agent
-    # if campaign.external_campaign_id:
-    #     echoleads.update_agent(campaign.external_campaign_id, echo_payload)
 
     campaign.is_deleted = True
+    
+    organization_credit_service.release_reserved_credits(
+        db=db,
+        reference_type="call_campaign",
+        reference_id=str(campaign.id)
+    )
 
     db.commit()
 
@@ -954,7 +966,7 @@ def get_contacts(
                 "id": row.id,
                 "contact_list_id": row.contact_list_id,
                 "contact_list_name": row.contact_list.list_name if row.contact_list else None,
-                "label": f"{row.name} ({row.phone})",
+                "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})",
                 "name": row.name,
                 "email": row.email,
                 "phone": row.phone,
@@ -986,11 +998,14 @@ def get_contacts(
     }
     
 def get_contacts_lookup(db: Session, organization_id: int):
-
+    print(f"organization {organization_id}")
     rows = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
-        .filter(ContactList.organization_id == organization_id, Contact.phone.isnot(None), Contact.phone != "")
+        .filter(ContactList.organization_id == organization_id, 
+                Contact.phone.isnot(None), 
+                func.trim(Contact.phone) != ""
+        )
         .order_by(Contact.name.asc())
         .all()
     )
@@ -998,12 +1013,13 @@ def get_contacts_lookup(db: Session, organization_id: int):
     return [
         {
             "id": row.id,
-            "label": f"{row.name} ({row.phone})",
+            "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})",
             "name": row.name,
             "email": row.email,
             "phone": row.phone,
             "company": row.company,
             "contact_list_id": row.contact_list_id,
+            "contact_list_name": row.contact_list.list_name
         }
         for row in rows
     ]
@@ -1034,7 +1050,7 @@ def create_contact(db: Session, data: ContactCreate):
 
     return {
         **contact.__dict__,
-        "label": f"{contact.name} ({contact.phone})"
+         "label": f"{contact.contact_list.list_name} - {contact.name} ({contact.phone})",
     }
 
 
@@ -1073,6 +1089,7 @@ def update_campaign_status(
 ):
     # Get the agent
     campaign = db.query(CallCampaign).filter(CallCampaign.id == campaign_id).first()
+    client = EcholeadsClient()
     
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -1093,23 +1110,36 @@ def update_campaign_status(
                 status_code=400,
                 detail=f"Only paused campaign can be started"
             )
+    elif data.status.lower() == "cancelled":
+        if campaign.status not in ("paused", "running"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only running/paused campaign can be cancelled"
+            )
+        #SYNC LATEST CAMPAIGN DETAILS
+        try:
+            sync_campaign_from_echoleads(db, client, campaign.id)
+        except Exception as e:
+            print(f"EchoLeads Campaign Sync API failed: {str(e)}")
+            echo_success = False
+            
             
     payload = {
-        "status": data.status
+        "status": "paused" if data.status.lower() == "cancelled" else data.status 
     }
-
-    client = EcholeadsClient()
+    
     echo_success = True
     try:
         
-        if data.status.lower() == "running": 
+        if data.status.lower() in ("paused", "cancelled"): 
             response = client.update_campaign(
                 campaign.external_campaign_id,
                 payload
             )
             
             if response and "campaign" in response:
-                campaign.status = response["campaign"].get("status", campaign.status)
+                echo_status = response["campaign"].get("status", campaign.status)
+                campaign.status = "cancelled" if data.status.lower() == "cancelled" else echo_status
             else:
                 echo_success = False
         else:
@@ -1119,12 +1149,45 @@ def update_campaign_status(
     except Exception as e:
         print(f"EchoLeads API failed: {str(e)}")
         echo_success = False
-
+        
+    
+    if echo_success and data.status.lower() == "cancelled":
+        total_campaign_call_made =  db.query(func.count(func.distinct(CallLog.id))).filter(
+                CallLog.campaign_id == campaign.id
+        ).scalar() or 0
+        
+        pending_calls = campaign.total_calls - total_campaign_call_made
+        
+        if pending_calls > 0:
+            existing_refund = db.query(OrganizationCreditUsage).filter(
+                OrganizationCreditUsage.reference_id == str(campaign.id),
+                OrganizationCreditUsage.status == "refunded"
+            ).first()
+             
+            if not existing_refund:
+                organization_credit_service.refund_credits(
+                    db=db,
+                    organization_id=campaign.organization_id,
+                    feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                    quantity=pending_calls,
+                    reference_type="call_campaign",
+                    reference_id=str(campaign.id)
+                )
     
     db.commit()
     db.refresh(campaign)
     
-    error_status_code = "start" if data.status.lower() == "paused" else "pause"
+    status = data.status.lower()
+    
+
+    if status == "paused":
+        error_status_code = "pause"
+    elif status == "running":
+        error_status_code = "start"
+    elif status == "cancelled":
+        error_status_code = "cancel"
+    else:
+        error_status_code = "update"
 
     return {
         "message": "Campaign status updated" if echo_success else f"Failed to {error_status_code} the campaign",
@@ -1371,12 +1434,18 @@ def normalize_phone(phone: str):
 def sync_campaign_from_echoleads(
     db: Session,
     echolead_client: EcholeadsClient,
-    campaign: CallCampaign
+    campaign_id: int
 ):
     try:
         # Fetch Campaign
+        campaign = db.query(CallCampaign).filter(
+            CallCampaign.id == campaign_id
+        ).first()
+
+        if not campaign:
+            return
+    
         if campaign.external_campaign_name and not campaign.external_campaign_id:
-            
             response = echolead_client.get_campaign_by_name(
                 campaign.external_campaign_name
             )
@@ -1409,7 +1478,7 @@ def sync_campaign_from_echoleads(
         # -------------------------
         # Update Basic Campaign Data
         # -------------------------
-        campaign.status = campaign_data.get("status", campaign.status)
+        campaign.status = "cancelled" if campaign.status == "cancelled" else campaign_data.get("status", campaign.status)
         campaign.external_campaign_id = campaign_data.get(
             "id", campaign.external_campaign_id
         )

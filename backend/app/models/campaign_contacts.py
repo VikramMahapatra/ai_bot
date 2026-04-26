@@ -15,3 +15,4 @@ class CampaignContact(Base):
     status = Column(String, default="Pending")
 
     campaign = relationship("CallCampaign", back_populates="contacts")
+    contact = relationship("Contact", back_populates="campaign_links")

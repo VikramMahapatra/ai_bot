@@ -31,6 +31,15 @@ class MessageTemplate(Base):
     content = Column(Text, nullable=False)
 
     status = Column(Enum(TemplateStatus), default=TemplateStatus.active)
+    
+    whatsapp_template_name = Column(String(255), nullable=True)
+
+    category = Column(String(50), nullable=True)   # MARKETING / UTILITY / AUTHENTICATION
+    language = Column(String(20), nullable=True)   # en / en_US
+
+    meta_template_id = Column(String(255), nullable=True)
+    meta_status = Column(String(50), nullable=True)  # PENDING / APPROVED / REJECTED
+    rejection_reason = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())

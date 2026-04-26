@@ -130,7 +130,18 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
     prompt = (
         "You are a conversation action planner. "
         "Analyze the full conversation and return valid JSON only. "
-
+        "Decision Rules for instant_reply_decision:\n"
+        "- Return send_now if:\n"
+        "  * user requested details\n"
+        "  * user shared phone or email\n"
+        "  * appointment or demo scheduled\n"
+        "  * user asked to send info on WhatsApp/email/SMS\n"
+        "  * conversation reached a natural closing\n"
+        
+        "- Return do_not_send_now if:\n"
+        "  * conversation still ongoing\n"
+        "  * user has not shown interest yet\n"
+        "  * user asked to call later without requesting details\n"
         "Use exactly these keys:\n"
         "1) instant_reply_decision -> one of [send_now, do_not_send_now]\n"
         "2) next_3_recommendation_steps -> list of exactly 3 items, each with keys [key, value]\n"

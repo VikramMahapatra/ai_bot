@@ -55,10 +55,12 @@ class Contact(Base):
     tags = Column(String, nullable=True)  # comma separated OR JSON
 
     # System Fields
+    session_id = Column(String, index=True, nullable=True) # for chat's contact sync
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True)
 
     contact_list = relationship("ContactList", back_populates="contacts")
+    campaign_links = relationship("CampaignContact", back_populates="contact")
 
     __table_args__ = (
         Index("idx_contact_external_id", "external_contact_id"),

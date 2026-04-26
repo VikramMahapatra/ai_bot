@@ -52,7 +52,14 @@ import BusinessIcon from "@mui/icons-material/Business";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import GroupIcon from "@mui/icons-material/Group";
 import HistoryIcon from "@mui/icons-material/History";
-import { Timeline, TimelineItem, TimelineSeparator, TimelineDot, TimelineConnector, TimelineContent } from "@mui/lab";
+import {
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineDot,
+  TimelineConnector,
+  TimelineContent,
+} from "@mui/lab";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import { LeadActivity, leadService } from "../../services/leadService";
 import { dashboardService } from "../../services/dashboardService";
@@ -67,16 +74,21 @@ import {
   type OrganizationWidget,
 } from "../../services/organizationService";
 import { FunnelCategory, FunnelCategoryPayload, Lead } from "../../types";
+import {
+  FUNNEL_ALL_CHIP_TINT,
+  LEAD_SOURCE_FILTER_TINTS,
+} from "../../constants/leadFilterChartColors";
 import Field from "../Common/Field";
 import CallIcon from "@mui/icons-material/Call";
 import EmailIcon from "@mui/icons-material/Email";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import CloseIcon from "@mui/icons-material/Close";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
-
-
 
 /** Whether a widget row should appear for the selected lead source filter. */
 const widgetMatchesLeadSource = (
@@ -100,7 +112,7 @@ const sourceLabel = (source?: string) =>
   titleCase((source || "chat").toLowerCase());
 
 const campaignTypeLabel = (type?: string) =>
-  titleCase((type || "email").toLowerCase());
+  titleCase((type || "").toLowerCase());
 
 const stageLabel = (stage?: string | null) => {
   if (!stage || !stage.trim()) return "Unassigned";
@@ -165,6 +177,9 @@ const LeadManager: React.FC = () => {
   const [activityOpen, setActivityOpen] = useState(false);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [closeDateOpen, setCloseDateOpen] = useState(false);
+  const [closeDate, setCloseDate] = useState("");
+  const [summary, setSummary] = useState<any>({});
 
   const panelSx = {
     borderRadius: "18px",
@@ -191,23 +206,12 @@ const LeadManager: React.FC = () => {
     },
   } as const;
 
-  const totalLeads = leads.length;
-  const contactableLeads = useMemo(
-    () => leads.filter((lead) => Boolean(lead.email || lead.phone)).length,
-    [leads],
-  );
-  const companyLeads = useMemo(
-    () => leads.filter((lead) => Boolean(lead.company)).length,
-    [leads],
-  );
-  const weekLeads = useMemo(() => {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return leads.filter(
-      (lead) => new Date(lead.created_at).getTime() >= weekAgo,
-    ).length;
-  }, [leads]);
+  const totalLeads = summary.total_leads || 0;
+  const contactableLeads = summary.conversion_leads || 0;
+  const weekLeads = summary.week_leads || 0;
+
   const conversionRate = totalLeads
-    ? Math.round((contactableLeads / totalLeads) * 100)
+    ? Math.round((contactableLeads / leadsTotal) * 100)
     : 0;
 
   const activeFunnelCategories = useMemo(
@@ -236,12 +240,22 @@ const LeadManager: React.FC = () => {
     return stageNameByKey.get(stage) || stageLabel(stage);
   };
 
+
+
   const kpis = useMemo(
     () => [
       {
         label: "Total Leads",
-        value: totalLeads.toLocaleString(),
+        value: leadsTotal.toLocaleString(),
         hint: "All captured lead records",
+        icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
+        gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
+        wave: theme.palette.secondary.main,
+      },
+      {
+        label: "Pipeline Leads",
+        value: totalLeads.toLocaleString(),
+        hint: "All pipeline lead records",
         icon: <GroupIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#9fcbf6", 0.64)} 0%, ${alpha("#deedff", 0.76)} 100%)`,
         wave: theme.palette.secondary.main,
@@ -257,22 +271,14 @@ const LeadManager: React.FC = () => {
       {
         label: "Leads This Week",
         value: weekLeads.toLocaleString(),
-        hint: "New leads in last 7 days",
+        hint: "New pipeline leads in last 7 days",
         icon: <CalendarMonthIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,
         wave: theme.palette.primary.main,
       },
-      {
-        label: "Companies Captured",
-        value: companyLeads.toLocaleString(),
-        hint: "Leads that include company",
-        icon: <BusinessIcon sx={{ color: theme.palette.primary.dark }} />,
-        gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
-        wave: "#4b84ce",
-      },
     ],
     [
-      companyLeads,
+      leadsTotal,
       contactableLeads,
       conversionRate,
       theme.palette.primary.dark,
@@ -398,8 +404,9 @@ const LeadManager: React.FC = () => {
         campaignType,
       );
       setLeads(data.items);
-
       setLeadsTotal(data.pagination?.total || 0);
+      setSummary(data.summary || {});
+
     } catch {
       setError("Failed to load leads");
     } finally {
@@ -572,15 +579,29 @@ const LeadManager: React.FC = () => {
     }
   };
 
+  const handleDateChange = (lead: Lead, date: string) => {
+    const updatedRows = leads.map((row) =>
+      row.id === lead.id ? { ...row, close_date: date } : row,
+    );
+    setLeads(updatedRows);
+  };
+
   const openDetails = (lead: Lead) => {
     setSelectedLead(lead);
     setDetailsOpen(true);
   };
 
   const openMoveDialog = (lead: Lead) => {
-    setMoveStage(lead.funnel_stage || "");
+    const stage = lead.funnel_stage;
+    if (!stage || !stage.trim()) setMoveStage(funnelCategories[0].key || "");
+    else setMoveStage(lead.funnel_stage || "");
     setSelectedLead(lead);
     setMoveOpen(true);
+  };
+
+  const openExpCloseDateDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setCloseDateOpen(true);
   };
 
   const openCreateCategoryDialog = () => {
@@ -692,6 +713,36 @@ const LeadManager: React.FC = () => {
     }
   };
 
+  const handleLeadCloseDate = async () => {
+    if (!selectedLead) return;
+    if (!closeDate) {
+      setError("Please select a expected close date before confirming.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      const updated = await leadService.setLeadCloseDate(
+        selectedLead.id,
+        closeDate,
+      );
+      setLeads((prev) =>
+        prev.map((lead) => (lead.id === updated.id ? updated : lead)),
+      );
+      setSelectedLead(updated);
+      setCloseDateOpen(false);
+      // setSuccess(
+      //   `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
+      // );
+    } catch {
+      setError("Failed to set close date to lead");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const selectedWidget =
     selectedWidgetId === "all"
       ? null
@@ -704,14 +755,7 @@ const LeadManager: React.FC = () => {
     selectedCampaignId === "all"
       ? null
       : campaigns.find((c) => String(c.id) === selectedCampaignId);
-  const sourceTintByKey: Record<string, string> = {
-    all: "#4f46e5",
-    chat: "#3b82f6",
-    voice: "#06b6d4",
-    email: "#10b981",
-    sms: "#f59e0b",
-    whatsapp: "#22c55e",
-  };
+  const sourceTintByKey: Record<string, string> = { ...LEAD_SOURCE_FILTER_TINTS };
 
   const compactMenuProps = {
     PaperProps: {
@@ -746,6 +790,8 @@ const LeadManager: React.FC = () => {
         return <CallIcon fontSize="small" />;
       case "email":
         return <EmailIcon fontSize="small" />;
+      case "chat":
+        return <ChatBubbleIcon fontSize="small" />;
       case "whatsapp":
         return <WhatsAppIcon fontSize="small" />;
       case "ai":
@@ -1027,8 +1073,11 @@ const LeadManager: React.FC = () => {
                 <MenuItem value="all">All Campaigns</MenuItem>
                 {campaigns.map((campaign) => (
                   <MenuItem key={campaign.id} value={String(campaign.id)}>
-                    {campaign.campaign_name} (
-                    {campaignTypeLabel(campaign.campaign_type)})
+                    {campaign.campaign_name}
+                    {campaign.campaign_type &&
+                      campaignTypeLabel(campaign.campaign_type)
+                      ? `(${campaignTypeLabel(campaign.campaign_type)})`
+                      : ""}
                   </MenuItem>
                 ))}
               </Select>
@@ -1425,7 +1474,10 @@ const LeadManager: React.FC = () => {
                     clickable
                     variant="outlined"
                     onClick={() => setSelectedFunnelStage("all")}
-                    sx={filterChipSx(selectedFunnelStage === "all", "#7c3aed")}
+                    sx={filterChipSx(
+                      selectedFunnelStage === "all",
+                      FUNNEL_ALL_CHIP_TINT,
+                    )}
                   />
                   {activeFunnelCategories.map((stage) => (
                     <Chip
@@ -1467,11 +1519,10 @@ const LeadManager: React.FC = () => {
                   background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
                 }}
               >
-                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Outcome</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
@@ -1489,9 +1540,54 @@ const LeadManager: React.FC = () => {
                     },
                   }}
                 >
-                  <TableCell>{lead.name || "-"}</TableCell>
-                  <TableCell>{lead.email || "-"}</TableCell>
-                  <TableCell>{lead.phone || "-"}</TableCell>
+                  <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                      {lead.name?.trim() || "—"}
+                    </Typography>
+                    <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                      {lead.email?.trim() ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            lineHeight: 1.35,
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                            {lead.email}
+                          </Box>
+                        </Typography>
+                      ) : null}
+                      {lead.phone?.trim() ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            lineHeight: 1.35,
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                            {lead.phone}
+                          </Box>
+                        </Typography>
+                      ) : null}
+                      {!lead.email?.trim() && !lead.phone?.trim() ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                          No email or phone on file
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </TableCell>
                   <TableCell>{lead.product_name || "-"}</TableCell>
                   <TableCell>
                     <Chip
@@ -1499,6 +1595,18 @@ const LeadManager: React.FC = () => {
                       size="small"
                       variant="outlined"
                     />
+                  </TableCell>
+                  <TableCell>
+                    {lead.lead_outcome ? (
+                      <Chip
+                        label={lead.lead_outcome}
+                        size="small"
+                        color="primary"
+                        variant="filled"
+                      />
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -1517,7 +1625,7 @@ const LeadManager: React.FC = () => {
                         display: "flex",
                         alignItems: "center",
                         gap: 0.5,
-                        whiteSpace: "nowrap"
+                        whiteSpace: "nowrap",
                       }}
                     >
                       <Tooltip title="View activities">
@@ -1551,9 +1659,9 @@ const LeadManager: React.FC = () => {
                           size="small"
                           color="primary"
                           onClick={() => {
-                            if (!selectedLead) return;
+                            if (!lead) return;
                             setDetailsOpen(false);
-                            openMoveDialog(selectedLead);
+                            openMoveDialog(lead);
                           }}
                           sx={{
                             border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
@@ -1562,13 +1670,25 @@ const LeadManager: React.FC = () => {
                           <MoveDownIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      {/* <Tooltip title="Set close date">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => openExpCloseDateDialog(lead)}
+                          sx={{
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          }}
+                        >
+                          <EventIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip> */}
                     </Box>
                   </TableCell>
                 </TableRow>
               ))}
               {displayLeads.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {leads.length === 0
                         ? "No leads found for the selected filters."
@@ -1603,8 +1723,8 @@ const LeadManager: React.FC = () => {
             width: 720,
             maxWidth: "95%",
             margin: 0,
-            overflowX: "hidden"
-          }
+            overflowX: "hidden",
+          },
         }}
       >
         <DialogTitle>Lead Details</DialogTitle>
@@ -1788,6 +1908,69 @@ const LeadManager: React.FC = () => {
       </Dialog>
 
       <Dialog
+        open={closeDateOpen}
+        onClose={() => setCloseDateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Expected Close Date</DialogTitle>
+        <DialogContent dividers>
+          {selectedLead && (
+            <Stack spacing={2}>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  {selectedLead.name || "Anonymous"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedLead.phone || "-"}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  {selectedLead.email || "-"}
+                </Typography>
+              </Paper>
+
+              <FormControl fullWidth size="small">
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mb: 0.5 }}
+                >
+                  Select Expected Close Date
+                </Typography>
+                <TextField
+                  //label="Expected Close Date"
+                  type="date"
+                  size="small"
+                  value={selectedLead.close_date}
+                  onChange={(e) => setCloseDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min: new Date().toISOString().split("T")[0], // prevent past dates
+                  }}
+                  sx={{ width: 200 }}
+                />
+              </FormControl>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCloseDateOpen(false)}>Back</Button>
+          <Button
+            variant="contained"
+            onClick={handleLeadCloseDate}
+            disabled={loading}
+            startIcon={
+              loading ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
+          >
+            {loading ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={categoryDialogOpen}
         onClose={() => setCategoryDialogOpen(false)}
         maxWidth="sm"
@@ -1910,15 +2093,55 @@ const LeadManager: React.FC = () => {
         onClose={() => setActivityOpen(false)}
         PaperProps={{ sx: { width: 420, p: 2 } }}
       >
-        <Typography variant="h6" mb={1}>
-          Lead Activity Timeline
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+          }}
+        >
+          <Typography variant="h6">
+            Lead Activity Timeline
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => setActivityOpen(false)}
+            aria-label="Close"
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
 
         <Divider sx={{ my: 2 }} />
 
         {loadingActivities ? (
           <Box display="flex" justifyContent="center" mt={4}>
             <CircularProgress size={24} />
+          </Box>
+        ) : activities.length === 0 ? (
+          <Box
+            sx={{
+              bgcolor: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 2,
+              p: 3,
+              textAlign: "center",
+            }}
+          >
+            <InfoOutlinedIcon
+              sx={{
+                fontSize: 40,
+                color: "#9ca3af",
+                mb: 1,
+              }}
+            />
+            <Typography variant="body2" color="text.secondary">
+              No activity data found.
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              Timeline entries will appear when this lead has engagements.
+            </Typography>
           </Box>
         ) : (
           <Timeline
@@ -1936,7 +2159,9 @@ const LeadManager: React.FC = () => {
                 <TimelineSeparator>
                   <TimelineDot color="primary" />
                   {index !== activities.length - 1 && (
-                    <TimelineConnector sx={{ bgcolor: "#e5e7eb", width: "2px" }} />
+                    <TimelineConnector
+                      sx={{ bgcolor: "#cdd4e1", width: "2px" }}
+                    />
                   )}
                 </TimelineSeparator>
 
@@ -1954,7 +2179,13 @@ const LeadManager: React.FC = () => {
                       },
                     }}
                   >
-                    <Box sx={{ display: "flex", gap: 1.2, alignItems: "flex-start" }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 1.2,
+                        alignItems: "flex-start",
+                      }}
+                    >
                       {/* ICON */}
                       <Box
                         sx={{
@@ -1968,21 +2199,35 @@ const LeadManager: React.FC = () => {
                       </Box>
 
                       {/* CONTENT */}
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.3,
+                        }}
+                      >
                         {/* TITLE */}
-                        <Typography fontSize={13} fontWeight={700} lineHeight={1.2}>
+                        <Typography
+                          fontSize={13}
+                          fontWeight={700}
+                          lineHeight={1.2}
+                        >
                           {a.attempt_label || "Activity"}
                         </Typography>
 
                         {/* META */}
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
                           <Typography fontSize={12} color="text.secondary">
                             {a.source || "Unknown source"}
                           </Typography>
 
                           {a.created_at && (
                             <>
-                              <Typography fontSize={12} color="text.secondary">•</Typography>
+                              <Typography fontSize={12} color="text.secondary">
+                                •
+                              </Typography>
                               <Typography fontSize={12} color="text.secondary">
                                 {new Date(a.created_at).toLocaleString()}
                               </Typography>
@@ -2021,7 +2266,7 @@ const LeadManager: React.FC = () => {
           </Timeline>
         )}
       </Drawer>
-    </Box >
+    </Box>
   );
 };
 

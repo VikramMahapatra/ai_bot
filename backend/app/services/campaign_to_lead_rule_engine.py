@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -14,6 +16,8 @@ from app.models import (
 )
 from app.services.call_log_service import create_lead_activity
 from app.models.lead_contact_mapping import LeadContactMapping
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 DEFAULT_RULE_NAME = "Default Campaign to Lead Rule"
 
@@ -352,13 +356,27 @@ def run_rule_engine(
             **contact_fields
         }
         
+        filters = [
+            Lead.organization_id == organization_id,
+            Lead.product_id == (
+                str(campaign.product_id) if campaign.product_id else None
+            )
+        ]
+
+        contact_filters = []
+
+        if contact.phone:
+            contact_filters.append(Lead.phone == contact.phone)
+
+        if contact.email:
+            contact_filters.append(Lead.email == contact.email)
+
+        if contact_filters:
+            filters.append(or_(*contact_filters))
+
         existing = (
             db.query(Lead)
-            .filter(
-                Lead.organization_id == organization_id,
-                (Lead.phone == contact.phone or Lead.email == contact.email),
-                Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
-            )
+            .filter(*filters)
             .order_by(Lead.created_at.desc())
             .first()
         )
@@ -366,6 +384,18 @@ def run_rule_engine(
         if existing and existing.funnel_stage not in ["closed_won", "closed_lost"]:
             lead = existing    
         else:
+            
+            if not dry_run:
+                valid = organization_credit_service.validate_feature_usage(
+                    db, organization_id, FeatureCodes.AI_LEAD_GEN, 1
+                )
+                
+                if not valid:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Insufficient credits. Please add more credits to continue.",
+                    )
+
             lead = Lead(
                 session_id=f"campaign-{campaign.id}-contact-{contact.id}-log-{log.id}",
                 widget_id=None,
@@ -394,7 +424,16 @@ def run_rule_engine(
                         source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat"
                     )
                     db.add(mapping)
-                    db.flush()              
+                    db.flush()   
+                    
+                organization_credit_service.deduct_credits(
+                    db=db,
+                    organization_id=organization_id,
+                    feature_code=FeatureCodes.AI_LEAD_GEN,
+                    quantity=1,
+                    reference_type="lead",
+                    reference_id=str(lead.id)
+                )           
             else:
                 details.append({**base_payload, "status": "would_convert"})
         

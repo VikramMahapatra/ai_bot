@@ -3,10 +3,11 @@ import json
 import random
 import re
 from typing import Optional, Tuple, Union
+from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks
 from psycopg2 import IntegrityError
-from sqlalchemy import Integer, case, cast, func, or_
+from sqlalchemy import Integer, and_, case, cast, exists, func, literal_column, or_, select, true
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.services.conversation_decision_service import analyze_conversation
-from app.services.sms_service import get_twilio_sms_config, send_sms
+from app.services.sms_service import get_twilio_sms_config, send_sms, send_sms_using_twilio
 from app.services.email_service import send_campaign_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
@@ -31,7 +32,10 @@ from app.models.whatsapp_channel import WhatsAppChannel
 from app.services.whatsapp_service import send_whatsapp_text_message
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
-from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowStep, WorkflowStepOutcome
+from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowExecutionLog, WorkflowStep, WorkflowStepOutcome
+from app.models.message_templates import MessageTemplate
+from app.services.report_service import sync_conversation_metrics, sync_voice_metrics_from_conversation
+from app.models.campaign_contacts import CampaignContact
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -58,13 +62,14 @@ def get_call_logs(
         params.agent_id
     )
     
+    
     conversation_subq = (
-        db.query(Conversation)
-        .filter(Conversation.session_id == CallLog.call_session_id)
-        .order_by(Conversation.created_at.desc())   # or desc if "latest" needed
+        select(Conversation)
+        .where(Conversation.session_id == CallLog.call_session_id)
+        .order_by(Conversation.created_at.desc())
         .limit(1)
-        .correlate(CallLog)
-        .subquery()
+        .lateral()
+        .alias("conversation_subq")
     )
 
     query = (
@@ -78,10 +83,7 @@ def get_call_logs(
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
-        .outerjoin(
-            conversation_subq,
-            conversation_subq.c.session_id == CallLog.call_session_id
-        )
+        .outerjoin(conversation_subq, true())
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -123,7 +125,15 @@ def get_call_logs(
 
     # SENTIMENT
     if params.sentiment:
-        query = query.filter(conversation_subq.c.outcome == params.sentiment)
+        query = query.filter(
+            exists().where(
+                and_(
+                    Conversation.session_id == CallLog.call_session_id,
+                    func.lower(func.trim(Conversation.outcome))
+                    == params.sentiment.lower()
+                )
+            )
+        )
 
     # EVALUATION (boolean)
     if params.evaluation is not None:
@@ -185,6 +195,7 @@ def get_call_logs(
         transcripts = (
             db.query(CallTranscript)
             .filter(CallTranscript.call_log_id == log.id)
+            .order_by(CallTranscript.created_at.asc())
             .all()
         )
 
@@ -410,11 +421,21 @@ def process_call(db, call, agent):
             ).first()
             
         contact = None
-        
-        if call.get("contact_id"):
-            contact = db.query(Contact).filter(
-                Contact.external_contact_id == call.get("contact_id")
-            ).first()
+        external_contact_id = call.get("contact_id")
+            
+        if campaign and external_contact_id:
+            campaign_contact = (
+                db.query(CampaignContact)
+                .join(Contact, CampaignContact.contact_id == Contact.id)
+                .filter(
+                    CampaignContact.campaign_id == campaign.id,
+                    Contact.external_contact_id == external_contact_id
+                )
+                .first()
+            )
+
+            if campaign_contact:
+                contact = campaign_contact.contact
 
         # Prepare common values
         duration = int(call.get("duration")) if call.get("duration") else None
@@ -459,7 +480,7 @@ def process_call(db, call, agent):
             existing.success_evaluation = success_eval_str.lower() == "true"
             db.flush()
             
-            save_transcripts(db, existing.id, call.get("transcript"), campaign, contact)
+            save_transcripts(db, existing, call.get("transcript"), campaign, contact)
             call_log = existing
         else:
             call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
@@ -503,13 +524,19 @@ def process_call(db, call, agent):
                         feature_code=FeatureCodes.CORE_CALL_IN_ATTEMPT,
                         quantity=1,
                         reference_type="call_log",
-                        reference_id=call_log.id
+                        reference_id=call_log.call_session_id
                     )   
                     
-                save_transcripts(db, call_log.id, call.get("transcript"), campaign, contact)                        
+                save_transcripts(db, call_log, call.get("transcript"), campaign, contact)                        
                 
             except IntegrityError:
-                db.rollback()                      
+                db.rollback()    
+                call_log = db.query(CallLog).filter(
+                    CallLog.external_call_id == call["id"]
+                ).first()
+
+                if not call_log:
+                    raise  # something else went wrong                  
     else: 
         # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
         call_log = existing
@@ -533,31 +560,31 @@ def process_call(db, call, agent):
             call_log.is_lead_qualified = True
             
         # WORKFLOW EXECUTION
-        if contact:
-            # 1. Check if this is scheduled workflow call
-            continue_workflow_from_call(
+        if campaign.workflow_id and contact:
+            
+            if call_log.workflow_execution_id:
+                return 
+            
+            if call_log.status not in ["completed", "ended", "calling fail"]:
+                return
+
+            execution = db.query(WorkflowExecution).filter(
+                WorkflowExecution.campaign_id == call_log.campaign_id,
+                WorkflowExecution.contact_id == call_log.contact_id,
+                WorkflowExecution.external_reference_id == call.get("id"),
+                WorkflowExecution.status.in_(["pending", "scheduled"])
+            ).order_by(WorkflowExecution.id.desc()).first()
+
+            if execution:              
+                continue_workflow_from_call(db, execution, call_log, call)
+                return
+                     
+            trigger_workflow_from_call(
                 db,
+                campaign.workflow_id,
                 call_log,
                 call
             )
-
-            # 2. If no scheduled execution, trigger initial workflow
-            if campaign.workflow_id:
-
-                execution_exists = db.query(WorkflowExecution).filter(
-                    WorkflowExecution.campaign_id == call_log.campaign_id,
-                    WorkflowExecution.contact_id == call_log.contact_id,
-                    WorkflowExecution.external_reference_id == call_log.external_call_id,
-                    WorkflowExecution.status == "pending"
-                ).first()
-
-                if not execution_exists:
-                    trigger_workflow_from_call(
-                        db,
-                        campaign.workflow_id,
-                        call_log,
-                        call
-                    )
             
         db.flush()
     
@@ -570,33 +597,35 @@ def process_call(db, call, agent):
         
     db.commit()
     
-def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign : CallCampaign, contact : Contact):
+def save_transcripts(db: Session, call_log: CallLog, transcript : str, campaign : CallCampaign, contact : Contact):
 
-    if not transcript or not call_log_id    :
+    if not transcript or not call_log.id    :
         return
 
     db.query(CallTranscript).filter(
-        CallTranscript.call_log_id == call_log_id
+        CallTranscript.call_log_id == call_log.id
     ).delete()
 
     lines = transcript.split("\n")
-
+    normalized_lines = []
     for line in lines:
 
         if line.startswith("AI:"):
             speaker = "Agent"
             text = line.replace("AI:", "").strip()
+            normalized_lines.append(f"AI: {text}")
 
         elif line.startswith("User:"):
             speaker = "User"
             text = line.replace("User:", "").strip()
+            normalized_lines.append(f"User: {text}")
 
         else:
             continue
 
         db.add(
             CallTranscript(
-                call_log_id=call_log_id,
+                call_log_id=call_log.id,
                 speaker=speaker,
                 text=text
             )
@@ -605,17 +634,19 @@ def save_transcripts(db: Session, call_log_id: int, transcript : str, campaign :
     db.flush()
     
     if campaign and campaign.instant_reply:
-        response = analyze_conversation(transcript)
-        print(f"response from decision service: {response} and transcript: {transcript}")
+        normalized_transcript = "\n".join(normalized_lines)
+        response = analyze_conversation(normalized_transcript)
+        print(f"response from decision service: {response} and transcript: {normalized_transcript}")
         dispatch_instant_replies(
             db=db,
+            call_log=call_log,
             campaign=campaign,
             contact=contact,
             decision= response.get("instant_reply_decision")
         )
             
 
-def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Contact, decision : str):
+def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCampaign, contact : Contact, decision : str):
     if decision != "send_now":
         return
     
@@ -630,21 +661,27 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
         .all()
     )
 
+    instant_reply_completed  = False
     for reply in replies:
 
         template = reply.template
         message = render_template(template.content, contact)
+        
 
         if reply.mode == "sms":
             print(f"Sending SMS to {contact.phone} with message: {message}")
             try:
-                result = send_sms(
+                success, error = send_sms_using_twilio(
+                    db=db,
                     message=message,
                     to_number=contact.phone,
                     organization_id=campaign.organization_id
                 )
                 
-                print(f"SMS send result: {result}")
+                if success:
+                   instant_reply_completed = True     
+                else:
+                    print(f"SMS failed: {error}")
             except Exception as e:
                 print(f"Failed to send SMS: {str(e)}")
                 pass
@@ -671,7 +708,7 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
             print(f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}")
             org_settings = get_org_settings(db, campaign.organization_id)
             try:
-                send_campaign_email(
+                success, error, message_id = send_campaign_email(
                     campaign_name=campaign.name,
                     subject=template.subject or "Update",
                     message_template=message,
@@ -679,9 +716,15 @@ def dispatch_instant_replies(db : Session, campaign : CallCampaign, contact : Co
                     recipient_email=contact.email,
                     settings=org_settings
                 )
+                
+                if success:
+                   instant_reply_completed = True     
             except Exception as e:
                 print(f"Failed to send Email: {str(e)}")
                 pass
+        
+    call_log.instant_reply_sent = instant_reply_completed
+    db.flush()
 
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
@@ -733,35 +776,53 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
         lead = existing
 
     else:
-        # Create new lead
-        lead = Lead(
-            source="voice",
-            session_id=call_log.call_session_id,
-            widget_id=agent.widget_id,
-            organization_id=agent.organization_id,
-            product_id=str(campaign.product_id) if campaign.product_id else None,
-            name=contact.name if contact else None,
-            email=contact.email if contact else None,
-            phone=phone,
-            company=contact.company if contact else None,
-            custom_fields=json.dumps({
-                "lead_info": call.get("lead_info"),
-                "external_call_id": call.get("id"),
-                **contact_fields
-            })
-        )
-
-        db.add(lead)
-        db.flush()
         
-        if contact:
-            mapping = LeadContactMapping(
-                lead_id=lead.id,
-                contact_id=contact.id,
-                source="voice"
+        valid = organization_credit_service.validate_feature_usage(
+                db, agent.organization_id, FeatureCodes.AI_LEAD_GEN, 1
             )
-            db.add(mapping)
+
+        if valid:
+            # Create new lead
+            lead = Lead(
+                source="voice",
+                session_id=call_log.call_session_id,
+                widget_id=agent.widget_id,
+                organization_id=agent.organization_id,
+                product_id=str(campaign.product_id) if campaign.product_id else None,
+                name=contact.name if contact else None,
+                email=contact.email if contact else None,
+                phone=phone,
+                company=contact.company if contact else None,
+                custom_fields=json.dumps({
+                    "lead_info": call.get("lead_info"),
+                    "external_call_id": call.get("id"),
+                    **contact_fields
+                })
+            )
+
+            db.add(lead)
             db.flush()
+            
+            if contact:
+                mapping = LeadContactMapping(
+                    lead_id=lead.id,
+                    contact_id=contact.id,
+                    source="voice"
+                )
+                db.add(mapping)
+                db.flush()
+            
+            try:
+                organization_credit_service.deduct_credits(
+                    db=db,
+                    organization_id=agent.organization_id,
+                    feature_code=FeatureCodes.AI_LEAD_GEN,
+                    quantity=1,
+                    reference_type="lead",
+                    reference_id=str(lead.id)
+                )
+            except:
+                pass
 
     # Create conversation
     create_conversation_from_transcripts(
@@ -771,15 +832,16 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
     )
 
     # Add Lead Activity
-    create_lead_activity(
-        db=db,
-        lead=lead,
-        source="voice",
-        session_id=call_log.call_session_id,
-        campaign=campaign,
-        summary=call.get("call_summary"),
-        status=call.get("ended_reason"),
-    )
+    if lead:
+        create_lead_activity(
+            db=db,
+            lead=lead,
+            source="voice",
+            session_id=call_log.call_session_id,
+            campaign=campaign,
+            summary=call.get("call_summary"),
+            status=call.get("ended_reason"),
+        )
 
     return lead
 
@@ -838,15 +900,14 @@ def get_next_attempt(db, lead_id, source):
     )
 
     return count + 1
-
-    
+        
 def create_conversation_from_transcripts(db, call_log, agent):
-    # Skip if already exists
+
     exists = db.query(Conversation.id).filter(
-        Conversation.session_id == (call_log.call_session_id),
+        Conversation.session_id == call_log.call_session_id,
         Conversation.organization_id == call_log.organization_id
     ).first()
-    
+
     if exists:
         return
 
@@ -857,49 +918,68 @@ def create_conversation_from_transcripts(db, call_log, agent):
         .all()
     )
 
-    conversations = []
-    current_message = None
+    pending_conversation = None
 
     for t in transcripts:
-        role = "assistant" if t.speaker.lower() == "agent" else "user"
+        speaker = t.speaker.lower()
+        text = (t.text or "").strip()
 
-        if role == "user":
-            # Start new conversation row with user message
-            current_message = Conversation(
+        if not text:
+            continue
+
+        # -------------------------
+        # USER SPEAKS → create row
+        # -------------------------
+        if speaker != "agent":
+
+            pending_conversation = Conversation(
                 session_id=call_log.call_session_id,
                 widget_id=agent.widget_id,
                 organization_id=call_log.organization_id,
-                message=t.text,
+                message=text,
                 response="",
-                role="assistant",  # role of the “responder”
+                role="assistant",
                 created_at=t.created_at,
                 contact_id=call_log.contact_id,
                 source="voice"
             )
-            conversations.append(current_message)
 
-        elif role == "assistant":
-            if current_message:
-                # attach assistant response to last user message
-                current_message.response = t.text
+            db.add(pending_conversation)
+            db.flush()
+        # -------------------------
+        # AGENT SPEAKS → attach to last user row
+        # -------------------------
+        else:
+
+            if pending_conversation:
+                pending_conversation.response += (
+                    " " + text if pending_conversation.response else text
+                )
+                db.flush()
+
             else:
-                # First message is assistant, create a new row
-                current_message = Conversation(
+                # agent-first call (IMPORTANT FIX)
+                conv = Conversation(
                     session_id=call_log.call_session_id,
                     widget_id=agent.widget_id,
                     organization_id=call_log.organization_id,
                     message="",
-                    response=t.text,
+                    response=text,
                     role="assistant",
                     created_at=t.created_at,
                     contact_id=call_log.contact_id,
                     source="voice"
                 )
-                conversations.append(current_message)
 
-    if conversations:
-        db.add_all(conversations)
-        db.flush()  
+                db.add(conv)
+                db.flush()
+
+    sync_voice_metrics_from_conversation(
+        db,
+        organization_id=call_log.organization_id,
+        session_id=call_log.call_session_id,
+        token_usage=None
+    )
     
 def get_lead_quality_label(rate: int):
     for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():
@@ -971,29 +1051,46 @@ def render_template(template_body: str, contact):
 
 ########## WORK FLOW BRANCHING LOGIC ##########
 def trigger_workflow_from_call(db, workflow_id, call_log, call):
-
+    
+    if call.get("source") == "rescheduled_call":
+        return      
+      
     call_status, outcome = get_call_result(call)
 
     # Get initial step
     initial_step = db.query(WorkflowStep).filter(
         WorkflowStep.workflow_id == workflow_id,
-        WorkflowStep.node_type == "initial_call"
+        WorkflowStep.node_type == "initialCall"
     ).first()
 
     if not initial_step:
         return
+    
+    print(f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}")
 
-    # Get outcome config
-    step_outcome = db.query(WorkflowStepOutcome).filter(
-        WorkflowStepOutcome.step_id == initial_step.id,
-        WorkflowStepOutcome.call_status == call_status,
-        WorkflowStepOutcome.outcome == outcome
-    ).first()
+    # Create execution 
+    execution = WorkflowExecution(
+        workflow_id=workflow_id,
+        campaign_id=call_log.campaign_id,
+        contact_id=call_log.contact_id,
+        step_id=initial_step.id,
+        status="pending",
+        external_reference_id=call.get("id")
+    )
 
-    if not step_outcome:
-        return
+    db.add(execution)
+    db.flush()
+    call_log.workflow_execution_id = execution.id
+    
+    log_event(
+        db=db,
+        execution_id=execution.id,
+        step_id=initial_step.id,
+        event_type="workflow_triggered",
+        metadata={"call_status": call_status, "outcome":outcome}
+    )
 
-    # Get next step using edge
+    # Get edge from INITIAL step
     edge = db.query(WorkflowEdge).filter(
         WorkflowEdge.source_step_id == initial_step.id,
         WorkflowEdge.branch == call_status
@@ -1001,76 +1098,111 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
 
     if not edge:
         return
-
+    
+    execution.step_id = edge.target_step_id
+    
     next_step = db.query(WorkflowStep).filter(
         WorkflowStep.id == edge.target_step_id
     ).first()
 
     if not next_step:
         return
-
-    schedule_workflow_step(
-        db,
-        call_log,
-        step_outcome,
-        next_step
-    )
     
-def continue_workflow_from_call(db, call_log: CallLog, call: dict):
-
-    execution = (
-        db.query(WorkflowExecution)
-        .filter(
-            WorkflowExecution.campaign_id == call_log.campaign_id,
-            WorkflowExecution.contact_id == call_log.contact_id,
-            WorkflowExecution.external_reference_id == call_log.external_call_id,
-            WorkflowExecution.status == "scheduled"
+    #STOP
+    if next_step.node_type == "stop":
+        execution.status = "completed"
+        log_event(
+            db=db,
+            execution_id=execution.id,
+            step_id=next_step.id,
+            event_type="workflow_completed",
+            metadata={"reason": "stop_node_reached"}
         )
-        .order_by(WorkflowExecution.scheduled_at.desc())
-        .first()
-    )
-
-    if not execution:
         return
-
-    execution.status = "completed"
-    execution.executed_at = datetime.utcnow()
-
-    call_status, outcome = get_call_result(call)
-
+    
+    # CUSTOM STEP
     step_outcome = db.query(WorkflowStepOutcome).filter(
-        WorkflowStepOutcome.step_id == execution.step_id,
+        WorkflowStepOutcome.step_id == edge.target_step_id,
         WorkflowStepOutcome.call_status == call_status,
-        WorkflowStepOutcome.outcome == outcome
+        or_(
+            WorkflowStepOutcome.outcome == outcome,
+            WorkflowStepOutcome.outcome == "all"
+        )
     ).first()
 
     if not step_outcome:
+        execution.status = "completed"
+        log_event(
+            db=db,
+            execution_id=execution.id,
+            step_id=next_step.id,
+            event_type="workflow_completed",
+            metadata={"reason": "no further outcomes"}
+        )
         return
+    
+    schedule_workflow_step(
+        db,
+        execution,
+        call_log,
+        step_outcome,
+        edge.target_step_id
+    )
 
-    # Get next edge
+    
+def continue_workflow_from_call(db, execution : WorkflowExecution, call_log: CallLog, call: dict):
+    print(f"workflow : {execution.id} continue")
+
+    call_status, outcome = get_call_result(call)
+    
+    # Edge resolution
     edge = db.query(WorkflowEdge).filter(
         WorkflowEdge.source_step_id == execution.step_id,
         WorkflowEdge.branch == call_status
     ).first()
 
     if not edge:
+        execution.status = "completed"
+        log_event(
+            db=db,
+            execution_id=execution.id,
+            step_id=execution.step_id,
+            event_type="workflow_completed",
+            metadata={"reason": "no further edge"}
+        )  
         return
 
-    next_step = db.query(WorkflowStep).filter(
-        WorkflowStep.id == edge.target_step_id
+    # Outcome resolution
+    step_outcome = db.query(WorkflowStepOutcome).filter(
+        WorkflowStepOutcome.step_id == edge.target_step_id,
+        WorkflowStepOutcome.call_status == call_status,
+        or_(
+            WorkflowStepOutcome.outcome == outcome,
+            WorkflowStepOutcome.outcome == "all"
+        )
     ).first()
 
-    if not next_step:
+    if not step_outcome:
+        execution.status = "completed"
+        log_event(
+            db=db,
+            execution_id=execution.id,
+            step_id=execution.step_id,
+            event_type="workflow_completed",
+            metadata={"reason": "no further outcome"}
+        )    
         return
 
     schedule_workflow_step(
         db,
+        execution,
         call_log,
         step_outcome,
-        next_step
+        edge.target_step_id
     )
+
     
-def schedule_workflow_step(db, call_log, step_outcome):
+def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
 
     delay = step_outcome.delay or 0
 
@@ -1082,23 +1214,19 @@ def schedule_workflow_step(db, call_log, step_outcome):
 
     elif step_outcome.delay_unit == "days":
         scheduled_at = datetime.utcnow() + timedelta(days=delay)
-
-    execution = WorkflowExecution(
-        workflow_id=call_log.campaign_id,
-        campaign_id=call_log.campaign_id,
-        contact_id=call_log.contact_id,
-        step_id=step_outcome.next_step_id or step_outcome.step_id,
-        step_type=step_outcome.step_type,
-        status="pending",
-        scheduled_at=scheduled_at
+        
+    log_event(
+        db=db,
+        execution_id=execution.id,
+        step_id=next_step_id,
+        event_type="scheduled",
+        metadata={"delay": delay, "step_type": step_outcome.step_type}
     )
-
-    db.add(execution)
-    db.flush()
 
     # If action is call → schedule call
     if step_outcome.step_type == "call":
         response = reschedule_contact(
+            db=db,
             campaign_id=call_log.campaign_id,
             contact_id=call_log.contact_id,
             scheduled_at=scheduled_at
@@ -1107,28 +1235,110 @@ def schedule_workflow_step(db, call_log, step_outcome):
         if response.get("success"):
             execution.status = "scheduled"
             execution.external_reference_id = response.get("call_log_id")
+            
+            print(f"Call id : {execution.external_reference_id} is scheduled at {scheduled_at}")
+    else:
+        contact = None
+        
+        if call_log.contact_id:
+            contact = db.query(Contact).filter(
+                Contact.id == call_log.contact_id
+            ).first()
+            
+        template  = db.query(MessageTemplate).filter(
+            MessageTemplate.id == step_outcome.template_id
+        ).first()
+        
+        message = render_template(template.content, contact)
+            
+        if step_outcome.step_type == "sms":
+            print(f"Sending SMS to {contact.phone} with message: {message}")
+            try:
+                result = send_sms(
+                    message=message,
+                    to_number=contact.phone,
+                    organization_id=call_log.organization_id
+                )
+                
+                print(f"SMS send result: {result}")
+            except Exception as e:
+                print(f"Failed to send SMS: {str(e)}")
+                pass
 
-    # Future
-    # elif step_outcome.step_type == "whatsapp":
-    #     schedule_whatsapp(step_outcome, call_log, scheduled_at)
-
-    # elif step_outcome.step_type == "sms":
-    #     schedule_sms(step_outcome, call_log, scheduled_at)
+        
+        elif step_outcome.step_type == "email":
+            print(f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}")
+            org_settings = get_org_settings(db, call_log.organization_id)
+            
+            campaign_name = db.query(CallCampaign.name).filter(
+                 CallCampaign.id == call_log.campaign_id
+            ).scalar()
+            
+            try:
+                send_campaign_email(
+                    campaign_name=campaign_name,
+                    subject=template.subject or "Update",
+                    message_template=message,
+                    recipient_name=contact.name,
+                    recipient_email=contact.email,
+                    settings=org_settings
+                )
+            except Exception as e:
+                print(f"Failed to send Email: {str(e)}")
+                pass
     
-def reschedule_contact(campaign_id, contact_id, scheduled_at):
+    execution.step_id = next_step_id
+    db.commit()
+    
+def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
+    
+    campaign = db.query(CallCampaign).filter(
+        CallCampaign.id == campaign_id
+    ).first()
+    
+    if not campaign:
+        return {"success": False, "message": "Campaign not found"}
+    
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id
+    ).first()
+    
+    if not contact:
+        return {"success": False, "message": "Contact not found"}
+    
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    
+    try:
+        tz = ZoneInfo(campaign.schedule.timezone)
+    except:
+        tz = ZoneInfo("Asia/Kolkata")  # fallback
+
+    local_time = scheduled_at.astimezone(tz)
+    timezone_str  = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
+    
     echo_client = EcholeadsClient()
-    response = echo_client.reschedule_contact_call(campaign_id, contact_id, scheduled_at)
+    response = echo_client.reschedule_contact_call(
+        campaign.external_campaign_id,
+        contact.external_contact_id, 
+        local_time, 
+        timezone_str 
+    )
+    
+    print("reshedule response :", response)
     return response
 
 def get_call_result(call):
-
-    if call.get("transcript") and call.get("duration", 0) > 10:
+    from app.services.conversation_outcome_service import _classify_outcome_with_llm
+    
+    if call.get("transcript") and int(call.get("duration") or 0) > 0:
         call_status = "connected"
     else:
         call_status = "not_connected"
 
     # outcome from API / AI / call data
-    outcome = call.get("sentiment")
+    transcript = _build_transcript(call.get("transcript"))
+    outcome = _classify_outcome_with_llm(transcript)
 
     # fallback outcomes
     if not outcome:
@@ -1138,3 +1348,44 @@ def get_call_result(call):
             outcome = "neutral"
 
     return call_status, outcome
+
+def log_event(
+    db,
+    execution_id: int,
+    step_id: int,
+    event_type: str,
+    call_status: str = None,
+    outcome: str = None,
+    metadata: dict = None
+):
+    log = WorkflowExecutionLog(
+        execution_id=execution_id,
+        step_id=step_id,
+        event_type=event_type,
+        call_status=call_status,
+        outcome=outcome,
+        event_metadata=metadata or {}
+    )
+
+    db.add(log)
+    db.flush()
+
+    return log
+
+def _build_transcript(transcript : str) -> str:
+    if not transcript:
+        return ""
+    
+    lines = transcript.split("\n")
+    normalized_lines = []
+    for line in lines:
+
+        if line.startswith("AI:"):
+            text = line.replace("AI:", "").strip()
+            normalized_lines.append(f"AI: {text}")
+
+        elif line.startswith("User:"):
+            text = line.replace("User:", "").strip()
+            normalized_lines.append(f"User: {text}")
+
+    return "\n".join(normalized_lines)

@@ -37,10 +37,13 @@ Base = declarative_base()
 
 
 def get_db():
-    """Dependency for getting database session"""
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -720,9 +723,11 @@ def init_db():
         try:
             conn.execute(text("""
                     ALTER TABLE call_logs 
-                    ADD COLUMN IF NOT EXISTS workflow_execution_id INTEGER 
+                    ADD COLUMN IF NOT EXISTS workflow_execution_id INTEGER, 
+                    ADD COLUMN IF NOT EXISTS instant_reply_sent BOOLEAN DEFAULT FALSE
                 """))
-        except:
+        except Exception as e:
+            print(str(e))
             pass
         
         try:
@@ -734,3 +739,44 @@ def init_db():
             """))
         except:
             pass
+        
+        try:
+            conn.execute(text("""
+                    ALTER TABLE contacts 
+                    ADD COLUMN IF NOT EXISTS session_id VARCHAR(100) 
+                """))
+        except:
+            pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE conversation_metrics
+                ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'chat'
+            """))
+
+            conn.execute(text("""
+                ALTER TABLE conversation_metrics
+                ALTER COLUMN conversation_id DROP NOT NULL
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS whatsapp_template_name VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS category VARCHAR(50),
+                ADD COLUMN IF NOT EXISTS language VARCHAR(20),
+                ADD COLUMN IF NOT EXISTS meta_template_id VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS meta_status VARCHAR(50) DEFAULT 'PENDING',
+                ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+     
+        
+        

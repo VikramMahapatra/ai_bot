@@ -29,7 +29,7 @@ def get_org_settings(db: Session, organization_id: int) -> OrganizationSettings:
     )
 
     # Create default settings if not exists
-    if not settings:
+    if not settings and organization_id:
         settings = OrganizationSettings(
             organization_id=organization_id
         )
