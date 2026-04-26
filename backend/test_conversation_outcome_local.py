@@ -20,7 +20,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 
 SAMPLE_TRANSCRIPT = """Agent: नमष्कार मैं सम्बरोत solar से नेहा बोल रही हूँ. क्या आप solar लगवाने का plan कर रहे हैं?
@@ -32,6 +32,7 @@ User: ठीक है, thank you."""
 
 
 VALID_DEFAULT = {"positive", "negative", "satisfactory", "neutral", "unresolved", "other"}
+VALID_LEAD_DEFAULT = {"lead", "not lead"}
 
 
 def _load_service_module() -> Any:
@@ -65,9 +66,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-validate",
         action="store_true",
-        help="Skip outcome label validation",
+        help="Skip response validation",
     )
     return parser.parse_args()
+
+
+def _validate_response_shape(result: Dict[str, str], module: Any) -> None:
+    if not isinstance(result, dict):
+        raise AssertionError("Result must be an object")
+
+    if "outcome" not in result:
+        raise AssertionError("Missing key: outcome")
+    if "whether_lead" not in result:
+        raise AssertionError("Missing key: whether_lead")
+
+    valid_outcomes = set(getattr(module, "VALID_OUTCOMES", VALID_DEFAULT))
+    valid_lead_statuses = set(getattr(module, "VALID_LEAD_STATUSES", VALID_LEAD_DEFAULT))
+
+    if result["outcome"] not in valid_outcomes:
+        raise AssertionError(
+            f"Unexpected outcome '{result['outcome']}'. Expected one of: {sorted(valid_outcomes)}"
+        )
+
+    if result["whether_lead"] not in valid_lead_statuses:
+        raise AssertionError(
+            f"Unexpected whether_lead '{result['whether_lead']}'. Expected one of: {sorted(valid_lead_statuses)}"
+        )
 
 
 def main() -> int:
@@ -80,20 +104,19 @@ def main() -> int:
         uses_openai = getattr(module, "client", None) is not None
         mode = "openai" if uses_openai else "fallback"
 
-        outcome = module._classify_outcome_with_llm(transcript)
+        classification = module._classify_outcome_with_llm(transcript)
 
         if not args.no_validate:
-            valid = getattr(module, "VALID_OUTCOMES", VALID_DEFAULT)
-            if outcome not in valid:
-                raise AssertionError(f"Unexpected outcome '{outcome}'. Expected one of: {sorted(valid)}")
+            _validate_response_shape(classification, module)
 
         if args.label_only:
-            print(outcome)
+            print(classification["outcome"])
         else:
             payload = {
                 "mode": mode,
-                "outcome": outcome,
+                "classification": classification,
                 "valid_outcomes": sorted(list(getattr(module, "VALID_OUTCOMES", VALID_DEFAULT))),
+                "valid_lead_statuses": sorted(list(getattr(module, "VALID_LEAD_STATUSES", VALID_LEAD_DEFAULT))),
             }
             print(json.dumps(payload, ensure_ascii=False, indent=2))
 
