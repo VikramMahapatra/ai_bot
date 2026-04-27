@@ -1216,14 +1216,14 @@ const LeadManager: React.FC = () => {
               Funnel Category Master
             </Typography>
           </Box>
-          <Button
+          {/* <Button
             startIcon={<AddIcon />}
             variant="outlined"
             onClick={openCreateCategoryDialog}
             sx={{ flexShrink: 0 }}
           >
             Add Category
-          </Button>
+          </Button> */}
         </Box>
 
         <Collapse in={funnelMasterOpen} timeout="auto">
@@ -1279,7 +1279,7 @@ const LeadManager: React.FC = () => {
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Delete">
+                      {/* <Tooltip title="Delete">
                         <IconButton
                           size="small"
                           color="error"
@@ -1287,7 +1287,7 @@ const LeadManager: React.FC = () => {
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </Tooltip>
+                      </Tooltip> */}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1913,14 +1913,15 @@ const LeadManager: React.FC = () => {
               label="Stage Key"
               helperText="Used internally, lowercase with underscores"
               value={categoryForm.key}
-              onChange={(event) =>
-                setCategoryForm((prev) => ({
-                  ...prev,
-                  key: toStageKey(event.target.value),
-                }))
-              }
+              // onChange={(event) =>
+              //   setCategoryForm((prev) => ({
+              //     ...prev,
+              //     key: toStageKey(event.target.value),
+              //   }))
+              // }
               fullWidth
               size="small"
+              disabled
             />
             <Stack direction="row" spacing={2}>
               <TextField
@@ -1956,26 +1957,27 @@ const LeadManager: React.FC = () => {
                 label="Position"
                 type="number"
                 value={categoryForm.position}
-                onChange={(event) =>
-                  setCategoryForm((prev) => ({
-                    ...prev,
-                    position: Number(event.target.value || 0),
-                  }))
-                }
+                // onChange={(event) =>
+                //   setCategoryForm((prev) => ({
+                //     ...prev,
+                //     position: Number(event.target.value || 0),
+                //   }))
+                // }
                 size="small"
                 sx={{ width: 140 }}
+                disabled
               />
             </Stack>
             <FormControlLabel
               control={
                 <Switch
                   checked={categoryForm.is_active}
-                  onChange={(event) =>
-                    setCategoryForm((prev) => ({
-                      ...prev,
-                      is_active: event.target.checked,
-                    }))
-                  }
+                  // onChange={(event) =>
+                  //   setCategoryForm((prev) => ({
+                  //     ...prev,
+                  //     is_active: event.target.checked,
+                  //   }))
+                  // }
                 />
               }
               label="Active"
