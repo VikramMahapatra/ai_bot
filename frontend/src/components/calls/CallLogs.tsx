@@ -25,6 +25,8 @@ import {
   MenuItem,
   Collapse,
   Tooltip,
+  Card,
+  CardContent,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -56,6 +58,9 @@ import LayersIcon from "@mui/icons-material/Layers";
 import EllipsisCell from "../EllipsisCell";
 import { ExportToExcel } from "../../utils/callLogExport";
 import { MoveLeadDialog } from "./LeadMoveDialog";
+import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
+import CampaignIcon from "@mui/icons-material/Campaign";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -124,6 +129,7 @@ export const CallLogsTab = () => {
   const [callStats, setCallStats] = useState({
     total: 0,
     campaign: 0,
+    successful: 0,
     test: 0,
   });
 
@@ -196,9 +202,10 @@ export const CallLogsTab = () => {
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);
     setCallStats({
-      total: data.total_calls || 0,
-      campaign: data.campaign_calls || 0,
-      test: data.test_calls || 0,
+      total: data.summary.total_calls || 0,
+      campaign: data.summary.campaign_calls || 0,
+      successful: data.summary.successful_calls || 0,
+      test: data.summary.test_calls || 0,
     });
   };
 
@@ -235,6 +242,8 @@ export const CallLogsTab = () => {
         sentiment:
           sentiment !== "All" ? (sentiment as SentimentType) : undefined,
         evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
+        is_lead_qualified:
+          leadQualified !== "All" ? leadQualified === "true" : undefined,
       });
       ExportToExcel(data, "Call_Logs");
     } catch (error) {
@@ -635,90 +644,62 @@ export const CallLogsTab = () => {
 
       <Grid container spacing={3} mb={3}>
         {/* TOTAL CALLS */}
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{
-              p: 3,
-              borderRadius: 3,
-              transition: "0.2s",
-              "&:hover": { boxShadow: 6 },
-            }}
-          >
-            <Box
-              display="flex"
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Total Calls
-                </Typography>
-                <Typography variant="h5" fontWeight={700}>
-                  {callStats.total}
-                </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Total Calls</Typography>
+                <PhoneIcon color="primary" />
               </Box>
-
-              <PhoneIcon sx={{ fontSize: 40, color: "primary.main" }} />
-            </Box>
-          </Paper>
+              <Typography variant="h5" fontWeight={700} mt={1}>
+                {callStats.total}
+              </Typography>
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* CAMPAIGN CALLS */}
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{
-              p: 3,
-              borderRadius: 3,
-              transition: "0.2s",
-              "&:hover": { boxShadow: 6 },
-            }}
-          >
-            <Box
-              display="flex"
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Campaign Calls
-                </Typography>
-                <Typography variant="h5" fontWeight={700} color="primary.main">
-                  {callStats.campaign}
-                </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Campaign Calls</Typography>
+                <CampaignIcon color="primary" />
               </Box>
+              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
+                {callStats.campaign}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
 
-              <CallMadeIcon sx={{ fontSize: 40, color: "primary.main" }} />
-            </Box>
-          </Paper>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Successful Calls</Typography>
+                <CheckCircleIcon color="success" />
+              </Box>
+              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
+                {callStats.successful}
+              </Typography>
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* TEST CALLS */}
-        <Grid item xs={12} md={4}>
-          <Paper
-            sx={{
-              p: 3,
-              borderRadius: 3,
-              transition: "0.2s",
-              "&:hover": { boxShadow: 6 },
-            }}
-          >
-            <Box
-              display="flex"
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Test Calls
-                </Typography>
-                <Typography variant="h5" fontWeight={700} color="warning.main">
-                  {callStats.test}
-                </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Test Calls</Typography>
+                <BugReportIcon color="warning" />
               </Box>
-
-              <BugReportIcon sx={{ fontSize: 40, color: "warning.main" }} />
-            </Box>
-          </Paper>
+              <Typography variant="h5" fontWeight={700} mt={1} color="warning.main">
+                {callStats.test}
+              </Typography>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
       {/* Table */}
@@ -728,11 +709,10 @@ export const CallLogsTab = () => {
             <TableRow>
               <TableCell>Phone</TableCell>
               <TableCell>Contact</TableCell>
-              <TableCell>Agent</TableCell>
               <TableCell>Campaign</TableCell>
-
               {/* <TableCell>Test Call</TableCell> */}
               <TableCell>Sentiment</TableCell>
+              <TableCell>Outcome</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Duration</TableCell>
               {/* <TableCell>Cost</TableCell> */}
@@ -771,20 +751,23 @@ export const CallLogsTab = () => {
             ) : (
               callLogs.map((log) => (
                 <TableRow key={log.id} hover>
-                  <TableCell>{log.phone}</TableCell>
-                  <TableCell>
-                    <EllipsisCell value={log.contact} width={160} />
-                  </TableCell>
                   <TableCell>
                     <Box>
-                      <EllipsisCell value={log.agent} />
+                      {/* Phone */}
+                      <Typography fontWeight={500}>
+                        {log.phone}
+                      </Typography>
 
-                      <Box
-                        display="flex"
-                        alignItems="center"
-                        gap={0.5}
-                        mt={0.3}
-                      >
+                      {/* Agent with label */}
+                      <Box display="flex" alignItems="center" gap={0.5}>
+                        <Typography variant="caption" color="text.secondary">
+                          Agent:
+                        </Typography>
+                        <EllipsisCell value={log.agent} />
+                      </Box>
+
+                      {/* Type */}
+                      <Box display="flex" alignItems="center" gap={0.5} mt={0.3}>
                         {getTypeIcon(log.type)}
                         <Typography variant="caption" color="text.secondary">
                           {log.type}
@@ -792,36 +775,24 @@ export const CallLogsTab = () => {
                       </Box>
                     </Box>
                   </TableCell>
-
+                  <TableCell>
+                    <EllipsisCell value={log.contact} width={160} />
+                  </TableCell>
                   <TableCell>
                     <EllipsisCell value={log.campaign} width={160} />
                   </TableCell>
-
-                  {/* <TableCell>
-                                        {log.testCall ? "Yes" : "No"}
-                                    </TableCell> */}
                   <TableCell>
-                    {log.sentiment && log.sentiment !== "N/A" ? (
-                      <Chip
-                        label={titleCase(log.sentiment)}
-                        color={
-                          log.sentiment.toLowerCase() === "positive"
-                            ? "success"
-                            : log.sentiment.toLowerCase() === "negative"
-                              ? "error"
-                              : "default"
-                        }
-                        size="small"
-                      />
-                    ) : (
-                      "N/A"
-                    )}
+                    <OutcomeChip value={log.sentiment} />
+                  </TableCell>
+                  <TableCell>
+                    <ConversionOutcomeChip value={log.lead_qualified_status} />
                   </TableCell>
                   <TableCell>
                     <Chip
                       label={titleCase(log.status)}
                       color={getStatusColor(log.status) as any}
                       size="small"
+                      variant="outlined"
                     />
                   </TableCell>
                   <TableCell>

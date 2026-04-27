@@ -47,6 +47,7 @@ import { formatDateTime } from "../../utils/dateUtils";
 import CampaignAnalyticsDrawer from "./CampaignAnalyticsDrawer";
 import { alpha, useTheme } from '@mui/material/styles';
 import CloseIcon from "@mui/icons-material/Close";
+import { titleCase } from "../Common/StatusChips";
 
 interface Props {
     onAddCampaign: (showError: (message: string) => void) => void;
@@ -568,7 +569,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                     {/* STATUS */}
                                     <TableCell>
                                         <Chip
-                                            label={campaign.status}
+                                            label={titleCase(campaign.status)}
                                             size="small"
                                             sx={{
                                                 borderRadius: "999px",

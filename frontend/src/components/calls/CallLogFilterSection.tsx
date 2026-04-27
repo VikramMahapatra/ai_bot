@@ -180,28 +180,26 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                             </TextField>
                         </Grid>
 
-                        {/* Evaluation */}
+                        {/* Outcome */}
+
                         <Grid item xs={12} sm={6} md={3}>
                             <TextField
                                 select
                                 fullWidth
                                 size="small"
-                                label="Evaluation"
+                                label="Conversion Outcome"
+                                value={filters.is_lead_qualified}
                                 onChange={(e) =>
                                     onFilterChange({
-                                        evaluation:
-                                            e.target.value === "All"
-                                                ? undefined
-                                                : e.target.value === "true",
+                                        is_lead_qualified: e.target.value as CallLogFilterState["is_lead_qualified"]
                                     })
                                 }
                             >
                                 <MenuItem value="All">All</MenuItem>
-                                <MenuItem value="true">Yes</MenuItem>
-                                <MenuItem value="false">No</MenuItem>
+                                <MenuItem value="true">Positive</MenuItem>
+                                <MenuItem value="false">Negative</MenuItem>
                             </TextField>
                         </Grid>
-
 
                     </Grid>
                 </Box>

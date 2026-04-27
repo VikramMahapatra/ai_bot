@@ -208,7 +208,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     fontWeight={600}
                                     color={config.color}
                                 >
-                                    {titleCase(sentiment || "unknown")}
+                                    {titleCase(sentiment || "N/A")}
                                 </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1} mb={2}>
@@ -240,7 +240,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 >
                                     {selectedCall?.lead_qualified_status
                                         ? titleCase(selectedCall.lead_qualified_status)
-                                        : "Unknown"}
+                                        : "N/A"}
                                 </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>

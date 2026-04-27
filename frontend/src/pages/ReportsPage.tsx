@@ -39,27 +39,10 @@ import {
   LocalPrintshop as PrintIcon,
   TrendingUp,
   Assignment,
-  ShoppingCart,
-  BarChart as BarChartIcon,
   Star,
-  ChatBubble,
   Visibility as VisibilityIcon,
 } from "@mui/icons-material";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+
 import {
   reportService,
   ConversationMetric,
@@ -74,7 +57,92 @@ import {
   ContactListItem,
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
+import { formatDateTime } from "../utils/dateUtils";
+import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip } from "../components/Common/StatusChips";
+import {
+  Menu,
+  ListItemIcon,
+  ListItemText,
+} from "@mui/material";
+import SettingsIcon from "@mui/icons-material/Settings";
+import { FunnelCategory } from "../types";
+import { funnelCategoryService } from "../services/funnelCategoryService";
 
+export const ActionMenu = ({
+  handleExportCSV,
+  handlePrint,
+  handleRunOutcomeProcessing,
+  outcomeRunning,
+}: any) => {
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const open = Boolean(anchorEl);
+
+  const handleOpen = (event: any) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  return (
+    <>
+      <Button
+        variant="contained"
+        startIcon={<SettingsIcon />}
+        onClick={handleOpen}
+        sx={{
+          textTransform: "none",
+          fontWeight: 600,
+        }}
+      >
+        Actions
+      </Button>
+
+      <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
+        <MenuItem
+          onClick={() => {
+            handleExportCSV();
+            handleClose();
+          }}
+        >
+          <ListItemIcon>
+            <FileDownloadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Export CSV</ListItemText>
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            handlePrint();
+            handleClose();
+          }}
+        >
+          <ListItemIcon>
+            <PrintIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Print</ListItemText>
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            handleRunOutcomeProcessing();
+            handleClose();
+          }}
+          disabled={outcomeRunning}
+        >
+          <ListItemIcon>
+            <Star fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            {outcomeRunning ? "Running..." : "Run Outcome Processing"}
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+};
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -187,9 +255,42 @@ const ReportsPage: React.FC = () => {
   const [voiceDetailsOpen, setVoiceDetailsOpen] = useState(false);
   const [voiceDetailsItem, setVoiceDetailsItem] =
     useState<VoiceCampaignReportItem | null>(null);
+  const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
+    [],
+  );
+
+
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
+
+  const loadFunnelCategories = async () => {
+    try {
+      const data = await funnelCategoryService.list(true);
+      setFunnelCategories(data);
+    } catch {
+      setError("Failed to load funnel categories");
+    }
+  };
+
+  const activeFunnelCategories = useMemo(
+    () =>
+      funnelCategories
+        .filter((item) => item.is_active)
+        .sort((a, b) => a.position - b.position),
+    [funnelCategories],
+  );
+
+  const stageNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    funnelCategories.forEach((item) => map.set(item.key, item.name));
+    return map;
+  }, [funnelCategories]);
+
+  const stageLabel = (stage?: string | null) => {
+    if (!stage || !stage.trim()) return "Unassigned";
+    return titleCase(stage.toLowerCase());
+  };
 
   // Fetch summary
   const fetchSummary = async () => {
@@ -365,7 +466,10 @@ const ReportsPage: React.FC = () => {
         limit: voiceRowsPerPage,
         agent_name: overrides?.agent_name ?? (voiceAgentName || undefined),
         campaign_name:
-          overrides?.campaign_name ?? (voiceCampaignName || undefined),
+          overrides?.campaign_name ??
+          (voiceCampaignName && voiceCampaignName !== "All"
+            ? voiceCampaignName
+            : undefined),
         lead_outcomes:
           overrides?.lead_outcomes ??
           (voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined),
@@ -483,7 +587,8 @@ const ReportsPage: React.FC = () => {
 
   // Initial fetch
   useEffect(() => {
-    fetchSummary();
+    // fetchSummary();
+    loadFunnelCategories();
   }, []);
 
   useEffect(() => {
@@ -819,16 +924,39 @@ const ReportsPage: React.FC = () => {
             },
           }}
         >
-          <Typography
-            variant="h4"
-            sx={{ fontWeight: 800, color: "primary.main", mb: 1 }}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 2,
+            }}
           >
-            Reports
-          </Typography>
-          <Typography variant="body1" sx={{ color: "text.secondary" }}>
-            View detailed reports on conversations, token usage, lead
-            generation, and more.
-          </Typography>
+            {/* LEFT SIDE */}
+            <Box>
+              <Typography
+                variant="h4"
+                sx={{ fontWeight: 800, color: "primary.main", mb: 1 }}
+              >
+                Reports
+              </Typography>
+              <Typography variant="body1" sx={{ color: "text.secondary" }}>
+                View detailed reports on conversations, token usage, lead
+                generation, and more.
+              </Typography>
+            </Box>
+
+
+            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+              <ActionMenu
+                handleExportCSV={handleExportCSV}
+                handlePrint={handlePrint}
+                handleRunOutcomeProcessing={handleRunOutcomeProcessing}
+                outcomeRunning={outcomeRunning}
+              />
+            </Box>
+          </Box>
         </Paper>
 
         {error && (
@@ -838,100 +966,8 @@ const ReportsPage: React.FC = () => {
         )}
 
         {/* Filters */}
-        <Paper
-          sx={{
-            p: 3,
-            mb: 3,
-            borderRadius: "18px",
-            border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
-          }}
-        >
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-            Filter Reports
-          </Typography>
-          <Grid container spacing={2} alignItems="flex-end">
-            <Grid item xs={12} sm={6} md={2.5}>
-              <TextField
-                label="Start Date"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2.5}>
-              <TextField
-                label="End Date"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                size="small"
-              />
-            </Grid>
-            {/* <Grid item xs={12} sm={6} md={2.5}>
-              <TextField
-                label="Widget ID"
-                value={widgetId}
-                onChange={(e) => setWidgetId(e.target.value)}
-                placeholder="Optional"
-                fullWidth
-                size="small"
-              />
-            </Grid> */}
-            <Grid item xs={12} sm={6} md={2.5}>
-              <Button
-                variant="contained"
-                onClick={fetchConversations}
-                fullWidth
-                sx={{ height: 40 }}
-              >
-                Apply Filters
-              </Button>
-            </Grid>
-          </Grid>
-        </Paper>
 
-        {/* Export/Print buttons */}
-        <Box sx={{ mb: 3, display: "flex", gap: 1, flexWrap: "wrap" }}>
-          <Button
-            startIcon={<FileDownloadIcon />}
-            variant="outlined"
-            onClick={handleExportCSV}
-          >
-            {exportPrimaryLabel}
-          </Button>
-          <Button
-            startIcon={<FileDownloadIcon />}
-            variant="outlined"
-            onClick={handleExportPDF}
-          >
-            Export PDF
-          </Button>
-          <Button
-            startIcon={<PrintIcon />}
-            variant="outlined"
-            onClick={handlePrint}
-          >
-            Print
-          </Button>
-          <Button
-            startIcon={<Star />}
-            variant="contained"
-            sx={{
-              background: "linear-gradient(135deg, #2f6bff 0%, #2d8ef0 100%)",
-              textTransform: "none",
-              fontWeight: 700,
-            }}
-            onClick={handleRunOutcomeProcessing}
-            disabled={outcomeRunning}
-          >
-            {outcomeRunning ? "Running..." : "Run Outcome Processing Now"}
-          </Button>
-        </Box>
+
 
         {loading && <LinearProgress />}
 
@@ -1110,6 +1146,62 @@ const ReportsPage: React.FC = () => {
 
           {/* Conversations Tab */}
           <TabPanel value={tabValue} index={0}>
+            <Paper
+              sx={{
+                p: 3,
+                mb: 3,
+                borderRadius: "18px",
+                border: `1px solid ${alpha(theme.palette.common.white, 0.62)}`,
+              }}
+            >
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Filter Reports
+              </Typography>
+              <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={12} sm={6} md={2.5}>
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={2.5}>
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+                {/* <Grid item xs={12} sm={6} md={2.5}>
+              <TextField
+                label="Widget ID"
+                value={widgetId}
+                onChange={(e) => setWidgetId(e.target.value)}
+                placeholder="Optional"
+                fullWidth
+                size="small"
+              />
+            </Grid> */}
+                <Grid item xs={12} sm={6} md={2.5}>
+                  <Button
+                    variant="contained"
+                    onClick={fetchConversations}
+                    fullWidth
+                    sx={{ height: 40 }}
+                  >
+                    Apply Filters
+                  </Button>
+                </Grid>
+              </Grid>
+            </Paper>
             <TableContainer>
               <Table>
                 <TableHead>
@@ -1118,8 +1210,8 @@ const ReportsPage: React.FC = () => {
                     <TableCell>Source</TableCell>
                     {/* <TableCell align="right">Messages</TableCell>
                     <TableCell align="right">Tokens</TableCell> */}
-                    <TableCell align="right">Response Time</TableCell>
-                    <TableCell>AI Funnel</TableCell>
+                    {/* <TableCell align="right">Response Time</TableCell>
+                    <TableCell>AI Funnel</TableCell> */}
                     <TableCell>Sentiment</TableCell>
                     <TableCell>Outcome</TableCell>
                     <TableCell>Date</TableCell>
@@ -1138,18 +1230,14 @@ const ReportsPage: React.FC = () => {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={sourceLabel(conv.source)}
-                          size="small"
-                          variant="outlined"
-                        />
+                        <SourceChip value={conv.source} />
                       </TableCell>
                       {/* <TableCell align="right">{conv.total_messages}</TableCell>
                       <TableCell align="right">{conv.total_tokens}</TableCell> */}
-                      <TableCell align="right">
+                      {/* <TableCell align="right">
                         {conv.average_response_time?.toFixed(2)}s
-                      </TableCell>
-                      <TableCell>
+                      </TableCell> */}
+                      {/* <TableCell>
                         {conv.ai_funnel ? (
                           <Chip
                             label={conv.ai_funnel}
@@ -1164,30 +1252,15 @@ const ReportsPage: React.FC = () => {
                             size="small"
                           />
                         )}
+                      </TableCell> */}
+                      <TableCell>
+                        <OutcomeChip value={(conv.outcome || "Pending")} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(conv.outcome || "Pending")}
-                          size="small"
-                          color={conv.outcome ? "primary" : "default"}
-                          variant={conv.outcome ? "filled" : "outlined"}
-                        />
+                        <ConversionOutcomeChip value={conv.lead_conversion} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(conv.lead_conversion || "pending")}
-                          size="small"
-                          color={
-                            conv.lead_conversion === "positive"
-                              ? "success"
-                              : conv.lead_conversion === "negative"
-                                ? "error"
-                                : "warning"
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {new Date(conv.conversation_start).toLocaleDateString()}
+                        {formatDateTime(conv.conversation_start)}
                       </TableCell>
                       <TableCell align="center">
                         <Button
@@ -1764,9 +1837,9 @@ const ReportsPage: React.FC = () => {
                         <Select
                           value={voiceCampaignName}
                           label="Campaign Name"
+                          displayEmpty
                           onChange={(e) => setVoiceCampaignName(e.target.value)}
                         >
-                          <MenuItem value="">All</MenuItem>
                           {voiceCampaignOptions.map((name) => (
                             <MenuItem key={name} value={name}>
                               {name}
@@ -1777,7 +1850,7 @@ const ReportsPage: React.FC = () => {
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>Lead Outcome</InputLabel>
+                        <InputLabel>Sentiment</InputLabel>
                         <Select
                           multiple
                           value={voiceLeadOutcomes}
@@ -1788,7 +1861,7 @@ const ReportsPage: React.FC = () => {
                                 : e.target.value,
                             )
                           }
-                          input={<OutlinedInput label="Lead Outcome" />}
+                          input={<OutlinedInput label="Sentiment" />}
                           renderValue={(selected) =>
                             (selected as string[]).join(", ")
                           }
@@ -1948,9 +2021,8 @@ const ReportsPage: React.FC = () => {
                         <TableCell>Agent Name</TableCell>
                         <TableCell>Customer Name</TableCell>
                         <TableCell>Email</TableCell>
-                        <TableCell>Organization</TableCell>
                         <TableCell>Campaign Name</TableCell>
-                        <TableCell>Lead Outcome</TableCell>
+                        <TableCell>Lead Sentiment</TableCell>
                         <TableCell>Product</TableCell>
                         <TableCell>Created At</TableCell>
                         <TableCell align="center">Action</TableCell>
@@ -1970,13 +2042,10 @@ const ReportsPage: React.FC = () => {
                               {item.email || "-"}
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
-                              {item.organization_name || "-"}
-                            </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
                               {item.campaign_name || "-"}
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
-                              {item.lead_outcome || "-"}
+                              <OutcomeChip value={item.lead_outcome} />
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
                               {item.product_name || "-"}
@@ -2092,7 +2161,7 @@ const ReportsPage: React.FC = () => {
                     Campaign Source
                   </Typography>
                   <Typography variant="body1">
-                    {voiceDetailsItem.campaign_source || "-"}
+                    <SourceChip value={voiceDetailsItem.campaign_source} />
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
@@ -2100,7 +2169,12 @@ const ReportsPage: React.FC = () => {
                     Funnel Stage
                   </Typography>
                   <Typography variant="body1">
-                    {voiceDetailsItem.funnel_stage || "-"}
+                    <StageChip
+                      value={voiceDetailsItem.funnel_stage}
+                      funnelCategories={funnelCategories}
+                      stageNameByKey={stageNameByKey}
+                      stageLabel={stageLabel}
+                    />
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
@@ -2108,7 +2182,7 @@ const ReportsPage: React.FC = () => {
                     Lead Outcome
                   </Typography>
                   <Typography variant="body1">
-                    {voiceDetailsItem.lead_outcome || "-"}
+                    <OutcomeChip value={voiceDetailsItem.lead_outcome} />
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>

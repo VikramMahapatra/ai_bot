@@ -403,12 +403,13 @@ const ProtectedRoute: React.FC<{
       fallback: false
     });
 
-    console.log("Protected Route activated")
 
     React.useEffect(() => {
       const checkAccess = async () => {
-        if (userRole == 'SUPERADMIN')
+        if (userRole === 'SUPERADMIN' || !userRole) {
+          setLoading(false);
           return;
+        }
 
         try {
           const response = await organizationService.checkFeatureAccess(pathname);
@@ -464,7 +465,7 @@ const ProtectedRoute: React.FC<{
     }
 
 
-    if (userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
+    if (userRole && userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
       return <RestrictedFeaturePage modulePath={access.module} />
     }
 
