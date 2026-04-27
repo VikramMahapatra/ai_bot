@@ -403,10 +403,10 @@ const ProtectedRoute: React.FC<{
       fallback: false
     });
 
-    console.log("Protected Route activated")
 
     React.useEffect(() => {
       const checkAccess = async () => {
+        console.log("User Role :", userRole)
         if (userRole == 'SUPERADMIN')
           return;
 

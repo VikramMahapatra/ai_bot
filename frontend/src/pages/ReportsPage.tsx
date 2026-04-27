@@ -74,6 +74,8 @@ import {
   ContactListItem,
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
+import { formatDateTime } from "../utils/dateUtils";
+import { ConversionOutcomeChip, OutcomeChip, SourceChip } from "../components/Common/StatusChips";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1118,8 +1120,8 @@ const ReportsPage: React.FC = () => {
                     <TableCell>Source</TableCell>
                     {/* <TableCell align="right">Messages</TableCell>
                     <TableCell align="right">Tokens</TableCell> */}
-                    <TableCell align="right">Response Time</TableCell>
-                    <TableCell>AI Funnel</TableCell>
+                    {/* <TableCell align="right">Response Time</TableCell>
+                    <TableCell>AI Funnel</TableCell> */}
                     <TableCell>Sentiment</TableCell>
                     <TableCell>Outcome</TableCell>
                     <TableCell>Date</TableCell>
@@ -1138,18 +1140,14 @@ const ReportsPage: React.FC = () => {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={sourceLabel(conv.source)}
-                          size="small"
-                          variant="outlined"
-                        />
+                        <SourceChip value={conv.source} />
                       </TableCell>
                       {/* <TableCell align="right">{conv.total_messages}</TableCell>
                       <TableCell align="right">{conv.total_tokens}</TableCell> */}
-                      <TableCell align="right">
+                      {/* <TableCell align="right">
                         {conv.average_response_time?.toFixed(2)}s
-                      </TableCell>
-                      <TableCell>
+                      </TableCell> */}
+                      {/* <TableCell>
                         {conv.ai_funnel ? (
                           <Chip
                             label={conv.ai_funnel}
@@ -1164,30 +1162,15 @@ const ReportsPage: React.FC = () => {
                             size="small"
                           />
                         )}
+                      </TableCell> */}
+                      <TableCell>
+                        <OutcomeChip value={(conv.outcome || "Pending")} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(conv.outcome || "Pending")}
-                          size="small"
-                          color={conv.outcome ? "primary" : "default"}
-                          variant={conv.outcome ? "filled" : "outlined"}
-                        />
+                        <ConversionOutcomeChip value={conv.lead_conversion} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(conv.lead_conversion || "pending")}
-                          size="small"
-                          color={
-                            conv.lead_conversion === "positive"
-                              ? "success"
-                              : conv.lead_conversion === "negative"
-                                ? "error"
-                                : "warning"
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {new Date(conv.conversation_start).toLocaleDateString()}
+                        {formatDateTime(conv.conversation_start)}
                       </TableCell>
                       <TableCell align="center">
                         <Button

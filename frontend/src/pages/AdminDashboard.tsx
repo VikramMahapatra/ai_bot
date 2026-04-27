@@ -353,6 +353,7 @@ const AdminDashboard: React.FC = () => {
         if (s) {
           setCallSummary({
             total_calls: numberOrZero(s.total_calls),
+            attempted_calls: numberOrZero(s.attempted_calls),
             successful_calls: numberOrZero(s.successful_calls),
             pickup_rate: numberOrZero(s.pickup_rate),
             conversion_rate: numberOrZero(s.conversion_rate),
@@ -926,9 +927,9 @@ const AdminDashboard: React.FC = () => {
                         _name,
                         item,
                       ) => [
-                        `${numberOrZero(value)} leads`,
-                        String((item?.payload as any)?.stage_name || "Stage"),
-                      ]}
+                          `${numberOrZero(value)} leads`,
+                          String((item?.payload as any)?.stage_name || "Stage"),
+                        ]}
                     />
                     <Bar dataKey="count" radius={[0, 6, 6, 0]}>
                       {funnelData.map((entry, idx) => (
@@ -949,7 +950,7 @@ const AdminDashboard: React.FC = () => {
           </Grid>
         </Grid>
 
-        <Paper sx={{ ...glassPanelSx, p: 2.2 }}>
+        {/* <Paper sx={{ ...glassPanelSx, p: 2.2 }}>
           <Tabs
             value={tab}
             onChange={(_, value: number) => setTab(value)}
@@ -962,272 +963,274 @@ const AdminDashboard: React.FC = () => {
           >
             <Tab label="Top Conversations" />
             <Tab label="Recent Leads" />
-            {/* <Tab label="Agents" />
-            <Tab label="Knowledge Sources" /> */}
-          </Tabs>
+             <Tab label="Agents" />
+            <Tab label="Knowledge Sources" /> 
+      </Tabs>
 
-          <TabPanel value={tab} index={0}>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }} align="center">
-                      Messages
+      <TabPanel value={tab} index={0}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Session ID</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="center">
+                  Messages
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>
+                  Last Activity
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {topSessions.length ? (
+                topSessions.map((session) => (
+                  <TableRow key={session.session_id} hover>
+                    <TableCell sx={{ fontFamily: "monospace" }}>
+                      {shortText(session.session_id, 28)}
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Lead</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>
-                      Last Activity
+                    <TableCell align="center">
+                      <Chip
+                        label={session.message_count}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {session.has_lead ? (
+                        <Chip
+                          label={textOrDash(session.lead_name)}
+                          size="small"
+                          color="success"
+                        />
+                      ) : (
+                        <Chip label="No" size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {formatDateTime(session.last_message_at)}
                     </TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {topSessions.length ? (
-                    topSessions.map((session) => (
-                      <TableRow key={session.session_id} hover>
-                        <TableCell sx={{ fontFamily: "monospace" }}>
-                          {shortText(session.session_id, 28)}
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={session.message_count}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {session.has_lead ? (
-                            <Chip
-                              label={textOrDash(session.lead_name)}
-                              size="small"
-                              color="success"
-                            />
-                          ) : (
-                            <Chip label="No" size="small" variant="outlined" />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {formatDateTime(session.last_message_at)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        No conversation sessions yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </TabPanel>
-
-          <TabPanel value={tab} index={1}>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {recentLeads.length ? (
-                    recentLeads.map((lead) => (
-                      <TableRow key={lead.id} hover>
-                        <TableCell>{textOrDash(lead.name)}</TableCell>
-                        <TableCell>{textOrDash(lead.email)}</TableCell>
-                        <TableCell>{textOrDash(lead.phone)}</TableCell>
-                        <TableCell>{textOrDash(lead.company)}</TableCell>
-                        <TableCell>{formatDate(lead.created_at)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        No recent leads.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </TabPanel>
-
-          <TabPanel value={tab} index={2}>
-            <Grid container spacing={2}>
-              {widgets.length ? (
-                widgets.map((widget, idx) => (
-                  <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    key={widget.widget_id || String(widget.id || idx)}
-                  >
-                    <Card
-                      sx={{
-                        borderRadius: 2.5,
-                        border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-                      }}
-                    >
-                      <CardContent>
-                        <Typography
-                          variant="subtitle1"
-                          sx={{ fontWeight: 700, mb: 1 }}
-                        >
-                          {widget.name}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ display: "block", mb: 1.5 }}
-                        >
-                          {widget.widget_id}
-                        </Typography>
-
-                        <Box sx={{ mb: 1.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Conversations:{" "}
-                            {numberOrZero(widget.conversations_count)}
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(
-                              numberOrZero(widget.conversations_count) * 10,
-                              100,
-                            )}
-                            sx={{ mt: 0.4, borderRadius: 1 }}
-                          />
-                        </Box>
-
-                        <Box sx={{ mb: 1.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Leads: {numberOrZero(widget.leads_count)}
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(
-                              numberOrZero(widget.leads_count) * 10,
-                              100,
-                            )}
-                            sx={{ mt: 0.4, borderRadius: 1 }}
-                          />
-                        </Box>
-
-                        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                          <Chip
-                            size="small"
-                            label={textOrDash(widget.position)}
-                            variant="outlined"
-                          />
-                          <Chip
-                            size="small"
-                            label={
-                              widget.lead_capture_enabled
-                                ? "Lead Capture On"
-                                : "Lead Capture Off"
-                            }
-                            color={
-                              widget.lead_capture_enabled
-                                ? "success"
-                                : "default"
-                            }
-                            variant={
-                              widget.lead_capture_enabled
-                                ? "filled"
-                                : "outlined"
-                            }
-                          />
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
                 ))
               ) : (
-                <Grid item xs={12}>
-                  <Typography color="text.secondary" align="center">
-                    No agents found.
-                  </Typography>
-                </Grid>
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    No conversation sessions yet.
+                  </TableCell>
+                </TableRow>
               )}
-            </Grid>
-          </TabPanel>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
 
-          <TabPanel value={tab} index={3}>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
+      <TabPanel value={tab} index={1}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {recentLeads.length ? (
+                recentLeads.map((lead) => (
+                  <TableRow key={lead.id} hover>
+                    <TableCell>{textOrDash(lead.name)}</TableCell>
+                    <TableCell>{textOrDash(lead.email)}</TableCell>
+                    <TableCell>{textOrDash(lead.phone)}</TableCell>
+                    <TableCell>{textOrDash(lead.company)}</TableCell>
+                    <TableCell>{formatDate(lead.created_at)}</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {knowledgeSources.length ? (
-                    knowledgeSources.map((source) => (
-                      <TableRow key={source.id} hover>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 1,
-                            }}
-                          >
-                            <MenuBookIcon fontSize="small" color="primary" />
-                            {source.name}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={source.source_type}
-                            size="small"
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={source.status}
-                            size="small"
-                            color={
-                              source.status === "active" ? "success" : "default"
-                            }
-                            variant={
-                              source.status === "active" ? "filled" : "outlined"
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>{formatDate(source.created_at)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        No knowledge sources yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </TabPanel>
-        </Paper>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} align="center">
+                    No recent leads.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
 
-        {loading && !stats && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
-            <CircularProgress />
-          </Box>
-        )}
-      </Box>
-    </AdminLayout>
+      <TabPanel value={tab} index={2}>
+        <Grid container spacing={2}>
+          {widgets.length ? (
+            widgets.map((widget, idx) => (
+              <Grid
+                item
+                xs={12}
+                sm={6}
+                md={4}
+                key={widget.widget_id || String(widget.id || idx)}
+              >
+                <Card
+                  sx={{
+                    borderRadius: 2.5,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+                  }}
+                >
+                  <CardContent>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ fontWeight: 700, mb: 1 }}
+                    >
+                      {widget.name}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 1.5 }}
+                    >
+                      {widget.widget_id}
+                    </Typography>
+
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Conversations:{" "}
+                        {numberOrZero(widget.conversations_count)}
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(
+                          numberOrZero(widget.conversations_count) * 10,
+                          100,
+                        )}
+                        sx={{ mt: 0.4, borderRadius: 1 }}
+                      />
+                    </Box>
+
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Leads: {numberOrZero(widget.leads_count)}
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(
+                          numberOrZero(widget.leads_count) * 10,
+                          100,
+                        )}
+                        sx={{ mt: 0.4, borderRadius: 1 }}
+                      />
+                    </Box>
+
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      <Chip
+                        size="small"
+                        label={textOrDash(widget.position)}
+                        variant="outlined"
+                      />
+                      <Chip
+                        size="small"
+                        label={
+                          widget.lead_capture_enabled
+                            ? "Lead Capture On"
+                            : "Lead Capture Off"
+                        }
+                        color={
+                          widget.lead_capture_enabled
+                            ? "success"
+                            : "default"
+                        }
+                        variant={
+                          widget.lead_capture_enabled
+                            ? "filled"
+                            : "outlined"
+                        }
+                      />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
+          ) : (
+            <Grid item xs={12}>
+              <Typography color="text.secondary" align="center">
+                No agents found.
+              </Typography>
+            </Grid>
+          )}
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tab} index={3}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {knowledgeSources.length ? (
+                knowledgeSources.map((source) => (
+                  <TableRow key={source.id} hover>
+                    <TableCell>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <MenuBookIcon fontSize="small" color="primary" />
+                        {source.name}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={source.source_type}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={source.status}
+                        size="small"
+                        color={
+                          source.status === "active" ? "success" : "default"
+                        }
+                        variant={
+                          source.status === "active" ? "filled" : "outlined"
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>{formatDate(source.created_at)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    No knowledge sources yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
+    </Paper> */}
+
+        {
+          loading && !stats && (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
+              <CircularProgress />
+            </Box>
+          )
+        }
+      </Box >
+    </AdminLayout >
   );
 };
 

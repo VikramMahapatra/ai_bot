@@ -90,6 +90,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import { OutcomeChip, SourceChip, StageChip, titleCase } from "../Common/StatusChips";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -104,12 +105,6 @@ const widgetMatchesLeadSource = (
   if (["email", "sms", "whatsapp"].includes(sel) && ws === "chat") return true;
   return false;
 };
-
-const titleCase = (value: string) =>
-  value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 
 const sourceLabel = (source?: string) =>
   titleCase((source || "chat").toLowerCase());
@@ -1358,29 +1353,19 @@ const LeadManager: React.FC = () => {
                   Source Type
                 </Typography>
                 <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
-                  <Chip
-                    label="All"
-                    size="small"
-                    clickable
-                    variant="outlined"
+                  <SourceChip
+                    value="all"
+                    height={23}
+                    selected={selectedSource === "all"}
                     onClick={() => setSelectedSource("all")}
-                    sx={filterChipSx(
-                      selectedSource === "all",
-                      sourceTintByKey.all,
-                    )}
                   />
                   {LEAD_SOURCES.map((source) => (
-                    <Chip
+                    <SourceChip
                       key={source}
-                      label={sourceLabel(source)}
-                      size="small"
-                      clickable
-                      variant="outlined"
+                      value={source}
+                      height={23}
+                      selected={selectedSource === source}
                       onClick={() => setSelectedSource(source)}
-                      sx={filterChipSx(
-                        selectedSource === source,
-                        sourceTintByKey[source],
-                      )}
                     />
                   ))}
                 </Stack>
@@ -1411,29 +1396,26 @@ const LeadManager: React.FC = () => {
                   Funnel Stage
                 </Typography>
                 <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap" }}>
-                  <Chip
-                    label="All"
-                    size="small"
-                    clickable
-                    variant="outlined"
+                  <StageChip
+                    value="all"
+                    height={23}
+                    selected={selectedFunnelStage === "all"}
                     onClick={() => setSelectedFunnelStage("all")}
-                    sx={filterChipSx(
-                      selectedFunnelStage === "all",
-                      FUNNEL_ALL_CHIP_TINT,
-                    )}
+                    funnelCategories={funnelCategories}
+                    stageNameByKey={stageNameByKey}
+                    stageLabel={stageLabel}
+                    allTint={FUNNEL_ALL_CHIP_TINT}
                   />
                   {activeFunnelCategories.map((stage) => (
-                    <Chip
+                    <StageChip
                       key={stage.key}
-                      label={stage.name}
-                      size="small"
-                      clickable
-                      variant="outlined"
+                      value={stage.key}
+                      funnelCategories={funnelCategories}
+                      stageNameByKey={stageNameByKey}
+                      stageLabel={stageLabel}
+                      height={23}
+                      selected={selectedFunnelStage === stage.key}
                       onClick={() => setSelectedFunnelStage(stage.key)}
-                      sx={filterChipSx(
-                        selectedFunnelStage === stage.key,
-                        normalizeHexColor(stage.color),
-                      )}
                     />
                   ))}
                 </Stack>
@@ -1533,30 +1515,21 @@ const LeadManager: React.FC = () => {
                   </TableCell>
                   <TableCell>{lead.product_name || "-"}</TableCell>
                   <TableCell>
-                    <Chip
-                      label={sourceLabel(lead.source)}
-                      size="small"
-                      variant="outlined"
-                    />
+                    <SourceChip value={lead.source} />
                   </TableCell>
                   <TableCell>
                     {lead.lead_outcome ? (
-                      <Chip
-                        label={lead.lead_outcome}
-                        size="small"
-                        color="primary"
-                        variant="filled"
-                      />
+                      <OutcomeChip value={lead.lead_outcome} />
                     ) : (
                       "-"
                     )}
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={displayStageLabel(lead.funnel_stage)}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
+                    <StageChip
+                      value={lead.funnel_stage}
+                      funnelCategories={funnelCategories}
+                      stageNameByKey={stageNameByKey}
+                      stageLabel={stageLabel}
                     />
                   </TableCell>
                   <TableCell>

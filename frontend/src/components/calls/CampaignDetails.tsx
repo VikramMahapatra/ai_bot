@@ -326,11 +326,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
 
             <Box display="flex" gap={2} mt={1}>
               <Typography variant="body2">
-                Created {new Date(campaign?.created_at).toLocaleDateString()}
+                Created {formatDateTime(campaign?.created_at)}
               </Typography>
 
               <Chip
-                label={campaign?.status}
+                label={titleCase(campaign?.status || "pending")}
                 size="small"
                 sx={{
                   borderRadius: "999px",

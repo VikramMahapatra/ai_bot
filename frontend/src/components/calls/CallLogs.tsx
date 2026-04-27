@@ -56,6 +56,7 @@ import LayersIcon from "@mui/icons-material/Layers";
 import EllipsisCell from "../EllipsisCell";
 import { ExportToExcel } from "../../utils/callLogExport";
 import { MoveLeadDialog } from "./LeadMoveDialog";
+import { OutcomeChip } from "../Common/StatusChips";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -235,6 +236,8 @@ export const CallLogsTab = () => {
         sentiment:
           sentiment !== "All" ? (sentiment as SentimentType) : undefined,
         evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
+        is_lead_qualified:
+          leadQualified !== "All" ? leadQualified === "true" : undefined,
       });
       ExportToExcel(data, "Call_Logs");
     } catch (error) {
@@ -802,19 +805,18 @@ export const CallLogsTab = () => {
                                     </TableCell> */}
                   <TableCell>
                     {log.sentiment && log.sentiment !== "N/A" ? (
-                      <Chip
-                        label={titleCase(log.sentiment)}
-                        color={
-                          log.sentiment.toLowerCase() === "positive"
-                            ? "success"
-                            : log.sentiment.toLowerCase() === "negative"
-                              ? "error"
-                              : "default"
-                        }
-                        size="small"
-                      />
+                      <OutcomeChip value={log.sentiment} />
                     ) : (
-                      "N/A"
+                      <Chip
+                        label="N/A"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          color: "#9e9e9e",
+                          borderColor: "#e0e0e0",
+                          backgroundColor: "#fafafa",
+                        }}
+                      />
                     )}
                   </TableCell>
                   <TableCell>
@@ -822,6 +824,7 @@ export const CallLogsTab = () => {
                       label={titleCase(log.status)}
                       color={getStatusColor(log.status) as any}
                       size="small"
+                      variant="outlined"
                     />
                   </TableCell>
                   <TableCell>
