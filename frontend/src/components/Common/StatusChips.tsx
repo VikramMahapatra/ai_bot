@@ -1,7 +1,6 @@
 import { Chip } from "@mui/material";
 import { FunnelCategory } from "../../types";
 import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors";
-import { alpha, useTheme } from "@mui/material/styles";
 
 export const titleCase = (value: string) =>
     value
@@ -10,7 +9,16 @@ export const titleCase = (value: string) =>
         .join(" ");
 
 export const OutcomeChip = ({ value }: { value?: string | null }) => {
-    if (!value || !value.trim()) return <span>-</span>;
+    if (!value || !value.trim()) return <Chip
+        label="N/A"
+        size="small"
+        variant="outlined"
+        sx={{
+            color: "#9e9e9e",
+            borderColor: "#e0e0e0",
+            backgroundColor: "#fafafa",
+        }}
+    />;
 
     const normalized = value.toLowerCase().trim();
 
@@ -86,7 +94,7 @@ export const StageChip = ({
     }
 
     if (!value || !value.trim()) {
-        return <Chip label="Unassigned" size="small" />;
+        return <Chip label="Unassigned" size="small" variant="outlined" />;
     }
 
     const stage = funnelCategories.find((f) => f.key === value);
@@ -127,6 +135,17 @@ export const StageChip = ({
 };
 
 export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
+    if (!value || !value.trim()) return <Chip
+        label="N/A"
+        size="small"
+        variant="outlined"
+        sx={{
+            color: "#9e9e9e",
+            borderColor: "#e0e0e0",
+            backgroundColor: "#fafafa",
+        }}
+    />;
+
     const normalized = value?.toLowerCase().trim();
 
     const colorMap: Record<string, any> = {

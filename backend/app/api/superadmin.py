@@ -76,7 +76,7 @@ from app.services.limits_service import (
     get_or_create_limits,
     update_limits,
 )
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, insert, or_, select, text
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from app.services.email_service import send_widget_test_link_email
@@ -800,6 +800,8 @@ def _apply_profile_patch(
         profile.expiry_days = data["expiry_days"]
     if "notes" in data:
         profile.notes = data["notes"]
+        
+
 
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)

@@ -38,7 +38,7 @@ from app.models.campaign import (
 )
 from app.models.handoff import HandoffSession, HandoffMessage
 from app.models.handoff_agent_assignment import HandoffAgentAssignment
-from app.models.funnel_category import FunnelCategory
+from app.models.funnel_category import FunnelCategory, FunnelCategoryMaster
 from app.models.followup_workflows import FollowUpWorkflow
 from app.models.followup_sequences import FollowUpSequence
 from app.models.message_templates import MessageTemplate
@@ -100,5 +100,6 @@ __all__ = [
     "WorkflowStepOutcome"
     "WorkflowEdge",
     "WorkflowExecution",
-    "WorkflowExecutionLog"
+    "WorkflowExecutionLog",
+    "FunnelCategoryMaster"
 ]

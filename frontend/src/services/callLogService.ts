@@ -60,6 +60,7 @@ export interface CallLogFilterState {
     call_end_reason?: string | "All";
     sentiment?: SentimentType | "All";
     evaluation: boolean | "All";
+    is_lead_qualified?: boolean | "All";
 }
 
 export interface CallLogFilters {
@@ -89,9 +90,12 @@ export interface CallLogFilters {
 
 export interface CallLogListResponse {
     items: CallLog[];
-    total_calls: number;
-    campaign_calls: number;
-    test_calls: number;
+    summary: {
+        total_calls: number;
+        campaign_calls: number;
+        successful_calls: number;
+        test_calls: number;
+    }
     pagination: {
         total: number;
         skip: number;
