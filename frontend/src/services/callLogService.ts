@@ -121,6 +121,16 @@ export interface CallLogResponse {
     success: boolean;
 }
 
+export interface CampaignContactResponse {
+  contact_id: number;
+  name: string;
+  email: string;
+  phone: string;
+  status: string;
+  ended_reason: string;
+  date: string;
+}
+
 
 export const callLogService = {
 
@@ -150,9 +160,9 @@ export const callLogService = {
         return response.data;
     },
 
-    async getCampaignContacts(campaign_id: number, contactType: ContactType): Promise<ContactItem[]> {
+    async getCampaignContacts(campaign_id: number, contactType: ContactType): Promise<CampaignContactResponse[]> {
         const params = { type: contactType, campaign_id: campaign_id };
-        const response = await api.get<ContactItem[]>(`/api/call-log/contacts-by-type`, { params });
+        const response = await api.get<CampaignContactResponse[]>(`/api/call-log/contacts-by-type`, { params });
         return response.data;
     },
 };

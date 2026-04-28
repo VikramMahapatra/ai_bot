@@ -28,6 +28,7 @@ import {
   DialogTitle,
   DialogContent,
   TableContainer,
+  CircularProgress,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -955,18 +956,27 @@ interface ContactsDialogProps {
 function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProps) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) fetchData();
+    if (open) {
+      setData([]);        
+      setError(null);
+      fetchData();
+    } 
   }, [open, type]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(null);
+
       const data = await callLogService.getCampaignContacts(campaign_id,type);
       setData(data || []);
     } catch (e) {
       console.error(e);
+      setData([]);             
+      setError("Failed to load data");
     } finally {
       setLoading(false);
     }
@@ -1033,8 +1043,16 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
 
       <DialogContent dividers sx={{ p: 0 }}>
         {loading ? (
-          <Typography sx={{ p: 2 }}>Loading...</Typography>
-        ) : (
+      <Box textAlign="center">
+        <CircularProgress size={20}/>
+        <Typography sx={{ mr: 1 }}>Loading data...</Typography>
+      </Box>
+    ) : error ? (
+    <Box textAlign="center" mt={5}>
+      <Typography color="error">{error}</Typography>
+      <Button onClick={fetchData}>Retry</Button>
+    </Box>
+  ) : (
           <Table stickyHeader>
             <TableHead>
               <TableRow>
@@ -1048,7 +1066,9 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
               {data.map((row, i) => (
                 <TableRow key={i}>
                   {columns.map((col) => (
-                    <TableCell key={col.key}>{row[col.key] ?? "-"}</TableCell>
+                    <TableCell key={col.key}>{col.key.includes("date")
+    ? formatDateTime(row[col.key])
+    : row[col.key] ?? "-"}</TableCell>
                   ))}
                 </TableRow>
               ))}
@@ -1065,3 +1085,4 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
     </Dialog>
   );
 }
+//{formatDateTime(campaign.created_at)}
