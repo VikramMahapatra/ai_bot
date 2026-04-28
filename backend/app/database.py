@@ -725,7 +725,8 @@ def init_db():
             conn.execute(text("""
                     ALTER TABLE call_logs 
                     ADD COLUMN IF NOT EXISTS workflow_execution_id INTEGER, 
-                    ADD COLUMN IF NOT EXISTS instant_reply_sent BOOLEAN DEFAULT FALSE
+                    ADD COLUMN IF NOT EXISTS instant_reply_sent BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS source VARCHAR(50)
                 """))
         except Exception as e:
             print(str(e))
