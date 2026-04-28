@@ -1,4 +1,5 @@
 import api from './api';
+import { ContactItem, ContactListResponse } from './campaignService';
 
 export interface CallTranscript {
     speaker: "Agent" | "Contact";
@@ -50,6 +51,8 @@ export type StatusType =
 export type SentimentType = "positive" | "negative" | "neutral";
 
 export type LeadQualityType = "high" | "medium" | "low" | "poor";
+
+export type ContactType = "all" | "initiated" | "rescheduled" | "pending"
 
 export interface CallLogFilterState {
     search?: string;
@@ -147,4 +150,9 @@ export const callLogService = {
         return response.data;
     },
 
+    async getCampaignContacts(campaign_id: number, contactType: ContactType): Promise<ContactItem[]> {
+        const params = { type: contactType, campaign_id: campaign_id };
+        const response = await api.get<ContactItem[]>(`/api/call-log/contacts-by-type`, { params });
+        return response.data;
+    },
 };

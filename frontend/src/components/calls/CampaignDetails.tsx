@@ -24,6 +24,10 @@ import {
   Paper,
   Drawer,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  TableContainer,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -37,6 +41,7 @@ import {
   CallLog,
   CallLogFilterState,
   callLogService,
+  ContactType,
   SentimentType,
   StatusType,
 } from "../../services/callLogService";
@@ -46,12 +51,59 @@ import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
 import { ExportToExcel } from "../../utils/callLogExport";
-import PeopleIcon from '@mui/icons-material/People';
+import PeopleIcon from "@mui/icons-material/People";
 import CallIcon from "@mui/icons-material/Call";
-import ReplayIcon from '@mui/icons-material/Replay';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
-import PersonIcon from "@mui/icons-material/Person";
+import ReplayIcon from "@mui/icons-material/Replay";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import CloseIcon from "@mui/icons-material/Close";
+
+const dummyContacts = [
+  {
+    name: "RELIANCE JIO INFOCOM LIMITED",
+    phone: "+918602445444",
+    email: "-",
+  },
+  {
+    name: "AAJAM KHAN S/O AAZEEZ KHAN",
+    phone: "+919755193839",
+    email: "-",
+  },
+  {
+    name: "AARADHANA JOUHARI R.G. JOUHARI",
+    phone: "+918269304044",
+    email: "-",
+  },
+  {
+    name: "AAWASH FINANCE C/T PRADEEP RAJPOOT",
+    phone: "+919584193396",
+    email: "-",
+  },
+  {
+    name: "ABHAY KUMAR JAIN S/O SURESH",
+    phone: "+919425474395",
+    email: "-",
+  },
+  {
+    name: "ABHINANDAN S/O BALDEV PRASAD CHATURVEDI",
+    phone: "+916261109580",
+    email: "-",
+  },
+  {
+    name: "ABHINAV SAHU/RAMDEEN SAHU",
+    phone: "+919893718283",
+    email: "-",
+  },
+  {
+    name: "ABHINENDRA SINGH / HARVAL SINGH",
+    phone: "+919425145529",
+    email: "-",
+  },
+  {
+    name: "ABHISHEK JAIN/JINESHWAR DAS JAIN",
+    phone: "+919644858733",
+    email: "-",
+  },
+];
 
 interface Props {
   campaignId: number;
@@ -183,6 +235,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
   const [openInsights, setOpenInsights] = useState(false);
   const [openDetail, setOpenDetail] = useState(false);
+  const [openContactsDialog, setOpenContactsDialog] = useState(false);
+  const [contactType, setContactType] = useState<ContactType>("all");
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -192,7 +246,6 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     status: "All",
     sentiment: "All",
     evaluation: "All",
-    is_lead_qualified: "All"
   });
 
   const loadData = async () => {
@@ -252,11 +305,6 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         updatedFilters.evaluation !== "All"
           ? updatedFilters.evaluation
           : undefined,
-      is_lead_qualified:
-        updatedFilters.is_lead_qualified !== "All"
-          ? updatedFilters.is_lead_qualified
-          : undefined,
-
     });
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);
@@ -281,14 +329,17 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         sentiment: filters.sentiment !== "All" ? filters.sentiment : undefined,
         evaluation:
           filters.evaluation !== "All" ? filters.evaluation : undefined,
-        is_lead_qualified:
-          filters.is_lead_qualified !== "All" ? filters.is_lead_qualified : undefined,
       });
 
       ExportToExcel(data, "Campaign_Call_Logs");
     } catch (error) {
       console.error("Export failed", error);
     }
+  };
+
+  const handleOpen = (type: ContactType) => {
+    setContactType(type);
+    setOpenContactsDialog(true);
   };
 
   const titleCase = (value: string) =>
@@ -345,7 +396,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   borderRadius: "999px",
                   fontWeight: 600,
                   backgroundColor: getStatusBg(campaign?.status),
-                  color: getStatusText(campaign?.status)
+                  color: getStatusText(campaign?.status),
                 }}
                 variant="outlined"
               />
@@ -361,12 +412,22 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       {/* STATS */}
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("all")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Total Contacts</Typography>
                 <PeopleIcon color="primary" />
               </Box>
+
               <Typography variant="h5" mt={1}>
                 {campaign?.total_contacts || 0}
               </Typography>
@@ -375,7 +436,16 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         </Grid>
 
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("initiated")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Initiated Calls</Typography>
@@ -388,7 +458,16 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("rescheduled")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Rescheduled Calls</Typography>
@@ -402,7 +481,16 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         </Grid>
 
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("pending")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Pending Scheduled</Typography>
@@ -665,7 +753,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       color: "primary.main",
                       fontWeight: 500,
                     }}
-                  //onClick={() => onEdit(campaign?.agent_id)}
+                    //onClick={() => onEdit(campaign?.agent_id)}
                   >
                     {campaign?.calling_no || "-"}
                   </Box>
@@ -708,11 +796,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableHead>
                 <TableRow>
                   <TableCell>Contact</TableCell>
+                  <TableCell>Phone</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Ended Reason</TableCell>
-                  <TableCell>Sentiment</TableCell>
-                  <TableCell>Outcome</TableCell>
                   <TableCell>Duration</TableCell>
+                  <TableCell>Sentiment</TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -720,7 +808,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableBody>
                 {callLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} sx={{ py: 8 }}>
+                    <TableCell colSpan={10} sx={{ py: 8 }}>
                       <Box
                         display="flex"
                         flexDirection="column"
@@ -752,22 +840,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   callLogs.map((log) => (
                     <TableRow key={log.id} hover>
                       <TableCell>
-                        <Box display="flex" alignItems="flex-start" gap={1}>
-                          {/* Main icon */}
-                          <Box>
-                            {/* Contact name */}
-                            <EllipsisCell value={log.contact} width={140} />
-
-                            {/* Phone */}
-                            <Box display="flex" alignItems="center" gap={0.5}>
-                              <PhoneIcon sx={{ fontSize: 14, color: "text.secondary" }} />
-                              <Typography variant="caption" color="text.secondary">
-                                {log.phone}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </Box>
+                        <EllipsisCell value={log.contact} width={160} />
                       </TableCell>
+                      <TableCell>{log.phone}</TableCell>
                       <TableCell>
                         <Chip
                           label={titleCase(log.status)}
@@ -782,20 +857,28 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             color: "error.main",
                             fontWeight: 500,
                           }}
-                        //onClick={() => onEdit(campaign?.agent_id)}
+                          //onClick={() => onEdit(campaign?.agent_id)}
                         >
                           {formatEndedReason(log.ended_reason)}
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <OutcomeChip value={log.sentiment} />
-                      </TableCell>
-                      <TableCell>
-                        <ConversionOutcomeChip value={log.lead_qualified_status} />
-                      </TableCell>
-                      <TableCell>
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={titleCase(log.sentiment || "-")}
+                          color={
+                            log.sentiment?.toLowerCase() === "positive"
+                              ? "success"
+                              : log.sentiment?.toLowerCase() === "negative"
+                                ? "error"
+                                : "default"
+                          }
+                          size="small"
+                        />
+                      </TableCell>
+
                       <TableCell>
                         {log.date ? formatDateTime(log.date) : "-"}
                       </TableCell>
@@ -851,6 +934,134 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         onClose={() => setOpenInsights(false)}
         data={selectedCall}
       />
+
+      <ContactsDialog
+        campaign_id={campaignId}
+        open={openContactsDialog}
+        onClose={() => setOpenContactsDialog(false)}
+        type={contactType}
+      />
     </Box>
+  );
+}
+
+interface ContactsDialogProps {
+  campaign_id: number,
+  open: boolean;
+  onClose: () => void;
+  type: ContactType;
+}
+
+function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProps) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) fetchData();
+  }, [open, type]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const data = await callLogService.getCampaignContacts(campaign_id,type);
+      setData(data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDialogTitle = (type: ContactType): string => {
+    switch (type) {
+      case "all":
+        return "Total Contacts";
+      case "initiated":
+        return "Initiated Calls";
+      case "rescheduled":
+        return "Rescheduled Calls";
+      case "pending":
+        return "Pending Calls";
+      default:
+        return "Data";
+    }
+  };
+
+  const tableConfig: Record<
+    ContactType,
+    { columns: { label: string; key: string }[] }
+  > = {
+    all: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "EMAIL", key: "email" },
+      ],
+    },
+    pending: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "EMAIL", key: "email" },
+      ],
+    },
+    initiated: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "STATUS", key: "status" },
+        { label: "ENDED REASON", key: "ended_reason" },
+        { label: "DATE", key: "date" },
+      ],
+    },
+    rescheduled: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "STATUS", key: "status" },
+        { label: "ENDED REASON", key: "ended_reason" },
+        { label: "DATE", key: "date" },
+      ],
+    },
+  };
+
+  const columns = tableConfig[type].columns;
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+      <DialogTitle>{getDialogTitle(type)}</DialogTitle>
+
+      <DialogContent dividers sx={{ p: 0 }}>
+        {loading ? (
+          <Typography sx={{ p: 2 }}>Loading...</Typography>
+        ) : (
+          <Table stickyHeader>
+            <TableHead>
+              <TableRow>
+                {columns.map((col) => (
+                  <TableCell key={col.key}>{col.label}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {data.map((row, i) => (
+                <TableRow key={i}>
+                  {columns.map((col) => (
+                    <TableCell key={col.key}>{row[col.key] ?? "-"}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+
+      <Box textAlign="right" p={2}>
+        <Button variant="contained" onClick={onClose}>
+          Close
+        </Button>
+      </Box>
+    </Dialog>
   );
 }
