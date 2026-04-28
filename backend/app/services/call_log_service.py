@@ -287,6 +287,101 @@ def get_call_logs(
         }
     }
 
+def get_contacts_by_type(
+    db: Session,
+    organization_id: int,
+    campaign_id: int,
+    type: str  # all | initiated | rescheduled | pending
+):
+    # Base query: all contacts mapped to campaign
+    query = (
+        db.query(
+            Contact.id.label("contact_id"),
+            Contact.phone,
+            Contact.name,
+            Contact.email,
+            CallLog.status,
+            CallLog.ended_reason,
+            CallLog.created_at
+        )
+        .join(
+            CampaignContact,
+            CampaignContact.contact_id == Contact.id
+        )
+        .join(
+            CallCampaign,
+            CallCampaign.id == CampaignContact.campaign_id
+        )
+        .outerjoin(
+            CallLog,
+            and_(
+                CallLog.contact_id == Contact.id,
+                CallLog.campaign_id == campaign_id
+            )
+        )
+        .filter(
+            CallCampaign.id == campaign_id,
+            CallCampaign.organization_id == organization_id
+        )
+    )
+
+    # ----------------------------
+    # TYPE FILTERS
+    # ----------------------------
+
+    if type == "initiated":
+        # call attempted → call_log exists
+        query = query.filter(CallLog.id.isnot(None))
+
+    elif type == "rescheduled":
+        query = query.filter(
+            and_(
+                CallLog.id.isnot(None),
+                CallLog.source == "rescheduled_call"
+            )
+        )
+
+    elif type == "pending":
+        # no call attempted
+        query = query.filter(CallLog.id.is_(None))
+
+    # "all" → no extra filter
+
+    # Optional: latest call per contact (important if multiple logs exist)
+    subq = (
+        db.query(
+            CallLog.contact_id,
+            func.max(CallLog.created_at).label("latest_call")
+        )
+        .filter(CallLog.campaign_id == campaign_id)
+        .group_by(CallLog.contact_id)
+        .subquery()
+    )
+
+    query = query.outerjoin(
+        subq,
+        subq.c.contact_id == Contact.id
+    ).filter(
+        or_(
+            CallLog.created_at == subq.c.latest_call,
+            CallLog.id.is_(None)
+        )
+    )
+
+    results = query.all()
+
+    return [
+        {
+            "contact_id": r.contact_id,
+            "phone": r.phone,
+            "name": r.name,
+            "email": r.email,
+            "status": r.status,
+            "ended_reason": r.ended_reason,
+            "date": r.created_at.replace(tzinfo=timezone.utc).isoformat()
+        }
+        for r in results
+    ]
 
 def create_call_log(db: Session, data: CallLogCreate):
 

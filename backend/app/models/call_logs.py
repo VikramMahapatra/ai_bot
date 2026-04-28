@@ -43,6 +43,7 @@ class CallLog(Base):
     cost = Column(Numeric(10, 2), nullable=True)
     audio_url = Column(String)
     instant_reply_sent = Column(Boolean, default=False)
+    source = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     workflow_execution_id = Column(
