@@ -41,6 +41,12 @@ VALID_LEAD_STATUSES = {
     "not lead",
 }
 
+FUNNEL_STAGE = {
+    "LEAD_QUALIFICATION": "lead_qualification",
+    "CLOSED_LOST": "closed_lost",
+    "UNASSIGNED": "unassigned",
+}
+
 
 def _normalize_outcome(value: Optional[str]) -> str:
     if not value:
@@ -304,11 +310,24 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                     FunnelCategory.organization_id == org_id,
                     FunnelCategory.is_active == True,
                 ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
-            inferred_funnel_stage = _classify_funnel_stage_with_llm(
-                transcript,
-                funnel_categories_by_org.get(org_id, []),
+                
+            # FUNNEL STAGE ANALYSIS TO BE DONE
+                
+            # inferred_funnel_stage = _classify_funnel_stage_with_llm(
+            #     transcript,
+            #     funnel_categories_by_org.get(org_id, []),
+            # )
+            
+            inferred_funnel_stage = (
+                FUNNEL_STAGE["LEAD_QUALIFICATION"]
+                if is_lead_value
+                else (
+                    FUNNEL_STAGE["CLOSED_LOST"]
+                    if (outcome or "").lower() not in (None, "")
+                    else FUNNEL_STAGE["UNASSIGNED"]
+                )
             )
-
+            
             db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
@@ -504,12 +523,32 @@ def process_pending_lead_funnel_tags(
                 
             logger.info(f"Running llm for lead : {lead_id}")
 
-            inferred_funnel_stage = _classify_funnel_stage_with_llm(
-                _build_transcript(rows),
-                funnel_categories_by_org.get(org_id, []),
-            )
+            # inferred_funnel_stage = _classify_funnel_stage_with_llm(
+            #     _build_transcript(rows),
+            #     funnel_categories_by_org.get(org_id, []),
+            # )
+            
+            lead = db.query(Lead).filter(
+                Lead.organization_id == org_id,
+                Lead.id == lead_id,
+                or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
+            ).first()
+            
+            inferred_funnel_stage = None
+            
+            if lead:
+                inferred_funnel_stage = (
+                    FUNNEL_STAGE["LEAD_QUALIFICATION"]
+                    if rows[0].is_lead
+                    else (
+                        FUNNEL_STAGE["CLOSED_LOST"]
+                        if (rows[0].outcome or "").lower() not in (None, "")
+                        else FUNNEL_STAGE["UNASSIGNED"]
+                    )
+                )
+            
             if not inferred_funnel_stage:
-                continue
+                    continue
 
             updated_rows = db.query(Lead).filter(
                 Lead.organization_id == org_id,

@@ -50,7 +50,8 @@ import PeopleIcon from '@mui/icons-material/People';
 import CallIcon from "@mui/icons-material/Call";
 import ReplayIcon from '@mui/icons-material/Replay';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-
+import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
+import PersonIcon from "@mui/icons-material/Person";
 
 interface Props {
   campaignId: number;
@@ -191,6 +192,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     status: "All",
     sentiment: "All",
     evaluation: "All",
+    is_lead_qualified: "All"
   });
 
   const loadData = async () => {
@@ -250,6 +252,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         updatedFilters.evaluation !== "All"
           ? updatedFilters.evaluation
           : undefined,
+      is_lead_qualified:
+        updatedFilters.is_lead_qualified !== "All"
+          ? updatedFilters.is_lead_qualified
+          : undefined,
+
     });
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);
@@ -274,6 +281,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         sentiment: filters.sentiment !== "All" ? filters.sentiment : undefined,
         evaluation:
           filters.evaluation !== "All" ? filters.evaluation : undefined,
+        is_lead_qualified:
+          filters.is_lead_qualified !== "All" ? filters.is_lead_qualified : undefined,
       });
 
       ExportToExcel(data, "Campaign_Call_Logs");
@@ -699,11 +708,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableHead>
                 <TableRow>
                   <TableCell>Contact</TableCell>
-                  <TableCell>Phone</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Ended Reason</TableCell>
-                  <TableCell>Duration</TableCell>
                   <TableCell>Sentiment</TableCell>
+                  <TableCell>Outcome</TableCell>
+                  <TableCell>Duration</TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -711,7 +720,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableBody>
                 {callLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} sx={{ py: 8 }}>
+                    <TableCell colSpan={8} sx={{ py: 8 }}>
                       <Box
                         display="flex"
                         flexDirection="column"
@@ -743,9 +752,22 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   callLogs.map((log) => (
                     <TableRow key={log.id} hover>
                       <TableCell>
-                        <EllipsisCell value={log.contact} width={160} />
+                        <Box display="flex" alignItems="flex-start" gap={1}>
+                          {/* Main icon */}
+                          <Box>
+                            {/* Contact name */}
+                            <EllipsisCell value={log.contact} width={140} />
+
+                            {/* Phone */}
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <PhoneIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+                              <Typography variant="caption" color="text.secondary">
+                                {log.phone}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Box>
                       </TableCell>
-                      <TableCell>{log.phone}</TableCell>
                       <TableCell>
                         <Chip
                           label={titleCase(log.status)}
@@ -766,22 +788,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         </Box>
                       </TableCell>
                       <TableCell>
-                        {log.duration ? `${log.duration} sec` : "N/A"}
+                        <OutcomeChip value={log.sentiment} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(log.sentiment || "-")}
-                          color={
-                            log.sentiment?.toLowerCase() === "positive"
-                              ? "success"
-                              : log.sentiment?.toLowerCase() === "negative"
-                                ? "error"
-                                : "default"
-                          }
-                          size="small"
-                        />
+                        <ConversionOutcomeChip value={log.lead_qualified_status} />
                       </TableCell>
-
+                      <TableCell>
+                        {log.duration ? `${log.duration} sec` : "N/A"}
+                      </TableCell>
                       <TableCell>
                         {log.date ? formatDateTime(log.date) : "-"}
                       </TableCell>

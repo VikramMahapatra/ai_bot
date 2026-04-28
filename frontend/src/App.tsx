@@ -406,9 +406,10 @@ const ProtectedRoute: React.FC<{
 
     React.useEffect(() => {
       const checkAccess = async () => {
-        console.log("User Role :", userRole)
-        if (userRole == 'SUPERADMIN')
+        if (userRole === 'SUPERADMIN' || !userRole) {
+          setLoading(false);
           return;
+        }
 
         try {
           const response = await organizationService.checkFeatureAccess(pathname);
@@ -464,7 +465,7 @@ const ProtectedRoute: React.FC<{
     }
 
 
-    if (userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
+    if (userRole && userRole !== 'SUPERADMIN' && access && !access.allowed && !access.fallback) {
       return <RestrictedFeaturePage modulePath={access.module} />
     }
 

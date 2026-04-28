@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks
 from psycopg2 import IntegrityError
-from sqlalchemy import Integer, and_, case, cast, exists, func, literal_column, or_, select, true
+from sqlalchemy import Integer, and_, case, cast, distinct, exists, func, literal_column, or_, select, true
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -157,20 +157,38 @@ def get_call_logs(
         )
 
     # TOTAL COUNT
-    summary = query.with_entities(
-        func.count(CallLog.id).label("total_calls"),
-        func.sum(
-            case((CallLog.campaign_id != None, 1), else_=0)
-        ).label("campaign_calls"),
-        func.sum(
-            case((CallLog.campaign_id == None, 1), else_=0)
-        ).label("test_calls")
-    ).first()
+    transcript_exists = (
+        db.query(CallTranscript.id)
+        .filter(CallTranscript.call_log_id == CallLog.id)
+        .exists()
+    )
+    
+    summary = (
+        query
+        .with_entities(
+            func.count(distinct(CallLog.id)).label("total_calls"),
 
-    total_calls = summary.total_calls or 0
-    campaign_calls = summary.campaign_calls or 0
-    test_calls = summary.test_calls or 0
+            func.count(
+                distinct(
+                    case((CallLog.campaign_id != None, CallLog.id))
+                )
+            ).label("campaign_calls"),
 
+            func.count(
+                distinct(
+                    case((CallLog.campaign_id == None, CallLog.id))
+                )
+            ).label("test_calls"),
+
+            func.count(
+                distinct(
+                    case((transcript_exists, CallLog.id))
+                )
+            ).label("successful_calls")
+        )
+        .first()
+    )
+    
     # PAGINATION
     if params.skip is not None and params.limit is not None:
         logs = (
@@ -200,9 +218,7 @@ def get_call_logs(
         )
 
         # duration in seconds
-        duration = log.duration
-        if not log.duration and log.start_time and log.end_time:
-            duration = int((log.end_time - log.start_time).total_seconds())
+        duration = log.duration or 0
             
         # Determine lead status for grid
         is_lead = (
@@ -220,7 +236,7 @@ def get_call_logs(
         lead_status = {
             True: "positive",
             False: "negative",
-        }.get(is_lead, "pending")
+        }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
             
         rows.append({
             "id": log.id,
@@ -243,7 +259,7 @@ def get_call_logs(
             "testCall": False if log.campaign_id else True,
             "ended_reason": log.ended_reason,
             "call_summary": log.call_summary,
-            "sentiment": lead_outcome if lead_outcome and log.campaign_id else "N/A",
+            "sentiment": lead_outcome if lead_outcome and log.campaign_id else "",
             "follow_up_recommended": log.follow_up_recommended or [],
             "extract_data": log.extract_data or {},
             "lead_info": log.lead_info or {},
@@ -258,11 +274,14 @@ def get_call_logs(
 
     return {
         "items": rows,
-        "total_calls": total_calls,
-        "campaign_calls": campaign_calls,
-        "test_calls": test_calls,
+        "summary": {
+            "total_calls": summary.total_calls or 0,
+            "campaign_calls": summary.campaign_calls or 0,
+            "test_calls": summary.test_calls or 0,
+            "successful_calls": summary.successful_calls or 0,
+        },
         "pagination": {
-            "total": total_calls,
+            "total": summary.total_calls or 0,
             "skip": params.skip,
             "limit": params.limit
         }

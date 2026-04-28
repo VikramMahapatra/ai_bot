@@ -1518,11 +1518,7 @@ const LeadManager: React.FC = () => {
                     <SourceChip value={lead.source} />
                   </TableCell>
                   <TableCell>
-                    {lead.lead_outcome ? (
-                      <OutcomeChip value={lead.lead_outcome} />
-                    ) : (
-                      "-"
-                    )}
+                    <OutcomeChip value={lead.lead_outcome} />
                   </TableCell>
                   <TableCell>
                     <StageChip

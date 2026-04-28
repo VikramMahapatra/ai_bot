@@ -1,6 +1,7 @@
 from typing import List
 from sqlalchemy.orm import Session
-from app.models.funnel_category import FunnelCategory
+from sqlalchemy import func, insert, or_, select, text
+from app.models.funnel_category import FunnelCategory, FunnelCategoryMaster
 
 
 DEFAULT_FUNNEL_CATEGORIES = [
@@ -13,24 +14,39 @@ DEFAULT_FUNNEL_CATEGORIES = [
     {"name": "Closed Lost", "key": "closed_lost", "color": "#cc6d6d", "position": 7},
 ]
 
+def _seed_funnel_categories_for_org(db, org_id: int):
+    stmt = insert(FunnelCategory).from_select(
+        [
+            "organization_id",
+            "name",
+            "key",
+            "color",
+            "position",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ],
+        select(
+            org_id,
+            FunnelCategoryMaster.name,
+            FunnelCategoryMaster.key,
+            FunnelCategoryMaster.color,
+            FunnelCategoryMaster.position,
+            FunnelCategoryMaster.is_active,
+            func.now(),
+            func.now(),
+        ).where(FunnelCategoryMaster.is_active == True)
+    )
+
+    db.execute(stmt)
+    db.commit()
 
 def ensure_default_funnel_categories(db: Session, organization_id: int) -> None:
     existing = db.query(FunnelCategory).filter(FunnelCategory.organization_id == organization_id).count()
     if existing > 0:
         return
 
-    for category in DEFAULT_FUNNEL_CATEGORIES:
-        db.add(
-            FunnelCategory(
-                organization_id=organization_id,
-                name=category["name"],
-                key=category["key"],
-                color=category["color"],
-                position=category["position"],
-                is_active=True,
-            )
-        )
-    db.commit()
+    _seed_funnel_categories_for_org(db, organization_id)
 
 
 def get_funnel_categories(db: Session, organization_id: int, include_inactive: bool = False) -> List[FunnelCategory]:
