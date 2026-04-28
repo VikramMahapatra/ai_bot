@@ -6,6 +6,14 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.migrations import apply_db_migrations
 import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
 # Create database engine
 # Use absolute path for SQLite to avoid working-directory issues
@@ -210,6 +218,7 @@ def init_db():
                 "default_meet_link": "TEXT",
                 "joining_date": "DATE",
                 "effective_joining_date": "DATE",
+                "echoleads_api_key": "TEXT"
             }
 
             for col, col_type in columns.items():
@@ -217,7 +226,8 @@ def init_db():
                     conn.execute(
                         text(f"ALTER TABLE organizations ADD COLUMN {col} {col_type}")
                     )
-        except Exception:
+        except Exception as e:
+            print(str(e))
             pass
 
         # ----------------------------
@@ -293,10 +303,6 @@ def init_db():
             for col, col_type in columns.items():
                 if not column_exists(conn, "leads", col):
                     conn.execute(text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}"))
-
-            conn.execute(
-                text("ALTER TABLE leads DROP COLUMN IF EXISTS campaign_id")
-            )
 
         except Exception as e:
             print(str(e))

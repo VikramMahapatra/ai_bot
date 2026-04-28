@@ -378,7 +378,7 @@ def get_contacts_by_type(
             "email": r.email,
             "status": r.status,
             "ended_reason": r.ended_reason,
-            "date": r.created_at.replace(tzinfo=timezone.utc).isoformat()
+            "date": r.created_at.replace(tzinfo=timezone.utc).isoformat() if r.created_at else None
         }
         for r in results
     ]

@@ -45,6 +45,7 @@ from app.models.message_templates import MessageTemplate
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.workflows import Workflow, WorkflowStep, WorkflowStepOutcome, WorkflowEdge, WorkflowExecution, WorkflowExecutionLog
+from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 
 __all__ = [
     "User",
@@ -101,5 +102,8 @@ __all__ = [
     "WorkflowEdge",
     "WorkflowExecution",
     "WorkflowExecutionLog",
-    "FunnelCategoryMaster"
+    "FunnelCategoryMaster",
+    "Channel",
+    "OrganizationChannel",
+    "ChannelReservation"
 ]

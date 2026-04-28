@@ -311,6 +311,7 @@ async def create_lead(
         db.commit()
         return new_lead
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         logger.error(f"Error creating lead: {str(e)}")

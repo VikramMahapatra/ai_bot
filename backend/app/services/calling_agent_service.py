@@ -23,6 +23,7 @@ from app.models.user import Organization
 from app.services.call_log_service import process_call, sync_call_logs
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_channel_service
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
@@ -614,6 +615,10 @@ def test_call(
     if not agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
     
+    
+    # CHANNEL VALIDATION
+    organization_channel_service.validate_channel_available(db, agent.organization_id, "test")
+    
     feature_code = FeatureCodes.CORE_CALL_OUT_ATTEMPT if agent.type == "outbound" else FeatureCodes.CORE_CALL_IN_ATTEMPT
     
     valid = organization_credit_service.validate_feature_usage(
@@ -686,6 +691,13 @@ def test_call(
             quantity=1,
             reference_type="calling_agent_test_call",
             reference_id=str(test_call.id)
+        )
+        
+        organization_channel_service.reserve_channel(
+            db,
+            organization_id=agent.organization_id,
+            call_type="test",
+            reference_id=test_call.id
         )
     
     db.commit()
