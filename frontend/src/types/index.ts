@@ -284,6 +284,7 @@ export interface SuperAdminOrganization {
   admin_username?: string;
   admin_email?: string;
   limits?: OrganizationLimits;
+  echoleads_api_key?: string;
 }
 
 

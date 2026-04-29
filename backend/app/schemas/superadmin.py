@@ -78,6 +78,7 @@ class SuperAdminCreateOrganizationRequest(BaseModel):
     admin_email: EmailStr
     admin_password: str
     limits: Optional[OrganizationLimitsUpdate] = None
+    echoleads_api_key: Optional[str] = None
 
 
 class SuperAdminUpdateOrganizationRequest(BaseModel):
@@ -88,6 +89,7 @@ class SuperAdminUpdateOrganizationRequest(BaseModel):
     admin_username: Optional[str] = None
     admin_email: Optional[EmailStr] = None
     admin_password: Optional[str] = None
+    echoleads_api_key: Optional[str] = None
 
 
 class SuperAdminOrganizationResponse(BaseModel):
@@ -99,6 +101,7 @@ class SuperAdminOrganizationResponse(BaseModel):
     admin_username: Optional[str] = None
     admin_email: Optional[str] = None
     limits: Optional[OrganizationLimitsResponse] = None
+    echoleads_api_key: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -130,12 +133,15 @@ class CallingNumberBase(BaseModel):
     type: str = "outbound"  # 'outbound' or 'inbound'
     is_default: Optional[bool] = False
     is_active: Optional[bool] = True
-    
+
+
 class CallingNumberCreate(CallingNumberBase):
     pass
 
+
 class CallingNumberUpdate(CallingNumberBase):
     pass
+
 
 class CallingNumberResponse(BaseModel):
     id: int
@@ -471,5 +477,3 @@ class BillingInvoiceMarkPaidResponse(BaseModel):
     partial_invoice: Optional[BillingInvoiceResponse] = None
     credit_note: Optional[float] = None
     credit_applied: Optional[float] = None
-
-
