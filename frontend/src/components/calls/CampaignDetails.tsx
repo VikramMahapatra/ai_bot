@@ -29,6 +29,7 @@ import {
   DialogContent,
   TableContainer,
   CircularProgress,
+  DialogActions,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -51,7 +52,7 @@ import InsightsIcon from "@mui/icons-material/Insights";
 import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
-import { ExportToExcel } from "../../utils/callLogExport";
+import { ExportContactToExcel, ExportToExcel } from "../../utils/callLogExport";
 import PeopleIcon from "@mui/icons-material/People";
 import CallIcon from "@mui/icons-material/Call";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -432,6 +433,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <Typography variant="h5" mt={1}>
                 {campaign?.total_contacts || 0}
               </Typography>
+             <Typography variant="caption" mt={1} color="text.secondary">
+              Click to view all contacts
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -455,6 +459,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <Typography variant="h5" mt={1}>
                 {campaign?.attempted_calls || 0}
               </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+              Click to view initiated calls
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -477,6 +484,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <Typography variant="h5" mt={1}>
                 {campaign?.rescheduled_calls || 0}
               </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+              Click to view rescheduled calls
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -494,11 +504,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Pending Scheduled</Typography>
+                <Typography variant="subtitle2">Pending Calls</Typography>
                 <ScheduleIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {campaign?.pending_scheduled_calls || 0}
+              </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+              Click to view pending calls
               </Typography>
             </CardContent>
           </Card>
@@ -947,23 +960,28 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
 }
 
 interface ContactsDialogProps {
-  campaign_id: number,
+  campaign_id: number;
   open: boolean;
   onClose: () => void;
   type: ContactType;
 }
 
-function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProps) {
+function ContactsDialog({
+  campaign_id,
+  open,
+  onClose,
+  type,
+}: ContactsDialogProps) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setData([]);        
+      setData([]);
       setError(null);
       fetchData();
-    } 
+    }
   }, [open, type]);
 
   const fetchData = async () => {
@@ -971,11 +989,11 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
       setLoading(true);
       setError(null);
 
-      const data = await callLogService.getCampaignContacts(campaign_id,type);
+      const data = await callLogService.getCampaignContacts(campaign_id, type);
       setData(data || []);
     } catch (e) {
       console.error(e);
-      setData([]);             
+      setData([]);
       setError("Failed to load data");
     } finally {
       setLoading(false);
@@ -1035,6 +1053,14 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
     },
   };
 
+  const handleExport = async () => {
+    try {
+      ExportContactToExcel(data, type, getDialogTitle(type));
+    } catch (error) {
+      console.error("Export failed", error);
+    }
+  };
+
   const columns = tableConfig[type].columns;
 
   return (
@@ -1043,16 +1069,16 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
 
       <DialogContent dividers sx={{ p: 0 }}>
         {loading ? (
-      <Box textAlign="center">
-        <CircularProgress size={20}/>
-        <Typography sx={{ mr: 1 }}>Loading data...</Typography>
-      </Box>
-    ) : error ? (
-    <Box textAlign="center" mt={5}>
-      <Typography color="error">{error}</Typography>
-      <Button onClick={fetchData}>Retry</Button>
-    </Box>
-  ) : (
+          <Box textAlign="center">
+            <CircularProgress size={20} />
+            <Typography sx={{ mr: 1 }}>Loading data...</Typography>
+          </Box>
+        ) : error ? (
+          <Box textAlign="center" mt={5}>
+            <Typography color="error">{error}</Typography>
+            <Button onClick={fetchData}>Retry</Button>
+          </Box>
+        ) : (
           <Table stickyHeader>
             <TableHead>
               <TableRow>
@@ -1063,26 +1089,44 @@ function ContactsDialog({ campaign_id, open, onClose, type }: ContactsDialogProp
             </TableHead>
 
             <TableBody>
-              {data.map((row, i) => (
-                <TableRow key={i}>
-                  {columns.map((col) => (
-                    <TableCell key={col.key}>{col.key.includes("date")
-    ? formatDateTime(row[col.key])
-    : row[col.key] ?? "-"}</TableCell>
-                  ))}
+              {data.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} align="center">
+                    No data available
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                data.map((row, i) => (
+                  <TableRow key={i}>
+                    {columns.map((col) => (
+                      <TableCell key={col.key}>
+                        {col.key.includes("date")
+                          ? formatDateTime(row[col.key])
+                          : (row[col.key] ?? "-")}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         )}
       </DialogContent>
 
-      <Box textAlign="right" p={2}>
+      <DialogActions>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={handleExport}
+          disabled={loading || !!error || data.length === 0}
+        >
+          Export to Excel
+        </Button>
+
         <Button variant="contained" onClick={onClose}>
           Close
         </Button>
-      </Box>
+      </DialogActions>
     </Dialog>
   );
 }
-//{formatDateTime(campaign.created_at)}
