@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { CallLogListResponse } from "../services/callLogService";
+import { CallLogListResponse, CampaignContactResponse, ContactType } from "../services/callLogService";
 import { formatDateTime } from "./dateUtils";
 import { formatEndedReason } from "../components/calls/CallDetailDrawer";
 
@@ -41,6 +41,42 @@ export const ExportToExcel = (data: CallLogListResponse, fileName: string) => {
     const workbook = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(workbook, worksheet, "Call Logs");
+
+    const excelBuffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array"
+    });
+
+    const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
+    });
+
+    saveAs(blob, `${fileName}_${Date.now()}.xlsx`);
+}
+
+export const ExportContactToExcel = (data: CampaignContactResponse[],type: ContactType, fileName: string) => {
+    var exportData 
+    if (type == "all" || type == "pending") {
+        exportData  = data.map((contact) => ({
+        Name: contact.name,
+        Phone: contact.phone,
+        Email: contact.email || "-",
+    }));
+    } else {
+        exportData  = data.map((contact) => ({
+        Name: contact.name,
+        Phone: contact.phone,
+        Email: contact.email || "-",
+        Status: contact.status || "-",
+        "Ended Reason": contact.ended_reason || "-",
+        Date: formatDateTime(contact.date),
+    }));
+    }
+    console.log("Exported Data",exportData);
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, fileName);
 
     const excelBuffer = XLSX.write(workbook, {
         bookType: "xlsx",
