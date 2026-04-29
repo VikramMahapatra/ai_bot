@@ -158,6 +158,7 @@ def _build_org_response(
         admin_username=admin_user.username if admin_user else None,
         admin_email=admin_user.email if admin_user else None,
         limits=limits,
+        echoleads_api_key=org.echoleads_api_key,
     )
 
 
@@ -800,8 +801,6 @@ def _apply_profile_patch(
         profile.expiry_days = data["expiry_days"]
     if "notes" in data:
         profile.notes = data["notes"]
-        
-
 
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)
@@ -883,6 +882,7 @@ async def create_organization_with_admin(
         effective_joining_date=request.effective_joining_date,
         org_domain=_build_org_domain(org_name),
         access_token=secrets.token_urlsafe(32),
+        echoleads_api_key=request.echoleads_api_key,
     )
     db.add(org)
     db.commit()
@@ -921,6 +921,7 @@ async def create_organization_with_admin(
         admin_username=admin_user.username,
         admin_email=admin_user.email,
         limits=limits,
+        echoleads_api_key=org.echoleads_api_key,
     )
 
 
@@ -974,6 +975,8 @@ async def update_organization_with_admin(
         org.joining_date = request.joining_date
     if request.effective_joining_date is not None:
         org.effective_joining_date = request.effective_joining_date
+    if request.echoleads_api_key is not None:
+        org.echoleads_api_key = request.echoleads_api_key
 
     admin_username = (
         request.admin_username.strip() if request.admin_username is not None else None

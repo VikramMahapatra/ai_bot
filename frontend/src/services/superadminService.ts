@@ -83,6 +83,7 @@ export const superadminService = {
     admin_email: string;
     admin_password: string;
     limits?: Partial<OrganizationLimits>;
+    echoleads_api_key?: string;
   }) {
     const response = await api.post<SuperAdminOrganization>('/api/superadmin/organizations', payload);
     return response.data;
@@ -98,6 +99,7 @@ export const superadminService = {
       admin_username?: string;
       admin_email?: string;
       admin_password?: string;
+      echoleads_api_key?: string;
     }
   ) {
     const response = await api.put<SuperAdminOrganization>(`/api/superadmin/organizations/${orgId}`, payload);

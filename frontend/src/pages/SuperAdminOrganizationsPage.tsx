@@ -103,6 +103,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     admin_username: '',
     admin_email: '',
     admin_password: '',
+    echoleads_api_key: '',
   });
   const [createOpen, setCreateOpen] = useState(false);
   const [createOverrideLimits, setCreateOverrideLimits] = useState<Partial<OrganizationLimits>>({ ...defaultLimits });
@@ -157,6 +158,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [callingFormError, setCallingFormError] = useState({
     calling_number: ""
   })
+  const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState('');
 
   const orgStats = useMemo(() => {
     const total = organizations.length;
@@ -365,6 +367,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         admin_email: form.admin_email,
         admin_password: form.admin_password,
         limits: payloadLimits,
+        echoleads_api_key: form.echoleads_api_key || undefined
       });
       setCreateResultDialog({
         open: true,
@@ -395,6 +398,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       admin_username: '',
       admin_email: '',
       admin_password: '',
+      echoleads_api_key: '',
     });
     setCreateOverrideLimits({ ...defaultLimits });
     await loadOrganizations();
@@ -408,6 +412,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setEditJoiningDate(org.joining_date || '');
     setEditEffectiveJoiningDate(org.effective_joining_date || '');
     setEditOverrideLimits({ ...defaultLimits, ...(org.limits || {}) });
+    setEditEchoLeadsAPIKey(org.echoleads_api_key || '');
     setOpen(true);
   };
 
@@ -426,6 +431,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       const trimmedAdminEmail = editAdminEmail.trim();
       const trimmedAdminPassword = editAdminPassword.trim();
       const missingAdmin = !editingOrg.admin_username;
+      const trimmedAPIKey = editEchoLeadsAPIKey.trim();
 
       if (!trimmedAdminUsername) {
         setActionError('Admin username is required.');
@@ -446,6 +452,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         admin_username: trimmedAdminUsername,
         admin_email: trimmedAdminEmail,
         admin_password: trimmedAdminPassword || undefined,
+        echoleads_api_key: trimmedAPIKey || undefined
       });
 
       // Only send true overrides
@@ -937,6 +944,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             <Grid item xs={12} md={4}>
               <TextField label="Admin Password" type="password" fullWidth value={form.admin_password} onChange={(e) => setForm({ ...form, admin_password: e.target.value })} />
             </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Echoleads API Key"
+                type="text"
+                fullWidth
+                value={form.echoleads_api_key}
+                onChange={(e) => setForm({ ...form, echoleads_api_key: e.target.value })}
+              />
+            </Grid>
           </Grid>
 
           <Paper
@@ -1084,6 +1100,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                     ? 'Required to create missing admin user.'
                     : 'Leave blank to keep the current password.'
                 }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Echoleads API Key"
+                type="text"
+                fullWidth
+                value={editEchoLeadsAPIKey}
+                onChange={(e) => setEditEchoLeadsAPIKey(e.target.value)}
               />
             </Grid>
           </Grid>
