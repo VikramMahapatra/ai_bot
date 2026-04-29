@@ -33,6 +33,7 @@ else:
     engine = create_engine(
         database_url,
         pool_pre_ping=True,
+        pool_recycle=1800,
         pool_size=10,  # optional
         max_overflow=20,  # optional
     )

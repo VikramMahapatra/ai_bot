@@ -58,7 +58,7 @@ import {
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
 import { formatDateTime } from "../utils/dateUtils";
-import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip } from "../components/Common/StatusChips";
+import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip, titleCase } from "../components/Common/StatusChips";
 import {
   Menu,
   ListItemIcon,
@@ -872,12 +872,6 @@ const ReportsPage: React.FC = () => {
     verticalAlign: "top",
     minWidth: 150,
   };
-
-  const titleCase = (value: string) =>
-    value
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
 
   const sourceLabel = (source?: string) =>
     titleCase((source || "chat").toLowerCase());
@@ -2173,7 +2167,7 @@ const ReportsPage: React.FC = () => {
                       value={voiceDetailsItem.funnel_stage}
                       funnelCategories={funnelCategories}
                       stageNameByKey={stageNameByKey}
-                      stageLabel={stageLabel}
+                      stageLabel={stageLabel!}
                     />
                   </Typography>
                 </Grid>

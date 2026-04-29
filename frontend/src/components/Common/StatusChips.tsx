@@ -2,11 +2,14 @@ import { Chip } from "@mui/material";
 import { FunnelCategory } from "../../types";
 import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors";
 
-export const titleCase = (value: string) =>
-    value
+export const titleCase = (value?: string | null): string => {
+    if (!value) return "";
+
+    return value
         .split("_")
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+};
 
 export const OutcomeChip = ({ value }: { value?: string | null }) => {
     if (!value || !value.trim()) return <Chip

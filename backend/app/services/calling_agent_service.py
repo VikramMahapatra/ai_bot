@@ -151,7 +151,7 @@ def create_agent(
     db.flush()
     
     #CREATE REQUEST TO ECHO LEADS
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(organization_id)
     echo_payload ={
         "name": db_agent.external_agent_name,
         "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",        
@@ -298,7 +298,7 @@ def update_agent(
         db_agent.external_agent_name = unique_agent_code
 
     # 🔹 Update Echoleads
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(db_agent.organization_id)
     
     echo_payload = {
         "name": db_agent.external_agent_name,
@@ -407,7 +407,7 @@ def sync_agents(
         raise ValueError("Organization not found")
     
     total_org_agents = db.query(CallingAgent).filter(CallingAgent.organization_id == organization_id).count()
-    echo_leads = EcholeadsClient()
+    echo_leads = EcholeadsClient(organization_id)
     try:
         echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
         if echo_response and echo_response.get("data"):
@@ -636,7 +636,7 @@ def test_call(
 
     
     # Prepare API request
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
     
     dynamic_values = []
     if data.variables:
@@ -721,7 +721,7 @@ def publish_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
 
     # Prepare minimal payload for Echoleads
     echo_payload ={
@@ -858,7 +858,7 @@ def delete_agent(db: Session, agent_id: int):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
     response = echoleads.delete_agent(agent.external_agent_id)
 
     # ✅ Treat both success & not_found as success
@@ -945,7 +945,7 @@ def all_agent_lookup(
         for agent in agents
     ]
     
-def get_voices(db: Session):
+def get_voices(db: Session, organization_id: int):
 
     voices = db.query(Voice).all()
 
@@ -954,7 +954,7 @@ def get_voices(db: Session):
         return voices
 
     # If empty → call Echoleads API
-    client = EcholeadsClient()
+    client = EcholeadsClient(organization_id)
     response = client.fetch_voices()
 
     voice_list = response.get("data", [])

@@ -26,6 +26,7 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.models.message_templates import MessageTemplate
 from app.models.organization_credit_usages import OrganizationCreditUsage
+from app.services import organization_channel_service
 
 
 STALE_MINUTES = 1
@@ -92,7 +93,7 @@ def sync_campaigns(
 
     campaign_models = campaign_models.order_by(CallCampaign.created_at.desc()).offset(skip).limit(limit).all()
     
-    echolead_client = EcholeadsClient()
+    echolead_client = EcholeadsClient(organization_id)
 
     for campaign in campaign_models:
         if should_sync(campaign):
@@ -283,7 +284,7 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     
     campaign_obj, product_name, schedule = campaign
      
-    echolead_client = EcholeadsClient()
+    echolead_client = EcholeadsClient(campaign_obj.organization_id)
     background_tasks.add_task(
             sync_campaign_from_echoleads,
             db,
@@ -376,6 +377,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     retries = data.max_retry_attempts or 0
 
     calls_needed = contacts_count * (1 + retries)
+    
+    organization_channel_service.validate_channel_available(db, organization_id, "campaign")
 
     valid = organization_credit_service.validate_feature_usage(
         db,
@@ -469,7 +472,8 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
                     )
                 )
     
-    external_contact_ids = get_external_contact_ids(db, data.contacts)
+    client = EcholeadsClient(organization_id)
+    external_contact_ids = get_external_contact_ids(db, data.contacts, client)
     
     contacts = db.query(Contact).filter(
         Contact.id.in_(data.contacts)
@@ -520,7 +524,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         "dialer_schedule_days": build_schedule_days(data)
     }
 
-    client = EcholeadsClient()
+    
     echo_failed = False
     echoleads_campaign_id = None
     echoleads_campaign_status = "draft"
@@ -564,6 +568,14 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             reference_id=str(campaign.id)
         )
         
+        if send_option == "instant" :
+            organization_channel_service.reserve_channel(
+                db,
+                organization_id=agent.organization_id,
+                call_type="campaign",
+                reference_id=campaign.id
+            )
+        
     db.commit()    
 
     return {
@@ -577,7 +589,7 @@ def update_campaign(
     campaign_id: int,
     data: CampaignUpdate,
 ):
-
+    
     campaign = db.query(CallCampaign).filter(
         CallCampaign.id == campaign_id,
         CallCampaign.is_deleted == False
@@ -585,6 +597,8 @@ def update_campaign(
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    client = EcholeadsClient(campaign.organization_id)
     
     org = db.query(Organization).filter(
         Organization.id == campaign.organization_id
@@ -626,7 +640,7 @@ def update_campaign(
             )
 
         # get external ids
-        external_contact_ids = get_external_contact_ids(db, data.contacts)
+        external_contact_ids = get_external_contact_ids(db, data.contacts, client)
         
     contacts = db.query(Contact).filter(
         Contact.id.in_(data.contacts)
@@ -690,7 +704,7 @@ def update_campaign(
         
     print(payload)
 
-    client = EcholeadsClient()
+    
     echo_failed = False
     try:
         response = client.update_campaign(
@@ -791,6 +805,14 @@ def update_campaign(
         message = "Campaign updated successfully, but sync failed. Please reload the list to sync the campaign."
     else:
         message = "Campaign updated successfully"
+        
+        if send_option == "instant" :
+            organization_channel_service.reserve_channel(
+                db,
+                organization_id=agent.organization_id,
+                call_type="campaign",
+                reference_id=campaign.id
+            )
         
     db.commit()
 
@@ -1111,7 +1133,7 @@ def update_campaign_status(
 ):
     # Get the agent
     campaign = db.query(CallCampaign).filter(CallCampaign.id == campaign_id).first()
-    client = EcholeadsClient()
+    client = EcholeadsClient(campaign.organization_id)
     
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -1362,9 +1384,8 @@ def get_insight_color(title):
 ############### SYNC METHODS
 
 
-def get_external_contact_ids(db: Session, contact_ids: list[int]) -> list[int]:
+def get_external_contact_ids(db: Session, contact_ids: list[int], client: EcholeadsClient) -> list[int]:
 
-    client = EcholeadsClient()
     external_contact_ids = []
 
     contacts = db.query(Contact).filter(Contact.id.in_(contact_ids)).all()
@@ -1496,6 +1517,19 @@ def sync_campaign_from_echoleads(
                     reference_id=campaign.id,
                     actual_quantity=campaign.total_calls
                 )
+                
+            if (
+                campaign.status == "scheduled"
+                and campaign_data.get("status", "").lower() == "running"
+            ):
+                organization_channel_service.reserve_channel(
+                    db,
+                    organization_id=agent.organization_id,
+                    call_type="campaign",
+                    reference_id=campaign.id
+                )
+                
+                
 
         # -------------------------
         # Update Basic Campaign Data
@@ -1581,6 +1615,13 @@ def sync_campaign_from_echoleads(
             )
 
         db.commit()
+        
+        if campaign.status == "completed":
+            organization_channel_service.release_channel(
+                db,
+                call_type="campaign",
+                reference_id=campaign.id
+            )
 
     except Exception as e:
         print("Sync failed:", str(e))

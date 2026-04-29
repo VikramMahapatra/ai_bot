@@ -36,6 +36,7 @@ from app.models.workflows import WorkflowEdge, WorkflowExecution, WorkflowExecut
 from app.models.message_templates import MessageTemplate
 from app.services.report_service import sync_conversation_metrics, sync_voice_metrics_from_conversation
 from app.models.campaign_contacts import CampaignContact
+from app.services import organization_channel_service
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -423,7 +424,7 @@ def sync_call_logs(
     to_date=None,
     agent_id=None
 ):
-    client = EcholeadsClient()
+    client = EcholeadsClient(organization_id)
     total_calls = 0
     
     try:
@@ -551,7 +552,7 @@ def process_call(db, call, agent):
 
             if campaign_contact:
                 contact = campaign_contact.contact
-
+                
         # Prepare common values
         duration = int(call.get("duration")) if call.get("duration") else None
         ended_reason = call.get("ended_reason")
@@ -570,6 +571,7 @@ def process_call(db, call, agent):
                 extract_data = None            
 
         if existing:
+            new_status = call.get("status").lower() if call.get("status") else None
             existing.organization_id = agent.organization_id
             existing.external_call_a_id = call.get("call_id")
             existing.agent_id = agent.id
@@ -593,7 +595,11 @@ def process_call(db, call, agent):
             existing.extract_data = extract_data
             existing.lead_info = lead_info
             existing.success_evaluation = success_eval_str.lower() == "true"
-            db.flush()
+            if new_status:
+                if existing.status != "ended" or new_status == "ended":
+                    existing.status = new_status
+          
+            db.commit()
             
             save_transcripts(db, existing, call.get("transcript"), campaign, contact)
             call_log = existing
@@ -669,7 +675,6 @@ def process_call(db, call, agent):
         ).first() 
         
         
-        
         lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
 
         if lead:
@@ -711,6 +716,13 @@ def process_call(db, call, agent):
 
     if test_call:
         test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
+        
+        if call.get("status").lower() == "ended":
+            organization_channel_service.release_channel(
+                db,
+                call_type="test",
+                reference_id=test_call.id
+            )
         
     db.commit()
     
@@ -844,123 +856,130 @@ def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCam
     db.flush()
 
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
-
+    lead = None
     phone = contact.phone if contact and contact.phone else call.get("phone")
-
-    existing = (
-        db.query(Lead)
-        .filter(
-            Lead.organization_id == call_log.organization_id,
-            Lead.phone == phone,
-            Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
-        )
-        .order_by(Lead.created_at.desc())
-        .first()
-    )
-
-    contact_fields = {}
-    if contact:
-        contact_fields = {
-            "whatsapp_number": contact.whatsapp_number,
-            "gender": contact.gender,
-            "designation": contact.designation,
-            "city": contact.city,
-            "state": contact.state,
-            "country": contact.country,
-            "source": contact.source,
-            "tags": contact.tags
-        }
-
-    # If existing & not closed → update
-    if existing and existing.funnel_stage not in ["closed_won", "closed_lost"] or call_log.is_lead_qualified:
-
-        existing.session_id = call_log.call_session_id
-        existing.widget_id = agent.widget_id
-
-        # Merge custom fields
-        existing_fields = {}
-        if existing.custom_fields:
-            existing_fields = json.loads(existing.custom_fields)
-
-        existing_fields.update({
-            "lead_info": call.get("lead_info"),
-            "external_call_id": call.get("id"),
-            **contact_fields
-        })
-
-        existing.custom_fields = json.dumps(existing_fields)
-
-        lead = existing
-
-    else:
-        
-        valid = organization_credit_service.validate_feature_usage(
-                db, agent.organization_id, FeatureCodes.AI_LEAD_GEN, 1
+    
+    try:
+        existing = (
+            db.query(Lead)
+            .filter(
+                Lead.organization_id == call_log.organization_id,
+                Lead.phone == phone,
+                Lead.product_id == (str(campaign.product_id) if campaign.product_id else None)
             )
+            .order_by(Lead.created_at.desc())
+            .first()
+        )
+        
 
-        if valid:
-            # Create new lead
-            lead = Lead(
+        contact_fields = {}
+        if contact:
+            contact_fields = {
+                "whatsapp_number": contact.whatsapp_number,
+                "gender": contact.gender,
+                "designation": contact.designation,
+                "city": contact.city,
+                "state": contact.state,
+                "country": contact.country,
+                "source": contact.source,
+                "tags": contact.tags
+            }
+
+        # If existing & not closed → update
+        if existing and existing.funnel_stage not in ["closed_won", "closed_lost"] or call_log.is_lead_qualified:
+
+            existing.session_id = call_log.call_session_id
+            existing.widget_id = agent.widget_id
+
+            # Merge custom fields
+            existing_fields = {}
+            if existing.custom_fields:
+                existing_fields = json.loads(existing.custom_fields)
+
+            existing_fields.update({
+                "lead_info": call.get("lead_info"),
+                "external_call_id": call.get("id"),
+                **contact_fields
+            })
+
+            existing.custom_fields = json.dumps(existing_fields)
+
+            lead = existing
+
+        else:
+            
+            valid = organization_credit_service.validate_feature_usage(
+                    db, agent.organization_id, FeatureCodes.AI_LEAD_GEN, 1
+                )
+
+            if valid:
+                # Create new lead
+                lead = Lead(
+                    source="voice",
+                    session_id=call_log.call_session_id,
+                    widget_id=agent.widget_id,
+                    organization_id=agent.organization_id,
+                    product_id=str(campaign.product_id) if campaign.product_id else None,
+                    name=contact.name if contact else None,
+                    email=contact.email if contact else None,
+                    phone=phone,
+                    company=contact.company if contact else None,
+                    custom_fields=json.dumps({
+                        "lead_info": call.get("lead_info"),
+                        "external_call_id": call.get("id"),
+                        **contact_fields
+                    })
+                )
+
+                db.add(lead)
+                db.flush()
+                
+                if contact:
+                    mapping = LeadContactMapping(
+                        lead_id=lead.id,
+                        contact_id=contact.id,
+                        source="voice"
+                    )
+                    db.add(mapping)
+                    db.flush()
+                
+                try:
+                    organization_credit_service.deduct_credits(
+                        db=db,
+                        organization_id=agent.organization_id,
+                        feature_code=FeatureCodes.AI_LEAD_GEN,
+                        quantity=1,
+                        reference_type="lead",
+                        reference_id=str(lead.id)
+                    )
+                except:
+                    pass
+
+        # Create conversation
+        create_conversation_from_transcripts(
+            db=db,
+            call_log=call_log,
+            agent=agent
+        )
+
+        # Add Lead Activity
+        if lead:
+            create_lead_activity(
+                db=db,
+                lead=lead,
                 source="voice",
                 session_id=call_log.call_session_id,
-                widget_id=agent.widget_id,
-                organization_id=agent.organization_id,
-                product_id=str(campaign.product_id) if campaign.product_id else None,
-                name=contact.name if contact else None,
-                email=contact.email if contact else None,
-                phone=phone,
-                company=contact.company if contact else None,
-                custom_fields=json.dumps({
-                    "lead_info": call.get("lead_info"),
-                    "external_call_id": call.get("id"),
-                    **contact_fields
-                })
+                campaign=campaign,
+                summary=call.get("call_summary"),
+                status=call.get("ended_reason"),
             )
-
-            db.add(lead)
-            db.flush()
             
-            if contact:
-                mapping = LeadContactMapping(
-                    lead_id=lead.id,
-                    contact_id=contact.id,
-                    source="voice"
-                )
-                db.add(mapping)
-                db.flush()
+        db.commit()    
+        return lead   
             
-            try:
-                organization_credit_service.deduct_credits(
-                    db=db,
-                    organization_id=agent.organization_id,
-                    feature_code=FeatureCodes.AI_LEAD_GEN,
-                    quantity=1,
-                    reference_type="lead",
-                    reference_id=str(lead.id)
-                )
-            except:
-                pass
-
-    # Create conversation
-    create_conversation_from_transcripts(
-        db=db,
-        call_log=call_log,
-        agent=agent
-    )
-
-    # Add Lead Activity
-    if lead:
-        create_lead_activity(
-            db=db,
-            lead=lead,
-            source="voice",
-            session_id=call_log.call_session_id,
-            campaign=campaign,
-            summary=call.get("call_summary"),
-            status=call.get("ended_reason"),
-        )
-
-    return lead
+    except Exception as e:
+        print(f"Lead creation failed : {str(e)}")
+        db.rollback()   
 
 
 def create_lead_activity(
@@ -1002,7 +1021,7 @@ def create_lead_activity(
     )
 
     db.add(activity)
-
+    db.commit()
     return activity
 
 def get_next_attempt(db, lead_id, source):
@@ -1034,6 +1053,9 @@ def create_conversation_from_transcripts(db, call_log, agent):
         .order_by(CallTranscript.created_at.asc())
         .all()
     )
+    
+    
+    print(f"creating conversation from transcript")
 
     pending_conversation = None
 
@@ -1091,12 +1113,15 @@ def create_conversation_from_transcripts(db, call_log, agent):
                 db.add(conv)
                 db.flush()
 
+    db.commit()
+    
     sync_voice_metrics_from_conversation(
         db,
         organization_id=call_log.organization_id,
         session_id=call_log.call_session_id,
         token_usage=None
     )
+    
     
 def get_lead_quality_label(rate: int):
     for label, (min_val, max_val) in LEAD_QUALITY_RANGES.items():
@@ -1434,7 +1459,7 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
     local_time = scheduled_at.astimezone(tz)
     timezone_str  = campaign.schedule.timezone or campaign.agent.prompt_timezone or  "Asia/Kolkata"
     
-    echo_client = EcholeadsClient()
+    echo_client = EcholeadsClient(campaign.organization_id)
     response = echo_client.reschedule_contact_call(
         campaign.external_campaign_id,
         contact.external_contact_id, 
