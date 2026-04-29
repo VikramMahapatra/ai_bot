@@ -3,15 +3,40 @@ from datetime import date
 import requests
 from fastapi import HTTPException
 from app.config import settings
+from app.models.user import Organization
+from app.context.org_context import current_org_id
 
 class EcholeadsClient:
 
-    def __init__(self):
+    def __init__(self, organization_id: int):
+        if not organization_id:
+            raise HTTPException(status_code=400, detail="Organization is required")
+        
+        self.organization_id = organization_id
         self.base_url = settings.ECHOL_API_BASE_URL
         self.headers = {
-            "Authorization": f"{settings.ECHOL_API_KEY}",
+            "Authorization": f"{self._get_api_key()}",
             "Content-Type": "application/json"
         }
+        
+    def _get_api_key(self):
+        org_id = self.organization_id 
+
+        from app.database import SessionLocal
+        db = SessionLocal()
+        
+        try:
+            org = db.query(Organization).get(org_id)
+            
+            if not org or not org.echoleads_api_key:
+                raise HTTPException(status_code=400, detail="Missing API key")
+
+            return org.echoleads_api_key
+
+        finally:
+            db.close()
+        
+        return org.echoleads_api_key
 
     def _post(self, endpoint: str, payload: dict = None):
         try:

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import User, UserRole, SuperAdmin
+from app.context.org_context import set_org_id
 
 # Password hashing (robust, no 72-byte limit, pure Python)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -87,6 +88,8 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+        
+    set_org_id(user.organization_id)
     
     return user
 

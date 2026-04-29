@@ -608,7 +608,12 @@ def process_call_campaigns_data(
 
     campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
 
-    echolead_client = EcholeadsClient()
+    if campaign_models:
+        if not organization_id:
+            organization_id = campaign_models[0].organization_id
+        
+        echolead_client = EcholeadsClient(organization_id)
+        
     synced = 0
     failed = 0
 

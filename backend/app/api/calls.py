@@ -356,7 +356,7 @@ def sync_bookings(
 ):
 
     # Call Echoleads API
-    client = EcholeadsClient()
+    client = EcholeadsClient(current_user.organization_id)
     response = client.fetch_bookings()
 
     bookings = response.get("bookings", [])

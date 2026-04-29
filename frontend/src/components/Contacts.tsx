@@ -202,6 +202,11 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     };
 
     useEffect(() => {
+        loadContactLists();
+        setUploadResult(null);
+    }, [contactListSearch, contactListPage, contactListRowsPerPage]);
+
+    useEffect(() => {
         loadAllContacts();
         setUploadResult(null);
     }, [allContactSearch, allContactPage, allContactRowsPerPage]);

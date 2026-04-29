@@ -111,12 +111,14 @@ def reserve_channel(
 
 def release_channel(
     db: Session,
+    call_type: str,
     reference_id: int
 ):
     reservation = (
         db.query(ChannelReservation)
         .filter(
             ChannelReservation.reference_id == reference_id,
+            ChannelReservation.call_type == call_type,
             ChannelReservation.is_active == True
         )
         .first()

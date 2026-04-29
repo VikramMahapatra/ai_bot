@@ -71,6 +71,19 @@ def get_credit_summary(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
         PriceMatrixItem.feature_code,
+        
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        OrganizationCreditUsage.status == "consumed",
+                        1
+                    ),
+                    else_=0
+                )
+            ),
+            0
+        ).label("items_used"),
 
         # -------------------------
         # Reserved
@@ -174,7 +187,8 @@ def get_credit_summary(
                 "reserved": row.reserved,
                 "consumed": row.consumed,
                 "refunded": row.refunded,
-                "used": row.used
+                "used": row.used,
+                "items_used": row.items_used
             }
             for row in feature_summary
         ],

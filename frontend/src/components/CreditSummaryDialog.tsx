@@ -16,6 +16,7 @@ import LockIcon from "@mui/icons-material/Lock";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 
 const formatDecimal = (val: any) => {
     const num = Number(val || 0);
@@ -173,17 +174,25 @@ const CreditSummaryDialog = ({
                                     {/* RIGHT */}
                                     <Box textAlign="right" display="flex" flexDirection="column" alignItems="flex-end">
                                         {/* Main value */}
-                                        <Typography fontWeight={700} fontSize={16} lineHeight={1.2}>
-                                            {formatDecimal(c.used)}
-                                        </Typography>
+                                        <Box display="flex" alignItems="baseline" gap={0.75}>
+                                            <Typography fontWeight={700} fontSize={16} lineHeight={1.2}>
+                                                {formatDecimal(c.used)}
+                                            </Typography>
 
+                                            <Typography variant="caption" color="text.secondary">
+                                                Used
+                                            </Typography>
+                                        </Box>
                                         {/* Label */}
-                                        <Typography variant="caption" color="text.secondary">
-                                            Used
-                                        </Typography>
+                                        <Box display="flex" alignItems="center" gap={0.5} mt={0.5}>
+                                            <Inventory2OutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+                                            <Typography variant="caption" color="text.secondary">
+                                                {c.items_used} items
+                                            </Typography>
+                                        </Box>
 
                                         {/* Breakdown */}
-                                        {c.refunded > 0 && (
+                                        {/* {c.refunded > 0 && (
                                             <Typography
                                                 variant="caption"
                                                 sx={{
@@ -198,7 +207,7 @@ const CreditSummaryDialog = ({
                                                     {formatDecimal(c.refunded)} refunded
                                                 </Box>
                                             </Typography>
-                                        )}
+                                        )} */}
                                     </Box>
                                 </Box>
                             ))
