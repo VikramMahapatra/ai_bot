@@ -154,6 +154,28 @@ class CallingNumberResponse(BaseModel):
         from_attributes = True
 
 
+class OrganizationChannelBase(BaseModel):
+    channel_id: int
+    is_active: Optional[bool] = True
+
+
+class OrganizationChannelCreate(OrganizationChannelBase):
+    pass
+
+
+class OrganizationChannelUpdate(OrganizationChannelBase):
+    pass
+
+
+class OrganizationChannelResponse(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
 class PriceMatrixItemBase(BaseModel):
     category: str
     module: str
