@@ -49,7 +49,6 @@ import {
 } from "../../services/callLogService";
 import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
-import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
 import { ExportContactToExcel, ExportToExcel } from "../../utils/callLogExport";
@@ -58,54 +57,9 @@ import CallIcon from "@mui/icons-material/Call";
 import ReplayIcon from "@mui/icons-material/Replay";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import CloseIcon from "@mui/icons-material/Close";
-
-const dummyContacts = [
-  {
-    name: "RELIANCE JIO INFOCOM LIMITED",
-    phone: "+918602445444",
-    email: "-",
-  },
-  {
-    name: "AAJAM KHAN S/O AAZEEZ KHAN",
-    phone: "+919755193839",
-    email: "-",
-  },
-  {
-    name: "AARADHANA JOUHARI R.G. JOUHARI",
-    phone: "+918269304044",
-    email: "-",
-  },
-  {
-    name: "AAWASH FINANCE C/T PRADEEP RAJPOOT",
-    phone: "+919584193396",
-    email: "-",
-  },
-  {
-    name: "ABHAY KUMAR JAIN S/O SURESH",
-    phone: "+919425474395",
-    email: "-",
-  },
-  {
-    name: "ABHINANDAN S/O BALDEV PRASAD CHATURVEDI",
-    phone: "+916261109580",
-    email: "-",
-  },
-  {
-    name: "ABHINAV SAHU/RAMDEEN SAHU",
-    phone: "+919893718283",
-    email: "-",
-  },
-  {
-    name: "ABHINENDRA SINGH / HARVAL SINGH",
-    phone: "+919425145529",
-    email: "-",
-  },
-  {
-    name: "ABHISHEK JAIN/JINESHWAR DAS JAIN",
-    phone: "+919644858733",
-    email: "-",
-  },
-];
+import { useDateFormatter } from "../../hooks/useDateFormatter";
+import { useAuth } from "../../context/AuthContext";
+import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 
 interface Props {
   campaignId: number;
@@ -237,8 +191,12 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
   const [openInsights, setOpenInsights] = useState(false);
   const [openDetail, setOpenDetail] = useState(false);
+  const formatDisplayDate = useDateFormatter()
+  const { user } = useAuth()
+
   const [openContactsDialog, setOpenContactsDialog] = useState(false);
   const [contactType, setContactType] = useState<ContactType>("all");
+
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -333,7 +291,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           filters.evaluation !== "All" ? filters.evaluation : undefined,
       });
 
-      ExportToExcel(data, "Campaign_Call_Logs");
+      ExportToExcel(data, "Campaign_Call_Logs", user?.timezone);
     } catch (error) {
       console.error("Export failed", error);
     }
@@ -388,7 +346,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
 
             <Box display="flex" gap={2} mt={1}>
               <Typography variant="body2">
-                Created {formatDateTime(campaign?.created_at)}
+                Created {formatDisplayDate(campaign?.created_at)}
               </Typography>
 
               <Chip
@@ -433,8 +391,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <Typography variant="h5" mt={1}>
                 {campaign?.total_contacts || 0}
               </Typography>
-             <Typography variant="caption" mt={1} color="text.secondary">
-              Click to view all contacts
+              <Typography variant="caption" mt={1} color="text.secondary">
+                Click to view all contacts
               </Typography>
             </CardContent>
           </Card>
@@ -460,7 +418,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 {campaign?.attempted_calls || 0}
               </Typography>
               <Typography variant="caption" mt={1} color="text.secondary">
-              Click to view initiated calls
+                Click to view initiated calls
               </Typography>
             </CardContent>
           </Card>
@@ -485,7 +443,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 {campaign?.rescheduled_calls || 0}
               </Typography>
               <Typography variant="caption" mt={1} color="text.secondary">
-              Click to view rescheduled calls
+                Click to view rescheduled calls
               </Typography>
             </CardContent>
           </Card>
@@ -511,7 +469,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 {campaign?.pending_scheduled_calls || 0}
               </Typography>
               <Typography variant="caption" mt={1} color="text.secondary">
-              Click to view pending calls
+                Click to view pending calls
               </Typography>
             </CardContent>
           </Card>
@@ -614,7 +572,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </Typography>
                   <Typography fontWeight={600}>
                     {campaign?.scheduled_at
-                      ? formatDateTime(campaign?.scheduled_at)
+                      ? formatDisplayDate(campaign?.scheduled_at)
                       : "-"}
                   </Typography>
                 </Grid>
@@ -767,7 +725,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       color: "primary.main",
                       fontWeight: 500,
                     }}
-                    //onClick={() => onEdit(campaign?.agent_id)}
+                  //onClick={() => onEdit(campaign?.agent_id)}
                   >
                     {campaign?.calling_no || "-"}
                   </Box>
@@ -810,11 +768,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableHead>
                 <TableRow>
                   <TableCell>Contact</TableCell>
-                  <TableCell>Phone</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Ended Reason</TableCell>
-                  <TableCell>Duration</TableCell>
                   <TableCell>Sentiment</TableCell>
+                  <TableCell>Outcome</TableCell>
+                  <TableCell>Duration</TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -822,7 +780,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableBody>
                 {callLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} sx={{ py: 8 }}>
+                    <TableCell colSpan={8} sx={{ py: 8 }}>
                       <Box
                         display="flex"
                         flexDirection="column"
@@ -854,9 +812,22 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   callLogs.map((log) => (
                     <TableRow key={log.id} hover>
                       <TableCell>
-                        <EllipsisCell value={log.contact} width={160} />
+                        <Box display="flex" alignItems="flex-start" gap={1}>
+                          {/* Main icon */}
+                          <Box>
+                            {/* Contact name */}
+                            <EllipsisCell value={log.contact} width={140} />
+
+                            {/* Phone */}
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <PhoneIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+                              <Typography variant="caption" color="text.secondary">
+                                {log.phone}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Box>
                       </TableCell>
-                      <TableCell>{log.phone}</TableCell>
                       <TableCell>
                         <Chip
                           label={titleCase(log.status)}
@@ -871,30 +842,23 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                             color: "error.main",
                             fontWeight: 500,
                           }}
-                          //onClick={() => onEdit(campaign?.agent_id)}
+                        //onClick={() => onEdit(campaign?.agent_id)}
                         >
                           {formatEndedReason(log.ended_reason)}
                         </Box>
+                      </TableCell>
+
+                      <TableCell>
+                        <OutcomeChip value={log.sentiment} />
+                      </TableCell>
+                      <TableCell>
+                        <ConversionOutcomeChip value={log.lead_qualified_status} />
                       </TableCell>
                       <TableCell>
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={titleCase(log.sentiment || "-")}
-                          color={
-                            log.sentiment?.toLowerCase() === "positive"
-                              ? "success"
-                              : log.sentiment?.toLowerCase() === "negative"
-                                ? "error"
-                                : "default"
-                          }
-                          size="small"
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        {log.date ? formatDateTime(log.date) : "-"}
+                        {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
                       <TableCell>
                         <Tooltip title="View Insights">
@@ -975,6 +939,7 @@ function ContactsDialog({
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formatDisplayTime = useDateFormatter()
 
   useEffect(() => {
     if (open) {
@@ -1101,7 +1066,7 @@ function ContactsDialog({
                     {columns.map((col) => (
                       <TableCell key={col.key}>
                         {col.key.includes("date")
-                          ? formatDateTime(row[col.key])
+                          ? formatDisplayTime(row[col.key])
                           : (row[col.key] ?? "-")}
                       </TableCell>
                     ))}

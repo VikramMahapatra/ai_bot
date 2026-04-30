@@ -35,7 +35,7 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { Workflow, workflowService } from "../../../services/workflowService";
-import { formatDateTime } from "../../../utils/dateUtils";
+import { useDateFormatter } from "../../../hooks/useDateFormatter";
 
 interface WorkflowListProps {
     onCreate: () => void;
@@ -53,6 +53,7 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
     const [workflowTotal, setWorkflowTotal] = useState(0);
     const [workflowPage, setWorkflowPage] = useState(0);
     const [workflowRowsPerPage, setWorkflowRowsPerPage] = useState(10);
+    const formatDisplayDate = useDateFormatter();
 
     useEffect(() => {
         fetchProducts();
@@ -290,7 +291,7 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
 
                                 {/* Created */}
                                 <TableCell>
-                                    {formatDateTime(workflow.created_at) || "-"}
+                                    {formatDisplayDate(workflow.created_at) || "-"}
                                 </TableCell>
 
                                 {/* Actions */}

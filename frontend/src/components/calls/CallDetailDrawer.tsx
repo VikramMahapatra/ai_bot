@@ -28,12 +28,12 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
 import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
-import { formatDateTime } from '../../utils/dateUtils';
 import LeadIcon from "@mui/icons-material/HowToReg";
 import SentimentDissatisfiedIcon from "@mui/icons-material/SentimentDissatisfied";
 import SentimentNeutralIcon from "@mui/icons-material/SentimentNeutral";
 import SentimentVerySatisfiedIcon from "@mui/icons-material/SentimentVerySatisfied";
 import SentimentVeryDissatisfiedIcon from "@mui/icons-material/SentimentVeryDissatisfied";
+import { useDateFormatter } from '../../hooks/useDateFormatter';
 
 
 
@@ -85,6 +85,8 @@ const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSi
 
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
+
+    const formatDisplayDate = useDateFormatter();
 
     const sentiment = selectedCall?.sentiment?.toLowerCase();
     const config = sentimentConfig[sentiment] || {
@@ -144,7 +146,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.startTime
-                                        ? formatDateTime(selectedCall.startTime)
+                                        ? formatDisplayDate(selectedCall.startTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -156,7 +158,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.endTime
-                                        ? formatDateTime(selectedCall.endTime)
+                                        ? formatDisplayDate(selectedCall.endTime)
                                         : "-"}
                                 </Typography>
                             </Box>

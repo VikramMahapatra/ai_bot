@@ -41,6 +41,7 @@ import {
 } from "../services/messageTemplateService";
 import SearchIcon from "@mui/icons-material/Search";
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { useDateFormatter } from "../hooks/useDateFormatter";
 
 type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 
@@ -76,7 +77,7 @@ function TemplateList() {
     subject: "",
     content: "",
   });
-
+  const formatDisplayDate = useDateFormatter();
 
 
   const [form, setForm] = useState(emptyTemplateForm);
@@ -437,7 +438,7 @@ function TemplateList() {
                       )}
                     </TableCell>
 
-                    <TableCell>{t.created_at}</TableCell>
+                    <TableCell>{formatDisplayDate(t.created_at)}</TableCell>
 
                     <TableCell align="right">
                       <IconButton onClick={() => handleOpen(t)}>

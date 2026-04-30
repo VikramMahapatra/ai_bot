@@ -132,7 +132,7 @@ export default function SuperAdminOrgCallAnalyticsReport() {
                         </Box>
 
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                            <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setTab(1)}>
+                            <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setTab(2)}>
                                 Upload Contacts
                             </Button>
                         </Stack>

@@ -44,7 +44,6 @@ import {
   SentimentType,
   StatusType,
 } from "../../services/callLogService";
-import { formatDateTime } from "../../utils/dateUtils";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import CallInsightsDrawer from "./CallInsightsDrawer";
@@ -61,6 +60,8 @@ import { MoveLeadDialog } from "./LeadMoveDialog";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
+import { useAuth } from "../../context/AuthContext";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -117,6 +118,7 @@ export const CallLogsTab = () => {
 
   const [actionAnchor, setActionAnchor] = useState(null);
   const [openInsights, setOpenInsights] = useState(false);
+  const formatDisplayDate = useDateFormatter();
 
   const handleActionOpen = (event: any) => {
     setActionAnchor(event.currentTarget);
@@ -147,6 +149,7 @@ export const CallLogsTab = () => {
   const [moveLeadOpen, setMoveLeadOpen] = useState(false);
   const [selectedLeadRow, setSelectedLeadRow] = useState<any>(null);
   const [success, setSuccess] = useState("");
+  const { user } = useAuth();
 
   const openMoveLeadDialog = (row: any) => {
     setSelectedLeadRow(row);
@@ -245,7 +248,7 @@ export const CallLogsTab = () => {
         is_lead_qualified:
           leadQualified !== "All" ? leadQualified === "true" : undefined,
       });
-      ExportToExcel(data, "Call_Logs");
+      ExportToExcel(data, "Call_Logs", user?.timezone);
     } catch (error) {
       showError("Failed to export the logs.");
     } finally {
@@ -800,7 +803,7 @@ export const CallLogsTab = () => {
                   </TableCell>
                   {/* <TableCell>{log.cost || "0.00"}</TableCell> */}
                   <TableCell>
-                    {log.date ? formatDateTime(log.date) : "-"}
+                    {log.date ? formatDisplayDate(log.date) : "-"}
                   </TableCell>
                   <TableCell>
                     <Box

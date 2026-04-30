@@ -8,6 +8,7 @@ export interface AuthUser extends User {
   role: UserRole;
   organization_id?: number;
   user_id?: number;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -48,6 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const resolvedUserId = currentUser?.id ?? fallbackUserId ?? undefined;
       const resolvedUsername = currentUser?.username || localStorage.getItem('username') || 'user';
       const resolvedEmail = currentUser?.email || localStorage.getItem('user_email') || '';
+      const resolvedTimezone = currentUser?.timezone || "Asia/Kolkata";
 
       localStorage.setItem('username', resolvedUsername);
       if (resolvedEmail) {
@@ -63,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: resolvedRole,
         organization_id: resolvedOrgId,
         user_id: resolvedUserId,
+        timezone: resolvedTimezone
       });
       setIsAuthenticated(true);
       return true;
@@ -133,7 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const orgId = loginResponse.organization_id || authService.getOrganizationId();
     const uId = loginResponse.user_id || authService.getUserId();
     const orgName = authService.getOrganizationName();
-    
+    const resolvedTimezone = "Asia/Kolkata";
+
     setIsAuthenticated(true);
     setUserRole(role);
     setOrganizationId(orgId);
@@ -145,8 +149,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role,
       organization_id: orgId || undefined,
       user_id: uId || undefined,
+      timezone: resolvedTimezone
     });
-    
+
     // Store additional user info
     localStorage.setItem('username', username);
     await syncCurrentUserFromApi(role, orgId, uId);
