@@ -42,7 +42,6 @@ import {
 } from "../../services/callLogService";
 import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
-import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
 import { ExportToExcel } from "../../utils/callLogExport";
@@ -52,6 +51,8 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 import PersonIcon from "@mui/icons-material/Person";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
+import { useAuth } from "../../context/AuthContext";
 
 interface Props {
   campaignId: number;
@@ -183,6 +184,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
   const [openInsights, setOpenInsights] = useState(false);
   const [openDetail, setOpenDetail] = useState(false);
+  const formatDisplayDate = useDateFormatter();
+  const { user } = useAuth();
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -285,7 +288,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           filters.is_lead_qualified !== "All" ? filters.is_lead_qualified : undefined,
       });
 
-      ExportToExcel(data, "Campaign_Call_Logs");
+      ExportToExcel(data, "Campaign_Call_Logs", user?.timezone);
     } catch (error) {
       console.error("Export failed", error);
     }
@@ -335,7 +338,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
 
             <Box display="flex" gap={2} mt={1}>
               <Typography variant="body2">
-                Created {formatDateTime(campaign?.created_at)}
+                Created {formatDisplayDate(campaign?.created_at)}
               </Typography>
 
               <Chip
@@ -512,7 +515,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </Typography>
                   <Typography fontWeight={600}>
                     {campaign?.scheduled_at
-                      ? formatDateTime(campaign?.scheduled_at)
+                      ? formatDisplayDate(campaign?.scheduled_at)
                       : "-"}
                   </Typography>
                 </Grid>
@@ -797,7 +800,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
                       <TableCell>
-                        {log.date ? formatDateTime(log.date) : "-"}
+                        {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
                       <TableCell>
                         <Tooltip title="View Insights">

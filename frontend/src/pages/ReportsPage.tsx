@@ -57,7 +57,6 @@ import {
   ContactListItem,
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
-import { formatDateTime } from "../utils/dateUtils";
 import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip, titleCase } from "../components/Common/StatusChips";
 import {
   Menu,
@@ -67,6 +66,7 @@ import {
 import SettingsIcon from "@mui/icons-material/Settings";
 import { FunnelCategory } from "../types";
 import { funnelCategoryService } from "../services/funnelCategoryService";
+import { useDateFormatter } from "../hooks/useDateFormatter";
 
 export const ActionMenu = ({
   handleExportCSV,
@@ -258,6 +258,7 @@ const ReportsPage: React.FC = () => {
   const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
     [],
   );
+  const formatDisplayDate = useDateFormatter();
 
 
 
@@ -1254,7 +1255,7 @@ const ReportsPage: React.FC = () => {
                         <ConversionOutcomeChip value={conv.lead_conversion} />
                       </TableCell>
                       <TableCell>
-                        {formatDateTime(conv.conversation_start)}
+                        {formatDisplayDate(conv.conversation_start)}
                       </TableCell>
                       <TableCell align="center">
                         <Button
@@ -1759,7 +1760,7 @@ const ReportsPage: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               {item.scheduled_time
-                                ? new Date(item.scheduled_time).toLocaleString()
+                                ? formatDisplayDate(item.scheduled_time)
                                 : "-"}
                             </TableCell>
                             <TableCell align="right">
@@ -1770,7 +1771,7 @@ const ReportsPage: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString()
+                                ? formatDisplayDate(item.created_at)
                                 : "-"}
                             </TableCell>
                           </TableRow>
@@ -2046,7 +2047,7 @@ const ReportsPage: React.FC = () => {
                             </TableCell>
                             <TableCell sx={voiceNoWrapCellSx}>
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString()
+                                ? formatDisplayDate(item.created_at)
                                 : "-"}
                             </TableCell>
                             <TableCell align="center">
@@ -2193,7 +2194,7 @@ const ReportsPage: React.FC = () => {
                   </Typography>
                   <Typography variant="body1">
                     {voiceDetailsItem.created_at
-                      ? new Date(voiceDetailsItem.created_at).toLocaleString()
+                      ? formatDisplayDate(voiceDetailsItem.created_at)
                       : "-"}
                   </Typography>
                 </Grid>

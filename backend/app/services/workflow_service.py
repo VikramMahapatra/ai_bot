@@ -125,7 +125,7 @@ def get_workflow_by_id(db: Session, workflow_id: int, organization_id: int):
 
     edges_data = [
         {
-            "id": f"e-{edge.source_step_id}-{edge.target_step_id}",
+            "id": f"e-{edge.source_step_id}-{edge.target_step_id}-{edge.branch}",
             "source": str(edge.source_step_id),
             "target": str(edge.target_step_id),
             "sourceHandle": edge.branch,

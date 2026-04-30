@@ -56,10 +56,11 @@ import {
     DialogActions
 } from "@mui/material";
 import TestCallDialog from './TestCallDialog';
-import { formatDateTime } from "../../utils/dateUtils";
+
 import { ConfirmDialog } from '../Common/ConfirmDialog';
 import { useCredits } from '../../context/CreditsContext';
 import { FEATURE_CODES, CREDIT_ERRORS } from '../../types/creditModules';
+import { useDateFormatter } from '../../hooks/useDateFormatter';
 
 export const CallingAgentTab: React.FC = () => {
     const theme = useTheme();
@@ -86,6 +87,7 @@ export const CallingAgentTab: React.FC = () => {
     const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
     const { getRequiredCredits, totalCredits, refreshCredits } = useCredits();
+    const formatDisplayDate = useDateFormatter();
 
     const showError = (message: string) => {
         setSuccess('');
@@ -595,7 +597,7 @@ export const CallingAgentTab: React.FC = () => {
                                                     </Box>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {formatDateTime(agent.created_at)}
+                                                    {formatDisplayDate(agent.created_at)}
                                                 </TableCell>
 
                                                 {/* Actions */}

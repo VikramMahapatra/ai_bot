@@ -43,11 +43,12 @@ import CancelIcon from "@mui/icons-material/Cancel";
 
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
-import { formatDateTime } from "../../utils/dateUtils";
+
 import CampaignAnalyticsDrawer from "./CampaignAnalyticsDrawer";
 import { alpha, useTheme } from '@mui/material/styles';
 import CloseIcon from "@mui/icons-material/Close";
 import { titleCase } from "../Common/StatusChips";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
 
 interface Props {
     onAddCampaign: (showError: (message: string) => void) => void;
@@ -100,6 +101,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [confirmDialog, setConfirmDialog] = useState<
         null | { type: "toggleStatus"; campaign: Campaign } | { type: "delete"; campaign: Campaign } | { type: "cancel"; campaign: Campaign }
     >(null);
+    const formatDisplayDate = useDateFormatter();
 
 
     const openDrawer = (campaign: Campaign) => {
@@ -584,7 +586,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                     {/* CREATED AT */}
                                     <TableCell>
                                         <Typography variant="body2" color="text.secondary">
-                                            {formatDateTime(campaign.created_at)}
+                                            {formatDisplayDate(campaign.created_at)}
                                         </Typography>
                                     </TableCell>
 

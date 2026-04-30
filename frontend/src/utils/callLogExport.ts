@@ -1,17 +1,18 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { CallLogListResponse } from "../services/callLogService";
-import { formatDateTime } from "./dateUtils";
 import { formatEndedReason } from "../components/calls/CallDetailDrawer";
+import { formatDateTime } from "./dateUtils";
 
-export const ExportToExcel = (data: CallLogListResponse, fileName: string) => {
+export const ExportToExcel = (data: CallLogListResponse, fileName: string, timezone: string = "Asia/Kolkata") => {
+
     const exportData = data.items.map((log) => ({
         Phone: log.phone,
         Contact: log.contact || "-",
         Agent: log.agent || "-",
         Campaign: log.campaign || "-",
-        "Start Time": formatDateTime(log.startTime),
-        "End Time": formatDateTime(log.endTime),
+        "Start Time": formatDateTime(log.startTime, timezone),
+        "End Time": formatDateTime(log.endTime, timezone),
         Type: log.type,
         Status: log.status,
         Duration: log.duration,
@@ -19,7 +20,7 @@ export const ExportToExcel = (data: CallLogListResponse, fileName: string) => {
         "Conversion Outcome": log.lead_qualified_status,
         "End Reason": formatEndedReason(log.ended_reason),
         "Test Call": log.testCall ? "Yes" : "No",
-        Date: formatDateTime(log.date),
+        Date: formatDateTime(log.date, timezone),
         "Call Summary": log.call_summary || "-",
         "Follow Up Recommended":
             log.follow_up_recommended?.join(", ") || "-",

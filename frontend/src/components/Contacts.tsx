@@ -42,7 +42,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import { callCampaignService, Contact } from "../services/callCampaignService";
 import { campaignService, ContactItem, ContactListItem } from "../services/campaignService";
-import { formatDate } from "../utils/dateUtils";
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -59,6 +58,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Field from "./Common/Field";
+import { formatDate } from "../utils/dateUtils";
 
 type ContactForm = Omit<ContactItem, 'id' | 'created_at'>;
 
@@ -339,7 +339,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
             }
             setOpenForm(false);
 
-            if (tab === 0) {
+            if (tab === 1) {
                 loadContacts(selectedListId as number);
             }
             loadAllContacts();
@@ -632,12 +632,195 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     scrollButtons="auto"
                     sx={{ borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}
                 >
+                    <Tab label="Contacts" icon={<ContactsIcon />} iconPosition="start" />
                     <Tab label="Contact Lists" icon={<ListAltIcon />} iconPosition="start" />
                     <Tab label="Upload Contacts" icon={<UploadFileIcon />} iconPosition="start" />
-                    <Tab label="Contacts" icon={<ContactsIcon />} iconPosition="start" />
+
                 </Tabs>
             </Paper>
             {tab === 0 && (
+                <Box>
+                    {/* FILTERS */}
+
+                    <Grid container spacing={2} mb={2} alignItems="center">
+
+                        <Grid item xs={12} md={6}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Search Contacts"
+                                value={allContactSearch}
+                                onChange={(e) => setAllContactSearch(e.target.value)}
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <SearchIcon />
+                                        </InputAdornment>
+                                    )
+                                }}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} md={6} textAlign="right">
+
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAdd}
+                            >
+                                Add Contact
+                            </Button>
+
+                        </Grid>
+
+                    </Grid>
+
+                    {/* CONTACT TABLE */}
+
+                    <Paper>
+                        <Table>
+
+                            <TableHead>
+
+                                <TableRow>
+                                    <TableCell>Contact List</TableCell>
+                                    <TableCell>Contact</TableCell>
+                                    <TableCell>Company</TableCell>
+                                    <TableCell width={120}>Actions</TableCell>
+                                </TableRow>
+
+                            </TableHead>
+
+                            <TableBody>
+                                {allContacts.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={4} sx={{ py: 8 }}>
+                                            <Box
+                                                display="flex"
+                                                flexDirection="column"
+                                                alignItems="center"
+                                                justifyContent="center"
+                                                textAlign="center"
+                                                gap={1}
+                                            >
+                                                <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+
+                                                <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
+                                                    No contacts found
+                                                </Typography>
+
+                                                <Typography variant="body2" sx={{ color: "text.disabled" }}>
+                                                    Try adjusting your search or add a new contact
+                                                </Typography>
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+
+                                ) : (
+                                    allContacts.map((contact) => (
+
+                                        <TableRow key={contact.id} hover>
+                                            {/* Contact List */}
+                                            <TableCell>{contact.contact_list_name}</TableCell>
+
+                                            <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
+                                                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                                                    {contact.name?.trim() || "—"}
+                                                </Typography>
+                                                <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                                    {contact.phone?.trim() ? (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: 0.5,
+                                                                lineHeight: 1.35,
+                                                                fontSize: "0.7rem",
+                                                            }}
+                                                        >
+                                                            <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.phone}</Box>
+                                                        </Typography>
+                                                    ) : null}
+                                                    {contact.email?.trim() ? (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: 0.5,
+                                                                lineHeight: 1.35,
+                                                                fontSize: "0.7rem",
+                                                            }}
+                                                        >
+                                                            <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
+                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.email}</Box>
+                                                        </Typography>
+                                                    ) : null}
+                                                    {!contact.phone?.trim() && !contact.email?.trim() ? (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                                                            No email or phone on file
+                                                        </Typography>
+                                                    ) : null}
+                                                </Stack>
+                                            </TableCell>
+
+                                            {/* Company */}
+                                            <TableCell>{contact.company || "N/A"}</TableCell>
+
+                                            {/* Actions */}
+                                            <TableCell>
+                                                <Box display="flex" gap={1}>
+                                                    <Button
+                                                        size="small"
+                                                        color="info"
+                                                        startIcon={<VisibilityIcon />}
+                                                        onClick={() => handleView(contact)}>
+                                                        View
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        color="primary"
+                                                        startIcon={<EditIcon />}
+                                                        onClick={() => handleEdit(contact)}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        color="error"
+                                                        startIcon={<DeleteIcon />}
+                                                        onClick={() => handleDeleteContactFromAllContacts(contact.id)}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </Box>
+                                            </TableCell>
+                                        </TableRow>
+
+                                    )))}
+                            </TableBody>
+                        </Table>
+                        <TablePagination
+                            component="div"
+                            count={allContactTotal}
+                            page={allContactPage}
+                            onPageChange={(_, value) => setAllContactPage(value)}
+                            rowsPerPage={allContactRowsPerPage}
+                            onRowsPerPageChange={(event) => {
+                                setAllContactRowsPerPage(parseInt(event.target.value, 10));
+                                setAllContactPage(0);
+                            }}
+                            rowsPerPageOptions={[10, 25, 50]}
+                        />
+                    </Paper >
+
+                </Box >
+            )}
+            {tab === 1 && (
                 <Stack spacing={2.5}>
 
 
@@ -922,7 +1105,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     )}
                 </Stack>
             )}
-            {tab === 1 && (
+            {tab === 2 && (
                 <Stack spacing={2.5}>
                     <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
                         <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Upload Contacts</Typography>
@@ -1281,188 +1464,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     </Paper>
                 </Stack>
             )}
-            {tab === 2 && (
-                <Box>
-                    {/* FILTERS */}
 
-                    <Grid container spacing={2} mb={2} alignItems="center">
-
-                        <Grid item xs={12} md={6}>
-                            <TextField
-                                fullWidth
-                                size="small"
-                                label="Search Contacts"
-                                value={allContactSearch}
-                                onChange={(e) => setAllContactSearch(e.target.value)}
-                                InputProps={{
-                                    endAdornment: (
-                                        <InputAdornment position="end">
-                                            <SearchIcon />
-                                        </InputAdornment>
-                                    )
-                                }}
-                            />
-                        </Grid>
-
-                        <Grid item xs={12} md={6} textAlign="right">
-
-                            <Button
-                                variant="contained"
-                                startIcon={<AddIcon />}
-                                onClick={handleAdd}
-                            >
-                                Add Contact
-                            </Button>
-
-                        </Grid>
-
-                    </Grid>
-
-                    {/* CONTACT TABLE */}
-
-                    <Paper>
-                        <Table>
-
-                            <TableHead>
-
-                                <TableRow>
-                                    <TableCell>Contact List</TableCell>
-                                    <TableCell>Contact</TableCell>
-                                    <TableCell>Company</TableCell>
-                                    <TableCell width={120}>Actions</TableCell>
-                                </TableRow>
-
-                            </TableHead>
-
-                            <TableBody>
-                                {allContacts.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={4} sx={{ py: 8 }}>
-                                            <Box
-                                                display="flex"
-                                                flexDirection="column"
-                                                alignItems="center"
-                                                justifyContent="center"
-                                                textAlign="center"
-                                                gap={1}
-                                            >
-                                                <SearchIcon sx={{ fontSize: 40, color: "text.secondary" }} />
-
-                                                <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
-                                                    No contacts found
-                                                </Typography>
-
-                                                <Typography variant="body2" sx={{ color: "text.disabled" }}>
-                                                    Try adjusting your search or add a new contact
-                                                </Typography>
-                                            </Box>
-                                        </TableCell>
-                                    </TableRow>
-
-                                ) : (
-                                    allContacts.map((contact) => (
-
-                                        <TableRow key={contact.id} hover>
-                                            {/* Contact List */}
-                                            <TableCell>{contact.contact_list_name}</TableCell>
-
-                                            <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
-                                                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
-                                                    {contact.name?.trim() || "—"}
-                                                </Typography>
-                                                <Stack spacing={0.35} sx={{ mt: 0.5 }}>
-                                                    {contact.phone?.trim() ? (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                            sx={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: 0.5,
-                                                                lineHeight: 1.35,
-                                                                fontSize: "0.7rem",
-                                                            }}
-                                                        >
-                                                            <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
-                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.phone}</Box>
-                                                        </Typography>
-                                                    ) : null}
-                                                    {contact.email?.trim() ? (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                            sx={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: 0.5,
-                                                                lineHeight: 1.35,
-                                                                fontSize: "0.7rem",
-                                                            }}
-                                                        >
-                                                            <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
-                                                            <Box component="span" sx={{ wordBreak: "break-word" }}>{contact.email}</Box>
-                                                        </Typography>
-                                                    ) : null}
-                                                    {!contact.phone?.trim() && !contact.email?.trim() ? (
-                                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                                                            No email or phone on file
-                                                        </Typography>
-                                                    ) : null}
-                                                </Stack>
-                                            </TableCell>
-
-                                            {/* Company */}
-                                            <TableCell>{contact.company || "N/A"}</TableCell>
-
-                                            {/* Actions */}
-                                            <TableCell>
-                                                <Box display="flex" gap={1}>
-                                                    <Button
-                                                        size="small"
-                                                        color="info"
-                                                        startIcon={<VisibilityIcon />}
-                                                        onClick={() => handleView(contact)}>
-                                                        View
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        color="primary"
-                                                        startIcon={<EditIcon />}
-                                                        onClick={() => handleEdit(contact)}
-                                                    >
-                                                        Edit
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        color="error"
-                                                        startIcon={<DeleteIcon />}
-                                                        onClick={() => handleDeleteContactFromAllContacts(contact.id)}
-                                                    >
-                                                        Delete
-                                                    </Button>
-                                                </Box>
-                                            </TableCell>
-                                        </TableRow>
-
-                                    )))}
-                            </TableBody>
-                        </Table>
-                        <TablePagination
-                            component="div"
-                            count={allContactTotal}
-                            page={allContactPage}
-                            onPageChange={(_, value) => setAllContactPage(value)}
-                            rowsPerPage={allContactRowsPerPage}
-                            onRowsPerPageChange={(event) => {
-                                setAllContactRowsPerPage(parseInt(event.target.value, 10));
-                                setAllContactPage(0);
-                            }}
-                            rowsPerPageOptions={[10, 25, 50]}
-                        />
-                    </Paper >
-
-                </Box >
-            )}
             <Box>
                 <Dialog
                     open={openForm}

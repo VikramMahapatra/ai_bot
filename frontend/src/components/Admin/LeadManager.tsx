@@ -91,6 +91,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { OutcomeChip, SourceChip, StageChip, titleCase } from "../Common/StatusChips";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -178,6 +179,7 @@ const LeadManager: React.FC = () => {
   const [closeDateOpen, setCloseDateOpen] = useState(false);
   const [closeDate, setCloseDate] = useState("");
   const [summary, setSummary] = useState<any>({});
+  const formatDisplayDate = useDateFormatter();
 
   const panelSx = {
     borderRadius: "18px",
@@ -1529,7 +1531,7 @@ const LeadManager: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    {new Date(lead.created_at).toLocaleString()}
+                    {formatDisplayDate(lead.created_at)}
                   </TableCell>
                   <TableCell>
                     <Box
@@ -1968,12 +1970,12 @@ const LeadManager: React.FC = () => {
               control={
                 <Switch
                   checked={categoryForm.is_active}
-                  // onChange={(event) =>
-                  //   setCategoryForm((prev) => ({
-                  //     ...prev,
-                  //     is_active: event.target.checked,
-                  //   }))
-                  // }
+                // onChange={(event) =>
+                //   setCategoryForm((prev) => ({
+                //     ...prev,
+                //     is_active: event.target.checked,
+                //   }))
+                // }
                 />
               }
               label="Active"

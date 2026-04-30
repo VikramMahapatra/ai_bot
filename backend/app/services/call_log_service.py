@@ -1054,9 +1054,6 @@ def create_conversation_from_transcripts(db, call_log, agent):
         .all()
     )
     
-    
-    print(f"creating conversation from transcript")
-
     pending_conversation = None
 
     for t in transcripts:
@@ -1480,14 +1477,14 @@ def get_call_result(call):
 
     # outcome from API / AI / call data
     transcript = _build_transcript(call.get("transcript"))
-    outcome = _classify_outcome_with_llm(transcript)
+    classification = _classify_outcome_with_llm(transcript)
+    whether_lead = classification["whether_lead"]
 
     # fallback outcomes
-    if not outcome:
-        if call_status == "not_connected":
-            outcome = "no_answer"
-        else:
-            outcome = "neutral"
+    if not whether_lead:
+        outcome = "negative"
+    else:
+        outcome = "positive" if whether_lead == "lead" else "negative"
 
     return call_status, outcome
 

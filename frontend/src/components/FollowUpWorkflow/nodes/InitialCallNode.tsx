@@ -26,13 +26,31 @@ export default function InitialCallNode({ data, id }: any) {
         );
 
         if (existingEdge) {
+            const targetNodeId = existingEdge.target;
+
             // 1. remove edge
             onDeleteEdge(existingEdge.id);
 
-            // 2. remove node
-            setNodes((nds: any[]) =>
-                nds.filter((n) => n.id !== existingEdge.target)
+            // 2. check if target node is used by other edges
+            const isNodeStillUsed = edges.some(
+                (e: any) =>
+                    e.id !== existingEdge.id &&
+                    (e.source === targetNodeId || e.target === targetNodeId)
             );
+
+            // 3. prevent deleting STOP node
+            setNodes((nds: any[]) => {
+                const targetNode = nds.find((n) => n.id === targetNodeId);
+
+                const isStopNode =
+                    targetNode?.type === "stop" || targetNode?.id === "stop";
+
+                if (!isNodeStillUsed && !isStopNode) {
+                    return nds.filter((n) => n.id !== targetNodeId);
+                }
+
+                return nds;
+            });
 
             return;
         }

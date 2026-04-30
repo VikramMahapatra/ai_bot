@@ -175,12 +175,7 @@ const formatDate = (value?: string): string => {
   return date.toLocaleDateString();
 };
 
-const formatDateTime = (value?: string): string => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString();
-};
+
 
 const formatLimitValue = (value: number | null): string => {
   if (value === null || typeof value === "undefined") return "∞";
@@ -1009,7 +1004,7 @@ const AdminDashboard: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {formatDateTime(session.last_message_at)}
+                      {formatDisplayDate(session.last_message_at)}
                     </TableCell>
                   </TableRow>
                 ))

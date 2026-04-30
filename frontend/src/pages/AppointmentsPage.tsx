@@ -54,6 +54,7 @@ import {
 import { organizationService } from "../services/organizationService";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
+import { useDateFormatter } from "../hooks/useDateFormatter";
 
 const DEFAULT_MEET_LINK = "https://meet.google.com/new";
 
@@ -73,12 +74,6 @@ const statusLabel = (status: AppointmentItem["status"]) => {
   return "No Show";
 };
 
-const formatDateTime = (value?: string) => {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString();
-};
 
 const toIsoDateKey = (value?: string | Date) => {
   if (!value) return "";
@@ -198,6 +193,7 @@ const AppointmentsPage: React.FC = () => {
   const [appointmentTotal, setAppointmentTotal] = useState(0);
   const [appointmentPage, setAppointmentPage] = useState(0);
   const [appointmentRowsPerPage, setAppointmentRowsPerPage] = useState(10);
+  const formatDisplayDate = useDateFormatter();
 
   const loadWidgets = async () => {
     try {
@@ -1244,7 +1240,7 @@ const AppointmentsPage: React.FC = () => {
 
                           <TableCell>{item.widget_name}</TableCell>
                           <TableCell>
-                            {formatDateTime(item.appointment_at)}
+                            {formatDisplayDate(item.appointment_at)}
                           </TableCell>
                           <TableCell>{item.timezone || "-"}</TableCell>
 
@@ -1372,7 +1368,7 @@ const AppointmentsPage: React.FC = () => {
                     Date & Time
                   </Typography>
                   <Typography>
-                    {formatDateTime(selectedAppointment.appointment_at)}
+                    {formatDisplayDate(selectedAppointment.appointment_at)}
                   </Typography>
                 </Box>
                 <Box>

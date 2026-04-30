@@ -378,6 +378,11 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
 
     calls_needed = contacts_count * (1 + retries)
     
+    if data.start_datetime or data.active_days:
+        send_option = "schedule"
+    else:
+        send_option = "instant"
+    
     organization_channel_service.validate_channel_available(db, organization_id, "campaign")
 
     valid = organization_credit_service.validate_feature_usage(
@@ -393,11 +398,6 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             detail="Insufficient credits. Please add more credits to continue."
         )            
             
-    if data.start_datetime or data.active_days:
-        send_option = "schedule"
-    else:
-        send_option = "instant"
-        
     agent = db.query(CallingAgent).filter(
             CallingAgent.id == data.agent_id
         ).first()
@@ -568,13 +568,13 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             reference_id=str(campaign.id)
         )
         
-        if send_option == "instant" :
-            organization_channel_service.reserve_channel(
-                db,
-                organization_id=agent.organization_id,
-                call_type="campaign",
-                reference_id=campaign.id
-            )
+        organization_channel_service.reserve_channel(
+            db,
+            organization_id=agent.organization_id,
+            call_type="campaign",
+            reference_id=campaign.id
+        )
+            
         
     db.commit()    
 
