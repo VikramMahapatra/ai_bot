@@ -189,6 +189,23 @@ class EcholeadsClient:
 
         return self._get("/call-logs", params=params)
     
+    def fetch_test_calls(self, agent_id, from_date, to_date):
+        if hasattr(from_date, "isoformat"):
+            from_date = from_date.isoformat()
+
+        if hasattr(to_date, "isoformat"):
+            to_date = to_date.isoformat()
+
+        params = {
+            "agent_id": agent_id,
+            "from_date": from_date,
+            "to_date": to_date,
+            "is_test_call": True,
+            "status": "ended"
+        }
+
+        return self._get("/call-logs", params=params)
+    
     def get_campaign_by_name(self, campaign_name: str):
         return self._get(f"/campaigns?search={campaign_name}")
     

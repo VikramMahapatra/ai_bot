@@ -107,7 +107,6 @@ async def startup_event():
     global outcome_daemon_task
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
-    # global call_campaign_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")

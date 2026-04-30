@@ -7,6 +7,7 @@ export interface CallTranscript {
 }
 export interface CallLog {
     id: string;
+    contact_id?: number;
     phone: string;
     contact?: string;
     agent?: string;
@@ -39,6 +40,7 @@ export interface CallLog {
     cost?: string;
     lead_qualified_status?: string;
     transcript: CallTranscript[];
+    follow_up_count: number;
 }
 
 export type StatusType =
@@ -122,13 +124,13 @@ export interface CallLogResponse {
 }
 
 export interface CampaignContactResponse {
-  contact_id: number;
-  name: string;
-  email: string;
-  phone: string;
-  status: string;
-  ended_reason: string;
-  date: string;
+    contact_id: number;
+    name: string;
+    email: string;
+    phone: string;
+    status: string;
+    ended_reason: string;
+    date: string;
 }
 
 

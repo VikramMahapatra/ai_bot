@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks
 from psycopg2 import IntegrityError
-from sqlalchemy import Integer, and_, case, cast, distinct, exists, func, literal_column, or_, select, true
+from sqlalchemy import Integer, String, and_, case, cast, distinct, exists, func, literal_column, or_, select, true
 
 from app.models.call_logs import CallLog, CallTranscript
 from sqlalchemy.orm import Session
@@ -72,6 +72,26 @@ def get_call_logs(
         .lateral()
         .alias("conversation_subq")
     )
+    
+    follow_up_subq = (
+        db.query(
+            WorkflowExecution.contact_id.label("fu_contact_id"),
+            func.count(WorkflowExecutionLog.id).label("follow_up_count")
+        )
+        .join(
+            WorkflowExecutionLog,
+            WorkflowExecution.id == WorkflowExecutionLog.execution_id
+        )
+        .filter(
+            WorkflowExecution.campaign_id == params.campaign_id,
+            WorkflowExecutionLog.event_type == "executed",
+            cast(
+                WorkflowExecutionLog.event_metadata["step_type"],
+                String
+            ) == "call"
+        )
+        .group_by(WorkflowExecution.contact_id)
+    ).subquery()
 
     query = (
         db.query(
@@ -79,12 +99,17 @@ def get_call_logs(
             Contact.name.label("contact_name"),
             CallingAgent.name.label("agent_name"),
             CallCampaign.name.label("campaign_name"),
-            conversation_subq.c.outcome.label("call_outcome")
+            conversation_subq.c.outcome.label("call_outcome"),
+            follow_up_subq.c.follow_up_count
         )
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
         .outerjoin(conversation_subq, true())
+        .outerjoin(
+            follow_up_subq,
+            follow_up_subq.c.fu_contact_id == CallLog.contact_id
+        )
         .filter(CallLog.organization_id == organization_id)
     )
     
@@ -209,7 +234,7 @@ def get_call_logs(
 
     rows = []
 
-    for log, contact_name, agent_name, campaign_name, lead_outcome in logs:
+    for log, contact_name, agent_name, campaign_name, lead_outcome, follow_up_count  in logs:
 
         transcripts = (
             db.query(CallTranscript)
@@ -238,9 +263,12 @@ def get_call_logs(
             True: "positive",
             False: "negative",
         }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
+        
+        is_follow_up = log.source == "rescheduled_call"
             
         rows.append({
             "id": log.id,
+            "contact_id": log.contact_id,
             "contact": contact_name,
             "agent": agent_name,
             "campaign": campaign_name,
@@ -270,7 +298,10 @@ def get_call_logs(
                     "speaker": t.speaker,
                     "text": t.text
                 } for t in transcripts
-            ]
+            ],
+             "follow_up_count": (
+                0 if is_follow_up else max(int(follow_up_count or 0) - 1, 0)
+            )
         })
 
     return {
@@ -332,7 +363,7 @@ def get_contacts_by_type(
 
     if type == "initiated":
         # call attempted → call_log exists
-        query = query.filter(CallLog.id.isnot(None))
+        query = query.filter(CallLog.id.isnot(None), CallLog.source == "campaign_call")
 
     elif type == "rescheduled":
         query = query.filter(
@@ -346,28 +377,6 @@ def get_contacts_by_type(
         # no call attempted
         query = query.filter(CallLog.id.is_(None))
 
-    # "all" → no extra filter
-
-    # Optional: latest call per contact (important if multiple logs exist)
-    subq = (
-        db.query(
-            CallLog.contact_id,
-            func.max(CallLog.created_at).label("latest_call")
-        )
-        .filter(CallLog.campaign_id == campaign_id)
-        .group_by(CallLog.contact_id)
-        .subquery()
-    )
-
-    query = query.outerjoin(
-        subq,
-        subq.c.contact_id == Contact.id
-    ).filter(
-        or_(
-            CallLog.created_at == subq.c.latest_call,
-            CallLog.id.is_(None)
-        )
-    )
 
     results = query.all()
 
@@ -414,6 +423,45 @@ def create_call_log(db: Session, data: CallLogCreate):
     db.commit()
 
     return {"message": "Call log created"}
+
+def sync_test_call_log(
+    db: Session, 
+    client:EcholeadsClient,
+    agent_id:int,
+    external_call_id: str
+):
+    total_calls = 0
+    
+    try:
+        print("Syncing Test Calls WITH agent_id (direct agent mode)")
+
+        agent = db.query(CallingAgent).filter(
+            CallingAgent.id == agent_id
+        ).first()
+
+        if not agent:
+            print("Agent not found")
+            return
+
+        from_date, to_date = get_default_dates()
+
+        response = client.fetch_test_calls(
+            agent_id=agent.external_agent_id,
+            from_date=from_date.isoformat(),
+            to_date=to_date.isoformat()
+        )
+
+        calls = response.get("calls", [])
+
+        for call in calls:
+            if external_call_id == call["call_id"]:
+                process_call(db, call, agent)
+       
+        db.commit()
+    
+    except Exception as e:
+        db.rollback()
+        print(f"Sync Test Call failed: {str(e)}")
 
 
 def sync_call_logs(
@@ -490,7 +538,7 @@ def sync_call_logs(
                     continue
                 process_call(db, call, agent)
         else:
-            print("Syncing WITH agent_id (agent-wise mode)")
+            print("Syncing WITH default (date-wise mode)")
             from_date, to_date = get_default_dates(from_date, to_date)
 
             agents = db.query(CallingAgent).filter(
@@ -711,11 +759,13 @@ def process_call(db, call, agent):
         db.flush()
     
     test_call = db.query(CallingAgentTestCall).filter(
-        CallingAgentTestCall.external_call_id == str(call["id"])
+        CallingAgentTestCall.external_call_id == str(call["call_id"])
     ).first()
 
     if test_call:
         test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
+        
+        print(f"Test call status : {test_call.status} and id : {test_call.id}")
         
         if call.get("status").lower() == "ended":
             organization_channel_service.release_channel(
@@ -1375,6 +1425,17 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             execution.status = "scheduled"
             execution.external_reference_id = response.get("call_log_id")
             
+            log_event(
+                db=db,
+                execution_id=execution.id,
+                step_id=next_step_id,
+                event_type="executed",
+                metadata={
+                    "step_type": "call",
+                    "call_log_id": execution.external_reference_id
+                }
+            )
+            
             print(f"Call id : {execution.external_reference_id} is scheduled at {scheduled_at}")
     else:
         contact = None
@@ -1389,17 +1450,29 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
         ).first()
         
         message = render_template(template.content, contact)
+        
             
         if step_outcome.step_type == "sms":
             print(f"Sending SMS to {contact.phone} with message: {message}")
             try:
-                result = send_sms(
+                success, error = send_sms(
                     message=message,
                     to_number=contact.phone,
                     organization_id=call_log.organization_id
                 )
                 
-                print(f"SMS send result: {result}")
+                print(f"SMS send result: {success}")
+                
+                if success :
+                    log_event(
+                        db=db,
+                        execution_id=execution.id,
+                        step_id=next_step_id,
+                        event_type="executed",
+                        metadata={
+                            "step_type": step_outcome.step_type
+                        }
+                    )
             except Exception as e:
                 print(f"Failed to send SMS: {str(e)}")
                 pass
@@ -1414,7 +1487,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             ).scalar()
             
             try:
-                send_campaign_email(
+                success, error, message_id  = send_campaign_email(
                     campaign_name=campaign_name,
                     subject=template.subject or "Update",
                     message_template=message,
@@ -1422,6 +1495,17 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                     recipient_email=contact.email,
                     settings=org_settings
                 )
+                
+                if success :
+                    log_event(
+                        db=db,
+                        execution_id=execution.id,
+                        step_id=next_step_id,
+                        event_type="executed",
+                        metadata={
+                            "step_type": step_outcome.step_type
+                        }
+                    )
             except Exception as e:
                 print(f"Failed to send Email: {str(e)}")
                 pass

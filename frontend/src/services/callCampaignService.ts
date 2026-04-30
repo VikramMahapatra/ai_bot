@@ -174,6 +174,15 @@ export interface CallCampaignDetail {
     >;
 }
 
+export interface WorkflowEvent {
+    event: string;
+    step_type?: string;
+    call_status?: string;
+    outcome?: string;
+    time: string;
+    metadata?: any;
+}
+
 export interface CampaignResponse {
     message: string;
     success: boolean;
@@ -255,6 +264,11 @@ export const callCampaignService = {
 
     async getCampaignAnalytics(campaign_id: number): Promise<Campaign> {
         const response = await api.get(`/api/call-campaigns/${campaign_id}/analytics`);
+        return response.data;
+    },
+
+    async getWorkflowHistory(campaign_id: number, contact_id: number): Promise<WorkflowEvent[]> {
+        const response = await api.get<WorkflowEvent[]>(`/api/call-campaigns/${campaign_id}/contacts/${contact_id}/workflow-history`);
         return response.data;
     },
 };

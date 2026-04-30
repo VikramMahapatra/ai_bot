@@ -42,6 +42,13 @@ def get_campaign_detail(
     db: Session = Depends(get_db)):
     return service.get_campaign_detail(background_tasks, db, campaign_id)
 
+@router.get("/{campaign_id:int}/contacts/{contact_id:int}/workflow-history")
+def get_workflow_history(
+    campaign_id: int, 
+    contact_id: int,
+    db: Session = Depends(get_db)):
+    return service.get_workflow_history(db, campaign_id, contact_id)
+
 @router.post("/create") 
 def create_campaign( 
     data: CampaignCreate, 

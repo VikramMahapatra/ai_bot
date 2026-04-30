@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -6,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import HTTPException
 from openai import OpenAI
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.database import SessionLocal
@@ -22,6 +23,8 @@ from app.models.lead_activities import LeadActivity
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.workflows import WorkflowExecution
+from app.models.calling_agents import CallingAgent, CallingAgentTestCall
+from app.services.call_log_service import sync_test_call_log
 
 logger = logging.getLogger(__name__)
 
@@ -607,27 +610,75 @@ def process_call_campaigns_data(
         query = query.filter(CallCampaign.id < last_id)
 
     campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
+    
+    org_map = defaultdict(list)
 
-    if campaign_models:
-        if not organization_id:
-            organization_id = campaign_models[0].organization_id
-        
-        echolead_client = EcholeadsClient(organization_id)
+    for campaign in campaign_models:
+        org_map[campaign.organization_id].append(campaign)
         
     synced = 0
     failed = 0
+    
+    for org_id, campaigns in org_map.items():
+        echolead_client = EcholeadsClient(org_id)
 
-    for campaign in campaign_models:
-        try:
-            sync_campaign_from_echoleads(db, echolead_client, campaign.id)
-            synced += 1
-        except Exception as exc:
-            failed += 1
+        for campaign in campaign_models:
+            try:
+                sync_campaign_from_echoleads(db, echolead_client, campaign.id)
+                synced += 1
+            except Exception as exc:
+                failed += 1
 
     # Return last processed ID to skip in next batch
     new_last_id = campaign_models[-1].id if campaign_models else None
     return synced, failed, new_last_id
 
+def process_test_call_data(
+    db: Session,
+    batch_size: int = 100,
+    organization_id: Optional[int] = None,
+    last_id: Optional[int] = None,
+) -> Tuple[int, int, Optional[int]]:
+    SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
+    
+    
+    query = (
+        db.query(CallingAgentTestCall)
+        .options(joinedload(CallingAgentTestCall.agent))
+        .filter(
+            CallingAgentTestCall.status == "queued",
+            CallingAgentTestCall.external_call_id.isnot(None)
+        )
+    )
+
+    if last_id:
+        query = query.filter(CallingAgentTestCall.id < last_id)
+
+    test_calls = query.order_by(CallingAgentTestCall.id.desc()).limit(batch_size).all()
+    
+    org_map = defaultdict(list)
+    
+    for call in test_calls:
+        org_id = call.agent.organization_id
+        org_map[org_id].append(call)
+
+   
+    synced = 0
+    failed = 0
+
+    for org_id, calls in org_map.items():
+        echolead_client = EcholeadsClient(org_id)
+         
+        for call in calls:
+            try:
+                sync_test_call_log(db, echolead_client, call.agent_id, call.external_call_id)
+                synced += 1
+            except Exception as exc:
+                failed += 1
+
+    # Return last processed ID to skip in next batch
+    new_last_id = test_calls[-1].id if test_calls else None
+    return synced, failed, new_last_id
 
 def run_outcome_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
     total_processed = 0
@@ -722,6 +773,7 @@ def run_call_campaign_processing_batches(batch_size: int, max_batches: int, orga
     db = SessionLocal()
     try:
         last_id = None
+        test_last_id = None
         for _ in range(max_batches):
             synced, sync_failed, last_id  = process_call_campaigns_data(
                 db,
@@ -729,10 +781,17 @@ def run_call_campaign_processing_batches(batch_size: int, max_batches: int, orga
                 organization_id=organization_id,
                 last_id =last_id
             )
+            processed, failed, test_last_id = process_test_call_data(
+                db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+                last_id=test_last_id
+            )
             total_processed += synced
-            total_failed += sync_failed 
-            if synced == 0:
+            total_failed += sync_failed + failed
+            if synced == 0 and processed == 0:
                 break
+            
     finally:
         db.close()
 
@@ -796,3 +855,5 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
                 exc,
                 exc_info=True,
             )
+            
+     
