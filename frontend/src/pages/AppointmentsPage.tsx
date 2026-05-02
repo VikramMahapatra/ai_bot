@@ -54,7 +54,7 @@ import {
 import { organizationService } from "../services/organizationService";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
-import { useDateFormatter } from "../hooks/useDateFormatter";
+import { useDateFormatter, useTimeFormatter } from "../hooks/useDateFormatter";
 
 const DEFAULT_MEET_LINK = "https://meet.google.com/new";
 
@@ -105,25 +105,6 @@ const startOfWeek = (value: Date) => {
 };
 
 const isSameDay = (a: Date, b: Date) => toIsoDateKey(a) === toIsoDateKey(b);
-
-const formatTime = (value?: string) => {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-const toDateTimeLocalValue = (value?: string | Date) => {
-  if (!value) return "";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return "";
-  const year = dt.getFullYear();
-  const month = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  const hours = String(dt.getHours()).padStart(2, "0");
-  const minutes = String(dt.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
 
 const combineDateWithSourceTime = (
   targetDate: Date,
@@ -194,6 +175,7 @@ const AppointmentsPage: React.FC = () => {
   const [appointmentPage, setAppointmentPage] = useState(0);
   const [appointmentRowsPerPage, setAppointmentRowsPerPage] = useState(10);
   const formatDisplayDate = useDateFormatter();
+  const formatDisplayTime = useTimeFormatter();
 
   const loadWidgets = async () => {
     try {
@@ -284,7 +266,7 @@ const AppointmentsPage: React.FC = () => {
     const targetDate = presetDate || new Date(item.appointment_at);
     setSelectedAppointment(null);
     setRescheduleTarget(item);
-    setRescheduleDateTime(toDateTimeLocalValue(targetDate));
+    setRescheduleDateTime(formatDisplayDate(targetDate));
     setRescheduleTimezone(
       item.timezone ||
       Intl.DateTimeFormat().resolvedOptions().timeZone ||
@@ -811,7 +793,7 @@ const AppointmentsPage: React.FC = () => {
                         >
                           <Box>
                             <Typography sx={{ fontWeight: 700 }}>
-                              {formatTime(item.appointment_at)} - {item.name}
+                              {formatDisplayTime(item.appointment_at)} - {item.name}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                               {item.widget_name}{" "}
@@ -947,7 +929,7 @@ const AppointmentsPage: React.FC = () => {
                                   sx={{ fontSize: 12, fontWeight: 600 }}
                                   noWrap
                                 >
-                                  {formatTime(item.appointment_at)} {item.name}
+                                  {formatDisplayTime(item.appointment_at)} {item.name}
                                 </Typography>
                                 <Typography
                                   sx={{ fontSize: 11, color: "text.secondary" }}
@@ -1140,7 +1122,7 @@ const AppointmentsPage: React.FC = () => {
                                     sx={{ fontSize: 11, fontWeight: 600 }}
                                     noWrap
                                   >
-                                    {formatTime(item.appointment_at)}{" "}
+                                    {formatDisplayTime(item.appointment_at)}{" "}
                                     {item.name}
                                   </Typography>
 

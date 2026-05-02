@@ -47,6 +47,7 @@ import {
 import type { CrawlJobStatus } from '../types';
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
+import { useDateFormatter } from '../hooks/useDateFormatter';
 
 interface WidgetConfig {
   widget_id: string;
@@ -197,6 +198,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [botIcon, setBotIcon] = useState('bot-robot');
   const [userIcon, setUserIcon] = useState('user-person');
   const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
+  const formatDisplayDate = useDateFormatter()
 
   const integrationSteps = useMemo(
     () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
@@ -2437,7 +2439,7 @@ const CreateChatAgentPage: React.FC = () => {
                     />
                     {shareLinkExpiresAt && (
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                        This test link expires on {new Date(shareLinkExpiresAt).toLocaleString()}.
+                        This test link expires on {formatDisplayDate(shareLinkExpiresAt)}.
                       </Typography>
                     )}
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 1.2, display: 'block' }}>

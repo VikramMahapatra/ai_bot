@@ -261,7 +261,6 @@ const ReportsPage: React.FC = () => {
   const formatDisplayDate = useDateFormatter();
 
 
-
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
 
@@ -687,6 +686,7 @@ const ReportsPage: React.FC = () => {
         }
         await reportService.exportVoiceCampaignToExcel(
           items,
+          formatDisplayDate,
           summary,
           "voice_campaign_report",
         );
@@ -775,8 +775,9 @@ const ReportsPage: React.FC = () => {
             if (items.length > 0) {
               await reportService.exportVoiceCampaignToPDF(
                 items,
+                formatDisplayDate,
                 summary,
-                "Voice Campaign Report",
+                "Voice Campaign Report"
               );
             } else {
               setError(
@@ -2225,7 +2226,7 @@ const ReportsPage: React.FC = () => {
                   <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
 
                     <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                      {new Date(item.created_at).toLocaleString()}
+                      {formatDisplayDate(item.created_at)}
                     </Typography>
 
                     {/* ---------------- VOICE ---------------- */}

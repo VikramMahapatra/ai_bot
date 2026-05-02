@@ -46,6 +46,7 @@ import VectorizedDataViewer from "./VectorizedDataViewer";
 import { analyticsService } from "../../services/analyticsService";
 import SearchIcon from "@mui/icons-material/Search";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
 
 interface KnowledgeGap {
   keyword: string;
@@ -70,7 +71,7 @@ const KnowledgeManager: React.FC = () => {
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [pendingDeleteName, setPendingDeleteName] = useState("");
   const [pendingDeleteEmbeddings, setPendingDeleteEmbeddings] =
-   
+
     useState<number>(0);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [gapSuggestions, setGapSuggestions] = useState<KnowledgeGap[]>([]);
@@ -81,6 +82,8 @@ const KnowledgeManager: React.FC = () => {
   const [sourceTotal, setSourceTotal] = useState(0);
   const [sourcePage, setSourcePage] = useState(0);
   const [sourceRowsPerPage, setSourceRowsPerPage] = useState(10);
+
+  const formatDisplayDate = useDateFormatter();
 
   const sectionPanelSx = {
     borderRadius: "18px",
@@ -686,7 +689,7 @@ const KnowledgeManager: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {new Date(source.created_at).toLocaleDateString()}
+                            {formatDisplayDate(source.created_at)}
                           </TableCell>
                           <TableCell>
                             <IconButton
@@ -728,36 +731,36 @@ const KnowledgeManager: React.FC = () => {
           </Card>
 
           <Paper
-  sx={{
-    ...sectionPanelSx,
-    p: 2.5, mb: 2.5
-  }}
->
-  <Box sx={{ mb: 1.5 }}>
-    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-      Step 3: Vector Index Explorer
-    </Typography>
-    <Typography variant="body2" color="text.secondary">
-      Inspect chunk volume and source coverage for fast retrieval diagnostics.
-    </Typography>
-  </Box>
+            sx={{
+              ...sectionPanelSx,
+              p: 2.5, mb: 2.5
+            }}
+          >
+            <Box sx={{ mb: 1.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Step 3: Vector Index Explorer
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Inspect chunk volume and source coverage for fast retrieval diagnostics.
+              </Typography>
+            </Box>
 
-  <Box sx={{ flex: 1, overflow: 'hidden' }}>
-    <VectorizedDataViewer
-      widgetId={selectedWidgetId}
-      refreshToken={vectorRefreshToken}
-      externalLoading={vectorLoading}
-      onLoaded={(data) => {
-        if (data?.total_chunks && data.total_chunks > lastTotalChunks) {
-          setLastTotalChunks(data.total_chunks);
-          setVectorLoading(false);
-        } else {
-          setTimeout(() => setVectorLoading(false), 5000);
-        }
-      }}
-    />
-  </Box>
-</Paper>
+            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+              <VectorizedDataViewer
+                widgetId={selectedWidgetId}
+                refreshToken={vectorRefreshToken}
+                externalLoading={vectorLoading}
+                onLoaded={(data) => {
+                  if (data?.total_chunks && data.total_chunks > lastTotalChunks) {
+                    setLastTotalChunks(data.total_chunks);
+                    setVectorLoading(false);
+                  } else {
+                    setTimeout(() => setVectorLoading(false), 5000);
+                  }
+                }}
+              />
+            </Box>
+          </Paper>
 
         </Stack>
       ) : (

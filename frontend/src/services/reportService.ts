@@ -646,11 +646,12 @@ export const reportService = {
 
   async exportVoiceCampaignToPDF(
     items: VoiceCampaignReportItem[],
+    formatDate: (date: string | Date | null) => string,
     summary?: VoiceCampaignReportSummary | null,
-    title: string = 'Voice Campaign Report'
+    title: string = 'Voice Campaign Report',
   ): Promise<void> {
     const doc = new jsPDF({ orientation: 'landscape' });
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDate(new Date());
     const totalCall = summary?.total_calls ?? items.length;
     const successfulAttempt = summary?.successful_attempts ?? 0;
     const successRate = totalCall > 0 ? ((successfulAttempt / totalCall) * 100).toFixed(1) : '0.0';
@@ -681,7 +682,7 @@ export const reportService = {
         item.funnel_stage || '-',
         normalizeLeadOutcome(item.lead_outcome),
         item.product_name || '-',
-        toDisplayDateTime(item.created_at),
+        formatDate(item.created_at),
       ]),
       styles: {
         fontSize: 7,
@@ -715,13 +716,14 @@ export const reportService = {
 
   async exportVoiceCampaignToExcel(
     items: VoiceCampaignReportItem[],
+    formatDate: (date: string | Date | null) => string,
     summary?: VoiceCampaignReportSummary | null,
     fileName: string = 'voice_campaign_report'
   ): Promise<void> {
     const totalCall = summary?.total_calls ?? items.length;
     const successfulAttempt = summary?.successful_attempts ?? 0;
     const successRate = totalCall > 0 ? Number(((successfulAttempt / totalCall) * 100).toFixed(2)) : 0;
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDate(new Date());
 
     const headerRows: (string | number)[][] = [
       ['Voice Campaign Report'],
@@ -747,7 +749,7 @@ export const reportService = {
       item.funnel_stage || '-',
       normalizeLeadOutcome(item.lead_outcome),
       item.product_name || '-',
-      toDisplayDateTime(item.created_at),
+      formatDate(item.created_at),
     ]));
     const footerRows: (string | number)[][] = [[], ['Powered by: Zentrixel']];
 

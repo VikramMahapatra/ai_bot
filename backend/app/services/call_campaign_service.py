@@ -7,7 +7,7 @@ from typing import List, Optional
 from urllib import response
 from uuid import uuid4
 from fastapi import BackgroundTasks, HTTPException
-from sqlalchemy import case, exists, func, literal, or_
+from sqlalchemy import and_, case, exists, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
@@ -27,6 +27,7 @@ from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.models.message_templates import MessageTemplate
 from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
+from app.models.workflows import WorkflowExecution, WorkflowExecutionLog
 
 
 STALE_MINUTES = 1
@@ -301,15 +302,21 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     
     attempted_calls = (
         db.query(CallLog)
-        .filter(CallLog.campaign_id == campaign_id)
+        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "campaign_call")
         .count()
     )
     
     successful_calls = (
         db.query(CallLog)
         .join(CallTranscript, CallTranscript.call_log_id == CallLog.id)
-        .filter(CallLog.campaign_id == campaign_id)
-        .all()
+        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "campaign_call")
+        .count()
+    )
+    
+    rescheduled_calls = (
+        db.query(CallLog)
+        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "rescheduled_call")
+        .count()
     )
 
     pending_scheduled_calls = (
@@ -360,13 +367,40 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         "response_rate": campaign_obj.response_rate,
 
         "total_contacts": total_contacts,
-        "attempted_calls": attempted_calls,
-        "successful_calls": successful_calls,
+        "attempted_calls": attempted_calls or 0,
+        "successful_calls": successful_calls or 0,
+        "rescheduled_calls": rescheduled_calls or 0,
         "pending_scheduled_calls": pending_scheduled_calls,
         "instant_reply": len(instant_reply_modes) > 0,
         "instant_reply_modes": instant_reply_modes,
         "instant_reply_templates": instant_reply_templates
     }
+    
+def get_workflow_history(db : Session, campaign_id : int, contact_id : int):
+
+    execution = db.query(WorkflowExecution).filter(
+        WorkflowExecution.campaign_id == campaign_id,
+        WorkflowExecution.contact_id == contact_id
+    ).first()
+
+    if not execution:
+        return []
+
+    logs = db.query(WorkflowExecutionLog).filter(
+        WorkflowExecutionLog.execution_id == execution.id
+    ).order_by(WorkflowExecutionLog.created_at.asc()).all()
+
+    return [
+        {
+            "event": log.event_type,
+            "step_id": log.step_id,
+            "step_type": (log.event_metadata or {}).get("step_type"),
+            "call_status": log.call_status,
+            "outcome": log.outcome,
+            "time": log.created_at,
+        }
+        for log in logs
+    ]
     
 def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     org = db.query(Organization).filter(
@@ -1617,11 +1651,30 @@ def sync_campaign_from_echoleads(
         db.commit()
         
         if campaign.status == "completed":
-            organization_channel_service.release_channel(
-                db,
-                call_type="campaign",
-                reference_id=campaign.id
-            )
+            # Case 1: Campaign has workflow → check executions
+            if campaign.workflow_id:
+
+                pending_execution_exists = db.query(
+                    exists().where(
+                        WorkflowExecution.campaign_id == campaign.id,
+                        WorkflowExecution.status.in_(["pending", "scheduled"])
+                    )
+                ).scalar()
+
+                if not pending_execution_exists:
+                    organization_channel_service.release_channel(
+                        db,
+                        call_type="campaign",
+                        reference_id=campaign.id
+                    )
+
+            # Case 2: No workflow → release immediately
+            else:
+                organization_channel_service.release_channel(
+                    db,
+                    call_type="campaign",
+                    reference_id=campaign.id
+                )
 
     except Exception as e:
         print("Sync failed:", str(e))

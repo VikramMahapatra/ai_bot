@@ -99,3 +99,5 @@ class CallingAgentTestCall(Base):
     status = Column(String, default="Triggered")
     created_at = Column(DateTime, default=datetime.utcnow)
     external_call_id = Column(String, nullable=True)  # NEW COLUMN
+    
+    agent = relationship("CallingAgent")

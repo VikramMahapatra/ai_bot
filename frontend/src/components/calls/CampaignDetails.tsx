@@ -60,6 +60,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import { useAuth } from "../../context/AuthContext";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
+import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
 
 interface Props {
   campaignId: number;
@@ -197,6 +198,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [openContactsDialog, setOpenContactsDialog] = useState(false);
   const [contactType, setContactType] = useState<ContactType>("all");
 
+  const [openWorkflowDrawer, setOpenWorkflowDrawer] = useState(false);
+  const [workflowHistory, setWorkflowHistory] = useState<any[]>([]);
+
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -206,6 +210,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     status: "All",
     sentiment: "All",
     evaluation: "All",
+    is_lead_qualified: "All"
   });
 
   const loadData = async () => {
@@ -300,6 +305,18 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const handleOpen = (type: ContactType) => {
     setContactType(type);
     setOpenContactsDialog(true);
+  };
+
+  const openWorkflowHistory = async (contactId?: number) => {
+    if (!contactId) return;
+
+    const data = await callCampaignService.getWorkflowHistory(
+      campaignId,
+      contactId
+    );
+
+    setWorkflowHistory(data);
+    setOpenWorkflowDrawer(true);
   };
 
   const titleCase = (value: string) =>
@@ -436,14 +453,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
           >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Rescheduled Calls</Typography>
+                <Typography variant="subtitle2">Follow-up Calls</Typography>
                 <ReplayIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {campaign?.rescheduled_calls || 0}
               </Typography>
               <Typography variant="caption" mt={1} color="text.secondary">
-                Click to view rescheduled calls
+                Click to view follow-up calls
               </Typography>
             </CardContent>
           </Card>
@@ -481,7 +498,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <CardContent>
           <Typography fontWeight="bold">Campaign Progress</Typography>
           <Typography variant="body2" mb={1}>
-            {campaign?.attempted_calls || 0} of {campaign?.total_calls || 0}{" "}
+            {campaign?.attempted_calls || 0} of {campaign?.total_contacts || 0}{" "}
             contacts reached
           </Typography>
           <LinearProgress variant="determinate" value={progress} />
@@ -861,6 +878,13 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
                       <TableCell>
+                        {log.follow_up_count > 0 && (
+                          <Tooltip title="View Insights">
+                            <IconButton onClick={() => openWorkflowHistory(log.contact_id)}>
+                              <ReplayIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="View Insights">
                           <IconButton
                             onClick={() => {
@@ -919,6 +943,12 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         onClose={() => setOpenContactsDialog(false)}
         type={contactType}
       />
+
+      <WorkflowHistoryDrawer
+        open={openWorkflowDrawer}
+        onClose={() => setOpenWorkflowDrawer(false)}
+        data={workflowHistory}
+      />
     </Box>
   );
 }
@@ -939,7 +969,7 @@ function ContactsDialog({
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const formatDisplayTime = useDateFormatter()
+  const formatDisplayDate = useDateFormatter()
 
   useEffect(() => {
     if (open) {
@@ -972,7 +1002,7 @@ function ContactsDialog({
       case "initiated":
         return "Initiated Calls";
       case "rescheduled":
-        return "Rescheduled Calls";
+        return "Follow-up Calls";
       case "pending":
         return "Pending Calls";
       default:
@@ -1066,7 +1096,7 @@ function ContactsDialog({
                     {columns.map((col) => (
                       <TableCell key={col.key}>
                         {col.key.includes("date")
-                          ? formatDisplayTime(row[col.key])
+                          ? formatDisplayDate(row[col.key])
                           : (row[col.key] ?? "-")}
                       </TableCell>
                     ))}
@@ -1093,5 +1123,7 @@ function ContactsDialog({
         </Button>
       </DialogActions>
     </Dialog>
+
+
   );
 }
