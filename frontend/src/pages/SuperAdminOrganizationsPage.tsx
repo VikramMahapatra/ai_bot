@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Paper,
@@ -35,43 +35,56 @@ import {
   Divider,
   Alert,
   CircularProgress,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import AddIcon from '@mui/icons-material/Add';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import EditIcon from '@mui/icons-material/Edit';
-import SearchIcon from '@mui/icons-material/Search';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import ViewListIcon from '@mui/icons-material/ViewList';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import SuperAdminLayout from '../components/Layout/SuperAdminLayout';
-import { ConfirmDialog } from '../components/Common/ConfirmDialog';
-import { superadminService } from '../services/superadminService';
-import { OrganizationLimits, SuperAdminOrganization, CallingNumber } from '../types';
+  FormHelperText,
+} from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import AddIcon from "@mui/icons-material/Add";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import SearchIcon from "@mui/icons-material/Search";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import SuperAdminLayout from "../components/Layout/SuperAdminLayout";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
+import { superadminService } from "../services/superadminService";
+import {
+  OrganizationLimits,
+  SuperAdminOrganization,
+  CallingNumber,
+  Channel,
+} from "../types";
 import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
 import DeleteIcon from "@mui/icons-material/Delete";
+import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import HubIcon from "@mui/icons-material/Hub";
+import ShareIcon from "@mui/icons-material/Share";
+import LiveTvIcon from "@mui/icons-material/LiveTv";
+import TvIcon from "@mui/icons-material/Tv";
 
 const limitToggleFields: Array<[keyof OrganizationLimits, string]> = [
-  ['lead_generation_enabled', 'Lead Generation Enabled'],
-  ['voice_chat_enabled', 'Voice Chat Enabled'],
-  ['multilingual_text_enabled', 'Multilingual Text Enabled'],
-  ['whatsapp_enabled', 'WhatsApp Enabled'],
-  ['email_campaign_enabled', 'Email Campaign Enabled'],
-  ['sms_campaign_enabled', 'SMS Campaign Enabled'],
-  ['module_knowledge_enabled', 'Knowledge Module Enabled'],
-  ['module_leads_enabled', 'Leads Module Enabled'],
-  ['module_analytics_enabled', 'Analytics Module Enabled'],
-  ['module_advanced_analytics_enabled', 'Advanced Analytics Module Enabled'],
-  ['module_reports_enabled', 'Reports Module Enabled'],
-  ['module_campaigns_enabled', 'Campaigns Module Enabled'],
-  ['module_appointments_enabled', 'Appointments Module Enabled'],
-  ['module_products_enabled', 'Products Module Enabled'],
-  ['module_users_enabled', 'Users Module Enabled'],
-  ['human_handoff_enabled', 'Human Handoff Enabled'],
+  ["lead_generation_enabled", "Lead Generation Enabled"],
+  ["voice_chat_enabled", "Voice Chat Enabled"],
+  ["multilingual_text_enabled", "Multilingual Text Enabled"],
+  ["whatsapp_enabled", "WhatsApp Enabled"],
+  ["email_campaign_enabled", "Email Campaign Enabled"],
+  ["sms_campaign_enabled", "SMS Campaign Enabled"],
+  ["module_knowledge_enabled", "Knowledge Module Enabled"],
+  ["module_leads_enabled", "Leads Module Enabled"],
+  ["module_analytics_enabled", "Analytics Module Enabled"],
+  ["module_advanced_analytics_enabled", "Advanced Analytics Module Enabled"],
+  ["module_reports_enabled", "Reports Module Enabled"],
+  ["module_campaigns_enabled", "Campaigns Module Enabled"],
+  ["module_appointments_enabled", "Appointments Module Enabled"],
+  ["module_products_enabled", "Products Module Enabled"],
+  ["module_users_enabled", "Users Module Enabled"],
+  ["human_handoff_enabled", "Human Handoff Enabled"],
 ];
 
-const organizationLimitKeys = limitToggleFields.map(([key]) => key) as Array<keyof OrganizationLimits>;
+const organizationLimitKeys = limitToggleFields.map(([key]) => key) as Array<
+  keyof OrganizationLimits
+>;
 
 const defaultLimits: OrganizationLimits = {
   lead_generation_enabled: true,
@@ -94,46 +107,62 @@ const defaultLimits: OrganizationLimits = {
 
 const SuperAdminOrganizationsPage: React.FC = () => {
   const theme = useTheme();
-  const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>([]);
+  const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>(
+    [],
+  );
   const [form, setForm] = useState({
-    organization_name: '',
-    description: '',
-    joining_date: '',
-    effective_joining_date: '',
-    admin_username: '',
-    admin_email: '',
-    admin_password: '',
-    echoleads_api_key: '',
+    organization_name: "",
+    description: "",
+    joining_date: "",
+    effective_joining_date: "",
+    admin_username: "",
+    admin_email: "",
+    admin_password: "",
+    echoleads_api_key: "",
   });
   const [createOpen, setCreateOpen] = useState(false);
-  const [createOverrideLimits, setCreateOverrideLimits] = useState<Partial<OrganizationLimits>>({ ...defaultLimits });
-  const [editingOrg, setEditingOrg] = useState<SuperAdminOrganization | null>(null);
-  const [editAdminUsername, setEditAdminUsername] = useState('');
-  const [editAdminEmail, setEditAdminEmail] = useState('');
-  const [editAdminPassword, setEditAdminPassword] = useState('');
-  const [editJoiningDate, setEditJoiningDate] = useState('');
-  const [editEffectiveJoiningDate, setEditEffectiveJoiningDate] = useState('');
-  const [editOverrideLimits, setEditOverrideLimits] = useState<Partial<OrganizationLimits>>({ ...defaultLimits });
+  const [createOverrideLimits, setCreateOverrideLimits] = useState<
+    Partial<OrganizationLimits>
+  >({ ...defaultLimits });
+  const [editingOrg, setEditingOrg] = useState<SuperAdminOrganization | null>(
+    null,
+  );
+  const [editAdminUsername, setEditAdminUsername] = useState("");
+  const [editAdminEmail, setEditAdminEmail] = useState("");
+  const [editAdminPassword, setEditAdminPassword] = useState("");
+  const [editJoiningDate, setEditJoiningDate] = useState("");
+  const [editEffectiveJoiningDate, setEditEffectiveJoiningDate] = useState("");
+  const [editOverrideLimits, setEditOverrideLimits] = useState<
+    Partial<OrganizationLimits>
+  >({ ...defaultLimits });
   const [viewOpen, setViewOpen] = useState(false);
   const [viewOrg, setViewOrg] = useState<SuperAdminOrganization | null>(null);
   const [open, setOpen] = useState(false);
-  const [selectedOrg, setSelectedOrg] = useState<any | null>(null)
+  const [selectedOrg, setSelectedOrg] = useState<any | null>(null);
 
-  const [openCallingNumberDialog, setOpenCallingNumberDialog] = useState(false)
-  const [openCallingNumberForm, setOpenCallingNumberForm] = useState(false)
-  const [numbers, setNumbers] = useState<any[]>([])
-  const [editing, setEditing] = useState(false)
-  const [selectedRow, setSelectedRow] = useState<any | null>(null)
-  const [actionError, setActionError] = useState('');
-  const [actionSuccess, setActionSuccess] = useState('');
+  const [openCallingNumberDialog, setOpenCallingNumberDialog] = useState(false);
+  const [openCallingNumberForm, setOpenCallingNumberForm] = useState(false);
+  const [openChannelDialog, setOpenChannelDialog] = useState(false);
+  const [openChannelForm, setOpenChannelForm] = useState(false);
+  const [numbers, setNumbers] = useState<any[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<any | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const [isSavingOrg, setIsSavingOrg] = useState(false);
   const [deletingOrgId, setDeletingOrgId] = useState<number | null>(null);
-  const [callingNumberToDelete, setCallingNumberToDelete] = useState<{ id: number; number: string } | null>(null);
-  const [callingNumberDeleteSubmitting, setCallingNumberDeleteSubmitting] = useState(false);
-  const [orgToDelete, setOrgToDelete] = useState<SuperAdminOrganization | null>(null);
-  const [orgSearch, setOrgSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [callingNumberToDelete, setCallingNumberToDelete] = useState<{
+    id: number;
+    number: string;
+  } | null>(null);
+  const [callingNumberDeleteSubmitting, setCallingNumberDeleteSubmitting] =
+    useState(false);
+  const [orgToDelete, setOrgToDelete] = useState<SuperAdminOrganization | null>(
+    null,
+  );
+  const [orgSearch, setOrgSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(8);
   const [createResultDialog, setCreateResultDialog] = useState<{
@@ -144,46 +173,74 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   }>({
     open: false,
     success: true,
-    title: '',
-    message: '',
+    title: "",
+    message: "",
   });
 
   const [callingform, setCallingForm] = useState<Omit<CallingNumber, "id">>({
     calling_number: "",
     is_default: false,
     is_active: true,
-    type: "outbound"
-  })
+    type: "outbound",
+  });
 
   const [callingFormError, setCallingFormError] = useState({
-    calling_number: ""
-  })
-  const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState('');
+    calling_number: "",
+  });
+  const [channelForm, setChannelForm] = useState({
+    channel_id: 0,
+    name: "",
+  });
+  const [channelFormError, setChannelFormError] = useState({
+    name: "",
+  });
+  const [masterChannels, setMasterChannels] = useState<any[]>([]);
+  const [orgChannels, setOrgChannels] = useState<any[]>([]);
+  const [channelToDelete, setChannelToDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [channelDeleteSubmitting, setChannelDeleteSubmitting] = useState(false);
+
+  const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState("");
 
   const orgStats = useMemo(() => {
     const total = organizations.length;
-    const leadGenerationEnabled = organizations.filter((org) => Boolean(org.limits?.lead_generation_enabled)).length;
-    const whatsappEnabled = organizations.filter((org) => Boolean(org.limits?.whatsapp_enabled)).length;
-    const humanHandoffEnabled = organizations.filter((org) => Boolean(org.limits?.human_handoff_enabled)).length;
-    return { total, leadGenerationEnabled, whatsappEnabled, humanHandoffEnabled };
+    const leadGenerationEnabled = organizations.filter((org) =>
+      Boolean(org.limits?.lead_generation_enabled),
+    ).length;
+    const whatsappEnabled = organizations.filter((org) =>
+      Boolean(org.limits?.whatsapp_enabled),
+    ).length;
+    const humanHandoffEnabled = organizations.filter((org) =>
+      Boolean(org.limits?.human_handoff_enabled),
+    ).length;
+    return {
+      total,
+      leadGenerationEnabled,
+      whatsappEnabled,
+      humanHandoffEnabled,
+    };
   }, [organizations]);
 
   const filteredOrganizations = useMemo(() => {
     const term = orgSearch.trim().toLowerCase();
-    const sorted = [...organizations].sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = [...organizations].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
     if (!term) return sorted;
     return sorted.filter((org) =>
       [
         org.name,
-        org.description || '',
-        org.admin_username || '',
-        org.admin_email || '',
-        org.joining_date || '',
-        org.effective_joining_date || '',
+        org.description || "",
+        org.admin_username || "",
+        org.admin_email || "",
+        org.joining_date || "",
+        org.effective_joining_date || "",
       ]
-        .join(' ')
+        .join(" ")
         .toLowerCase()
-        .includes(term)
+        .includes(term),
     );
   }, [organizations, orgSearch]);
 
@@ -193,17 +250,21 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   }, [filteredOrganizations, page, rowsPerPage]);
 
   const formatDate = (value?: string | null) => {
-    if (!value) return '-';
+    if (!value) return "-";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleDateString();
   };
 
   const normalizeErrorDetail = (detail: unknown): string => {
-    if (typeof detail === 'string') return detail;
-    if (detail && typeof detail === 'object') return JSON.stringify(detail);
-    return 'Failed to create organization';
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object") return JSON.stringify(detail);
+    return "Failed to create organization";
   };
+
+  useEffect(() => {
+    fetchMasterChannels();
+  }, []);
 
   useEffect(() => {
     setPage(0);
@@ -211,115 +272,241 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
   useEffect(() => {
     if (openCallingNumberDialog) {
-      fetchCallingNumbers()
+      fetchCallingNumbers();
     }
-  }, [openCallingNumberDialog])
+  }, [openCallingNumberDialog]);
 
-  const handleOpenCallingNumberDialog = (org: any) => {
-    setSelectedOrg(org)
-    setOpenCallingNumberDialog(true)
-  }
+  useEffect(() => {
+    if (openChannelDialog) {
+      fetchOrgChannels();
+    }
+  }, [openChannelDialog]);
 
   const fetchCallingNumbers = async () => {
-    if (!selectedOrg) return
+    if (!selectedOrg) return;
 
     try {
-      const res = await superadminService.getCallingNumbers(selectedOrg.id)
-      setNumbers(res)
+      const res = await superadminService.getCallingNumbers(selectedOrg.id);
+      setNumbers(res);
     } catch (error) {
-      console.error("Failed to fetch calling numbers", error)
+      console.error("Failed to fetch calling numbers", error);
     }
-  }
+  };
+
+  const fetchMasterChannels = async () => {
+    try {
+      const res = await superadminService.getMasterChanels();
+      setMasterChannels(res);
+    } catch (error) {
+      console.error("Failed to fetch master channels", error);
+    }
+  };
+
+  const fetchOrgChannels = async () => {
+    if (!selectedOrg) return;
+
+    try {
+      const res = await superadminService.getOrganizationChanels(
+        selectedOrg.id,
+      );
+      setOrgChannels(res);
+    } catch (error) {
+      console.error("Failed to fetch organization channels", error);
+    }
+  };
 
   const validateCallingForm = () => {
-    let valid = true
-    let errors: any = {}
+    let valid = true;
+    let errors: any = {};
 
     if (!callingform.calling_number?.trim()) {
-      errors.calling_number = "Calling number is required"
-      valid = false
+      errors.calling_number = "Calling number is required";
+      valid = false;
     }
 
     if (!callingform.type) {
-      errors.type = "Type is required"
-      valid = false
+      errors.type = "Type is required";
+      valid = false;
     }
 
-    console.log(errors)
+    console.log(errors);
 
-    setCallingFormError(errors)
-    return valid
-  }
+    setCallingFormError(errors);
+    return valid;
+  };
 
   const handleAddCallingNumber = () => {
-    setEditing(false)
+    setEditing(false);
 
     setCallingForm({
       calling_number: "",
       is_default: false,
       is_active: true,
-      type: "outbound"
-    })
+      type: "outbound",
+    });
 
-    setOpenCallingNumberForm(true)
-  }
+    setOpenCallingNumberForm(true);
+  };
 
   const handleCallingEdit = (row: any) => {
-    setEditing(true)
-    setSelectedRow(row)
+    setEditing(true);
+    setSelectedRow(row);
 
     setCallingForm({
       calling_number: row.calling_number,
       is_default: row.is_default,
       is_active: row.is_active,
-      type: row.type
-    })
+      type: row.type,
+    });
 
-    setOpenCallingNumberForm(true)
-  }
-
+    setOpenCallingNumberForm(true);
+  };
 
   const handleCloseCallingDialog = () => {
-    setOpenCallingNumberDialog(false)
-    setOpenCallingNumberForm(false)
-    setSelectedRow(null)
-  }
+    setOpenCallingNumberDialog(false);
+    setOpenCallingNumberForm(false);
+    setSelectedRow(null);
+  };
 
   const handleCloseCallingForm = () => {
-    setOpenCallingNumberForm(false)
-    setSelectedRow(null)
-  }
+    setOpenCallingNumberForm(false);
+    setSelectedRow(null);
+  };
 
-  const handleCallingSave = async () => {
-    if (!validateCallingForm()) return
+  //#### Channel ########
+
+  const validateChannelForm = () => {
+    let valid = true;
+    let errors: any = {};
+
+    if (!channelForm.name) {
+      errors.name = "Select channel before save";
+      valid = false;
+    }
+
+    console.log(errors);
+
+    setChannelFormError(errors);
+    return valid;
+  };
+
+  const handleOpenChannelDialog = (org: any) => {
+    setSelectedOrg(org);
+    setOpenChannelDialog(true);
+  };
+
+  const handleCloseChannelDialog = () => {
+    setOpenChannelDialog(false);
+    setSelectedRow(null);
+  };
+
+  const handleCloseChannelForm = () => {
+    setOpenChannelForm(false);
+    setSelectedRow(null);
+  };
+
+  const handleAddChannel = () => {
+    setEditing(false);
+    setChannelFormError({
+      name: "",
+    });
+    setChannelForm({
+      channel_id: 0,
+      name: "",
+    });
+    setOpenChannelForm(true);
+  };
+
+  const handleChannelEdit = (row: any) => {
+    setEditing(true);
+    setSelectedRow(row);
+
+    setChannelFormError({
+      name: "",
+    });
+
+    setChannelForm({
+      channel_id: row.channel_id,
+      name: row.name,
+    });
+
+    setOpenChannelForm(true);
+  };
+
+  const handleOrgChannelSave = async () => {
+    if (!validateChannelForm()) return;
 
     try {
-
       if (editing) {
         // update api
-        await superadminService.updateCallingNumber(selectedRow.id, callingform)
+        await superadminService.updateOrgChannel(
+          selectedRow.id,
+          channelForm.channel_id,
+        );
       } else {
         // create api
-        await superadminService.createCallingNumber(selectedOrg.id, callingform)
+        await superadminService.createOrgChannel(
+          selectedOrg.id,
+          channelForm.channel_id,
+        );
       }
 
-      fetchCallingNumbers()
-      handleCloseCallingForm()
-
+      fetchOrgChannels();
+      handleCloseChannelForm();
     } catch (error) {
-      console.error(error)
+      console.error(error);
     }
-  }
+  };
+
+  const handleConfirmDeleteOrgChannel = async () => {
+    if (!channelToDelete) return;
+
+    setChannelDeleteSubmitting(true);
+    try {
+      await superadminService.deleteOrgChannel(channelToDelete.id);
+      setChannelToDelete(null);
+      fetchOrgChannels();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setChannelDeleteSubmitting(false);
+    }
+  };
+
+  const handleCallingSave = async () => {
+    if (!validateCallingForm()) return;
+
+    try {
+      if (editing) {
+        // update api
+        await superadminService.updateCallingNumber(
+          selectedRow.id,
+          callingform,
+        );
+      } else {
+        // create api
+        await superadminService.createCallingNumber(
+          selectedOrg.id,
+          callingform,
+        );
+      }
+
+      fetchCallingNumbers();
+      handleCloseCallingForm();
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleDefault = async (row: any) => {
-    await superadminService.setDefaultCallingNumber(row.id)
-    fetchCallingNumbers()
-  }
+    await superadminService.setDefaultCallingNumber(row.id);
+    fetchCallingNumbers();
+  };
 
   const handleActive = async (row: any) => {
-    await superadminService.toggleActiveCallingNumber(row.id)
-    fetchCallingNumbers()
-  }
+    await superadminService.toggleActiveCallingNumber(row.id);
+    fetchCallingNumbers();
+  };
 
   const handleConfirmDeleteCallingNumber = async () => {
     if (!callingNumberToDelete) return;
@@ -336,6 +523,11 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     }
   };
 
+  const handleOpenCallingNumberDialog = (org: any) => {
+    setSelectedOrg(org);
+    setOpenCallingNumberDialog(true);
+  };
+
   const loadOrganizations = async () => {
     const data = await superadminService.listOrganizations();
     setOrganizations(data);
@@ -348,9 +540,11 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const handleCreate = async () => {
     try {
       setIsCreatingOrg(true);
-      setActionError('');
+      setActionError("");
 
-      const payloadLimits = organizationLimitKeys.reduce<Partial<OrganizationLimits>>((acc, key) => {
+      const payloadLimits = organizationLimitKeys.reduce<
+        Partial<OrganizationLimits>
+      >((acc, key) => {
         const value = createOverrideLimits[key];
         if (value !== undefined) {
           (acc as Record<string, unknown>)[key as string] = value;
@@ -367,19 +561,19 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         admin_email: form.admin_email,
         admin_password: form.admin_password,
         limits: payloadLimits,
-        echoleads_api_key: form.echoleads_api_key || undefined
+        echoleads_api_key: form.echoleads_api_key || undefined,
       });
       setCreateResultDialog({
         open: true,
         success: true,
-        title: 'Organization Created',
-        message: 'Organization and admin user were created successfully.',
+        title: "Organization Created",
+        message: "Organization and admin user were created successfully.",
       });
     } catch (error: any) {
       setCreateResultDialog({
         open: true,
         success: false,
-        title: 'Creation Failed',
+        title: "Creation Failed",
         message: normalizeErrorDetail(error?.response?.data?.detail),
       });
     } finally {
@@ -391,14 +585,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setCreateResultDialog((prev) => ({ ...prev, open: false }));
     setCreateOpen(false);
     setForm({
-      organization_name: '',
-      description: '',
-      joining_date: '',
-      effective_joining_date: '',
-      admin_username: '',
-      admin_email: '',
-      admin_password: '',
-      echoleads_api_key: '',
+      organization_name: "",
+      description: "",
+      joining_date: "",
+      effective_joining_date: "",
+      admin_username: "",
+      admin_email: "",
+      admin_password: "",
+      echoleads_api_key: "",
     });
     setCreateOverrideLimits({ ...defaultLimits });
     await loadOrganizations();
@@ -406,13 +600,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
   const handleEditOpen = (org: SuperAdminOrganization) => {
     setEditingOrg(org);
-    setEditAdminUsername(org.admin_username || '');
-    setEditAdminEmail(org.admin_email || '');
-    setEditAdminPassword('');
-    setEditJoiningDate(org.joining_date || '');
-    setEditEffectiveJoiningDate(org.effective_joining_date || '');
+    setEditAdminUsername(org.admin_username || "");
+    setEditAdminEmail(org.admin_email || "");
+    setEditAdminPassword("");
+    setEditJoiningDate(org.joining_date || "");
+    setEditEffectiveJoiningDate(org.effective_joining_date || "");
     setEditOverrideLimits({ ...defaultLimits, ...(org.limits || {}) });
-    setEditEchoLeadsAPIKey(org.echoleads_api_key || '');
+    setEditEchoLeadsAPIKey(org.echoleads_api_key || "");
     setOpen(true);
   };
 
@@ -424,8 +618,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const handleEditSave = async () => {
     try {
       setIsSavingOrg(true);
-      setActionError('');
-      setActionSuccess('');
+      setActionError("");
+      setActionSuccess("");
       if (!editingOrg) return;
       const trimmedAdminUsername = editAdminUsername.trim();
       const trimmedAdminEmail = editAdminEmail.trim();
@@ -434,15 +628,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       const trimmedAPIKey = editEchoLeadsAPIKey.trim();
 
       if (!trimmedAdminUsername) {
-        setActionError('Admin username is required.');
+        setActionError("Admin username is required.");
         return;
       }
       if (!trimmedAdminEmail) {
-        setActionError('Admin email is required.');
+        setActionError("Admin email is required.");
         return;
       }
       if (missingAdmin && !trimmedAdminPassword) {
-        setActionError('Admin password is required to create missing admin.');
+        setActionError("Admin password is required to create missing admin.");
         return;
       }
 
@@ -452,11 +646,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         admin_username: trimmedAdminUsername,
         admin_email: trimmedAdminEmail,
         admin_password: trimmedAdminPassword || undefined,
-        echoleads_api_key: trimmedAPIKey || undefined
+        echoleads_api_key: trimmedAPIKey || undefined,
       });
 
       // Only send true overrides
-      const payloadLimits = organizationLimitKeys.reduce<Partial<OrganizationLimits>>((acc, key) => {
+      const payloadLimits = organizationLimitKeys.reduce<
+        Partial<OrganizationLimits>
+      >((acc, key) => {
         const value = editOverrideLimits[key];
         if (value !== undefined) {
           (acc as Record<string, unknown>)[key as string] = value;
@@ -466,10 +662,12 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       await superadminService.updateLimits(editingOrg.id, payloadLimits);
       setOpen(false);
       setEditingOrg(null);
-      setActionSuccess('Organization updated successfully.');
+      setActionSuccess("Organization updated successfully.");
       loadOrganizations();
     } catch (error: any) {
-      setActionError(error?.response?.data?.detail || 'Failed to update organization');
+      setActionError(
+        error?.response?.data?.detail || "Failed to update organization",
+      );
     } finally {
       setIsSavingOrg(false);
     }
@@ -480,8 +678,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
     try {
       setDeletingOrgId(orgToDelete.id);
-      setActionError('');
-      setActionSuccess('');
+      setActionError("");
+      setActionSuccess("");
       await superadminService.deleteOrganization(orgToDelete.id);
       const deletedName = orgToDelete.name;
       if (editingOrg?.id === orgToDelete.id) {
@@ -496,7 +694,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       setActionSuccess(`Organization "${deletedName}" deleted successfully.`);
       await loadOrganizations();
     } catch (error: any) {
-      setActionError(error?.response?.data?.detail || 'Failed to delete organization');
+      setActionError(
+        error?.response?.data?.detail || "Failed to delete organization",
+      );
     } finally {
       setDeletingOrgId(null);
     }
@@ -509,86 +709,124 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         sx={{
           p: { xs: 2.2, md: 3 },
           mb: 3,
-          borderRadius: '22px',
+          borderRadius: "22px",
           border: `1px solid ${alpha(theme.palette.common.white, 0.65)}`,
-          background: `linear-gradient(132deg, ${alpha('#cbe7e8', 0.94)} 0%, ${alpha(
+          background: `linear-gradient(132deg, ${alpha("#cbe7e8", 0.94)} 0%, ${alpha(
             theme.palette.background.paper,
-            0.84
-          )} 66%, ${alpha('#9ed7d8', 0.96)} 100%)`,
+            0.84,
+          )} 66%, ${alpha("#9ed7d8", 0.96)} 100%)`,
           boxShadow: `0 18px 36px ${alpha(theme.palette.primary.dark, 0.24)}`,
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
+          position: "relative",
+          overflow: "hidden",
+          "&::before": {
             content: '""',
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
             background:
-              'linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)',
-            pointerEvents: 'none',
+              "linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0) 62%)",
+            pointerEvents: "none",
           },
-          '&::after': {
+          "&::after": {
             content: '""',
-            position: 'absolute',
-            top: '-24%',
-            right: '-6%',
-            width: '42%',
-            height: '150%',
-            background: 'radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)',
-            pointerEvents: 'none',
+            position: "absolute",
+            top: "-24%",
+            right: "-6%",
+            width: "42%",
+            height: "150%",
+            background:
+              "radial-gradient(circle, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 72%)",
+            pointerEvents: "none",
           },
-          '& > *': {
-            position: 'relative',
+          "& > *": {
+            position: "relative",
             zIndex: 1,
           },
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", md: "center" }}
+          spacing={2}
+        >
           <Box>
-            <Typography variant="overline" sx={{ letterSpacing: 1.4, fontWeight: 700, color: alpha(theme.palette.primary.dark, 0.75) }}>
+            <Typography
+              variant="overline"
+              sx={{
+                letterSpacing: 1.4,
+                fontWeight: 700,
+                color: alpha(theme.palette.primary.dark, 0.75),
+              }}
+            >
               Tenant Control Center
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
               Organization Management
             </Typography>
-            <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.75), mt: 0.75 }}>
-              Create tenants and manage feature governance directly per organization.
+            <Typography
+              variant="body2"
+              sx={{ color: alpha(theme.palette.text.primary, 0.75), mt: 0.75 }}
+            >
+              Create tenants and manage feature governance directly per
+              organization.
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+          >
             New Organization
           </Button>
         </Stack>
       </Paper>
 
       {actionError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError('')}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          onClose={() => setActionError("")}
+        >
           {actionError}
         </Alert>
       )}
       {actionSuccess && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setActionSuccess('')}>
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          onClose={() => setActionSuccess("")}
+        >
           {actionSuccess}
         </Alert>
       )}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
-          { label: 'Total Organizations', value: orgStats.total },
-          { label: 'Lead Generation On', value: orgStats.leadGenerationEnabled },
-          { label: 'WhatsApp On', value: orgStats.whatsappEnabled },
-          { label: 'Human Handoff On', value: orgStats.humanHandoffEnabled },
+          { label: "Total Organizations", value: orgStats.total },
+          {
+            label: "Lead Generation On",
+            value: orgStats.leadGenerationEnabled,
+          },
+          { label: "WhatsApp On", value: orgStats.whatsappEnabled },
+          { label: "Human Handoff On", value: orgStats.humanHandoffEnabled },
         ].map((item) => (
           <Grid item xs={12} sm={6} md={3} key={item.label}>
             <Paper
               elevation={0}
               sx={{
                 p: 1.8,
-                borderRadius: '16px',
+                borderRadius: "16px",
                 border: `1px solid ${alpha(theme.palette.secondary.main, 0.18)}`,
-                background: `linear-gradient(155deg, ${alpha('#ecfbf8', 0.92)} 0%, ${alpha('#ffffff', 1)} 86%)`,
+                background: `linear-gradient(155deg, ${alpha("#ecfbf8", 0.92)} 0%, ${alpha("#ffffff", 1)} 86%)`,
               }}
             >
-              <Typography variant="caption" sx={{ color: alpha(theme.palette.text.primary, 0.65), fontWeight: 600 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: alpha(theme.palette.text.primary, 0.65),
+                  fontWeight: 600,
+                }}
+              >
                 {item.label}
               </Typography>
               <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.4 }}>
@@ -604,19 +842,24 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         sx={{
           p: 1.6,
           mb: 2,
-          borderRadius: '16px',
+          borderRadius: "16px",
           border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
-          background: `linear-gradient(150deg, ${alpha('#eef6ff', 0.85)} 0%, ${alpha('#ffffff', 1)} 88%)`,
+          background: `linear-gradient(150deg, ${alpha("#eef6ff", 0.85)} 0%, ${alpha("#ffffff", 1)} 88%)`,
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.3} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.3}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", md: "center" }}
+        >
           <TextField
             size="small"
             label="Search organizations"
             placeholder="Name, admin, email, description, joining date..."
             value={orgSearch}
             onChange={(event) => setOrgSearch(event.target.value)}
-            sx={{ minWidth: { xs: '100%', md: 360 } }}
+            sx={{ minWidth: { xs: "100%", md: 360 } }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -643,56 +886,109 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         </Stack>
       </Paper>
 
-      {viewMode === 'cards' ? (
+      {viewMode === "cards" ? (
         <Grid container spacing={3}>
           {pagedOrganizations.map((org) => (
             <Grid item xs={12} md={6} key={org.id}>
-              <Card sx={{
-                border: '1px solid',
-                borderColor: alpha(theme.palette.secondary.main, 0.2),
-                borderRadius: '18px',
-                background: `linear-gradient(145deg, ${alpha('#ebfaf7', 0.92)} 0%, rgba(255,255,255,1) 62%)`,
-                transition: 'all 0.24s ease',
-                position: 'relative',
-                overflow: 'hidden',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 4,
-                  background: `linear-gradient(90deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
-                },
-                '&:hover': { boxShadow: `0 12px 24px ${alpha(theme.palette.secondary.main, 0.18)}`, transform: 'translateY(-3px)' },
-              }}>
+              <Card
+                sx={{
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.secondary.main, 0.2),
+                  borderRadius: "18px",
+                  background: `linear-gradient(145deg, ${alpha("#ebfaf7", 0.92)} 0%, rgba(255,255,255,1) 62%)`,
+                  transition: "all 0.24s ease",
+                  position: "relative",
+                  overflow: "hidden",
+                  "&::before": {
+                    content: '""',
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 4,
+                    background: `linear-gradient(90deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
+                  },
+                  "&:hover": {
+                    boxShadow: `0 12px 24px ${alpha(theme.palette.secondary.main, 0.18)}`,
+                    transform: "translateY(-3px)",
+                  },
+                }}
+              >
                 <CardContent>
-                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="flex-start"
+                    spacing={1.5}
+                  >
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: 800 }}>
                         {org.name}
                       </Typography>
-                      <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.68) }}>
-                        Admin: {org.admin_username || 'N/A'} ({org.admin_email || '-'})
+                      <Typography
+                        variant="body2"
+                        sx={{ color: alpha(theme.palette.text.primary, 0.68) }}
+                      >
+                        Admin: {org.admin_username || "N/A"} (
+                        {org.admin_email || "-"})
                       </Typography>
-                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: alpha(theme.palette.text.primary, 0.7) }}>
-                        Joining: {formatDate(org.joining_date)} | Effective: {formatDate(org.effective_joining_date)}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "block",
+                          mt: 0.5,
+                          color: alpha(theme.palette.text.primary, 0.7),
+                        }}
+                      >
+                        Joining: {formatDate(org.joining_date)} | Effective:{" "}
+                        {formatDate(org.effective_joining_date)}
                       </Typography>
                     </Box>
                     <Chip
-                      label={org.limits?.lead_generation_enabled ? 'Lead Gen: ON' : 'Lead Gen: OFF'}
+                      label={
+                        org.limits?.lead_generation_enabled
+                          ? "Lead Gen: ON"
+                          : "Lead Gen: OFF"
+                      }
                       size="small"
-                      color={org.limits?.lead_generation_enabled ? 'success' : 'default'}
+                      color={
+                        org.limits?.lead_generation_enabled
+                          ? "success"
+                          : "default"
+                      }
                     />
                   </Stack>
 
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap={true} sx={{ mt: 1.2 }}>
-                    <Chip label={`Voice: ${org.limits?.voice_chat_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
-                    <Chip label={`WhatsApp: ${org.limits?.whatsapp_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
-                    <Chip label={`Handoff: ${org.limits?.human_handoff_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    flexWrap="wrap"
+                    useFlexGap={true}
+                    sx={{ mt: 1.2 }}
+                  >
+                    <Chip
+                      label={`Voice: ${org.limits?.voice_chat_enabled ? "On" : "Off"}`}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={`WhatsApp: ${org.limits?.whatsapp_enabled ? "On" : "Off"}`}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={`Handoff: ${org.limits?.human_handoff_enabled ? "On" : "Off"}`}
+                      size="small"
+                      variant="outlined"
+                    />
                   </Stack>
 
-                  <Divider sx={{ my: 1.45, borderColor: alpha(theme.palette.secondary.main, 0.18) }} />
+                  <Divider
+                    sx={{
+                      my: 1.45,
+                      borderColor: alpha(theme.palette.secondary.main, 0.18),
+                    }}
+                  />
 
                   <Stack direction="row" spacing={1.5}>
                     <Tooltip title="View">
@@ -703,8 +999,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           height: 40,
                           borderRadius: 2,
                           bgcolor: alpha(theme.palette.primary.main, 0.15),
-                          color: 'primary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) },
+                          color: "primary.main",
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.primary.main, 0.25),
+                          },
                         }}
                       >
                         <VisibilityIcon />
@@ -718,8 +1016,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           height: 40,
                           borderRadius: 2,
                           bgcolor: alpha(theme.palette.secondary.main, 0.16),
-                          color: 'secondary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                          color: "secondary.main",
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.secondary.main, 0.26),
+                          },
                         }}
                       >
                         <EditIcon />
@@ -732,12 +1032,29 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           width: 40,
                           height: 40,
                           borderRadius: 2,
-                          bgcolor: alpha(theme.palette.secondary.main, 0.16),
-                          color: 'secondary.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.26) },
+                          bgcolor: alpha(theme.palette.primary.main, 0.15),
+                          color: "secondary.main",
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.secondary.main, 0.26),
+                          },
                         }}
                       >
                         <SettingsPhoneIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Channel">
+                      <IconButton
+                        onClick={() => handleOpenChannelDialog(org)}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.primary.main, 0.2),
+                          color: "#0284C7",
+                          "&:hover": { bgcolor: "#E0F2FE" },
+                        }}
+                      >
+                        <HubIcon />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete Organization">
@@ -749,8 +1066,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           height: 40,
                           borderRadius: 2,
                           bgcolor: alpha(theme.palette.error.main, 0.14),
-                          color: 'error.main',
-                          '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.24) },
+                          color: "error.main",
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.error.main, 0.24),
+                          },
                         }}
                       >
                         <DeleteIcon />
@@ -763,7 +1082,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
           ))}
           {pagedOrganizations.length === 0 && (
             <Grid item xs={12}>
-              <Paper elevation={0} sx={{ p: 3, borderRadius: '14px', border: `1px dashed ${alpha(theme.palette.primary.main, 0.3)}` }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: "14px",
+                  border: `1px dashed ${alpha(theme.palette.primary.main, 0.3)}`,
+                }}
+              >
                 <Typography variant="body1" sx={{ fontWeight: 600 }}>
                   No organizations match your filter.
                 </Typography>
@@ -775,7 +1101,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
           )}
         </Grid>
       ) : (
-        <Paper elevation={0} sx={{ borderRadius: '16px', border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}` }}>
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: "16px",
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+          }}
+        >
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -799,34 +1131,88 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   pagedOrganizations.map((org) => (
                     <TableRow key={`org-table-${org.id}`} hover>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{org.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{org.description || '-'}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {org.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {org.description || "-"}
+                        </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">{org.admin_username || 'N/A'}</Typography>
-                        <Typography variant="caption" color="text.secondary">{org.admin_email || '-'}</Typography>
+                        <Typography variant="body2">
+                          {org.admin_username || "N/A"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {org.admin_email || "-"}
+                        </Typography>
                       </TableCell>
                       <TableCell>{formatDate(org.joining_date)}</TableCell>
-                      <TableCell>{formatDate(org.effective_joining_date)}</TableCell>
                       <TableCell>
-                        <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                          <Chip label={`Lead: ${org.limits?.lead_generation_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
-                          <Chip label={`Voice: ${org.limits?.voice_chat_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
-                          <Chip label={`WA: ${org.limits?.whatsapp_enabled ? 'On' : 'Off'}`} size="small" variant="outlined" />
+                        {formatDate(org.effective_joining_date)}
+                      </TableCell>
+                      <TableCell>
+                        <Stack
+                          direction="row"
+                          spacing={0.8}
+                          flexWrap="wrap"
+                          useFlexGap
+                        >
+                          <Chip
+                            label={`Lead: ${org.limits?.lead_generation_enabled ? "On" : "Off"}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                          <Chip
+                            label={`Voice: ${org.limits?.voice_chat_enabled ? "On" : "Off"}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                          <Chip
+                            label={`WA: ${org.limits?.whatsapp_enabled ? "On" : "Off"}`}
+                            size="small"
+                            variant="outlined"
+                          />
                         </Stack>
                       </TableCell>
                       <TableCell align="right">
                         <Tooltip title="View">
-                          <IconButton onClick={() => handleViewOpen(org)} size="small"><VisibilityIcon fontSize="small" /></IconButton>
+                          <IconButton
+                            onClick={() => handleViewOpen(org)}
+                            size="small"
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
                         </Tooltip>
                         <Tooltip title="Edit">
-                          <IconButton onClick={() => handleEditOpen(org)} size="small"><EditIcon fontSize="small" /></IconButton>
+                          <IconButton
+                            onClick={() => handleEditOpen(org)}
+                            size="small"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
                         </Tooltip>
                         <Tooltip title="Calling Numbers">
-                          <IconButton onClick={() => handleOpenCallingNumberDialog(org)} size="small"><SettingsPhoneIcon fontSize="small" /></IconButton>
+                          <IconButton
+                            onClick={() => handleOpenCallingNumberDialog(org)}
+                            size="small"
+                          >
+                            <SettingsPhoneIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Channel">
+                          <IconButton
+                            onClick={() => handleOpenChannelDialog(org)}
+                            size="small"
+                          >
+                            <HubIcon fontSize="small" />
+                          </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete">
-                          <IconButton onClick={() => setOrgToDelete(org)} size="small" disabled={deletingOrgId === org.id}>
+                          <IconButton
+                            onClick={() => setOrgToDelete(org)}
+                            size="small"
+                            disabled={deletingOrgId === org.id}
+                          >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -858,38 +1244,95 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         onClose={() => setViewOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { borderRadius: '18px' } }}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
       >
         <DialogTitle>Organization Details</DialogTitle>
         <DialogContent>
           {viewOrg && (
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} md={6}>
-                <TextField label="Organization" fullWidth value={viewOrg.name} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Organization"
+                  fullWidth
+                  value={viewOrg.name}
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Admin Username" fullWidth value={viewOrg.admin_username || ''} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Admin Username"
+                  fullWidth
+                  value={viewOrg.admin_username || ""}
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Admin Email" fullWidth value={viewOrg.admin_email || ''} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Admin Email"
+                  fullWidth
+                  value={viewOrg.admin_email || ""}
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Joining Date" fullWidth value={formatDate(viewOrg.joining_date)} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Joining Date"
+                  fullWidth
+                  value={formatDate(viewOrg.joining_date)}
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Effective Joining Date" fullWidth value={formatDate(viewOrg.effective_joining_date)} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Effective Joining Date"
+                  fullWidth
+                  value={formatDate(viewOrg.effective_joining_date)}
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Lead Generation" fullWidth value={viewOrg.limits?.lead_generation_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Lead Generation"
+                  fullWidth
+                  value={
+                    viewOrg.limits?.lead_generation_enabled
+                      ? "Enabled"
+                      : "Disabled"
+                  }
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Voice Chat" fullWidth value={viewOrg.limits?.voice_chat_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Voice Chat"
+                  fullWidth
+                  value={
+                    viewOrg.limits?.voice_chat_enabled ? "Enabled" : "Disabled"
+                  }
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="WhatsApp" fullWidth value={viewOrg.limits?.whatsapp_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="WhatsApp"
+                  fullWidth
+                  value={
+                    viewOrg.limits?.whatsapp_enabled ? "Enabled" : "Disabled"
+                  }
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Human Handoff" fullWidth value={viewOrg.limits?.human_handoff_enabled ? 'Enabled' : 'Disabled'} InputProps={{ readOnly: true }} />
+                <TextField
+                  label="Human Handoff"
+                  fullWidth
+                  value={
+                    viewOrg.limits?.human_handoff_enabled
+                      ? "Enabled"
+                      : "Disabled"
+                  }
+                  InputProps={{ readOnly: true }}
+                />
               </Grid>
             </Grid>
           )}
@@ -904,16 +1347,30 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         onClose={() => setCreateOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { borderRadius: '18px' } }}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
       >
         <DialogTitle>Create Organization + Admin</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
-              <TextField label="Organization Name" fullWidth value={form.organization_name} onChange={(e) => setForm({ ...form, organization_name: e.target.value })} />
+              <TextField
+                label="Organization Name"
+                fullWidth
+                value={form.organization_name}
+                onChange={(e) =>
+                  setForm({ ...form, organization_name: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12} md={6}>
-              <TextField label="Description" fullWidth value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <TextField
+                label="Description"
+                fullWidth
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField
@@ -921,7 +1378,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 type="date"
                 fullWidth
                 value={form.joining_date}
-                onChange={(e) => setForm({ ...form, joining_date: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, joining_date: e.target.value })
+                }
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
@@ -931,18 +1390,42 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 type="date"
                 fullWidth
                 value={form.effective_joining_date}
-                onChange={(e) => setForm({ ...form, effective_joining_date: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, effective_joining_date: e.target.value })
+                }
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField label="Admin Username" fullWidth value={form.admin_username} onChange={(e) => setForm({ ...form, admin_username: e.target.value })} />
+              <TextField
+                label="Admin Username"
+                fullWidth
+                value={form.admin_username}
+                onChange={(e) =>
+                  setForm({ ...form, admin_username: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField label="Admin Email" fullWidth value={form.admin_email} onChange={(e) => setForm({ ...form, admin_email: e.target.value })} />
+              <TextField
+                label="Admin Email"
+                fullWidth
+                value={form.admin_email}
+                onChange={(e) =>
+                  setForm({ ...form, admin_email: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField label="Admin Password" type="password" fullWidth value={form.admin_password} onChange={(e) => setForm({ ...form, admin_password: e.target.value })} />
+              <TextField
+                label="Admin Password"
+                type="password"
+                fullWidth
+                value={form.admin_password}
+                onChange={(e) =>
+                  setForm({ ...form, admin_password: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12}>
               <TextField
@@ -950,7 +1433,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 type="text"
                 fullWidth
                 value={form.echoleads_api_key}
-                onChange={(e) => setForm({ ...form, echoleads_api_key: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, echoleads_api_key: e.target.value })
+                }
               />
             </Grid>
           </Grid>
@@ -960,23 +1445,31 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             sx={{
               mt: 3,
               p: 2,
-              borderRadius: '14px',
+              borderRadius: "14px",
               border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
-              background: `linear-gradient(150deg, ${alpha('#eef6ff', 0.9)} 0%, ${alpha('#ffffff', 1)} 88%)`,
+              background: `linear-gradient(150deg, ${alpha("#eef6ff", 0.9)} 0%, ${alpha("#ffffff", 1)} 88%)`,
             }}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              spacing={1}
+            >
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Organization Limits
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Configure feature access overrides for this organization at creation.
+                  Configure feature access overrides for this organization at
+                  creation.
                 </Typography>
               </Box>
             </Stack>
 
-            <Typography variant="subtitle2" sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}
+            >
               Feature Entitlements
             </Typography>
             <Grid container spacing={1.4}>
@@ -987,14 +1480,25 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   <Grid item xs={12} md={6} key={`create-flag-${String(key)}`}>
                     <Paper
                       variant="outlined"
-                      sx={{ p: 1.25, borderRadius: '12px', borderColor: alpha(theme.palette.secondary.main, 0.24) }}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: "12px",
+                        borderColor: alpha(theme.palette.secondary.main, 0.24),
+                      }}
                     >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ mb: 0.8 }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {label}
+                        </Typography>
                         <Chip
                           size="small"
-                          label={effective ? 'Enabled' : 'Disabled'}
-                          color={effective ? 'success' : 'default'}
+                          label={effective ? "Enabled" : "Disabled"}
+                          color={effective ? "success" : "default"}
                           variant="outlined"
                         />
                       </Stack>
@@ -1003,11 +1507,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                           <Switch
                             checked={effective}
                             onChange={(e) =>
-                              setCreateOverrideLimits((prev) => ({ ...prev, [key]: e.target.checked }))
+                              setCreateOverrideLimits((prev) => ({
+                                ...prev,
+                                [key]: e.target.checked,
+                              }))
                             }
                           />
                         }
-                        label={effective ? 'Enabled' : 'Disabled'}
+                        label={effective ? "Enabled" : "Disabled"}
                       />
                     </Paper>
                   </Grid>
@@ -1017,11 +1524,19 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
             <Divider sx={{ my: 2 }} />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", sm: "center" }}
+            >
               <Typography variant="body2" color="text.secondary">
                 Review and save limits for this organization.
               </Typography>
-              <Button variant="text" onClick={() => setCreateOverrideLimits({ ...defaultLimits })}>
+              <Button
+                variant="text"
+                onClick={() => setCreateOverrideLimits({ ...defaultLimits })}
+              >
                 Apply Default Limits
               </Button>
             </Stack>
@@ -1029,9 +1544,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={isCreatingOrg} sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-            {isCreatingOrg ? <CircularProgress size={18} color="inherit" /> : null}
-            {isCreatingOrg ? 'Creating...' : 'Create'}
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={isCreatingOrg}
+            sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
+          >
+            {isCreatingOrg ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : null}
+            {isCreatingOrg ? "Creating..." : "Create"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1041,13 +1563,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         onClose={() => setOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { borderRadius: '18px' } }}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
       >
         <DialogTitle>Edit Organization</DialogTitle>
         <DialogContent>
           {editingOrg && !editingOrg.admin_username && (
             <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
-              No admin attached to this organization. Provide username, email, and password to create admin access.
+              No admin attached to this organization. Provide username, email,
+              and password to create admin access.
             </Alert>
           )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -1097,8 +1620,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 onChange={(e) => setEditAdminPassword(e.target.value)}
                 helperText={
                   editingOrg && !editingOrg.admin_username
-                    ? 'Required to create missing admin user.'
-                    : 'Leave blank to keep the current password.'
+                    ? "Required to create missing admin user."
+                    : "Leave blank to keep the current password."
                 }
               />
             </Grid>
@@ -1115,9 +1638,19 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
           <Paper
             elevation={0}
-            sx={{ mt: 3, p: 2, borderRadius: '14px', border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`, background: `linear-gradient(150deg, ${alpha('#eef6ff', 0.9)} 0%, ${alpha('#ffffff', 1)} 88%)` }}
+            sx={{
+              mt: 3,
+              p: 2,
+              borderRadius: "14px",
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+              background: `linear-gradient(150deg, ${alpha("#eef6ff", 0.9)} 0%, ${alpha("#ffffff", 1)} 88%)`,
+            }}
           >
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              spacing={1}
+            >
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Organization Limits
@@ -1128,7 +1661,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               </Box>
             </Stack>
 
-            <Typography variant="subtitle2" sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ mt: 2.4, mb: 1, fontWeight: 700 }}
+            >
               Feature Entitlements
             </Typography>
             <Grid container spacing={1.4}>
@@ -1138,14 +1674,25 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   <Grid item xs={12} md={6} key={`edit-flag-${String(key)}`}>
                     <Paper
                       variant="outlined"
-                      sx={{ p: 1.25, borderRadius: '12px', borderColor: alpha(theme.palette.secondary.main, 0.24) }}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: "12px",
+                        borderColor: alpha(theme.palette.secondary.main, 0.24),
+                      }}
                     >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ mb: 0.8 }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {label}
+                        </Typography>
                         <Chip
                           size="small"
-                          label={effective ? 'Enabled' : 'Disabled'}
-                          color={effective ? 'success' : 'default'}
+                          label={effective ? "Enabled" : "Disabled"}
+                          color={effective ? "success" : "default"}
                           variant="outlined"
                         />
                       </Stack>
@@ -1153,10 +1700,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                         control={
                           <Switch
                             checked={effective}
-                            onChange={(e) => setEditOverrideLimits((prev) => ({ ...prev, [key]: e.target.checked }))}
+                            onChange={(e) =>
+                              setEditOverrideLimits((prev) => ({
+                                ...prev,
+                                [key]: e.target.checked,
+                              }))
+                            }
                           />
                         }
-                        label={effective ? 'Enabled' : 'Disabled'}
+                        label={effective ? "Enabled" : "Disabled"}
                       />
                     </Paper>
                   </Grid>
@@ -1166,11 +1718,24 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
             <Divider sx={{ my: 2 }} />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", sm: "center" }}
+            >
               <Typography variant="body2" color="text.secondary">
                 Save when you're done updating organization limits.
               </Typography>
-              <Button variant="text" onClick={() => setEditOverrideLimits({ ...defaultLimits, ...(editingOrg?.limits || {}) })}>
+              <Button
+                variant="text"
+                onClick={() =>
+                  setEditOverrideLimits({
+                    ...defaultLimits,
+                    ...(editingOrg?.limits || {}),
+                  })
+                }
+              >
                 Reset to Saved Values
               </Button>
             </Stack>
@@ -1178,9 +1743,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditSave} disabled={isSavingOrg} sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-            {isSavingOrg ? <CircularProgress size={18} color="inherit" /> : null}
-            {isSavingOrg ? 'Saving...' : 'Save'}
+          <Button
+            variant="contained"
+            onClick={handleEditSave}
+            disabled={isSavingOrg}
+            sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
+          >
+            {isSavingOrg ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : null}
+            {isSavingOrg ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1192,15 +1764,17 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: '18px',
+            borderRadius: "18px",
             border: `1px solid ${alpha(
-              createResultDialog.success ? theme.palette.success.main : theme.palette.error.main,
-              0.28
+              createResultDialog.success
+                ? theme.palette.success.main
+                : theme.palette.error.main,
+              0.28,
             )}`,
             background: `linear-gradient(160deg, ${alpha(
-              createResultDialog.success ? '#eaf9ef' : '#feeef0',
-              0.9
-            )} 0%, ${alpha('#ffffff', 1)} 88%)`,
+              createResultDialog.success ? "#eaf9ef" : "#feeef0",
+              0.9,
+            )} 0%, ${alpha("#ffffff", 1)} 88%)`,
           },
         }}
       >
@@ -1217,7 +1791,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
           </Stack>
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.78) }}>
+          <Typography
+            variant="body2"
+            sx={{ color: alpha(theme.palette.text.primary, 0.78) }}
+          >
             {createResultDialog.message}
           </Typography>
         </DialogContent>
@@ -1228,20 +1805,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-
       <Dialog
         open={openCallingNumberDialog}
         onClose={handleCloseCallingDialog}
         fullWidth
         maxWidth="md"
-        PaperProps={{ sx: { borderRadius: '18px' } }}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
       >
-        <DialogTitle>
-          Organization Calling Numbers
-        </DialogTitle>
+        <DialogTitle>Organization Calling Numbers</DialogTitle>
 
         <DialogContent>
-
           <Box display="flex" justifyContent="flex-end" mb={2}>
             <Button
               startIcon={<AddIcon />}
@@ -1273,38 +1846,28 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               ) : (
                 numbers.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell>
-                      {row.calling_number}
-                    </TableCell>
+                    <TableCell>{row.calling_number}</TableCell>
 
                     <TableCell>
-                      <Chip label={row.type} variant='outlined' size="small" />
+                      <Chip label={row.type} variant="outlined" size="small" />
                     </TableCell>
 
                     <TableCell>
                       <Switch
                         checked={row.is_default}
-                        onChange={() =>
-                          handleDefault(row)
-                        }
+                        onChange={() => handleDefault(row)}
                       />
                     </TableCell>
 
                     <TableCell>
                       <Switch
                         checked={row.is_active}
-                        onChange={() =>
-                          handleActive(row)
-                        }
+                        onChange={() => handleActive(row)}
                       />
                     </TableCell>
 
                     <TableCell align="right">
-                      <IconButton
-                        onClick={() =>
-                          handleCallingEdit(row)
-                        }
-                      >
+                      <IconButton onClick={() => handleCallingEdit(row)}>
                         <EditIcon />
                       </IconButton>
 
@@ -1325,7 +1888,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               )}
             </TableBody>
           </Table>
-
         </DialogContent>
 
         <DialogActions>
@@ -1333,13 +1895,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openCallingNumberForm} onClose={(handleCloseCallingForm)} PaperProps={{ sx: { borderRadius: '18px' } }}>
-        <DialogTitle>
-          {editing ? "Edit" : "Add"} Calling Number
-        </DialogTitle>
+      <Dialog
+        open={openCallingNumberForm}
+        onClose={handleCloseCallingForm}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
+      >
+        <DialogTitle>{editing ? "Edit" : "Add"} Calling Number</DialogTitle>
 
         <DialogContent>
-
           <TextField
             required
             fullWidth
@@ -1351,7 +1914,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             onChange={(e) =>
               setCallingForm({
                 ...callingform,
-                calling_number: e.target.value
+                calling_number: e.target.value,
               })
             }
             sx={{ mt: 1 }}
@@ -1366,7 +1929,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               onChange={(e) =>
                 setCallingForm({
                   ...callingform,
-                  type: e.target.value as "inbound" | "outbound"
+                  type: e.target.value as "inbound" | "outbound",
                 })
               }
             >
@@ -1374,18 +1937,143 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               <MenuItem value="outbound">Outbound</MenuItem>
             </Select>
           </FormControl>
-
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={handleCloseCallingForm}>
-            Cancel
-          </Button>
+          <Button onClick={handleCloseCallingForm}>Cancel</Button>
 
-          <Button
-            variant="contained"
-            onClick={handleCallingSave}
-          >
+          <Button variant="contained" onClick={handleCallingSave}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Channel Dialog Add & List */}
+      <Dialog
+        open={openChannelDialog}
+        onClose={handleCloseChannelDialog}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{ sx: { borderRadius: "18px" } }}
+      >
+        <DialogTitle>Organization Channel</DialogTitle>
+
+        <DialogContent>
+          <Box display="flex" justifyContent="flex-end" mb={2}>
+            <Button
+              startIcon={<AddIcon />}
+              variant="contained"
+              onClick={handleAddChannel}
+            >
+              Add Channel
+            </Button>
+          </Box>
+
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {orgChannels.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center">
+                    No channels added
+                  </TableCell>
+                </TableRow>
+              ) : (
+                orgChannels.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.name}</TableCell>
+
+                    <TableCell align="right">
+                      <IconButton onClick={() => handleChannelEdit(row)}>
+                        <EditIcon />
+                      </IconButton>
+
+                      <IconButton
+                        color="error"
+                        onClick={() =>
+                          setChannelToDelete({
+                            id: row.id,
+                            name: String(row.name ?? row.id),
+                          })
+                        }
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseChannelDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={openChannelForm}
+        onClose={handleCloseChannelForm}
+        fullWidth
+        maxWidth="md"
+        sx={{
+          "& .MuiDialog-paper": {
+            width: "100%",
+            maxWidth: 350, // soft control, not rigid
+          },
+        }}
+        PaperProps={{ sx: { borderRadius: "18px" } }}
+      >
+        <DialogTitle>{editing ? "Edit" : "Add"} Channel</DialogTitle>
+
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }} error={!!channelFormError.name}>
+            <InputLabel id="channel-label">Select Channel Name</InputLabel>
+
+            <Select
+              labelId="channel-label"
+              label="Select Channel Name"
+              value={channelForm.channel_id || ""}
+              onChange={(e) => {
+                const selectedId = Number(e.target.value);
+
+                const selectedChannel = masterChannels.find(
+                  (ch) => ch.id === selectedId,
+                );
+
+                setChannelFormError((prev) => ({
+                  ...prev,
+                  name: "",
+                }));
+
+                setChannelForm((prev) => ({
+                  ...prev,
+                  channel_id: selectedId,
+                  name: selectedChannel.name,
+                }));
+              }}
+            >
+              {masterChannels.map((channel) => (
+                <MenuItem key={channel.id} value={channel.id}>
+                  {channel.name}
+                </MenuItem>
+              ))}
+            </Select>
+            <FormHelperText>{channelFormError.name}</FormHelperText>
+          </FormControl>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseChannelForm}>Cancel</Button>
+
+          <Button variant="contained" onClick={handleOrgChannelSave}>
             Save
           </Button>
         </DialogActions>
@@ -1403,8 +2091,26 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         cancelLabel="Cancel"
         confirmColor="error"
         loading={callingNumberDeleteSubmitting}
-        onCancel={() => !callingNumberDeleteSubmitting && setCallingNumberToDelete(null)}
+        onCancel={() =>
+          !callingNumberDeleteSubmitting && setCallingNumberToDelete(null)
+        }
         onConfirm={handleConfirmDeleteCallingNumber}
+      />
+
+      <ConfirmDialog
+        open={channelToDelete !== null}
+        title="Delete orgnization channel?"
+        description={
+          channelToDelete
+            ? `This will permanently remove "${channelToDelete.name}" from this organization. This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={channelDeleteSubmitting}
+        onCancel={() => !channelDeleteSubmitting && setChannelToDelete(null)}
+        onConfirm={handleConfirmDeleteOrgChannel}
       />
 
       <ConfirmDialog
@@ -1427,5 +2133,3 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 };
 
 export default SuperAdminOrganizationsPage;
-
-

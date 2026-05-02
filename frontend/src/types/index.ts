@@ -296,6 +296,20 @@ export interface CallingNumber {
   is_active?: boolean;
 }
 
+export interface Channel {
+  id: number;
+  name: string;
+  channel_type: string;
+  is_active?: boolean;
+}
+
+export interface OrganizationChannel {
+  id: number;
+  channel_id: number;
+  name: string;
+  channel_type: string;
+}
+
 export interface PriceMatrixItem {
   id: number;
   category: string;

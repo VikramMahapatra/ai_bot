@@ -32,7 +32,9 @@ import {
   BillingPayment,
   BillingPaymentCreateRequest,
   BillingInvoiceBackfillResponse,
-  BillingBill
+  BillingBill,
+  Channel,
+  OrganizationChannel
 } from '../types';
 import { OrgCreditAdminMonthSummary } from '../types/orgCreditBilling';
 
@@ -161,6 +163,33 @@ export const superadminService = {
     const response = await api.delete<CallingNumber>(`/api/superadmin/org/calling-number/${callingNoId}`);
     return response.data;
   },
+
+   // Channel
+  async getMasterChanels(): Promise<Channel[]> {
+    const response = await api.get<Channel[]>(`/api/superadmin/master/channels`);
+    return response.data;
+  },
+
+   async getOrganizationChanels(orgId: number): Promise<OrganizationChannel[]> {
+    const response = await api.get<OrganizationChannel[]>(`/api/superadmin/org/${orgId}/channels`);
+    return response.data;
+  },
+
+  async createOrgChannel(orgId: number, channel_id: number) {
+    const response = await api.post<OrganizationChannel>(`/api/superadmin/org/${orgId}/channel`, {"channel_id": channel_id});
+    return response.data;
+  },
+
+  async updateOrgChannel(orgChannelId: number, channel_id: number) {
+    const response = await api.put<OrganizationChannel>(`/api/superadmin/org/channel/${orgChannelId}`, {"channel_id": channel_id});
+    return response.data;
+  },
+
+   async deleteOrgChannel(orgChannelId: number) {
+    const response = await api.delete<OrganizationChannel>(`/api/superadmin/org/channel/${orgChannelId}`);
+    return response.data;
+  },
+  /////
 
   async getOrganizationReport(params: { search?: string; skip?: number; limit?: number } = {}): Promise<OrganizationReportResponse> {
     const response = await api.get<OrganizationReportResponse>(`/api/superadmin/org/organization-calling-report`, { params });

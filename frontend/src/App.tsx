@@ -41,7 +41,6 @@ import SuperAdminCreditEstimatorPage from "./pages/SuperAdminCreditEstimatorPage
 import SuperAdminOrgCreditBillingPage from "./pages/SuperAdminOrgCreditBillingPage";
 import SuperAdminCreditUsagePage from "./pages/SuperAdminCreditUsagePage";
 import SuperAdminOrganizationsPage from "./pages/SuperAdminOrganizationsPage";
-import SuperAdminProductManagementPage from "./pages/SuperAdminProductManagementPage.tsx";
 import SuperAdminAnalyticsPage from "./pages/SuperAdminAnalyticsPage";
 import CallsPage from "./pages/CallsPage";
 import ProductManagementPage from "./pages/ProductManagementPage.tsx";
@@ -54,6 +53,7 @@ import FollowUpWorkflowPage from "./pages/FollowUpWorkflowPage.tsx";
 import TemplatePage from "./pages/TemplatePage.tsx";
 import { organizationService } from "./services/organizationService.ts";
 import RestrictedFeaturePage from "./components/Common/RestrictedModulePage.tsx";
+import SuperAdminChannelPage from "./pages/SuperAdminChannelPage.tsx";
 
 type ColorMode = "light" | "dark";
 
@@ -631,7 +631,7 @@ function AppRoutes() {
         path="/superadmin/channel-management"
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
-            <SuperAdminProductManagementPage />
+            <SuperAdminChannelPage />
           </ProtectedRoute>
         }
       />

@@ -33,231 +33,144 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SearchIcon from "@mui/icons-material/Search";
-import { Product, productService } from "../services/productService";
-import {
-  SuperAdminProduct,
-  SuperAdminProductFormData,
-  SuperAdminProductFormErrors,
-} from "../types/superAdminProduct";
+import { ChannelFormData, ChannelFormErrors, ChannelList, channelService } from "../services/channelService";
 
-const SuperAdminProductManagementPage: React.FC = () => {
+const SuperAdminChannelPage: React.FC = () => {
   const theme = useTheme();
 
-  const [products, setProducts] = useState<SuperAdminProduct[]>([]);
+  const [channels, setChannels] = useState<ChannelList[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [openDialog, setOpenDialog] = useState(false);
-  const [editingProduct, setEditingProduct] =
-    useState<SuperAdminProduct | null>(null);
+  const [editingChannel, setEditingChannel] =
+    useState<ChannelList | null>(null);
 
   const [search, setSearch] = useState("");
-  const [productTotal, setProductTotal] = useState(0);
-  const [productPage, setProductPage] = useState(0);
-  const [productRowsPerPage, setProductRowsPerPage] = useState(10);
+  const [channelTotal, setChannelTotal] = useState(0);
+  const [channelPage, setChannelPage] = useState(0);
+  const [channelRowsPerPage, setChannelRowsPerPage] = useState(10);
 
-  const [formData, setFormData] = useState<SuperAdminProductFormData>({
+  const [formData, setFormData] = useState<ChannelFormData>({
     name: "",
-    code: "",
     isActive: true,
   });
 
-  const [formErrors, setFormErrors] = useState<SuperAdminProductFormErrors>({
+  const [formErrors, setFormErrors] = useState<ChannelFormErrors>({
     name: "",
-    code: "",
   });
 
-  const [productError, setProductError] = useState<string | null>(null);
-  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [channelError, setChannelError] = useState<string | null>(null);
+  const [channelToDelete, setChannelToDelete] = useState<ChannelList | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchProducts();
-  }, [search, productPage, productRowsPerPage]);
+    fetchChannels();
+  }, [search, channelPage, channelRowsPerPage]);
 
-  const fetchProducts = async () => {
+  const fetchChannels = async () => {
     setLoading(true);
     try {
       setLoading(true);
-
-      // Mock data for demonstration
-      const mockProducts: Product[] = [
-        {
-          id: 1,
-          name: "WhatsApp Business",
-          code: "WHATSAPP",
-          isActive: true,
-          organisation: "Acme Corporation",
-          created_at: "2024-01-15T10:30:00Z",
-        },
-        {
-          id: 2,
-          name: "Email Service",
-          code: "EMAIL",
-          isActive: true,
-          organisation: "Tech Solutions Inc",
-          created_at: "2024-01-20T14:15:00Z",
-        },
-        {
-          id: 3,
-          name: "SMS Gateway",
-          code: "SMS",
-          isActive: false,
-          organisation: "Global Marketing Ltd",
-
-          created_at: "2024-02-01T09:00:00Z",
-        },
-        {
-          id: 4,
-          name: "Voice Call",
-          code: "VOICE",
-          isActive: true,
-          organisation: "Customer Support Co",
-          created_at: "2024-02-10T16:45:00Z",
-        },
-        {
-          id: 5,
-          name: "Chat Widget",
-          code: "CHAT",
-          isActive: false,
-          organisation: "Digital Agency Pro",
-
-          created_at: "2024-02-15T11:20:00Z",
-        },
-      ];
-
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Filter mock data based on search
-      let filteredProducts = mockProducts;
-      if (search) {
-        filteredProducts = mockProducts.filter(
-          (product) =>
-            product.name.toLowerCase().includes(search.toLowerCase()) ||
-            product.code.toLowerCase().includes(search.toLowerCase()),
-        );
-      }
-
-      // Apply pagination
-      const startIndex = productPage * productRowsPerPage;
-      const endIndex = startIndex + productRowsPerPage;
-      const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-      setProducts(paginatedProducts);
-      setProductTotal(filteredProducts.length);
-
-      // Uncomment below to use real API instead of mock data
-      /*
-      const data = await productService.listProducts({
+      
+      const data = await channelService.listChannels({
         search: search || undefined,
-        skip: productPage * productRowsPerPage,
-        limit: productRowsPerPage,
+        skip: channelPage * channelRowsPerPage,
+        limit: channelRowsPerPage,
       });
-      setProducts(data.items || []);
-      setProductTotal(data.pagination?.total || 0);
-      */
+      setChannels(data.items || []);
+      setChannelTotal(data.pagination?.total || 0);
     } catch (err) {
-      setError("Failed to load products");
+      setError("Failed to load channels");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOpenDialog = (product?: SuperAdminProduct) => {
-    setProductError("");
-    if (product) {
-      setEditingProduct(product);
+  const handleOpenDialog = (channel?: ChannelList) => {
+    setChannelError("");
+    if (channel) {
+      setEditingChannel(channel);
       setFormData({
-        name: product.name,
-        code: product.code,
-        isActive: product.isActive,
+        name: channel.name,
+        isActive: channel.is_active,
       });
     } else {
-      setEditingProduct(null);
+      setEditingChannel(null);
       setFormData({
         name: "",
-        code: "",
         isActive: true,
       });
     }
-
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
-    setEditingProduct(null);
+    setEditingChannel(null);
   };
 
   const handleCreate = async () => {
     if (!validateForm()) return;
 
     try {
-      const response = await productService.createProduct({
+      const response = await channelService.createChannel({
         ...formData,
-        description: "",
       });
       if (response.success) {
-        fetchProducts();
+        fetchChannels();
         handleCloseDialog();
       } else {
-        setProductError(response.message);
+        setChannelError(response.message);
       }
     } catch {
-      setProductError("Failed to create channel");
+      setChannelError("Failed to create channel");
     }
   };
 
   const handleUpdate = async () => {
-    if (!editingProduct) return;
+    if (!editingChannel) return;
 
     if (!validateForm()) return;
 
     try {
-      const response = await productService.updateUser(editingProduct.id, {
+      const response = await channelService.updateChannel(editingChannel.channel_id, {
         ...formData,
-        description: "",
       });
       if (response.success) {
-        fetchProducts();
+        fetchChannels();
         handleCloseDialog();
       } else {
-        setProductError(response.message);
+        setChannelError(response.message);
       }
     } catch {
-      setProductError("Failed to update channel");
+      setChannelError("Failed to update channel");
     }
   };
 
-  const handleConfirmDeleteProduct = async () => {
-    if (!productToDelete?.id) return;
+  const handleConfirmDeleteChannel = async () => {
+    if (!channelToDelete?.channel_id) return;
 
     setDeleteSubmitting(true);
     setError(null);
-    await productService.deleteUser(productToDelete.id);
-    setProductToDelete(null);
-    await fetchProducts();
+    await channelService.deleteChannel(channelToDelete.channel_id);
+    setChannelToDelete(null);
+    await fetchChannels();
     setDeleteSubmitting(false);
   };
 
   const validateForm = () => {
-    const errors: SuperAdminProductFormErrors = {
+    const errors: ChannelFormErrors = {
       name: "",
-      code: "",
     };
 
     if (!formData.name?.trim()) {
       errors.name = "Channel name is required";
     }
 
-    if (!formData.code?.trim()) {
-      errors.code = "Channel code is required";
-    }
-
     setFormErrors(errors);
 
-    return !errors.name && !errors.code;
+    return !errors.name;
   };
 
   return (
@@ -359,13 +272,13 @@ const SuperAdminProductManagementPage: React.FC = () => {
                     >
                       <TableCell>Name</TableCell>
                       <TableCell>Is Active</TableCell>
-                      <TableCell>Organisation</TableCell>
+                      <TableCell>Organization</TableCell>
                       <TableCell align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
 
                   <TableBody>
-                    {products.length === 0 ? (
+                    {channels.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={4}
@@ -374,37 +287,40 @@ const SuperAdminProductManagementPage: React.FC = () => {
                           <SearchIcon
                             sx={{ fontSize: 40, color: "text.secondary" }}
                           />
-                          <Typography>No products found</Typography>
+                          <Typography>No channels found</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      products.map((product) => (
-                        <TableRow key={product.id}>
-                          <TableCell>{product.name}</TableCell>
+                      channels.map((channel) => (
+                        <TableRow key={channel.channel_id}>
+                          <TableCell>{channel.name}</TableCell>
 
                           <TableCell>
                             <Switch
-                              checked={product.isActive}
+                              checked={channel.is_active}
                               onChange={() => {
                                 // Toggle the active status
-                                const updatedProducts = products.map((p) =>
-                                  p.id === product.id
-                                    ? { ...p, isActive: !p.isActive }
+                                const updatedChannels = channels.map((p) =>
+                                  p.channel_id === channel.channel_id
+                                    ? { ...p, isActive: !p.is_active }
                                     : p,
                                 );
-                                setProducts(updatedProducts);
+                                setChannels(updatedChannels);
                               }}
                               color="primary"
                               size="small"
                             />
                           </TableCell>
-
-                          <TableCell>{product.organisation}</TableCell>
+                          <TableCell>
+  {channel.organizations && channel.organizations.length > 0
+    ? channel.organizations.map((org) => org.name).join(", ")
+    : "-"}
+</TableCell>
 
                           <TableCell align="right">
                             <Tooltip title="Edit">
                               <IconButton
-                                onClick={() => handleOpenDialog(product)}
+                                onClick={() => handleOpenDialog(channel)}
                               >
                                 <EditIcon />
                               </IconButton>
@@ -412,7 +328,7 @@ const SuperAdminProductManagementPage: React.FC = () => {
                             <Tooltip title="Delete">
                               <IconButton
                                 color="error"
-                                onClick={() => setProductToDelete(product)}
+                                onClick={() => setChannelToDelete(channel)}
                               >
                                 <DeleteIcon />
                               </IconButton>
@@ -425,13 +341,13 @@ const SuperAdminProductManagementPage: React.FC = () => {
                 </Table>
                 <TablePagination
                   component="div"
-                  count={productTotal}
-                  page={productPage}
-                  onPageChange={(_, value) => setProductPage(value)}
-                  rowsPerPage={productRowsPerPage}
+                  count={channelTotal}
+                  page={channelPage}
+                  onPageChange={(_, value) => setChannelPage(value)}
+                  rowsPerPage={channelRowsPerPage}
                   onRowsPerPageChange={(event) => {
-                    setProductRowsPerPage(parseInt(event.target.value, 10));
-                    setProductPage(0);
+                    setChannelRowsPerPage(parseInt(event.target.value, 10));
+                    setChannelPage(0);
                   }}
                   rowsPerPageOptions={[10, 25, 50]}
                 />
@@ -449,13 +365,13 @@ const SuperAdminProductManagementPage: React.FC = () => {
           fullWidth
         >
           <DialogTitle>
-            {editingProduct ? "Edit Product" : "Create Product"}
+            {editingChannel ? "Edit Channel" : "Create Channel"}
           </DialogTitle>
 
           <DialogContent>
-            {productError && (
+            {channelError && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {productError}
+                {channelError}
               </Alert>
             )}
 
@@ -473,22 +389,6 @@ const SuperAdminProductManagementPage: React.FC = () => {
               }
               error={!!formErrors.name}
               helperText={formErrors.name}
-            />
-
-            <TextField
-              required
-              fullWidth
-              label="Code"
-              margin="normal"
-              value={formData.code}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  code: e.target.value.toUpperCase(),
-                })
-              }
-              error={!!formErrors.code}
-              helperText={formErrors.code}
             />
 
             <FormControlLabel
@@ -514,31 +414,31 @@ const SuperAdminProductManagementPage: React.FC = () => {
 
             <Button
               variant="contained"
-              onClick={editingProduct ? handleUpdate : handleCreate}
+              onClick={editingChannel ? handleUpdate : handleCreate}
             >
-              {editingProduct ? "Update" : "Create"}
+              {editingChannel ? "Update" : "Create"}
             </Button>
           </DialogActions>
         </Dialog>
 
         <ConfirmDialog
-          open={Boolean(productToDelete)}
-          title="Delete product?"
+          open={Boolean(channelToDelete)}
+          title="Delete channel?"
           description={
-            productToDelete
-              ? `This will permanently remove "${productToDelete.name}" (${productToDelete.code}). This action cannot be undone.`
+            channelToDelete
+              ? `This will permanently remove "${channelToDelete.name}". This action cannot be undone.`
               : undefined
           }
           confirmLabel="Delete"
           cancelLabel="Cancel"
           confirmColor="error"
           loading={deleteSubmitting}
-          onCancel={() => !deleteSubmitting && setProductToDelete(null)}
-          onConfirm={handleConfirmDeleteProduct}
+          onCancel={() => !deleteSubmitting && setChannelToDelete(null)}
+          onConfirm={handleConfirmDeleteChannel}
         />
       </Box>
     </SuperAdminLayout>
   );
 };
 
-export default SuperAdminProductManagementPage;
+export default SuperAdminChannelPage;
