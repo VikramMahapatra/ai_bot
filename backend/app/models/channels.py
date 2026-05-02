@@ -24,6 +24,8 @@ class Channel(Base):
     channel_type = Column(String)
     # "free" | "paid"
     is_active = Column(Boolean, default=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
 
 
 class OrganizationChannel(Base):

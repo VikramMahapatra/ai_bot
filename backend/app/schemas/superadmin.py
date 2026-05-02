@@ -156,7 +156,6 @@ class CallingNumberResponse(BaseModel):
 
 class OrganizationChannelBase(BaseModel):
     channel_id: int
-    is_active: Optional[bool] = True
 
 
 class OrganizationChannelCreate(OrganizationChannelBase):

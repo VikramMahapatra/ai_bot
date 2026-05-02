@@ -25,11 +25,15 @@ from app.api import (
     org_credit_billing_router,
     conversation_decision_router,
     message_templates_router,
-    workflow_router
+    workflow_router,
+    channel_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
-from app.services.conversation_outcome_service import run_daily_call_campaign_daemon, run_daily_outcome_daemon
+from app.services.conversation_outcome_service import (
+    run_daily_call_campaign_daemon,
+    run_daily_outcome_daemon,
+)
 from app.services.org_credit_billing_service import run_daily_org_credit_billing_daemon
 import logging
 import asyncio
@@ -37,7 +41,7 @@ import asyncio
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
-    format=settings.LOG_FORMAT
+    format=settings.LOG_FORMAT,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,12 +98,15 @@ app.include_router(org_credit_billing_router)
 app.include_router(conversation_decision_router)
 app.include_router(message_templates_router)
 app.include_router(workflow_router)
+app.include_router(channel_router)
+
 
 # Handle OPTIONS requests for CORS preflight
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     """Handle CORS preflight requests"""
     return {"status": "ok"}
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -113,11 +120,15 @@ async def startup_event():
     logger.info("Database initialized successfully")
 
     outcome_daemon_stop_event.clear()
-    outcome_daemon_task = asyncio.create_task(run_daily_outcome_daemon(outcome_daemon_stop_event))
+    outcome_daemon_task = asyncio.create_task(
+        run_daily_outcome_daemon(outcome_daemon_stop_event)
+    )
     logger.info("Conversation outcome daemon started")
-    
+
     call_campaign_daemon_stop_event.clear()
-    call_campaign_daemon_task = asyncio.create_task(run_daily_call_campaign_daemon(call_campaign_daemon_stop_event))
+    call_campaign_daemon_task = asyncio.create_task(
+        run_daily_call_campaign_daemon(call_campaign_daemon_stop_event)
+    )
     logger.info("Call campaign daemon started")
 
     org_credit_billing_daemon_stop_event.clear()
@@ -163,7 +174,7 @@ async def root():
     return {
         "message": settings.APP_TITLE,
         "version": settings.APP_VERSION,
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -175,4 +186,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=settings.UVICORN_HOST, port=settings.UVICORN_PORT)
