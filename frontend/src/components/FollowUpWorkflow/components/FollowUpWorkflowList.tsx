@@ -36,6 +36,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { Workflow, workflowService } from "../../../services/workflowService";
 import { useDateFormatter } from "../../../hooks/useDateFormatter";
+import { StatusChip } from "../../Common/StatusChips";
 
 interface WorkflowListProps {
     onCreate: () => void;
@@ -282,11 +283,7 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
 
                                 {/* Status */}
                                 <TableCell>
-                                    <Chip
-                                        label={workflow.is_active ? "Active" : "Inactive"}
-                                        color={workflow.is_active ? "success" : "default"}
-                                        size="small"
-                                    />
+                                    <StatusChip value={workflow.is_active ? "Active" : "Inactive"} />
                                 </TableCell>
 
                                 {/* Created */}

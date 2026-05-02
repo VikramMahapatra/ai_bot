@@ -42,6 +42,7 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useDateFormatter } from "../hooks/useDateFormatter";
+import { SourceChip, StatusChip } from "../components/Common/StatusChips";
 
 type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 
@@ -376,7 +377,7 @@ function TemplateList() {
             <TableBody>
               {templates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ py: 8, textAlign: "center" }}>
+                  <TableCell colSpan={7} sx={{ py: 8, textAlign: "center" }}>
                     <SearchIcon
                       sx={{ fontSize: 40, color: "text.secondary" }}
                     />
@@ -387,24 +388,14 @@ function TemplateList() {
                 templates.map((t) => (
                   <TableRow key={t.id} hover>
                     <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
-
                     <TableCell>
-                      <Chip
-                        label={t.type === "whatsapp" ? "WHATSAPP" : t.type.toUpperCase()}
-                        size="small"
-                        color={t.type === "whatsapp" ? "primary" : "default"}
+                      <SourceChip
+                        value={t.type}
                       />
                     </TableCell>
-
                     <TableCell>{t.subject || "-"}</TableCell>
-
                     <TableCell>
-
-                      <Chip
-                        label={t.status}
-                        color={t.status === "Active" ? "success" : "default"}
-                        size="small"
-                      />
+                      <StatusChip value={t.status} />
                     </TableCell>
                     <TableCell>
                       {t.type === "whatsapp" ? (
