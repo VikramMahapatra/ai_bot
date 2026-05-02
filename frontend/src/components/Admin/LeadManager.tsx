@@ -1660,7 +1660,7 @@ const LeadManager: React.FC = () => {
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Created:{" "}
-                    {new Date(selectedLead.created_at).toLocaleString()}
+                    {formatDisplayDate(selectedLead.created_at)}
                   </Typography>
                 </Box>
               </Box>
@@ -2145,7 +2145,7 @@ const LeadManager: React.FC = () => {
                                 •
                               </Typography>
                               <Typography fontSize={12} color="text.secondary">
-                                {new Date(a.created_at).toLocaleString()}
+                                {formatDisplayDate(a.created_at)}
                               </Typography>
                             </>
                           )}

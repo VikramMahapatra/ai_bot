@@ -36,6 +36,28 @@ router = APIRouter(prefix="/api/admin/leads", tags=["leads"])
 
 ALLOWED_LEAD_SOURCES = {"chat", "voice", "email", "sms", "whatsapp"}
 
+BASE_HEADERS = [
+    ("Lead ID", "id"),
+    ("Full Name", "name"),
+    ("Email Address", "email"),
+    ("Phone Number", "phone"),
+    ("Company Name", "company"),
+    ("Sentiment", "sentiment"),
+    ("Source", "source"),
+    ("Stage", "funnel_stage"),
+    ("Product", "product_name"),
+    ("Created At", "created_at"),
+]
+    
+CUSTOM_FIELD_LABELS = {
+    "whatsapp_number": "Whatsapp Number",
+    "gender": "Gender",
+    "designation": "Designation",
+    "city": "City",
+    "state": "State",
+    "country": "Country",
+}
+
 
 def _normalize_source(source: Optional[str]) -> str:
     normalized = (source or "chat").strip().lower()
@@ -316,6 +338,86 @@ async def create_lead(
     except Exception as e:
         logger.error(f"Error creating lead: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+def build_lead_filters(
+    db: Session,
+    current_user: User,
+    widget_id: Optional[str] = None,
+    source: Optional[str] = None,
+    funnel_stage: Optional[str] = None,
+    product_id: Optional[str] = None,
+    campaign_id: Optional[int] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    filters = [Lead.organization_id == current_user.organization_id]
+
+    if search:
+        search_term = f"%{search.strip()}%"
+        filters.append(
+            or_(
+                Lead.name.ilike(search_term),
+                Lead.phone.ilike(search_term),
+                Lead.email.ilike(search_term),
+            )
+        )
+
+    if start_date:
+        filters.append(
+            Lead.created_at >= datetime.strptime(start_date, "%Y-%m-%d")
+        )
+
+    if end_date:
+        filters.append(
+            Lead.created_at <= datetime.strptime(end_date, "%Y-%m-%d")
+        )
+
+    if widget_id:
+        filters.append(Lead.widget_id == widget_id)
+
+    if source:
+        filters.append(Lead.source == _normalize_source(source))
+
+    if funnel_stage:
+        normalized_stage = _validate_funnel_stage_for_org(
+            db, current_user.organization_id, funnel_stage
+        )
+        filters.append(Lead.funnel_stage == normalized_stage)
+
+    if product_id:
+        filters.append(Lead.product_id == product_id)
+
+    if campaign_id:
+        if source == "voice":
+            filters.append(
+                exists().where(
+                    (LeadContactMapping.lead_id == Lead.id)
+                    & (LeadContactMapping.contact_id == CampaignContact.contact_id)
+                    & (CampaignContact.campaign_id == campaign_id)
+                )
+            )
+        else:
+            campaign_contact_list_id = db.query(CallCampaign.contact_list_id).filter(
+                CallCampaign.id == campaign_id,
+                CallCampaign.organization_id == current_user.organization_id
+            ).scalar()
+
+            if not campaign_contact_list_id:
+                return None  # handle separately
+
+            filters.append(
+                exists()
+                .select_from(LeadContactMapping)
+                .join(Contact, Contact.id == LeadContactMapping.contact_id)
+                .where(
+                    LeadContactMapping.lead_id == Lead.id,
+                    Contact.contact_list_id == campaign_contact_list_id
+                )
+            )
+
+    return filters
 
 
 @router.get("")  # , response_model=List[LeadResponse])
@@ -336,75 +438,30 @@ async def list_leads(
     EXCLUDED_STAGES = ["unassigned", "closed_won", "closed_lost"]
     week_ago = datetime.utcnow() - timedelta(days=7)
     
-    filters = [Lead.organization_id == current_user.organization_id]
+    filters = build_lead_filters(
+        db,
+        current_user,
+        widget_id,
+        source,
+        funnel_stage,
+        product_id,
+        campaign_id,
+        search,
+        start_date,
+        end_date,
+    )
     
     
-    if search:
-        search_term = f"%{search.strip()}%"
-        filters.append(
-            or_(
-                Lead.name.ilike(search_term),
-                Lead.phone.ilike(search_term),
-                Lead.email.ilike(search_term),
-            )
-        )
-    
-    if start_date:
-        filters.append(
-            Lead.created_at >= datetime.strptime(start_date, "%Y-%m-%d")
-        )
-
-    if end_date:
-        filters.append(
-            Lead.created_at <= datetime.strptime(end_date, "%Y-%m-%d")
-        )
-
-    if widget_id:
-        filters.append(Lead.widget_id == widget_id)
-    if source:
-        filters.append(Lead.source == _normalize_source(source))
-    if funnel_stage:
-        normalized_stage = _validate_funnel_stage_for_org(
-            db, current_user.organization_id, funnel_stage
-        )
-        filters.append(Lead.funnel_stage == normalized_stage)
-    if product_id:
-        filters.append(Lead.product_id == product_id)
-    if campaign_id:
-        if source == "voice":
-            filters.append(
-                exists().where(
-                    (LeadContactMapping.lead_id == Lead.id) &
-                    (LeadContactMapping.contact_id == CampaignContact.contact_id) &
-                    (CampaignContact.campaign_id == campaign_id)
-                )
-            )
-        else:
-            campaign_contact_list_id = db.query(CallCampaign.contact_list_id).filter(
-                CallCampaign.id == campaign_id,
-                CallCampaign.organization_id == current_user.organization_id
-            ).scalar()
-            
-            if not campaign_contact_list_id:
-                 return {
-                    "items": [],
-                    "pagination": {"total": 0, "skip": skip, "limit": limit},
-                    "summary": {
-                        "total_leads": 0,
-                        "conversion_leads": 0,
-                        "week_leads": 0,
-                    },
-                }
-                
-            filters.append(
-                    exists()
-                    .select_from(LeadContactMapping)
-                    .join(Contact, Contact.id == LeadContactMapping.contact_id)
-                    .where(
-                        LeadContactMapping.lead_id == Lead.id,
-                        Contact.contact_list_id == campaign_contact_list_id
-                    )
-                )
+    if filters is None:
+        return {
+            "items": [],
+            "pagination": {"total": 0, "skip": skip, "limit": limit},
+            "summary": {
+                "total_pipeline_leads": 0,
+                "closed_won_leads": 0,
+                "closed_lost_leads": 0,
+            },
+        }
     
     """List all leads (paginated)"""
     query = db.query(Lead).filter(*filters)
@@ -548,48 +605,101 @@ async def export_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
     widget_id: Optional[str] = None,
+    source: Optional[str] = None,
+    funnel_stage: Optional[str] = None,
     product_id: Optional[str] = None,
+    campaign_id: Optional[int] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ):
-    """Export leads to CSV"""
     try:
-        query = db.query(Lead).filter(
-            Lead.organization_id == current_user.organization_id
+        filters = build_lead_filters(
+            db,
+            current_user,
+            widget_id,
+            source,
+            funnel_stage,
+            product_id,
+            campaign_id,
+            search,
+            start_date,
+            end_date,
         )
-        if widget_id:
-            query = query.filter(Lead.widget_id == widget_id)
-        if product_id:
-            query = query.filter(Lead.product_id == product_id)
-        leads = query.all()
 
-        # Convert to dict
-        leads_data = []
-        for lead in leads:
-            leads_data.append(
-                {
-                    "id": lead.id,
-                    "session_id": lead.session_id,
-                    "widget_id": lead.widget_id,
-                    "name": lead.name,
-                    "email": lead.email,
-                    "phone": lead.phone,
-                    "company": lead.company,
-                    "sentiment": lead.lead_outcome,
-                    "source": lead.source,
-                    "funnel_stage": lead.funnel_stage,
-                    "created_at": (
-                        lead.created_at.isoformat() if lead.created_at else ""
-                    ),
-                }
+        if filters is None:
+            return Response(
+                content="",
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=leads.csv"},
             )
 
-        # Export to CSV
-        csv_content = export_leads_to_csv(leads_data)
+        query = db.query(Lead).filter(*filters)
+
+        leads = query.order_by(Lead.created_at.desc()).all()
+        
+        # collect product names (same as list_leads)
+        product_ids = list({
+            int(lead.product_id)
+            for lead in leads
+            if lead.product_id and str(lead.product_id).isdigit()
+        })
+
+        product_name_map = {}
+        if product_ids:
+            products = db.query(Product).filter(
+                Product.organization_id == current_user.organization_id,
+                Product.id.in_(product_ids),
+                Product.is_deleted == False,
+            ).all()
+
+        product_name_map = {str(p.id): p.name for p in products}
+        
+        all_custom_keys = set()
+
+        for lead in leads:
+            if isinstance(lead.custom_fields, dict):
+                all_custom_keys.update(lead.custom_fields.keys())
+        
+        leads_data = []
+
+        for lead in leads:
+            custom_fields = lead.custom_fields or {}
+
+            row = {
+                "id": lead.id,
+                "name": lead.name,
+                "email": lead.email,
+                "phone": lead.phone,
+                "company": lead.company,
+                "sentiment": lead.lead_outcome,
+                "source": lead.source,
+                "funnel_stage": lead.funnel_stage,
+                "product_name": product_name_map.get(str(lead.product_id), ""),
+                "created_at": lead.created_at.isoformat() if lead.created_at else "",
+            }
+
+            # flatten custom fields
+            for key in all_custom_keys:
+                row[key] = custom_fields.get(key, "")
+
+            leads_data.append(row)
+        
+        custom_headers = [
+            (CUSTOM_FIELD_LABELS.get(key, key.replace("_", " ").title()), key)
+            for key in sorted(all_custom_keys)
+        ]
+
+        headers = BASE_HEADERS + custom_headers
+
+        csv_content = export_leads_to_csv(leads_data, headers)
 
         return Response(
             content=csv_content,
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=leads.csv"},
         )
+
     except Exception as e:
         logger.error(f"Error exporting leads: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

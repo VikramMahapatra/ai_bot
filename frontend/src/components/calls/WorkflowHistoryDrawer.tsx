@@ -12,6 +12,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import MessageIcon from "@mui/icons-material/Message";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { WorkflowEvent } from "../../services/callCampaignService";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
 
 
 
@@ -52,6 +53,9 @@ export default function WorkflowHistoryDrawer({
     onClose,
     data,
 }: Props) {
+
+    const formatDisplayDate = useDateFormatter()
+
     return (
         <Drawer anchor="right" open={open} onClose={onClose}>
             <Box width={380} role="presentation">
@@ -109,7 +113,7 @@ export default function WorkflowHistoryDrawer({
                                     )}
 
                                     <Typography variant="caption" color="text.secondary">
-                                        {new Date(item.time).toLocaleString()}
+                                        {formatDisplayDate(item.time)}
                                     </Typography>
                                 </Box>
                             </Box>

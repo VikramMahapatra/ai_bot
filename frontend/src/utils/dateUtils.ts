@@ -17,9 +17,11 @@ export const formatDate = (date?: string | Date): string => {
 };
 
 export const formatDateTime = (
-    date?: string | Date,
+    date?: string | Date | null,
     timeZone: string = "Asia/Kolkata"
 ): string => {
+    if (!date) return '-';
+
     const d = parseDate(date);
     if (!d) return "-";
 
@@ -31,4 +33,22 @@ export const formatDateTime = (
         hour: "2-digit",
         minute: "2-digit",
     }).format(d);
+};
+
+
+export const formatTime = (
+    value?: string | Date | null,
+    timeZone: string = "Asia/Kolkata"
+): string => {
+    if (!value) return "-";
+
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true, // optional (AM/PM)
+    }).format(dt);
 };

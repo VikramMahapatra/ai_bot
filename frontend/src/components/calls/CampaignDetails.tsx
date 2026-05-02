@@ -969,7 +969,7 @@ function ContactsDialog({
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const formatDisplayTime = useDateFormatter()
+  const formatDisplayDate = useDateFormatter()
 
   useEffect(() => {
     if (open) {
@@ -1096,7 +1096,7 @@ function ContactsDialog({
                     {columns.map((col) => (
                       <TableCell key={col.key}>
                         {col.key.includes("date")
-                          ? formatDisplayTime(row[col.key])
+                          ? formatDisplayDate(row[col.key])
                           : (row[col.key] ?? "-")}
                       </TableCell>
                     ))}

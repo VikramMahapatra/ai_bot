@@ -69,6 +69,7 @@ import {
 import { Product, productService } from "../services/productService";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
+import { useDateFormatter } from "../hooks/useDateFormatter";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -91,24 +92,7 @@ const parseApiDate = (value?: string): Date | null => {
   return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 
-const formatDate = (value?: string) => {
-  if (!value) return "-";
-  const dt = parseApiDate(value);
-  if (!dt) return value;
 
-  return (
-    new Intl.DateTimeFormat("en-IN", {
-      timeZone: IST_TIME_ZONE,
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    }).format(dt) + " IST"
-  );
-};
 
 const convertIstLocalInputToUtcIso = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -342,6 +326,8 @@ const CampaignManagementPage: React.FC = () => {
     useState<CampaignToLeadRunResult | null>(null);
   const [c2lConversions, setC2lConversions] = useState<any[]>([]);
 
+  const formatDisplayDate = useDateFormatter()
+
   const statusSummary = useMemo(() => {
     const ordered = [
       "draft",
@@ -356,6 +342,7 @@ const CampaignManagementPage: React.FC = () => {
       value: dashboard.status_counts?.[key] || 0,
     }));
   }, [dashboard.status_counts]);
+
 
   const totalStatusCount = useMemo(
     () => statusSummary.reduce((acc, item) => acc + Number(item.value || 0), 0),
@@ -651,7 +638,7 @@ const CampaignManagementPage: React.FC = () => {
       } catch (err: any) {
         showError(
           err?.response?.data?.detail ||
-            "Failed to load Campaign to Lead module",
+          "Failed to load Campaign to Lead module",
         );
       }
     };
@@ -843,7 +830,7 @@ const CampaignManagementPage: React.FC = () => {
     } catch (err: any) {
       showError(
         err?.response?.data?.detail ||
-          "Failed to generate prompt-based email content",
+        "Failed to generate prompt-based email content",
       );
     } finally {
       setGeneratingEmailVariants(false);
@@ -1022,8 +1009,8 @@ const CampaignManagementPage: React.FC = () => {
           createCampaignType === "email"
             ? emailContentMode === "prompt"
               ? generatedBodies[0] ||
-                createMessageTemplate ||
-                "Generated campaign body"
+              createMessageTemplate ||
+              "Generated campaign body"
               : createMessageTemplate
             : createMessageTemplate,
         scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
@@ -1662,7 +1649,7 @@ const CampaignManagementPage: React.FC = () => {
                                       variant="caption"
                                       color="text.secondary"
                                     >
-                                      {formatDate(item.created_at)}
+                                      {formatDisplayDate(item.created_at)}
                                     </Typography>
                                   </TableCell>
                                   <TableCell
@@ -2223,7 +2210,7 @@ const CampaignManagementPage: React.FC = () => {
                                               .slice(
                                                 spamVisibleStart,
                                                 spamVisibleStart +
-                                                  spamRowsPerView,
+                                                spamRowsPerView,
                                               )
                                               .map((row) => (
                                                 <TableRow
@@ -2247,10 +2234,10 @@ const CampaignManagementPage: React.FC = () => {
                                                       label={row.risk_level}
                                                       color={
                                                         row.risk_level ===
-                                                        "high"
+                                                          "high"
                                                           ? "error"
                                                           : row.risk_level ===
-                                                              "medium"
+                                                            "medium"
                                                             ? "warning"
                                                             : "success"
                                                       }
@@ -2275,145 +2262,145 @@ const CampaignManagementPage: React.FC = () => {
 
                             {(generatedSubjects.length > 0 ||
                               generatedBodies.length > 0) && (
-                              <Paper
-                                variant="outlined"
-                                sx={{
-                                  p: 1.2,
-                                  borderRadius: "10px",
-                                  borderColor: alpha(
-                                    theme.palette.primary.main,
-                                    0.2,
-                                  ),
-                                }}
-                              >
-                                <Grid container spacing={1.5}>
-                                  <Grid item xs={12} md={6}>
-                                    <Accordion
-                                      disableGutters
-                                      sx={{
-                                        borderRadius: "8px",
-                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                        boxShadow: "none",
-                                        "&:before": { display: "none" },
-                                      }}
-                                    >
-                                      <AccordionSummary
-                                        expandIcon={<ExpandMoreIcon />}
+                                <Paper
+                                  variant="outlined"
+                                  sx={{
+                                    p: 1.2,
+                                    borderRadius: "10px",
+                                    borderColor: alpha(
+                                      theme.palette.primary.main,
+                                      0.2,
+                                    ),
+                                  }}
+                                >
+                                  <Grid container spacing={1.5}>
+                                    <Grid item xs={12} md={6}>
+                                      <Accordion
+                                        disableGutters
+                                        sx={{
+                                          borderRadius: "8px",
+                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                          boxShadow: "none",
+                                          "&:before": { display: "none" },
+                                        }}
                                       >
-                                        <Typography
-                                          variant="body2"
-                                          sx={{ fontWeight: 600 }}
+                                        <AccordionSummary
+                                          expandIcon={<ExpandMoreIcon />}
                                         >
-                                          Generated Subjects (Editable)
-                                        </Typography>
-                                      </AccordionSummary>
-                                      <AccordionDetails sx={{ pt: 0.4 }}>
-                                        <Stack spacing={0.9}>
-                                          {ensureFive(generatedSubjects).map(
-                                            (subject, idx) => (
-                                              <TextField
-                                                key={`subject-edit-${idx}`}
-                                                size="small"
-                                                label={`Subject ${idx + 1}`}
-                                                value={subject}
-                                                onChange={(event) =>
-                                                  handleEditGeneratedSubject(
-                                                    idx,
-                                                    event.target.value,
-                                                  )
-                                                }
-                                              />
-                                            ),
-                                          )}
-                                        </Stack>
-                                      </AccordionDetails>
-                                    </Accordion>
-                                  </Grid>
-                                  <Grid item xs={12} md={6}>
-                                    <Accordion
-                                      disableGutters
-                                      sx={{
-                                        borderRadius: "8px",
-                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                        boxShadow: "none",
-                                        "&:before": { display: "none" },
-                                      }}
-                                    >
-                                      <AccordionSummary
-                                        expandIcon={<ExpandMoreIcon />}
-                                      >
-                                        <Typography
-                                          variant="body2"
-                                          sx={{ fontWeight: 600 }}
-                                        >
-                                          Generated Bodies (Editable)
-                                        </Typography>
-                                      </AccordionSummary>
-                                      <AccordionDetails sx={{ pt: 0.4 }}>
-                                        <Stack spacing={0.9}>
-                                          {ensureFive(generatedBodies).map(
-                                            (body, idx) => (
-                                              <Accordion
-                                                key={`body-edit-${idx}`}
-                                                disableGutters
-                                                sx={{
-                                                  borderRadius: "8px",
-                                                  border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                                  boxShadow: "none",
-                                                  "&:before": {
-                                                    display: "none",
-                                                  },
-                                                }}
-                                              >
-                                                <AccordionSummary
-                                                  expandIcon={
-                                                    <ExpandMoreIcon />
+                                          <Typography
+                                            variant="body2"
+                                            sx={{ fontWeight: 600 }}
+                                          >
+                                            Generated Subjects (Editable)
+                                          </Typography>
+                                        </AccordionSummary>
+                                        <AccordionDetails sx={{ pt: 0.4 }}>
+                                          <Stack spacing={0.9}>
+                                            {ensureFive(generatedSubjects).map(
+                                              (subject, idx) => (
+                                                <TextField
+                                                  key={`subject-edit-${idx}`}
+                                                  size="small"
+                                                  label={`Subject ${idx + 1}`}
+                                                  value={subject}
+                                                  onChange={(event) =>
+                                                    handleEditGeneratedSubject(
+                                                      idx,
+                                                      event.target.value,
+                                                    )
                                                   }
+                                                />
+                                              ),
+                                            )}
+                                          </Stack>
+                                        </AccordionDetails>
+                                      </Accordion>
+                                    </Grid>
+                                    <Grid item xs={12} md={6}>
+                                      <Accordion
+                                        disableGutters
+                                        sx={{
+                                          borderRadius: "8px",
+                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                          boxShadow: "none",
+                                          "&:before": { display: "none" },
+                                        }}
+                                      >
+                                        <AccordionSummary
+                                          expandIcon={<ExpandMoreIcon />}
+                                        >
+                                          <Typography
+                                            variant="body2"
+                                            sx={{ fontWeight: 600 }}
+                                          >
+                                            Generated Bodies (Editable)
+                                          </Typography>
+                                        </AccordionSummary>
+                                        <AccordionDetails sx={{ pt: 0.4 }}>
+                                          <Stack spacing={0.9}>
+                                            {ensureFive(generatedBodies).map(
+                                              (body, idx) => (
+                                                <Accordion
+                                                  key={`body-edit-${idx}`}
+                                                  disableGutters
+                                                  sx={{
+                                                    borderRadius: "8px",
+                                                    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                                    boxShadow: "none",
+                                                    "&:before": {
+                                                      display: "none",
+                                                    },
+                                                  }}
                                                 >
-                                                  <Typography
-                                                    variant="body2"
-                                                    sx={{ fontWeight: 600 }}
-                                                  >
-                                                    {`Body ${idx + 1}`}
-                                                  </Typography>
-                                                  <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ ml: 1 }}
-                                                  >
-                                                    {(body || "").slice(0, 70)}
-                                                    {(body || "").length > 70
-                                                      ? "..."
-                                                      : ""}
-                                                  </Typography>
-                                                </AccordionSummary>
-                                                <AccordionDetails
-                                                  sx={{ pt: 0.5 }}
-                                                >
-                                                  <TextField
-                                                    fullWidth
-                                                    size="small"
-                                                    multiline
-                                                    minRows={4}
-                                                    value={body}
-                                                    onChange={(event) =>
-                                                      handleEditGeneratedBody(
-                                                        idx,
-                                                        event.target.value,
-                                                      )
+                                                  <AccordionSummary
+                                                    expandIcon={
+                                                      <ExpandMoreIcon />
                                                     }
-                                                  />
-                                                </AccordionDetails>
-                                              </Accordion>
-                                            ),
-                                          )}
-                                        </Stack>
-                                      </AccordionDetails>
-                                    </Accordion>
+                                                  >
+                                                    <Typography
+                                                      variant="body2"
+                                                      sx={{ fontWeight: 600 }}
+                                                    >
+                                                      {`Body ${idx + 1}`}
+                                                    </Typography>
+                                                    <Typography
+                                                      variant="caption"
+                                                      color="text.secondary"
+                                                      sx={{ ml: 1 }}
+                                                    >
+                                                      {(body || "").slice(0, 70)}
+                                                      {(body || "").length > 70
+                                                        ? "..."
+                                                        : ""}
+                                                    </Typography>
+                                                  </AccordionSummary>
+                                                  <AccordionDetails
+                                                    sx={{ pt: 0.5 }}
+                                                  >
+                                                    <TextField
+                                                      fullWidth
+                                                      size="small"
+                                                      multiline
+                                                      minRows={4}
+                                                      value={body}
+                                                      onChange={(event) =>
+                                                        handleEditGeneratedBody(
+                                                          idx,
+                                                          event.target.value,
+                                                        )
+                                                      }
+                                                    />
+                                                  </AccordionDetails>
+                                                </Accordion>
+                                              ),
+                                            )}
+                                          </Stack>
+                                        </AccordionDetails>
+                                      </Accordion>
+                                    </Grid>
                                   </Grid>
-                                </Grid>
-                              </Paper>
-                            )}
+                                </Paper>
+                              )}
                           </>
                         )}
                       </Stack>
@@ -2422,64 +2409,64 @@ const CampaignManagementPage: React.FC = () => {
 
                   {(createCampaignType !== "email" ||
                     emailContentMode === "manual") && (
-                    <TextField
-                      size="small"
-                      sx={{
-                        ...compactInputSx,
-                        ...(emailEditorMode === "html"
-                          ? {
+                      <TextField
+                        size="small"
+                        sx={{
+                          ...compactInputSx,
+                          ...(emailEditorMode === "html"
+                            ? {
                               "& .MuiInputBase-input": {
                                 fontFamily: "Consolas, Menlo, monospace",
                               },
                             }
-                          : {}),
-                      }}
-                      fullWidth
-                      multiline
-                      minRows={emailEditorMode === "html" ? 9 : 6}
-                      label={
-                        createCampaignType === "email"
-                          ? `Email Template (${emailEditorMode.toUpperCase()})`
-                          : "Message Template"
-                      }
-                      value={createMessageTemplate}
-                      onChange={(e) => {
-                        setCreateMessageTemplate(e.target.value);
-                        if (createCampaignErrors.emailBody) {
-                          setCreateCampaignErrors((prev) => ({
-                            ...prev,
-                            emailBody: false,
-                          }));
+                            : {}),
+                        }}
+                        fullWidth
+                        multiline
+                        minRows={emailEditorMode === "html" ? 9 : 6}
+                        label={
+                          createCampaignType === "email"
+                            ? `Email Template (${emailEditorMode.toUpperCase()})`
+                            : "Message Template"
                         }
-                      }}
-                      error={createCampaignErrors.emailBody}
-                      helperText={
-                        createCampaignErrors.emailBody
-                          ? createCampaignType === "email"
-                            ? "Email body is required"
-                            : "Message template is required"
-                          : " "
-                      }
-                      placeholder={
-                        createCampaignType === "email" &&
-                        emailEditorMode === "html"
-                          ? "<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>"
-                          : "Write your campaign message here..."
-                      }
-                    />
-                  )}
+                        value={createMessageTemplate}
+                        onChange={(e) => {
+                          setCreateMessageTemplate(e.target.value);
+                          if (createCampaignErrors.emailBody) {
+                            setCreateCampaignErrors((prev) => ({
+                              ...prev,
+                              emailBody: false,
+                            }));
+                          }
+                        }}
+                        error={createCampaignErrors.emailBody}
+                        helperText={
+                          createCampaignErrors.emailBody
+                            ? createCampaignType === "email"
+                              ? "Email body is required"
+                              : "Message template is required"
+                            : " "
+                        }
+                        placeholder={
+                          createCampaignType === "email" &&
+                            emailEditorMode === "html"
+                            ? "<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>"
+                            : "Write your campaign message here..."
+                        }
+                      />
+                    )}
 
                   {(createCampaignErrors.contactList ||
                     createCampaignErrors.product) && (
-                    <Alert severity="error" sx={{ mt: 1 }}>
-                      {createCampaignErrors.contactList &&
-                      createCampaignErrors.product
-                        ? "Contact List and Product are required."
-                        : createCampaignErrors.contactList
-                          ? "Contact List is required."
-                          : "Product is required."}
-                    </Alert>
-                  )}
+                      <Alert severity="error" sx={{ mt: 1 }}>
+                        {createCampaignErrors.contactList &&
+                          createCampaignErrors.product
+                          ? "Contact List and Product are required."
+                          : createCampaignErrors.contactList
+                            ? "Contact List is required."
+                            : "Product is required."}
+                      </Alert>
+                    )}
 
                   {createCampaignType === "email" &&
                     emailContentMode === "prompt" && (
@@ -2526,7 +2513,7 @@ const CampaignManagementPage: React.FC = () => {
                         }}
                       >
                         {emailEditorMode === "html" ||
-                        looksLikeHtml(createMessageTemplate) ? (
+                          looksLikeHtml(createMessageTemplate) ? (
                           <Box
                             sx={{ "& h1, & h2, & h3": { mt: 0 } }}
                             dangerouslySetInnerHTML={{
@@ -2825,7 +2812,7 @@ const CampaignManagementPage: React.FC = () => {
                               variant="outlined"
                             />
                           </TableCell>
-                          <TableCell>{formatDate(item.created_at)}</TableCell>
+                          <TableCell>{formatDisplayDate(item.created_at)}</TableCell>
                           <TableCell>
                             <Stack direction="row" spacing={1}>
                               <Button
@@ -3021,7 +3008,7 @@ const CampaignManagementPage: React.FC = () => {
                               variant="caption"
                               sx={{ display: "block" }}
                             >
-                              {formatDate(item.run_started_at)}
+                              {formatDisplayDate(item.run_started_at)}
                             </Typography>
                           </TableCell>
                           <TableCell>{item.contact_name || "-"}</TableCell>
@@ -3036,10 +3023,10 @@ const CampaignManagementPage: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {formatDate(
+                            {formatDisplayDate(
                               item.delivered_at ||
-                                item.sent_at ||
-                                item.created_at,
+                              item.sent_at ||
+                              item.created_at,
                             )}
                           </TableCell>
                           <TableCell>
@@ -3047,13 +3034,13 @@ const CampaignManagementPage: React.FC = () => {
                               variant="caption"
                               sx={{ display: "block" }}
                             >
-                              Open: {formatDate(item.opened_at)}
+                              Open: {formatDisplayDate(item.opened_at)}
                             </Typography>
                             <Typography
                               variant="caption"
                               sx={{ display: "block" }}
                             >
-                              Read: {formatDate(item.read_at)}
+                              Read: {formatDisplayDate(item.read_at)}
                             </Typography>
                           </TableCell>
                           <TableCell>
@@ -3067,7 +3054,7 @@ const CampaignManagementPage: React.FC = () => {
                               variant="caption"
                               sx={{ display: "block" }}
                             >
-                              Last: {formatDate(item.clicked_at)}
+                              Last: {formatDisplayDate(item.clicked_at)}
                             </Typography>
                           </TableCell>
                           <TableCell>
@@ -3081,7 +3068,7 @@ const CampaignManagementPage: React.FC = () => {
                               variant="caption"
                               sx={{ display: "block" }}
                             >
-                              {formatDate(item.last_event_at)}
+                              {formatDisplayDate(item.last_event_at)}
                             </Typography>
                           </TableCell>
                           <TableCell>{item.error_message || "-"}</TableCell>
@@ -3162,7 +3149,7 @@ const CampaignManagementPage: React.FC = () => {
                         } catch (err: any) {
                           showError(
                             err?.response?.data?.detail ||
-                              "Failed to refresh reports",
+                            "Failed to refresh reports",
                           );
                         } finally {
                           setLoading(false);
@@ -3596,7 +3583,7 @@ const CampaignManagementPage: React.FC = () => {
                                 <TableCell>{row.open_rate}%</TableCell>
                                 <TableCell>{row.click_rate}%</TableCell>
                                 <TableCell>
-                                  {formatDate(row.last_event_at)}
+                                  {formatDisplayDate(row.last_event_at)}
                                 </TableCell>
                               </TableRow>
                             ))
@@ -3759,12 +3746,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                  ...prev,
-                                  min_score_threshold: Math.max(
-                                    1,
-                                    Number(e.target.value) || 1,
-                                  ),
-                                }
+                                ...prev,
+                                min_score_threshold: Math.max(
+                                  1,
+                                  Number(e.target.value) || 1,
+                                ),
+                              }
                               : prev,
                           )
                         }
@@ -3781,12 +3768,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                  ...prev,
-                                  dedupe_window_days: Math.max(
-                                    1,
-                                    Number(e.target.value) || 1,
-                                  ),
-                                }
+                                ...prev,
+                                dedupe_window_days: Math.max(
+                                  1,
+                                  Number(e.target.value) || 1,
+                                ),
+                              }
                               : prev,
                           )
                         }
@@ -3911,9 +3898,9 @@ const CampaignManagementPage: React.FC = () => {
                                 setC2lRule((prev) =>
                                   prev
                                     ? {
-                                        ...prev,
-                                        auto_convert_enabled: e.target.checked,
-                                      }
+                                      ...prev,
+                                      auto_convert_enabled: e.target.checked,
+                                    }
                                     : prev,
                                 )
                               }
@@ -3947,7 +3934,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                  "Failed to update C2L rule",
+                                "Failed to update C2L rule",
                               );
                             } finally {
                               setC2lSaving(false);
@@ -4043,7 +4030,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                  "Failed to run C2L engine",
+                                "Failed to run C2L engine",
                               );
                             } finally {
                               setLoading(false);
@@ -4193,7 +4180,7 @@ const CampaignManagementPage: React.FC = () => {
                             c2lConversions.map((item) => (
                               <TableRow key={`c2l-conv-${item.id}`}>
                                 <TableCell>
-                                  {formatDate(item.created_at)}
+                                  {formatDisplayDate(item.created_at)}
                                 </TableCell>
                                 <TableCell>{item.campaign_id}</TableCell>
                                 <TableCell>{item.campaign_log_id}</TableCell>
