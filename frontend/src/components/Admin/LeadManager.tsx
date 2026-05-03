@@ -87,11 +87,17 @@ import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseIcon from "@mui/icons-material/Close";
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import { OutcomeChip, SourceChip, StageChip, titleCase } from "../Common/StatusChips";
-import { useDateFormatter } from "../../hooks/useDateFormatter";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CancelIcon from "@mui/icons-material/Cancel";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import {
+  OutcomeChip,
+  SourceChip,
+  StageChip,
+  titleCase,
+} from "../Common/StatusChips";
+import { useDateFormatter, useOnlyDateFormatter } from "../../hooks/useDateFormatter";
+import { ConfirmDialog } from "../Common/ConfirmDialog";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -180,7 +186,10 @@ const LeadManager: React.FC = () => {
   const [closeDate, setCloseDate] = useState("");
   const [summary, setSummary] = useState<any>({});
   const formatDisplayDate = useDateFormatter();
-
+  const formatDisplayOnlyDate = useOnlyDateFormatter();
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
   const panelSx = {
     borderRadius: "18px",
     border: `1px solid ${alpha(theme.palette.common.white, 0.64)}`,
@@ -236,36 +245,39 @@ const LeadManager: React.FC = () => {
     return stageNameByKey.get(stage) || stageLabel(stage);
   };
 
-  const kpis = useMemo(() => [
-    {
-      label: "Total",
-      value: leadsTotal.toLocaleString(),
-      hint: "All captured lead records",
-      icon: <GroupIcon sx={{ color: "#fff" }} />,
-      gradient: "linear-gradient(135deg, #0d47a1, #1976d2)",
-    },
-    {
-      label: "Pipeline Leads",
-      value: pipelineLeads.toLocaleString(),
-      hint: "Leads in progress",
-      icon: <AccountTreeIcon sx={{ color: "#fff" }} />,
-      gradient: "linear-gradient(135deg, #7b1fa2, #ba68c8)", // 🟣 Purple
-    },
-    {
-      label: "Closed Leads",
-      value: wonLeads.toLocaleString(),
-      hint: "Successfully converted",
-      icon: <CheckCircleIcon sx={{ color: "#fff" }} />,
-      gradient: "linear-gradient(135deg, #2e7d32, #66bb6a)", // 🟢 Green
-    },
-    {
-      label: "Lost Leads",
-      value: lostLeads.toLocaleString(),
-      hint: "Unsuccessful leads",
-      icon: <CancelIcon sx={{ color: "#fff" }} />,
-      gradient: "linear-gradient(135deg, #c62828, #ef5350)", // 🔴 Red
-    },
-  ], [leadsTotal, pipelineLeads, wonLeads, lostLeads]);
+  const kpis = useMemo(
+    () => [
+      {
+        label: "Total",
+        value: leadsTotal.toLocaleString(),
+        hint: "All captured lead records",
+        icon: <GroupIcon sx={{ color: "#fff" }} />,
+        gradient: "linear-gradient(135deg, #0d47a1, #1976d2)",
+      },
+      {
+        label: "Pipeline Leads",
+        value: pipelineLeads.toLocaleString(),
+        hint: "Leads in progress",
+        icon: <AccountTreeIcon sx={{ color: "#fff" }} />,
+        gradient: "linear-gradient(135deg, #7b1fa2, #ba68c8)", // 🟣 Purple
+      },
+      {
+        label: "Closed Leads",
+        value: wonLeads.toLocaleString(),
+        hint: "Successfully converted",
+        icon: <CheckCircleIcon sx={{ color: "#fff" }} />,
+        gradient: "linear-gradient(135deg, #2e7d32, #66bb6a)", // 🟢 Green
+      },
+      {
+        label: "Lost Leads",
+        value: lostLeads.toLocaleString(),
+        hint: "Unsuccessful leads",
+        icon: <CancelIcon sx={{ color: "#fff" }} />,
+        gradient: "linear-gradient(135deg, #c62828, #ef5350)", // 🔴 Red
+      },
+    ],
+    [leadsTotal, pipelineLeads, wonLeads, lostLeads],
+  );
 
   const displayLeads = useMemo(() => {
     const startMs = filterStartDate
@@ -278,8 +290,8 @@ const LeadManager: React.FC = () => {
     const campaignLabel =
       selectedCampaignId !== "all"
         ? (campaigns
-          .find((c) => String(c.id) === selectedCampaignId)
-          ?.campaign_name?.toLowerCase() ?? "")
+            .find((c) => String(c.id) === selectedCampaignId)
+            ?.campaign_name?.toLowerCase() ?? "")
         : "";
 
     return leads.filter((lead) => {
@@ -369,7 +381,7 @@ const LeadManager: React.FC = () => {
     campaignType: any,
     search: any,
     startDate: any,
-    endDate: any
+    endDate: any,
   ) => {
     try {
       setLoading(true);
@@ -386,7 +398,7 @@ const LeadManager: React.FC = () => {
         campaignType,
         search,
         startDate,
-        endDate
+        endDate,
       );
 
       setLeads(data.items);
@@ -526,9 +538,9 @@ const LeadManager: React.FC = () => {
       productId,
       campaignId,
       campaignType,
-      leadSearch,      // ✅ ADD
-      filterStartDate,      // ✅ ADD
-      filterEndDate         // ✅ ADD
+      leadSearch, // ✅ ADD
+      filterStartDate, // ✅ ADD
+      filterEndDate, // ✅ ADD
     );
   }, [
     selectedWidgetId,
@@ -539,9 +551,9 @@ const LeadManager: React.FC = () => {
     selectedCampaignType,
     leadsPage,
     leadsRowsPerPage,
-    leadSearch,        // ✅ ADD
-    filterStartDate,        // ✅ ADD
-    filterEndDate           // ✅ ADD
+    leadSearch, // ✅ ADD
+    filterStartDate, // ✅ ADD
+    filterEndDate, // ✅ ADD
   ]);
 
   const handleExport = async () => {
@@ -688,12 +700,14 @@ const LeadManager: React.FC = () => {
       const updated = await leadService.moveLeadToFunnel(
         selectedLead.id,
         moveStage,
+        closeDate
       );
       setLeads((prev) =>
         prev.map((lead) => (lead.id === updated.id ? updated : lead)),
       );
       setSelectedLead(updated);
       setMoveOpen(false);
+      setConfirmationDialogOpen(false);
       setDetailsOpen(true);
       setSuccess(
         `Lead moved to ${displayStageLabel(updated.funnel_stage)} successfully.`,
@@ -747,7 +761,9 @@ const LeadManager: React.FC = () => {
     selectedCampaignId === "all"
       ? null
       : campaigns.find((c) => String(c.id) === selectedCampaignId);
-  const sourceTintByKey: Record<string, string> = { ...LEAD_SOURCE_FILTER_TINTS };
+  const sourceTintByKey: Record<string, string> = {
+    ...LEAD_SOURCE_FILTER_TINTS,
+  };
 
   const compactMenuProps = {
     PaperProps: {
@@ -912,19 +928,20 @@ const LeadManager: React.FC = () => {
         >
           {[
             selectedWidget &&
-            `widget: ${selectedWidget.name}${selectedWidget.source
-              ? ` (${sourceLabel(selectedWidget.source)})`
-              : ""
-            }`,
+              `widget: ${selectedWidget.name}${
+                selectedWidget.source
+                  ? ` (${sourceLabel(selectedWidget.source)})`
+                  : ""
+              }`,
             selectedProduct && `product: ${selectedProduct.name}`,
             selectedSource !== "all" &&
-            `source: ${sourceLabel(selectedSource)}`,
+              `source: ${sourceLabel(selectedSource)}`,
             selectedFunnelStage !== "all" &&
-            `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
+              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
             selectedCampaign &&
-            `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
+              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
             selectedCampaignType !== "all" &&
-            `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
+              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
           ]
             .filter(Boolean)
             .join(" · ") || "Showing leads from all widgets and campaigns"}
@@ -1067,7 +1084,7 @@ const LeadManager: React.FC = () => {
                   <MenuItem key={campaign.id} value={String(campaign.id)}>
                     {campaign.campaign_name}
                     {campaign.campaign_type &&
-                      campaignTypeLabel(campaign.campaign_type)
+                    campaignTypeLabel(campaign.campaign_type)
                       ? `(${campaignTypeLabel(campaign.campaign_type)})`
                       : ""}
                   </MenuItem>
@@ -1451,7 +1468,8 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Sentiment</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Created Date</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Closed Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -1467,8 +1485,13 @@ const LeadManager: React.FC = () => {
                     },
                   }}
                 >
-                  <TableCell sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                  <TableCell
+                    sx={{ minWidth: 200, maxWidth: 300, verticalAlign: "top" }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, lineHeight: 1.35 }}
+                    >
                       {lead.name?.trim() || "—"}
                     </Typography>
                     <Stack spacing={0.35} sx={{ mt: 0.5 }}>
@@ -1484,8 +1507,13 @@ const LeadManager: React.FC = () => {
                             fontSize: "0.7rem",
                           }}
                         >
-                          <EmailIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
-                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                          <EmailIcon
+                            sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }}
+                          />
+                          <Box
+                            component="span"
+                            sx={{ wordBreak: "break-word" }}
+                          >
                             {lead.email}
                           </Box>
                         </Typography>
@@ -1502,14 +1530,23 @@ const LeadManager: React.FC = () => {
                             fontSize: "0.7rem",
                           }}
                         >
-                          <CallIcon sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }} />
-                          <Box component="span" sx={{ wordBreak: "break-word" }}>
+                          <CallIcon
+                            sx={{ fontSize: 13, flexShrink: 0, opacity: 0.85 }}
+                          />
+                          <Box
+                            component="span"
+                            sx={{ wordBreak: "break-word" }}
+                          >
                             {lead.phone}
                           </Box>
                         </Typography>
                       ) : null}
                       {!lead.email?.trim() && !lead.phone?.trim() ? (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ fontSize: "0.7rem" }}
+                        >
                           No email or phone on file
                         </Typography>
                       ) : null}
@@ -1530,9 +1567,8 @@ const LeadManager: React.FC = () => {
                       stageLabel={stageLabel}
                     />
                   </TableCell>
-                  <TableCell>
-                    {formatDisplayDate(lead.created_at)}
-                  </TableCell>
+                  <TableCell>{formatDisplayDate(lead.created_at)}</TableCell>
+                  <TableCell>{formatDisplayOnlyDate(lead.close_date)}</TableCell>
                   <TableCell>
                     <Box
                       sx={{
@@ -1659,8 +1695,7 @@ const LeadManager: React.FC = () => {
                     {selectedLead.name || "Anonymous"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Created:{" "}
-                    {formatDisplayDate(selectedLead.created_at)}
+                    Created: {formatDisplayDate(selectedLead.created_at)}
                   </Typography>
                 </Box>
               </Box>
@@ -1785,21 +1820,81 @@ const LeadManager: React.FC = () => {
                 >
                   Select Funnel Stage
                 </Typography>
-                <Select
-                  value={moveStage}
-                  onChange={(event: SelectChangeEvent<string>) =>
-                    setMoveStage(event.target.value)
-                  }
-                >
-                  <MenuItem value="">
-                    <em>Select a stage...</em>
-                  </MenuItem>
-                  {activeFunnelCategories.map((stage) => (
-                    <MenuItem key={stage.key} value={stage.key}>
-                      {stage.name}
+
+                {selectedLead?.funnel_stage === "closed_won" ||
+                selectedLead?.funnel_stage === "closed_lost" ? (
+                  <Box
+                    sx={{
+                      border: "1px solid",
+                      borderColor: "grey.400",
+                      borderRadius: 1,
+                      px: 2,
+                      py: 1.5,
+                      bgcolor: "grey.100",
+                      fontSize: 14,
+                    }}
+                  >
+                    {activeFunnelCategories.find((s) => s.key === moveStage)
+                      ?.name || moveStage}
+                  </Box>
+                ) : (
+                  <Select
+                    value={moveStage}
+                    onChange={(event) => {
+                      const selectedValue = event.target.value;
+                      setMoveStage(selectedValue);
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>Select a stage...</em>
                     </MenuItem>
-                  ))}
-                </Select>
+
+                    {activeFunnelCategories.map((stage) => (
+                      <MenuItem key={stage.key} value={stage.key}>
+                        {stage.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+                {/* Show Close Date field below dropdown */}
+                {(selectedLead?.funnel_stage !== "closed_won" &&
+                selectedLead?.funnel_stage !== "closed_lost") && (moveStage === "closed_won" ||
+                  moveStage === "closed_lost") && (
+                  <>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mt: 2, mb: 0.5 }} // same spacing as above
+                    >
+                      Select Close Date
+                    </Typography>
+
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="date"
+                      value={closeDate || selectedLead.close_date || ""}
+                      onChange={(e) => setCloseDate(e.target.value)}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                      inputProps={{
+    // Prevent future date selection
+    max: new Date().toISOString().split("T")[0],
+
+    // Prevent selecting before created_date
+    min: selectedLead?.created_at
+      ? new Date(selectedLead.created_at).toISOString().split("T")[0]
+      : undefined,
+  }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: 1, // rectangle like Select
+                        },
+                      }}
+                    />
+                  </>
+                )}
               </FormControl>
             </Stack>
           )}
@@ -1808,19 +1903,18 @@ const LeadManager: React.FC = () => {
           <Button onClick={() => setMoveOpen(false)}>Back</Button>
           <Button
             variant="contained"
-            onClick={handleMoveLead}
+            onClick={() => setConfirmationDialogOpen(true)}
             disabled={moving || !moveStage}
             startIcon={
-              moving ? (
-                <CircularProgress size={16} color="inherit" />
-              ) : undefined
+              moving 
             }
           >
-            {moving ? "Saving..." : "Confirm & Move"}
+            {"Confirm & Move"}
           </Button>
         </DialogActions>
       </Dialog>
 
+     
       <Dialog
         open={closeDateOpen}
         onClose={() => setCloseDateOpen(false)}
@@ -1970,12 +2064,12 @@ const LeadManager: React.FC = () => {
               control={
                 <Switch
                   checked={categoryForm.is_active}
-                // onChange={(event) =>
-                //   setCategoryForm((prev) => ({
-                //     ...prev,
-                //     is_active: event.target.checked,
-                //   }))
-                // }
+                  // onChange={(event) =>
+                  //   setCategoryForm((prev) => ({
+                  //     ...prev,
+                  //     is_active: event.target.checked,
+                  //   }))
+                  // }
                 />
               }
               label="Active"
@@ -2003,6 +2097,20 @@ const LeadManager: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+       <ConfirmDialog
+                          open={confirmationDialogOpen}
+                          title="Save funnel stage data"
+                          description={
+                            `Are you sure you want to save funnel stage data?`
+                          }
+                          confirmLabel="Save"
+                          cancelLabel="Cancel"
+                          confirmColor="success"
+                          loading={moving}
+                          onCancel={() => setConfirmationDialogOpen(false)}
+                          onConfirm={handleMoveLead}
+                      />
+
       <Drawer
         anchor="right"
         open={activityOpen}
@@ -2017,9 +2125,7 @@ const LeadManager: React.FC = () => {
             gap: 1,
           }}
         >
-          <Typography variant="h6">
-            Lead Activity Timeline
-          </Typography>
+          <Typography variant="h6">Lead Activity Timeline</Typography>
           <IconButton
             size="small"
             onClick={() => setActivityOpen(false)}
@@ -2055,7 +2161,11 @@ const LeadManager: React.FC = () => {
             <Typography variant="body2" color="text.secondary">
               No activity data found.
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 0.5 }}
+            >
               Timeline entries will appear when this lead has engagements.
             </Typography>
           </Box>
@@ -2188,44 +2298,42 @@ const LeadManager: React.FC = () => {
 
 export default LeadManager;
 
-
 const SummaryCard = ({ label, value, icon, hint }: any) => {
-
   const getColor = () => {
     switch (label) {
       case "Total":
         return {
           bg: "#eff6ff",
           iconBg: "#dbeafe",
-          color: "#2563eb"
+          color: "#2563eb",
         };
 
       case "Pipeline Leads":
         return {
           bg: "#f5f3ff",
           iconBg: "#ede9fe",
-          color: "#7c3aed"
+          color: "#7c3aed",
         };
 
       case "Closed Leads":
         return {
           bg: "#ecfdf5",
           iconBg: "#d1fae5",
-          color: "#059669"
+          color: "#059669",
         };
 
       case "Lost Leads":
         return {
           bg: "#fef2f2",
           iconBg: "#fee2e2",
-          color: "#dc2626"
+          color: "#dc2626",
         };
 
       default:
         return {
           bg: "#f8fafc",
           iconBg: "#f1f5f9",
-          color: "#334155"
+          color: "#334155",
         };
     }
   };
@@ -2243,8 +2351,8 @@ const SummaryCard = ({ label, value, icon, hint }: any) => {
         transition: "all 0.2s ease",
         "&:hover": {
           transform: "translateY(-4px)",
-          boxShadow: "0 10px 24px rgba(0,0,0,0.08)"
-        }
+          boxShadow: "0 10px 24px rgba(0,0,0,0.08)",
+        },
       }}
     >
       <Box
@@ -2269,10 +2377,7 @@ const SummaryCard = ({ label, value, icon, hint }: any) => {
             {value}
           </Typography>
 
-          <Typography
-            variant="body2"
-            sx={{ color: "text.secondary", mt: 0.2 }}
-          >
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.2 }}>
             {hint}
           </Typography>
         </Box>
@@ -2290,7 +2395,7 @@ const SummaryCard = ({ label, value, icon, hint }: any) => {
           }}
         >
           {React.cloneElement(icon, {
-            sx: { color: theme.color, fontSize: 22 }
+            sx: { color: theme.color, fontSize: 22 },
           })}
         </Box>
       </Box>
