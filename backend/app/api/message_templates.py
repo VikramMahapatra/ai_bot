@@ -5,7 +5,7 @@ from regex import search
 from sqlalchemy.orm import Session
 from app.database import get_db
 
-from app.schemas.message_template import TemplateCreate, TemplateRequest, TemplateUpdate
+from app.schemas.message_template import StatusUpdateRequest, TemplateCreate, TemplateRequest, TemplateUpdate
 from app.services import message_template_service
 from app.auth import get_current_user
 from app.models.user import User
@@ -61,6 +61,16 @@ def update_template(
     current_user: User = Depends(get_current_user),
 ):
     return message_template_service.update_template(db, template_id, data)
+
+
+@router.patch("/{template_id:int}/status")
+def update_status(
+    template_id: int,
+    payload: StatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return message_template_service.update_template_status(db, template_id, payload.status)
 
 
 @router.delete("/delete/{template_id}")

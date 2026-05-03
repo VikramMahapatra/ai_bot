@@ -13,7 +13,7 @@ export const titleCase = (value?: string | null): string => {
         .join(" ");
 };
 
-export const StatusChip = ({ value }: { value?: string | null }) => {
+export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?: () => void; }) => {
     if (!value || !value.trim()) {
         return (
             <Chip
@@ -72,6 +72,16 @@ export const StatusChip = ({ value }: { value?: string | null }) => {
             variant="outlined"
             color={config.color}
             icon={config.icon}
+            clickable
+            onClick={onClick}
+            sx={{
+                cursor: "pointer",
+                "&:hover": {
+                    opacity: 0.8,
+                    transform: "scale(1.05)",
+                },
+                transition: "all 0.15s ease",
+            }}
         />
     );
 };

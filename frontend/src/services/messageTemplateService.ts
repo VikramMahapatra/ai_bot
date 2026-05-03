@@ -103,6 +103,18 @@ export const messageTemplateService = {
     return response.data;
   },
 
+  async updateTemplateStatus(
+    templateId: number,
+    status: "active" | "inactive"
+  ): Promise<TemplateUpdateResponse> {
+    const response = await api.patch<TemplateUpdateResponse>(
+      `/api/templates/${templateId}/status`,
+      { status }
+    );
+
+    return response.data;
+  },
+
   async deleteTemplate(templateId: number): Promise<void> {
     await api.delete(`/api/templates/delete/${templateId}`);
   },

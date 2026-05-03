@@ -277,7 +277,6 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
         return None
 
     candidate = text.strip()
-    parsed = datetime.strptime(candidate, fmt)
     now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
 
     lower = candidate.lower()

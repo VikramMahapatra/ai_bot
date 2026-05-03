@@ -223,6 +223,41 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
         "message": "Template updated successfully",
         "data": template
     }
+    
+def update_template_status(db: Session, template_id: int, status: str):
+    template = get_template(db, template_id)
+    if not template:
+        return {
+            "success": False,
+            "message": "Template not found"
+        }
+
+    try:
+        # convert string → enum (case-insensitive)
+        status_enum = TemplateStatus[status.lower()]
+    except KeyError:
+        return {
+            "success": False,
+            "message": "Invalid status value"
+        }
+
+    # Optional business rule
+    if template.type == "whatsapp" and template.meta_status == "APPROVED":
+        return {
+            "success": False,
+            "message": "Approved WhatsApp templates cannot be deactivated"
+        }
+
+    template.status = status_enum
+
+    db.commit()
+    db.refresh(template)
+
+    return {
+        "success": True,
+        "message": f"Template {status_enum.value} successfully",
+        "data": template
+    }
 
 def delete_template(db: Session, template_id: int):
     template = get_template(db, template_id)

@@ -145,7 +145,8 @@ def get_credit_summary(
         OrganizationCreditUsage,
         and_(
             OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
-            OrganizationCreditUsage.organization_id == organization_id  # ✅ move filter here
+            OrganizationCreditUsage.organization_id == organization_id ,
+            func.date_trunc("month", OrganizationCreditUsage.created_at) == current_month 
         )
     ).group_by(
         PriceMatrixItem.module,

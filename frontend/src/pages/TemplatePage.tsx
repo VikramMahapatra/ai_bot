@@ -43,6 +43,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useDateFormatter } from "../hooks/useDateFormatter";
 import { SourceChip, StatusChip } from "../components/Common/StatusChips";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
 
 type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 
@@ -78,6 +79,8 @@ function TemplateList() {
     subject: "",
     content: "",
   });
+  const [templateStatusToUpdate, setTemplateStatusToUpdate] = useState<Template | null>(null);
+
   const formatDisplayDate = useDateFormatter();
 
 
@@ -174,7 +177,7 @@ function TemplateList() {
     }
   };
 
-  const handleConfirmDeleteProduct = async () => {
+  const handleConfirmDeleteTemplate = async () => {
     if (!templateToDelete?.id) return;
 
     setDeleteSubmitting(true);
@@ -183,6 +186,41 @@ function TemplateList() {
     setTemplateToDelete(null);
     await fetchTemplates();
     setDeleteSubmitting(false);
+  };
+
+  const handleToggleStatus = async () => {
+    if (!templateStatusToUpdate?.id) return;
+    setError('');
+    setDeleteSubmitting(true);
+    setLoading(true);
+    try {
+
+      const newStatus = templateStatusToUpdate.status === "Active" ? "Inactive" : "Active";
+      // call API
+      const response = await messageTemplateService.updateTemplateStatus(templateStatusToUpdate.id, newStatus.toLowerCase() as any)
+
+      if (response.success) {
+        // update UI locally (important for instant feedback)
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === templateStatusToUpdate.id ? { ...t, status: newStatus } : t
+          )
+        );
+
+      }
+      else {
+        setError(response.message);
+      }
+
+      setTemplateStatusToUpdate(null);
+
+    } catch (err) {
+      console.error("Failed to update status", err);
+      setError("Failed to update status");
+    } finally {
+      setDeleteSubmitting(false);
+      setLoading(false);
+    }
   };
 
   const validateForm = () => {
@@ -292,6 +330,10 @@ function TemplateList() {
     setErrors(newErrors);
     return valid;
   };
+
+  const isActive = templateStatusToUpdate?.status === "Active";
+  const actionLabel = isActive ? "Deactivate" : "Activate";
+
   return (
     <AdminLayout>
       <Box sx={{ p: 3 }}>
@@ -395,7 +437,14 @@ function TemplateList() {
                     </TableCell>
                     <TableCell>{t.subject || "-"}</TableCell>
                     <TableCell>
-                      <StatusChip value={t.status} />
+                      <Tooltip title="Click to toggle status">
+                        <span>
+                          <StatusChip
+                            value={t.status}
+                            onClick={() => setTemplateStatusToUpdate(t)}
+                          />
+                        </span>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>
                       {t.type === "whatsapp" ? (
@@ -575,6 +624,23 @@ function TemplateList() {
           </DialogActions>
         </Dialog>
       </Box>
+
+      <ConfirmDialog
+        open={Boolean(templateStatusToUpdate)}
+        title={`${actionLabel} template?`}
+        description={
+          templateStatusToUpdate
+            ? `Are you sure you want to ${actionLabel.toLowerCase()} "${templateStatusToUpdate.name}"? 
+              This will mark it as ${isActive ? "inactive" : "active"} and you can change it anytime.`
+            : undefined
+        }
+        confirmLabel={actionLabel}
+        cancelLabel="Cancel"
+        confirmColor={isActive ? "warning" : "success"}
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setTemplateStatusToUpdate(null)}
+        onConfirm={handleToggleStatus}
+      />
     </AdminLayout>
   );
 }
