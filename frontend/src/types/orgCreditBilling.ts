@@ -1,6 +1,9 @@
-export type OrgCreditPaymentStatus = 'paid' | 'unpaid';
-export type OrgCreditBillingCycle = 'monthly';
-export type PartialPaymentStrategy = 'keep_open' | 'create_invoice' | 'full_payment';
+export type OrgCreditPaymentStatus = "paid" | "unpaid";
+export type OrgCreditBillingCycle = "monthly";
+export type PartialPaymentStrategy =
+  | "keep_open"
+  | "create_invoice"
+  | "full_payment";
 
 export interface OrgCredit {
   id: number;
@@ -41,7 +44,7 @@ export interface OrgCreditPayment {
   id: number;
   organization_id: number;
   invoice_id: number;
-  full_partial: 'full' | 'partial' | string;
+  full_partial: "full" | "partial" | string;
   invoice_amount: number;
   actual_payment: number;
   actual_credit: number;

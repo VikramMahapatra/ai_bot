@@ -55,8 +55,13 @@ import {
   TREND_CONVERSATIONS_BAR,
   TREND_LEADS_BAR,
 } from "../constants/leadFilterChartColors";
-import type { AnalyticsSummary } from "../services/callService";
+import type {
+  AnalyticsSummary,
+  CallAnalytics,
+  PickupTrendEntry,
+} from "../services/callService";
 import { callService } from "../services/callService";
+import PickupTrendChart from "../components/calls/charts/PickupTrendChart";
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 
@@ -203,6 +208,7 @@ const AdminDashboard: React.FC = () => {
     KnowledgeSourceItem[]
   >([]);
   const [callSummary, setCallSummary] = useState<AnalyticsSummary | null>(null);
+  const [pickupTrend, setPickupTrend] = useState<PickupTrendEntry[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -343,8 +349,8 @@ const AdminDashboard: React.FC = () => {
       }
 
       if (callAnalyticsRes.status === "fulfilled") {
-        const s = (callAnalyticsRes.value as { summary?: AnalyticsSummary })
-          ?.summary;
+        const payload = callAnalyticsRes.value as CallAnalytics | undefined;
+        const s = payload?.summary;
         if (s) {
           setCallSummary({
             total_calls: numberOrZero(s.total_calls),
@@ -357,6 +363,8 @@ const AdminDashboard: React.FC = () => {
             recent_calls: Array.isArray(s.recent_calls) ? s.recent_calls : [],
           });
         }
+        const pt = payload?.charts?.pickup_trend;
+        setPickupTrend(Array.isArray(pt) ? pt : []);
       }
 
       setLoading(false);
@@ -757,138 +765,10 @@ const AdminDashboard: React.FC = () => {
           ))}
         </Grid>
 
+        {/* Row 1: Funnel Dashboard & Leads by Source — 50% / 50% on md+ */}
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
-          <Grid item xs={12} lg={8}>
-            <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Daily Conversations (7 days)
-              </Typography>
-              <ResponsiveContainer width="100%" height={290}>
-                <LineChart data={dailyConversations}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={alpha(theme.palette.text.secondary, 0.2)}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    stroke={theme.palette.text.secondary}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis
-                    stroke={theme.palette.text.secondary}
-                    tick={{ fontSize: 12 }}
-                    allowDecimals={false}
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
-                      background: alpha(theme.palette.background.paper, 0.92),
-                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#4e89d5"
-                    strokeWidth={3.4}
-                    dot={{ r: 3 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Paper>
-
-            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Conversations vs Leads Trend
-              </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={conversationTrend}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={alpha(theme.palette.text.secondary, 0.2)}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    stroke={theme.palette.text.secondary}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis
-                    stroke={theme.palette.text.secondary}
-                    tick={{ fontSize: 12 }}
-                    allowDecimals={false}
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
-                      background: alpha(theme.palette.background.paper, 0.92),
-                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
-                    }}
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="conversations"
-                    fill={TREND_CONVERSATIONS_BAR}
-                    radius={[7, 7, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="leads"
-                    fill={TREND_LEADS_BAR}
-                    radius={[7, 7, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12} lg={4}>
-            <Paper sx={{ ...glassPanelSx, p: 2.5, mb: 2.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
-                Leads by Source
-              </Typography>
-              {leadsBySource.length > 0 ? (
-                <ResponsiveContainer width="100%" height={290}>
-                  <PieChart>
-                    <Pie
-                      data={leadsBySource}
-                      dataKey="count"
-                      nameKey="source"
-                      cx="50%"
-                      cy="45%"
-                      outerRadius={88}
-                      innerRadius={46}
-                    >
-                      {leadsBySource.map((row, idx) => (
-                        <Cell
-                          key={`lead-source-${row.source}-${idx}`}
-                          fill={leadSourceChartFill(row.source, idx)}
-                        />
-                      ))}
-                    </Pie>
-                    <ChartTooltip
-                      formatter={(
-                        value: number | string | undefined,
-                        _name,
-                        item,
-                      ) => {
-                        const sourceName =
-                          (item?.payload as LeadSourcePoint)?.source ||
-                          "Source";
-                        return [`${numberOrZero(value)} leads`, sourceName];
-                      }}
-                    />
-                    <Legend verticalAlign="bottom" height={32} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No lead source data available.
-                </Typography>
-              )}
-            </Paper>
-
-            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5, height: "100%" }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
                 Funnel Dashboard
               </Typography>
@@ -941,6 +821,191 @@ const AdminDashboard: React.FC = () => {
                   No funnel data available.
                 </Typography>
               )}
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5, height: "100%" }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
+                Leads by Source
+              </Typography>
+              {leadsBySource.length > 0 ? (
+                <ResponsiveContainer width="100%" height={290}>
+                  <PieChart>
+                    <Pie
+                      data={leadsBySource}
+                      dataKey="count"
+                      nameKey="source"
+                      cx="50%"
+                      cy="45%"
+                      outerRadius={88}
+                      innerRadius={46}
+                    >
+                      {leadsBySource.map((row, idx) => (
+                        <Cell
+                          key={`lead-source-${row.source}-${idx}`}
+                          fill={leadSourceChartFill(row.source, idx)}
+                        />
+                      ))}
+                    </Pie>
+                    <ChartTooltip
+                      formatter={(
+                        value: number | string | undefined,
+                        _name,
+                        item,
+                      ) => {
+                        const sourceName =
+                          (item?.payload as LeadSourcePoint)?.source ||
+                          "Source";
+                        return [`${numberOrZero(value)} leads`, sourceName];
+                      }}
+                    />
+                    <Legend verticalAlign="bottom" height={32} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No lead source data available.
+                </Typography>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* Row 2: Daily Conversations & Pickup trend — 60% / 40% on md+ */}
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={2.5}
+          sx={{ mb: 3, alignItems: "stretch" }}
+        >
+          <Paper
+            sx={{
+              ...glassPanelSx,
+              p: 2.5,
+              height: "100%",
+              flex: { md: "1 1 60%" },
+              minWidth: 0,
+              width: { xs: "100%", md: "auto" },
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+              Daily Conversations (7 days)
+            </Typography>
+            <ResponsiveContainer width="100%" height={290}>
+              <LineChart data={dailyConversations}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={alpha(theme.palette.text.secondary, 0.2)}
+                />
+                <XAxis
+                  dataKey="date"
+                  stroke={theme.palette.text.secondary}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  stroke={theme.palette.text.secondary}
+                  tick={{ fontSize: 12 }}
+                  allowDecimals={false}
+                />
+                <ChartTooltip
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                    background: alpha(theme.palette.background.paper, 0.92),
+                    boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#4e89d5"
+                  strokeWidth={3.4}
+                  dot={{ r: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Paper>
+          <Paper
+            sx={{
+              ...glassPanelSx,
+              p: 2.5,
+              height: "100%",
+              flex: { md: "1 1 40%" },
+              minWidth: 0,
+              width: { xs: "100%", md: "auto" },
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+              Pickup trend (Calling agents)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Last 30 days — same data as Calling agents analytics.
+            </Typography>
+            {pickupTrend.length > 0 ? (
+              <PickupTrendChart data={pickupTrend} height={290} />
+            ) : (
+              <Box
+                sx={{
+                  minHeight: 200,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.action.hover, 0.5),
+                  border: `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  No pickup trend data yet.
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+        </Stack>
+
+        {/* Row 3: Conversations vs Leads Trend — full width */}
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          <Grid item xs={12}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Conversations vs Leads Trend
+              </Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={conversationTrend}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                      background: alpha(theme.palette.background.paper, 0.92),
+                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                    }}
+                  />
+                  <Legend />
+                  <Bar
+                    dataKey="conversations"
+                    fill={TREND_CONVERSATIONS_BAR}
+                    radius={[7, 7, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="leads"
+                    fill={TREND_LEADS_BAR}
+                    radius={[7, 7, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             </Paper>
           </Grid>
         </Grid>
