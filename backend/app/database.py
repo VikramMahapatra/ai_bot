@@ -786,6 +786,17 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+        
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE leads 
+                ADD COLUMN IF NOT EXISTS close_date DATE DEFAULT CURRENT_DATE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
      
         
         

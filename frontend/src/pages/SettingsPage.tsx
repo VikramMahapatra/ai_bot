@@ -110,7 +110,7 @@ const SettingsPage: React.FC = () => {
 
     // SMTP
     smtp_host: "",
-    smtp_port: 587,
+    smtp_port: "",
     smtp_username: "",
     smtp_password: "",
     smtp_sender_email: "",

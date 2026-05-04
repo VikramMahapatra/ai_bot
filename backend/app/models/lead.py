@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Date, Identity, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -25,4 +25,4 @@ class Lead(Base):
     )
     funnel_stage = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    close_date = Column(DateTime(timezone=False), server_default=func.now())
+    close_date = Column(Date, server_default=func.current_date())

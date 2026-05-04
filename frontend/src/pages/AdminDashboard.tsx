@@ -767,7 +767,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Row 1: Funnel Dashboard & Leads by Source — 50% / 50% on md+ */}
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={7}>
             <Paper sx={{ ...glassPanelSx, p: 2.5, height: "100%" }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
                 Funnel Dashboard
@@ -823,7 +823,7 @@ const AdminDashboard: React.FC = () => {
               )}
             </Paper>
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={5}>
             <Paper sx={{ ...glassPanelSx, p: 2.5, height: "100%" }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.2 }}>
                 Leads by Source
@@ -872,95 +872,93 @@ const AdminDashboard: React.FC = () => {
         </Grid>
 
         {/* Row 2: Daily Conversations & Pickup trend — 60% / 40% on md+ */}
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={2.5}
-          sx={{ mb: 3, alignItems: "stretch" }}
-        >
-          <Paper
-            sx={{
-              ...glassPanelSx,
-              p: 2.5,
-              height: "100%",
-              flex: { md: "1 1 60%" },
-              minWidth: 0,
-              width: { xs: "100%", md: "auto" },
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-              Daily Conversations (7 days)
-            </Typography>
-            <ResponsiveContainer width="100%" height={290}>
-              <LineChart data={dailyConversations}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={alpha(theme.palette.text.secondary, 0.2)}
-                />
-                <XAxis
-                  dataKey="date"
-                  stroke={theme.palette.text.secondary}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  stroke={theme.palette.text.secondary}
-                  tick={{ fontSize: 12 }}
-                  allowDecimals={false}
-                />
-                <ChartTooltip
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
-                    background: alpha(theme.palette.background.paper, 0.92),
-                    boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={7}>
+            <Paper
+              sx={{
+                ...glassPanelSx,
+                p: 2.5,
+                height: "100%",
+                flex: { md: "1 1 60%" },
+                minWidth: 0,
+                width: { xs: "100%", md: "auto" },
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Daily Conversations (7 days)
+              </Typography>
+              <ResponsiveContainer width="100%" height={290}>
+                <LineChart data={dailyConversations}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                      background: alpha(theme.palette.background.paper, 0.92),
+                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    stroke="#4e89d5"
+                    strokeWidth={3.4}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Paper
+              sx={{
+                ...glassPanelSx,
+                p: 2.5,
+                height: "100%",
+                flex: { md: "1 1 40%" },
+                minWidth: 0,
+                width: { xs: "100%", md: "auto" },
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Pickup trend (30 days)
+              </Typography>
+
+              {pickupTrend.length > 0 ? (
+                <PickupTrendChart data={pickupTrend} height={290} />
+              ) : (
+                <Box
+                  sx={{
+                    minHeight: 200,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 2,
+                    bgcolor: alpha(theme.palette.action.hover, 0.5),
+                    border: `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
                   }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#4e89d5"
-                  strokeWidth={3.4}
-                  dot={{ r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Paper>
-          <Paper
-            sx={{
-              ...glassPanelSx,
-              p: 2.5,
-              height: "100%",
-              flex: { md: "1 1 40%" },
-              minWidth: 0,
-              width: { xs: "100%", md: "auto" },
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-              Pickup trend (Calling agents)
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Last 30 days — same data as Calling agents analytics.
-            </Typography>
-            {pickupTrend.length > 0 ? (
-              <PickupTrendChart data={pickupTrend} height={290} />
-            ) : (
-              <Box
-                sx={{
-                  minHeight: 200,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.action.hover, 0.5),
-                  border: `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  No pickup trend data yet.
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Stack>
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    No pickup trend data yet.
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
 
         {/* Row 3: Conversations vs Leads Trend — full width */}
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
