@@ -179,6 +179,10 @@ export interface WorkflowEvent {
     step_type?: string;
     call_status?: string;
     outcome?: string;
+    delay?: number;
+    delay_unit?: string;
+    reason?: string;
+    scheduled_at?: string;
     time: string;
     metadata?: any;
 }

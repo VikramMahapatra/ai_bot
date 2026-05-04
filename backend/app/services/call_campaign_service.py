@@ -302,7 +302,11 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
     
     attempted_calls = (
         db.query(CallLog)
-        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "campaign_call")
+        .filter(
+            CallLog.campaign_id == campaign_id, 
+            CallLog.source == "campaign_call",
+            CallLog.status == "ended"
+        )
         .count()
     )
     
@@ -395,8 +399,12 @@ def get_workflow_history(db : Session, campaign_id : int, contact_id : int):
             "event": log.event_type,
             "step_id": log.step_id,
             "step_type": (log.event_metadata or {}).get("step_type"),
-            "call_status": log.call_status,
-            "outcome": log.outcome,
+            "delay": (log.event_metadata or {}).get("delay"),
+            "delay_unit": (log.event_metadata or {}).get("delay_unit"),
+            "call_status": (log.event_metadata or {}).get("call_status"),
+            "outcome": (log.event_metadata or {}).get("outcome"),
+            "scheduled_at": (log.event_metadata or {}).get("scheduled_at"),
+            "reason": (log.event_metadata or {}).get("reason"),
             "time": log.created_at,
         }
         for log in logs

@@ -61,6 +61,7 @@ import { useDateFormatter } from "../../hooks/useDateFormatter";
 import { useAuth } from "../../context/AuthContext";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 
 interface Props {
   campaignId: number;
@@ -454,7 +455,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Follow-up Calls</Typography>
-                <ReplayIcon color="primary" />
+                <EventRepeatIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {campaign?.rescheduled_calls || 0}
@@ -879,9 +880,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       </TableCell>
                       <TableCell>
                         {log.follow_up_count > 0 && (
-                          <Tooltip title="View Insights">
+                          <Tooltip title="View Follow Up">
                             <IconButton onClick={() => openWorkflowHistory(log.contact_id)}>
-                              <ReplayIcon />
+                              <EventRepeatIcon color="primary" />
                             </IconButton>
                           </Tooltip>
                         )}

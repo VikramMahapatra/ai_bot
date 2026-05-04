@@ -718,3 +718,14 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+        
+        try:
+            conn.execute(text("""
+                ALTER TABLE workflow_steps
+                ADD COLUMN IF NOT EXISTS position JSONB,
+                ADD COLUMN IF NOT EXISTS step_number INTEGER;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

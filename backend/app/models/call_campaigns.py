@@ -39,6 +39,7 @@ class CallCampaign(Base):
     agent = relationship("CallingAgent", back_populates="campaigns")
     contacts = relationship("CampaignContact", back_populates="campaign")
     schedule = relationship("CampaignSchedule", uselist=False, back_populates="campaign")
+    call_logs = relationship("CallLog", back_populates="campaign")
     
     key_insights = relationship(
         "CampaignKeyInsight",

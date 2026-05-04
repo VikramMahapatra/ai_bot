@@ -829,6 +829,9 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
             settings.OUTCOME_DAEMON_HOUR_UTC,
             settings.OUTCOME_DAEMON_MINUTE_UTC,
         )
+        
+        logger.info(f"Current UTC: {datetime.now(timezone.utc)}")
+        logger.info(f"Next run in {wait_seconds} sec (~{wait_seconds/3600:.2f} hrs)")
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
