@@ -37,6 +37,7 @@ from app.models.message_templates import MessageTemplate
 from app.services.report_service import sync_conversation_metrics, sync_voice_metrics_from_conversation
 from app.models.campaign_contacts import CampaignContact
 from app.services import organization_channel_service
+from app.database import SessionLocal
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -455,7 +456,7 @@ def sync_test_call_log(
 
         for call in calls:
             if external_call_id == call["call_id"]:
-                process_call(db, call, agent)
+                process_call(call, agent)
        
         db.commit()
     
@@ -499,7 +500,7 @@ def sync_call_logs(
             calls = response.get("calls", [])
 
             for call in calls:
-                process_call(db, call, agent)
+                process_call(call, agent)
                 
         elif campaign_id or (from_date and to_date):
             
@@ -536,7 +537,7 @@ def sync_call_logs(
 
                 if not agent:
                     continue
-                process_call(db, call, agent)
+                process_call(call, agent)
         else:
             print("Syncing WITH default (date-wise mode)")
             from_date, to_date = get_default_dates(from_date, to_date)
@@ -556,7 +557,7 @@ def sync_call_logs(
 
                 calls = response.get("calls", [])
                 for call in calls:   
-                    process_call(db, call, agent)
+                    process_call(call, agent)
                     
         db.commit()
     
@@ -564,222 +565,306 @@ def sync_call_logs(
         db.rollback()
         print(f"Sync failed: {str(e)}")
     
-    
-def process_call(db, call, agent):
-    call_start = parse_datetime(call.get("created_at"))
-    if not call_start:
-        return
+def process_call(call, agent):
+    db = SessionLocal()
+    normalized_transcript = None
+    try:
+     
+        call_start = parse_datetime(call.get("created_at"))
+        if not call_start:
+            return
 
-    existing = db.query(CallLog).filter(
-        CallLog.external_call_id == call["id"]
-    ).first()
-    
-    campaign = None
-    
-    if not existing or existing.status != "ended":
-        campaign_external_id = call["campaign_id"]
+        existing = db.query(CallLog).filter(
+            CallLog.external_call_id == call["id"]
+        ).first()
         
-        if campaign_external_id:
-            campaign = db.query(CallCampaign).filter(
-                CallCampaign.external_campaign_id == campaign_external_id
-            ).first()
+        campaign = None
+        
+        if not existing or existing.status != "ended":
+            campaign_external_id = call["campaign_id"]
             
-        contact = None
-        external_contact_id = call.get("contact_id")
-            
-        if campaign and external_contact_id:
-            campaign_contact = (
-                db.query(CampaignContact)
-                .join(Contact, CampaignContact.contact_id == Contact.id)
-                .filter(
-                    CampaignContact.campaign_id == campaign.id,
-                    Contact.external_contact_id == external_contact_id
-                )
-                .first()
-            )
-
-            if campaign_contact:
-                contact = campaign_contact.contact
-                
-        # Prepare common values
-        duration = int(call.get("duration")) if call.get("duration") else None
-        ended_reason = call.get("ended_reason")
-        call_summary = call.get("call_summary")
-        sentiment = call.get("sentiment")
-        follow_up_recommended = call.get("follow_up_recommended")
-        extract_data = call.get("extract_data")
-        lead_info = call.get("lead_info")
-        success_eval_str = call.get("success_evaluation") if call.get("success_evaluation") else "false"
-
-        # convert extract_data if string
-        if isinstance(extract_data, str):
-            try:
-                extract_data = json.loads(extract_data)
-            except:
-                extract_data = None            
-
-        if existing:
-            new_status = call.get("status").lower() if call.get("status") else None
-            existing.organization_id = agent.organization_id
-            existing.external_call_a_id = call.get("call_id")
-            existing.agent_id = agent.id
-            existing.campaign_id = campaign.id if campaign else None
-            existing.contact_id = contact.id if contact else None
-            existing.type = agent.type
-            existing.mode = "Voice"
-            existing.phone = call.get("phone")
-            existing.status = call.get("status").lower() if call.get("status") else existing.status
-
-            existing.start_time = call_start
-            existing.end_time = parse_datetime(call.get("call_ended_at"))
-            existing.audio_url = call.get("recording_url")
-            existing.cost = float(call.get("cost")) if call.get("cost") else None
-
-            existing.duration = duration
-            existing.ended_reason = ended_reason
-            existing.call_summary = call_summary
-            existing.sentiment = sentiment
-            existing.follow_up_recommended = follow_up_recommended
-            existing.extract_data = extract_data
-            existing.lead_info = lead_info
-            existing.success_evaluation = success_eval_str.lower() == "true"
-            if new_status:
-                if existing.status != "ended" or new_status == "ended":
-                    existing.status = new_status
-          
-            db.commit()
-            
-            save_transcripts(db, existing, call.get("transcript"), campaign, contact)
-            call_log = existing
-        else:
-            call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
-            call_log = CallLog(
-                external_call_id=call["id"],
-                external_call_a_id=call["call_id"],
-                call_session_id=call_session_id, 
-                organization_id=agent.organization_id,
-                agent_id=agent.id,
-                campaign_id=campaign.id if campaign else None,
-                contact_id = contact.id if contact else None,
-                type=agent.type,
-                mode="Voice",
-                phone=call.get("phone"),
-                status=call.get("status").lower() if call.get("status") else "calling fail",
-
-                start_time=call_start,
-                end_time=parse_datetime(call.get("call_ended_at")),
-                audio_url=call.get("recording_url"), 
-                cost=float(call.get("cost")) if call.get("cost") else None,
-
-                duration=duration,
-                ended_reason=ended_reason,
-                call_summary=call_summary,
-                sentiment=sentiment,
-                follow_up_recommended=follow_up_recommended,
-                extract_data=extract_data,
-                lead_info=lead_info,
-                success_evaluation=success_eval_str.lower() == "true",
-                created_at = parse_datetime(call.get("created_at")),
-            )
-
-            try:
-                db.add(call_log)
-                db.flush()   
-                
-                if call_log.type == "inbound":
-                    organization_credit_service.deduct_credits(
-                        db=db,
-                        organization_id=call_log.organization_id,
-                        feature_code=FeatureCodes.CORE_CALL_IN_ATTEMPT,
-                        quantity=1,
-                        reference_type="call_log",
-                        reference_id=call_log.call_session_id
-                    )   
-                    
-                save_transcripts(db, call_log, call.get("transcript"), campaign, contact)                        
-                
-            except IntegrityError:
-                db.rollback()    
-                call_log = db.query(CallLog).filter(
-                    CallLog.external_call_id == call["id"]
+            if campaign_external_id:
+                campaign = db.query(CallCampaign).filter(
+                    CallCampaign.external_campaign_id == campaign_external_id
                 ).first()
+                
+            contact = None
+            external_contact_id = call.get("contact_id")
+                
+            if campaign and external_contact_id:
+                campaign_contact = (
+                    db.query(CampaignContact)
+                    .join(Contact, CampaignContact.contact_id == Contact.id)
+                    .filter(
+                        CampaignContact.campaign_id == campaign.id,
+                        Contact.external_contact_id == external_contact_id
+                    )
+                    .first()
+                )
 
-                if not call_log:
-                    raise  # something else went wrong                  
-    else: 
-        # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
-        call_log = existing
-        
-        if call_log.campaign_id:
-            campaign = db.query(CallCampaign).filter(
-                    CallCampaign.id == existing.campaign_id
-                ).first()  
+                if campaign_contact:
+                    contact = campaign_contact.contact
+                    
+            # Prepare common values
+            duration = int(call.get("duration")) if call.get("duration") else None
+            ended_reason = call.get("ended_reason")
+            call_summary = call.get("call_summary")
+            sentiment = call.get("sentiment")
+            follow_up_recommended = call.get("follow_up_recommended")
+            extract_data = call.get("extract_data")
+            lead_info = call.get("lead_info")
+            success_eval_str = call.get("success_evaluation") if call.get("success_evaluation") else "false"
 
-    # Only create lead for Campaign calls, not for test calls.
-    if campaign:
-        
-        contact = db.query(Contact).filter(
-                Contact.id == call_log.contact_id
-        ).first() 
-        
-        
-        lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
+            # convert extract_data if string
+            if isinstance(extract_data, str):
+                try:
+                    extract_data = json.loads(extract_data)
+                except:
+                    extract_data = None            
 
-        if lead:
-            # Mark call_log as lead qualified
-            call_log.is_lead_qualified = True
+            if existing:
+                new_status = call.get("status").lower() if call.get("status") else None
+                existing.organization_id = agent.organization_id
+                existing.external_call_a_id = call.get("call_id")
+                existing.agent_id = agent.id
+                existing.campaign_id = campaign.id if campaign else None
+                existing.contact_id = contact.id if contact else None
+                existing.type = agent.type
+                existing.mode = "Voice"
+                existing.phone = call.get("phone")
+                existing.status = call.get("status").lower() if call.get("status") else existing.status
+
+                existing.start_time = call_start
+                existing.end_time = parse_datetime(call.get("call_ended_at"))
+                existing.audio_url = call.get("recording_url")
+                existing.cost = float(call.get("cost")) if call.get("cost") else None
+
+                existing.duration = duration
+                existing.ended_reason = ended_reason
+                existing.call_summary = call_summary
+                existing.sentiment = sentiment
+                existing.follow_up_recommended = follow_up_recommended
+                existing.extract_data = extract_data
+                existing.lead_info = lead_info
+                existing.success_evaluation = success_eval_str.lower() == "true"
+                if new_status:
+                    if existing.status != "ended" or new_status == "ended":
+                        existing.status = new_status
             
-        # WORKFLOW EXECUTION
-        if campaign.workflow_id and contact:
-            
-            if call_log.workflow_execution_id:
-                return 
-            
-            if call_log.status not in ["completed", "ended", "calling fail"]:
-                return
+                db.commit()
+                
+                normalized_transcript = save_transcripts(db, existing, call.get("transcript"))
+                call_log = existing
+            else:
+                call_session_id = f"session_{int(datetime.utcnow().timestamp()*1000)}_{random.randint(1000,9999)}"
+                call_log = CallLog(
+                    external_call_id=call["id"],
+                    external_call_a_id=call["call_id"],
+                    call_session_id=call_session_id, 
+                    organization_id=agent.organization_id,
+                    agent_id=agent.id,
+                    campaign_id=campaign.id if campaign else None,
+                    contact_id = contact.id if contact else None,
+                    type=agent.type,
+                    mode="Voice",
+                    phone=call.get("phone"),
+                    status=call.get("status").lower() if call.get("status") else "calling fail",
 
-            execution = db.query(WorkflowExecution).filter(
-                WorkflowExecution.campaign_id == call_log.campaign_id,
-                WorkflowExecution.contact_id == call_log.contact_id,
-                WorkflowExecution.external_reference_id == call.get("id"),
-                WorkflowExecution.status.in_(["pending", "scheduled"])
-            ).order_by(WorkflowExecution.id.desc()).first()
+                    start_time=call_start,
+                    end_time=parse_datetime(call.get("call_ended_at")),
+                    audio_url=call.get("recording_url"), 
+                    cost=float(call.get("cost")) if call.get("cost") else None,
 
-            if execution:              
-                continue_workflow_from_call(db, execution, call_log, call)
-                return
-                     
-            trigger_workflow_from_call(
-                db,
-                campaign.workflow_id,
-                call_log,
-                call
-            )
+                    duration=duration,
+                    ended_reason=ended_reason,
+                    call_summary=call_summary,
+                    sentiment=sentiment,
+                    follow_up_recommended=follow_up_recommended,
+                    extract_data=extract_data,
+                    lead_info=lead_info,
+                    success_evaluation=success_eval_str.lower() == "true",
+                    created_at = parse_datetime(call.get("created_at")),
+                )
+
+                try:
+                    db.add(call_log)
+                    db.flush()   
+                    
+                    if call_log.type == "inbound":
+                        organization_credit_service.deduct_credits(
+                            db=db,
+                            organization_id=call_log.organization_id,
+                            feature_code=FeatureCodes.CORE_CALL_IN_ATTEMPT,
+                            quantity=1,
+                            reference_type="call_log",
+                            reference_id=call_log.call_session_id
+                        )   
+                        
+                    normalized_transcript = save_transcripts(db, call_log, call.get("transcript"))                        
+                    
+                except IntegrityError:
+                    db.rollback()    
+                    call_log = db.query(CallLog).filter(
+                        CallLog.external_call_id == call["id"]
+                    ).first()
+
+                    if not call_log:
+                        raise  # something else went wrong   
+                                   
+        else: 
+            # Only update leads & conversations for ended calls, to prevent duplicates and wrong associations during sync
+            call_log = existing
             
-        db.flush()
-    
-    test_call = db.query(CallingAgentTestCall).filter(
-        CallingAgentTestCall.external_call_id == str(call["call_id"])
+            if call_log.campaign_id:
+                campaign = db.query(CallCampaign).filter(
+                        CallCampaign.id == existing.campaign_id
+                    ).first()  
+
+        # Only create lead for Campaign calls, not for test calls.
+        if campaign:
+            
+            contact = db.query(Contact).filter(
+                    Contact.id == call_log.contact_id
+            ).first() 
+            
+            
+            lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
+
+            if lead:
+                # Mark call_log as lead qualified
+                call_log.is_lead_qualified = True
+                
+            # WORKFLOW EXECUTION
+            if campaign.workflow_id and contact:
+                
+                if call_log.workflow_execution_id:
+                    return None
+                
+                if call_log.status not in ["completed", "ended", "calling fail"]:
+                    return None
+
+                execution = db.query(WorkflowExecution).filter(
+                    WorkflowExecution.campaign_id == call_log.campaign_id,
+                    WorkflowExecution.contact_id == call_log.contact_id,
+                    WorkflowExecution.external_reference_id == call.get("id"),
+                    WorkflowExecution.status.in_(["pending", "scheduled"])
+                ).order_by(WorkflowExecution.id.desc()).first()
+
+                if execution:              
+                    continue_workflow_from_call(db, execution, call_log, call)
+                    return None
+                        
+                trigger_workflow_from_call(
+                    db,
+                    campaign.workflow_id,
+                    call_log,
+                    call
+                )
+                
+            db.flush()
+        
+        test_call = db.query(CallingAgentTestCall).filter(
+            CallingAgentTestCall.external_call_id == str(call["call_id"])
+        ).first()
+
+        if test_call:
+            test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
+            
+            if call.get("status").lower() == "ended":
+                organization_channel_service.release_channel(
+                    db,
+                    call_type="test",
+                    reference_id=test_call.id
+                )
+                
+        db.commit()
+                
+        replies_data = []
+        whatsapp_data = None
+        org_settings = None
+        call_log_id = None
+        
+        should_send = (
+            campaign
+            and campaign.instant_reply
+            and contact
+            and not call_log.instant_reply_sent   
+        )
+        
+        if should_send and normalized_transcript:
+            
+            response = analyze_conversation(normalized_transcript)
+
+            if response.get("instant_reply_decision") == "send_now":
+                replies = (
+                        db.query(CallCampaignInstantReply)
+                        .filter(CallCampaignInstantReply.call_campaign_id == campaign.id)
+                        .all()
+                    )
+
+                replies_data = [
+                        {
+                            "mode": r.mode,
+                            "template": {
+                                "content": r.template.content,
+                                "subject": r.template.subject
+                            }
+                        }
+                        for r in replies
+                    ]
+
+                config = db.query(WhatsAppChannel).filter(
+                        WhatsAppChannel.organization_id == campaign.organization_id,
+                        WhatsAppChannel.is_active == True,
+                    ).first()
+
+                if config:
+                    whatsapp_data = {
+                            "phone_number_id": config.phone_number_id,
+                            "access_token": config.access_token
+                        }
+
+                org_settings = get_org_settings(db, campaign.organization_id)
+
+                call_log_id = call_log.id
+                
+                success = dispatch_instant_replies_safe(
+                    replies=replies_data,
+                    contact=contact,  
+                    campaign=campaign,
+                    org_settings=org_settings,
+                    whatsapp_config=whatsapp_data
+                )
+                
+                if success and call_log_id:
+                    db2 = SessionLocal()
+                    try:
+                        log = db2.query(CallLog).get(call_log_id)
+                        if log:
+                            log.instant_reply_sent = True
+                            db2.commit()
+                    finally:
+                        db2.close()
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Process call failed: {str(e)}")
+        raise
+
+    finally:
+        db.close()  
+        
+def save_transcripts(db: Session, call_log: CallLog, transcript: str):
+    if not transcript or not call_log.id:
+        return None  # nothing to process
+
+    # Prevent duplicate execution
+    existing = db.query(CallTranscript).filter(
+        CallTranscript.call_log_id == call_log.id
     ).first()
 
-    if test_call:
-        test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
-        
-        print(f"Test call status : {test_call.status} and id : {test_call.id}")
-        
-        if call.get("status").lower() == "ended":
-            organization_channel_service.release_channel(
-                db,
-                call_type="test",
-                reference_id=test_call.id
-            )
-        
-    db.commit()
-    
-def save_transcripts(db: Session, call_log: CallLog, transcript : str, campaign : CallCampaign, contact : Contact):
-
-    if not transcript or not call_log.id    :
-        return
+    if existing:
+        return None  # already processed → skip instant reply
 
     db.query(CallTranscript).filter(
         CallTranscript.call_log_id == call_log.id
@@ -787,8 +872,8 @@ def save_transcripts(db: Session, call_log: CallLog, transcript : str, campaign 
 
     lines = transcript.split("\n")
     normalized_lines = []
-    for line in lines:
 
+    for line in lines:
         if line.startswith("AI:"):
             speaker = "Agent"
             text = line.replace("AI:", "").strip()
@@ -809,23 +894,30 @@ def save_transcripts(db: Session, call_log: CallLog, transcript : str, campaign 
                 text=text
             )
         )
-        
-    db.flush()
-    
-    if campaign and campaign.instant_reply:
-        normalized_transcript = "\n".join(normalized_lines)
-        response = analyze_conversation(normalized_transcript)
-        print(f"response from decision service: {response} and transcript: {normalized_transcript}")
-        dispatch_instant_replies(
-            db=db,
-            call_log=call_log,
-            campaign=campaign,
-            contact=contact,
-            decision= response.get("instant_reply_decision")
-        )
-            
 
-def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCampaign, contact : Contact, decision : str):
+    db.flush()
+
+    return "\n".join(normalized_lines)
+
+def get_instant_replies(campaign_id):
+    db = SessionLocal()
+    try:
+        replies = db.query(CallCampaignInstantReply).filter(
+            CallCampaignInstantReply.call_campaign_id == campaign_id
+        ).all()
+
+        return [
+            {
+                "mode": r.mode,
+                "content": r.template.content,
+                "subject": r.template.subject
+            }
+            for r in replies
+        ]
+    finally:
+        db.close()
+    
+def dispatch_instant_replies(db: Session, call_log: CallLog, campaign : CallCampaign, contact : Contact, decision : str):
     if decision != "send_now":
         return
     
@@ -904,6 +996,61 @@ def dispatch_instant_replies(db : Session, call_log: CallLog, campaign : CallCam
         
     call_log.instant_reply_sent = instant_reply_completed
     db.flush()
+    
+def dispatch_instant_replies_safe(
+    replies,
+    contact,
+    campaign,
+    org_settings,
+    whatsapp_config
+):
+    instant_reply_completed = False
+
+    for reply in replies:
+        template = reply["template"]
+        message = render_template(template["content"], contact)
+
+        if reply["mode"] == "sms":
+            try:
+                success, error = send_sms_using_twilio(
+                    db=None,
+                    message=message,
+                    to_number=contact.phone,
+                    organization_id=campaign.organization_id
+                )
+                if success:
+                    instant_reply_completed = True
+            except Exception as e:
+                print(f"SMS failed: {e}")
+
+        elif reply["mode"] == "whatsapp" and whatsapp_config:
+            try:
+                send_whatsapp_text_message(
+                    phone_number_id=whatsapp_config["phone_number_id"],
+                    access_token=whatsapp_config["access_token"],
+                    to_number=contact.phone,
+                    message_text=message,
+                )
+                instant_reply_completed = True
+            except Exception as e:
+                print(f"WhatsApp failed: {e}")
+
+        elif reply["mode"] == "email":
+            try:
+                success, error, _ = send_campaign_email(
+                    campaign_name=campaign.name,
+                    subject=template["subject"] or "Update",
+                    message_template=message,
+                    recipient_name=contact.name,
+                    recipient_email=contact.email,
+                    settings=org_settings
+                )
+                if success:
+                    instant_reply_completed = True
+            except Exception as e:
+                print(f"Email failed: {e}")
+
+    return instant_reply_completed
 
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
     lead = None

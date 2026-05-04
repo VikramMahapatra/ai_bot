@@ -1590,7 +1590,7 @@ def sync_campaign_from_echoleads(
             ).first()
 
             if agent:
-                process_call(db, call, agent)
+                process_call(call, agent)
 
         # -------------------------
         # Clear Old Analytics

@@ -499,7 +499,7 @@ def read_agents(
             CallingAgent,
             func.count(
                 case(
-                    (CallCampaign.status == "active", 1)
+                    (CallCampaign.status == "running", 1)
                 )
             ).label("active_campaigns"),
             func.count(
