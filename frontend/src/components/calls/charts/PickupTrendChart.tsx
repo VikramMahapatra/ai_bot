@@ -20,11 +20,13 @@ import { PickupTrendEntry } from "../../../services/callService";
 // ];
 interface Props {
     data: PickupTrendEntry[];
+    /** Chart height in px (default matches calling agents cards). */
+    height?: number;
 }
 
-export default function PickupTrendChart({ data }: Props) {
+export default function PickupTrendChart({ data, height = 200 }: Props) {
     return (
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={height}>
             <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
