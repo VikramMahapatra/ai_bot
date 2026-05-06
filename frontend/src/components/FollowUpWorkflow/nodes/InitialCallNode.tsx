@@ -295,7 +295,7 @@ export default function InitialCallNode({ data, id }: any) {
 
                 </Box>
 
-                <div className="nodrag nopan mt-4 border-t pt-3">
+                {/* <div className="nodrag nopan mt-4 border-t pt-3">
                     <FormControl size="small" fullWidth>
                         <label
                             className="
@@ -333,7 +333,7 @@ export default function InitialCallNode({ data, id }: any) {
                             </MenuItem>
                         </Select>
                     </FormControl>
-                </div>
+                </div> */}
 
             </div>
 

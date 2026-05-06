@@ -57,12 +57,14 @@ import {
   ContactListItem,
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
-import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip, titleCase } from "../components/Common/StatusChips";
 import {
-  Menu,
-  ListItemIcon,
-  ListItemText,
-} from "@mui/material";
+  ConversionOutcomeChip,
+  OutcomeChip,
+  SourceChip,
+  StageChip,
+  titleCase,
+} from "../components/Common/StatusChips";
+import { Menu, ListItemIcon, ListItemText } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { FunnelCategory } from "../types";
 import { funnelCategoryService } from "../services/funnelCategoryService";
@@ -258,8 +260,12 @@ const ReportsPage: React.FC = () => {
   const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
     [],
   );
+  const [conversationOutcome, setConversationOutcome] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+  const [conversationSentiments, setConversationSentiments] = useState<
+    string[]
+  >([]);
   const formatDisplayDate = useDateFormatter();
-
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -311,18 +317,22 @@ const ReportsPage: React.FC = () => {
   };
 
   // Fetch conversations
-  const fetchConversations = async () => {
+  const fetchConversations = async (pageValue?: number) => {
     try {
       setLoading(true);
       setError(null);
+      const currentPage = pageValue ?? page;
       const data = await reportService.getConversationsReport({
-        skip: page * rowsPerPage,
+        skip: currentPage * rowsPerPage,
         limit: rowsPerPage,
         start_date: startDate,
         end_date: endDate,
         widget_id: widgetId,
         sort_by: sortBy,
         sort_order: sortOrder,
+        search: contactSearch,
+        sentiments: conversationSentiments,
+        outcome: conversationOutcome,
       });
       setConversations(data.metrics);
       setTotalConversations(data.pagination.total);
@@ -563,6 +573,16 @@ const ReportsPage: React.FC = () => {
     await fetchCampaignReport(0);
   };
 
+  const handleResetCoversationReportFilters = async () => {
+    setContactSearch("");
+    setConversationSentiments([]);
+    setConversationOutcome("");
+    setStartDate("");
+    setEndDate("");
+    setPage(0);
+    await fetchConversations(0);
+  };
+
   const handleApplyVoiceCampaignFilters = async () => {
     if (voicePage !== 0) setVoicePage(0);
     await fetchVoiceCampaignReport(0);
@@ -777,7 +797,7 @@ const ReportsPage: React.FC = () => {
                 items,
                 formatDisplayDate,
                 summary,
-                "Voice Campaign Report"
+                "Voice Campaign Report",
               );
             } else {
               setError(
@@ -943,7 +963,6 @@ const ReportsPage: React.FC = () => {
               </Typography>
             </Box>
 
-
             <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
               <ActionMenu
                 handleExportCSV={handleExportCSV}
@@ -962,8 +981,6 @@ const ReportsPage: React.FC = () => {
         )}
 
         {/* Filters */}
-
-
 
         {loading && <LinearProgress />}
 
@@ -1154,6 +1171,60 @@ const ReportsPage: React.FC = () => {
                 Filter Reports
               </Typography>
               <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Search Contact"
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Sentiment</InputLabel>
+                    <Select
+                      multiple
+                      value={conversationSentiments}
+                      onChange={(e) =>
+                        setConversationSentiments(
+                          typeof e.target.value === "string"
+                            ? e.target.value.split(",")
+                            : e.target.value,
+                        )
+                      }
+                      input={<OutlinedInput label="Sentiment" />}
+                      renderValue={(selected) =>
+                        (selected as string[]).join(", ")
+                      }
+                    >
+                      {voiceLeadOutcomeOptions.map((sentiment) => (
+                        <MenuItem key={sentiment} value={sentiment}>
+                          <Checkbox
+                            checked={
+                              conversationSentiments.indexOf(sentiment) > -1
+                            }
+                          />
+                          {sentiment}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select
+                      value={conversationOutcome}
+                      label="Type"
+                      onChange={(e) => setConversationOutcome(e.target.value)}
+                    >
+                      <MenuItem value="">All</MenuItem>
+                      <MenuItem value="positive">Positive</MenuItem>
+                      <MenuItem value="negative">Negative</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
                 <Grid item xs={12} sm={6} md={2.5}>
                   <TextField
                     label="Start Date"
@@ -1186,15 +1257,24 @@ const ReportsPage: React.FC = () => {
                 size="small"
               />
             </Grid> */}
-                <Grid item xs={12} sm={6} md={2.5}>
-                  <Button
-                    variant="contained"
-                    onClick={fetchConversations}
-                    fullWidth
-                    sx={{ height: 40 }}
-                  >
-                    Apply Filters
-                  </Button>
+                <Grid item xs={12} sm={3}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button
+                      variant="contained"
+                      onClick={() => fetchConversations()}
+                      fullWidth
+                      sx={{ height: 40 }}
+                    >
+                      Apply Filters
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleResetCoversationReportFilters}
+                    >
+                      Reset
+                    </Button>
+                  </Stack>
                 </Grid>
               </Grid>
             </Paper>
@@ -1250,7 +1330,7 @@ const ReportsPage: React.FC = () => {
                         )}
                       </TableCell> */}
                       <TableCell>
-                        <OutcomeChip value={(conv.outcome || "Pending")} />
+                        <OutcomeChip value={conv.outcome || "Pending"} />
                       </TableCell>
                       <TableCell>
                         <ConversionOutcomeChip value={conv.lead_conversion} />
@@ -2224,8 +2304,11 @@ const ReportsPage: React.FC = () => {
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {sessionMessages.map((item, idx) => (
                   <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 1 }}
+                    >
                       {formatDisplayDate(item.created_at)}
                     </Typography>
 
@@ -2247,13 +2330,13 @@ const ReportsPage: React.FC = () => {
                             <Typography fontWeight={600} mb={0.5}>
                               Assistant
                             </Typography>
-                            <Typography sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}>
+                            <Typography
+                              sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}
+                            >
                               {item.response}
                             </Typography>
                           </>
                         )}
-
-
                       </Box>
                     ) : (
                       /* ---------------- CHAT ---------------- */
@@ -2278,9 +2361,9 @@ const ReportsPage: React.FC = () => {
               </Box>
             )}
           </DialogContent>
-        </Dialog >
-      </Box >
-    </AdminLayout >
+        </Dialog>
+      </Box>
+    </AdminLayout>
   );
 };
 
