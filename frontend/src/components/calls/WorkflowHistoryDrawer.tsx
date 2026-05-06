@@ -13,6 +13,8 @@ import MessageIcon from "@mui/icons-material/Message";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { WorkflowEvent } from "../../services/callCampaignService";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
+import BoltIcon from "@mui/icons-material/Bolt";
+import { titleCase } from "../Common/StatusChips";
 
 
 
@@ -23,26 +25,29 @@ interface Props {
 }
 
 const getIcon = (stepType?: string, event?: string) => {
+    if (event === "workflow_triggered") return <PhoneIcon color="primary" />;
     if (event === "workflow_completed") return <CheckCircleIcon color="success" />;
-    if (event === "scheduled") return <ScheduleIcon color="warning" />;
+    if (event === "workflow_scheduled") return <ScheduleIcon color="warning" />;
+    if (event === "workflow_executed") return <BoltIcon color="primary" />;
     if (stepType === "call") return <PhoneIcon color="primary" />;
     return <MessageIcon color="secondary" />;
 };
 
 const getLabel = (item: WorkflowEvent) => {
-    if (item.event === "workflow_triggered") return "Workflow Started";
-    if (item.event === "workflow_completed") return "Workflow Completed";
-
-    if (item.event === "scheduled") {
-        return `Scheduled (${item.metadata?.delay || 0} ${item.metadata?.delay_unit || "min"
-            })`;
+    if (item.event === "workflow_triggered") {
+        return "Started";
     }
 
-    if (item.event === "executed") {
-        if (item.step_type === "call") {
-            return `Call → ${item.call_status || ""}`;
-        }
-        return `${item.step_type?.toUpperCase()} Sent`;
+    if (item.event === "workflow_completed") {
+        return "Completed";
+    }
+
+    if (item.event === "workflow_scheduled") {
+        return "Scheduled";
+    }
+
+    if (item.event === "workflow_executed") {
+        return "Action Executed";
     }
 
     return item.event;
@@ -82,38 +87,134 @@ export default function WorkflowHistoryDrawer({
                         </Typography>
                     ) : (
                         data.map((item, index) => (
-                            <Box key={index} display="flex" mb={3}>
+                            <Box key={index} display="flex" mb={3} alignItems="stretch">
                                 {/* LEFT ICON + LINE */}
-                                <Box display="flex" flexDirection="column" alignItems="center">
+                                <Box
+                                    display="flex"
+                                    flexDirection="column"
+                                    alignItems="center"
+                                    sx={{
+                                        width: 24,
+                                        position: "relative",
+                                    }}
+                                >
+                                    {/* ICON */}
                                     {getIcon(item.step_type, item.event)}
+
+                                    {/* LINE */}
                                     {index !== data.length - 1 && (
                                         <Box
                                             sx={{
+                                                flex: 1,
                                                 width: "2px",
-                                                height: "40px",
                                                 bgcolor: "grey.300",
                                                 mt: 0.5,
+                                                minHeight: "24px",
                                             }}
                                         />
                                     )}
                                 </Box>
 
                                 {/* CONTENT */}
-                                <Box ml={2} flex={1}>
+                                <Box
+                                    ml={2}
+                                    flex={1}
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: 2,
+                                        bgcolor: "background.paper",
+                                        border: "1px solid",
+                                        borderColor: "divider",
+                                    }}
+                                >
+                                    {/* TITLE */}
                                     <Typography fontWeight={600}>
                                         {getLabel(item)}
                                     </Typography>
 
-                                    {item.outcome && (
-                                        <Chip
-                                            label={item.outcome}
-                                            size="small"
-                                            sx={{ mt: 0.5 }}
-                                        />
-                                    )}
+                                    {/* DETAILS */}
+                                    <Box mt={0.5}>
 
-                                    <Typography variant="caption" color="text.secondary">
-                                        {formatDisplayDate(item.time)}
+                                        {/* WORKFLOW TRIGGERED */}
+                                        {item.event === "workflow_triggered" && (
+                                            <>
+                                                {item.call_status && (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Status:
+                                                        </Box>{" "}
+                                                        <b>{titleCase(item.call_status?.replace(/_/g, " "))}</b>
+                                                    </Typography>
+                                                )}
+
+                                                {item.outcome && (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Outcome:
+                                                        </Box>{" "}
+                                                        <b>{titleCase(item.outcome)}</b>
+                                                    </Typography>
+                                                )}
+                                            </>
+                                        )}
+
+                                        {/* WORKFLOW SCHEDULED */}
+                                        {item.event === "workflow_scheduled" && (
+                                            <>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                        Action:
+                                                    </Box>{" "}
+                                                    <b>{titleCase(item.step_type)}</b>
+                                                </Typography>
+
+                                                {item.delay && (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Delay:
+                                                        </Box>{" "}
+                                                        <b>{item.delay} {item.delay_unit}</b>
+                                                    </Typography>
+                                                )}
+
+                                                {item.scheduled_at && (
+                                                    <Typography variant="body2" color="warning.main">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Scheduled:
+                                                        </Box>{" "}
+                                                        <b>{formatDisplayDate(item.scheduled_at)}</b>
+                                                    </Typography>
+                                                )}
+                                            </>
+                                        )}
+
+                                        {/* WORKFLOW COMPLETED */}
+                                        {item.event === "workflow_completed" && item.reason && (
+                                            <Typography variant="body2" color="success.main">
+                                                <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                    Reason:
+                                                </Box>{" "}
+                                                <b>{item.reason}</b>
+                                            </Typography>
+                                        )}
+
+                                        {/* EXECUTED */}
+                                        {item.event === "executed" && (
+                                            <Typography variant="body2" color="text.secondary">
+                                                {item.step_type === "call"
+                                                    ? `Call ${item.call_status || ""}`
+                                                    : `${item.step_type} sent`}
+                                            </Typography>
+                                        )}
+                                    </Box>
+
+                                    {/* TIME */}
+                                    <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ display: "block", mt: 1 }}
+                                    >
+                                        {formatDisplayDate(item.scheduled_at || item.time)}
                                     </Typography>
                                 </Box>
                             </Box>

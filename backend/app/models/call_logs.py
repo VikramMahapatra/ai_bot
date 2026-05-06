@@ -55,6 +55,8 @@ class CallLog(Base):
 
     transcripts = relationship("CallTranscript", back_populates="call_log")
     contact = relationship("Contact", back_populates="call_logs")
+    campaign = relationship("CallCampaign", back_populates="call_logs")
+    agent = relationship("CallingAgent", back_populates="call_logs")
     
     __table_args__ = (
         Index("idx_calllog_external_call_id", "external_call_id"),

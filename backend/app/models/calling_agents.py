@@ -81,6 +81,7 @@ class CallingAgent(Base):
     external_agent_a_id = Column(String, nullable=True)
     
     campaigns = relationship("CallCampaign", back_populates="agent")
+    call_logs = relationship("CallLog", back_populates="agent")
     
     __table_args__ = (
         Index("idx_agent_external_id", "external_agent_id"),
