@@ -1352,7 +1352,7 @@ const LeadManager: React.FC = () => {
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               All Leads
             </Typography>
-            <Stack spacing={0.75} sx={{ mt: 0.8 }}>
+            <Stack spacing={0.75} sx={{ mt: 1.5 }}>
               <Box
                 sx={{
                   display: "grid",
@@ -1441,13 +1441,13 @@ const LeadManager: React.FC = () => {
               </Box>
             </Stack>
           </Box>
-          <Chip
+          {/* <Chip
             label={`${displayLeads.length.toLocaleString()} records`}
             color="primary"
             variant="outlined"
             size="small"
             sx={{ fontWeight: 600, flexShrink: 0, mt: 0.4 }}
-          />
+          /> */}
         </Box>
 
         <TableContainer
@@ -1466,7 +1466,7 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sentiment</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Latest Sentiment</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Created Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Closed Date</TableCell>

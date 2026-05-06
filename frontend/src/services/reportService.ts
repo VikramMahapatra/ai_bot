@@ -199,8 +199,28 @@ export const reportService = {
     has_lead?: number;
     sort_by?: string;
     sort_order?: 'asc' | 'desc';
+    search?: string;
+    sentiments?: string[];
+    outcome?: string;
   }): Promise<DetailedReport> {
-    const response = await api.get('/api/reports/conversations', { params });
+    const queryParams = new URLSearchParams();
+
+    if (params.skip !== undefined) queryParams.append('skip', String(params.skip));
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit));
+    if (params.widget_id) queryParams.append('widget_id', params.widget_id);
+    if (params.min_tokens) queryParams.append('min_tokens', String(params.min_tokens));
+    if (params.max_tokens) queryParams.append('max_tokens', String(params.max_tokens));
+    if (params.has_lead) queryParams.append('has_lead', String(params.has_lead));
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order);
+    if (params.start_date) queryParams.append('start_date', params.start_date);
+    if (params.end_date) queryParams.append('end_date', params.end_date);
+    if (params.outcome) queryParams.append('outcome', params.outcome);
+    if (params.search) queryParams.append('search', params.search);
+    (params.sentiments || []).forEach((item) => {
+      if (item) queryParams.append('sentiments', item);
+    });
+    const response = await api.get('/api/reports/conversations', { params: queryParams });
     return response.data;
   },
 
