@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from openai import OpenAI
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -24,7 +24,10 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.workflows import WorkflowExecution
 from app.models.calling_agents import CallingAgent, CallingAgentTestCall
-from app.services.call_log_service import sync_test_call_log
+from app.services.call_log_service import (
+    sync_test_call_log,
+    process_workflow_scheduled_calls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +108,7 @@ def _build_chat_transcript(rows: List[Conversation]) -> str:
 
     return "\n".join(lines)
 
+
 def _build_voice_transcript(rows):
     lines = []
 
@@ -127,6 +131,7 @@ def _build_voice_transcript(rows):
             lines.append(f"User: {msg}")
 
     return "\n".join(lines)
+
 
 def _build_transcript(rows: List[Conversation]) -> str:
     if not rows:
@@ -153,28 +158,22 @@ def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
                     "You are a CRM sales conversation classifier. "
                     "Analyze the FULL transcript from a business / lead-generation perspective, "
                     "not merely conversational politeness.\n\n"
-
                     "Return valid JSON only with exactly two keys:\n"
                     "1) outcome\n"
                     "2) whether_lead\n\n"
-
                     "Allowed values:\n"
                     "outcome = positive | negative | satisfactory | neutral | unresolved | other\n"
                     "whether_lead = lead | not lead\n\n"
-
                     "Classification rules:\n"
-
                     "- positive = customer shows clear buying interest, asks for next step, agrees for callback/demo/visit, or is qualified opportunity.\n"
                     "- negative = customer clearly rejects, angry response, complaint, hostility, or strong refusal.\n"
                     "- satisfactory = issue/help request was successfully addressed OR conversation ended helpfully with useful engagement.\n"
                     "- neutral = polite conversation but no business opportunity / no intent / already customer / irrelevant / no current need.\n"
                     "- unresolved = customer has interest/problem/question but next action is pending or issue not closed.\n"
                     "- other = unclear / unrelated.\n\n"
-
                     "Lead rules:\n"
                     "- lead = potential sales opportunity exists.\n"
                     "- not lead = no opportunity, already purchased elsewhere, irrelevant contact, wrong number, or no need.\n\n"
-
                     "Important:\n"
                     "- If customer already owns/installed the product and shows no new requirement → outcome=neutral, whether_lead=not lead.\n"
                     "- Do not classify based only on politeness.\n"
@@ -204,15 +203,21 @@ def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
     return _normalize_outcome_payload(parsed)
 
 
-def _classify_funnel_stage_with_llm(transcript: str, categories: List[FunnelCategory]) -> Optional[str]:
+def _classify_funnel_stage_with_llm(
+    transcript: str, categories: List[FunnelCategory]
+) -> Optional[str]:
     if not transcript.strip() or not categories:
         return None
 
-    valid_keys = {str(item.key).strip().lower() for item in categories if (item.key or '').strip()}
+    valid_keys = {
+        str(item.key).strip().lower() for item in categories if (item.key or "").strip()
+    }
     if not valid_keys:
         return None
 
-    category_lines = [f"- {item.key}: {item.name}" for item in categories if (item.key or '').strip()]
+    category_lines = [
+        f"- {item.key}: {item.name}" for item in categories if (item.key or "").strip()
+    ]
 
     response = client.chat.completions.create(
         model=settings.OUTCOME_CLASSIFICATION_MODEL,
@@ -240,13 +245,15 @@ def _classify_funnel_stage_with_llm(transcript: str, categories: List[FunnelCate
     )
 
     content = (response.choices[0].message.content if response.choices else "") or ""
-    normalized = content.strip().lower().replace(' ', '_')
+    normalized = content.strip().lower().replace(" ", "_")
     if normalized in valid_keys:
         return normalized
     return None
 
 
-def process_pending_session_outcomes(db: Session, batch_size: int = 100, organization_id: Optional[int] = None) -> Tuple[int, int]:
+def process_pending_session_outcomes(
+    db: Session, batch_size: int = 100, organization_id: Optional[int] = None
+) -> Tuple[int, int]:
     """Process pending session outcomes where conversation.outcome is NULL.
 
     Returns tuple: (processed_count, failed_count)
@@ -260,12 +267,18 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
     )
 
     if organization_id is not None:
-        pending_query = pending_query.filter(Conversation.organization_id == organization_id)
+        pending_query = pending_query.filter(
+            Conversation.organization_id == organization_id
+        )
 
-    pending_sessions = pending_query.group_by(
-        Conversation.organization_id,
-        Conversation.session_id,
-    ).limit(batch_size).all()
+    pending_sessions = (
+        pending_query.group_by(
+            Conversation.organization_id,
+            Conversation.session_id,
+        )
+        .limit(batch_size)
+        .all()
+    )
 
     processed = 0
     failed = 0
@@ -282,12 +295,16 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                     status_code=400,
                     detail="Insufficient credits. Please add more credits to continue.",
                 )
-        
-        
-            rows = db.query(Conversation).filter(
-                Conversation.organization_id == org_id,
-                Conversation.session_id == session_id,
-            ).order_by(Conversation.created_at.asc()).all()
+
+            rows = (
+                db.query(Conversation)
+                .filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                )
+                .order_by(Conversation.created_at.asc())
+                .all()
+            )
 
             if not rows:
                 continue
@@ -297,30 +314,35 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
             outcome = classification["outcome"]
             whether_lead = classification["whether_lead"]
             is_lead_value = 1 if whether_lead == "lead" else 0
-            
+
             if transcript.strip():
                 organization_credit_service.deduct_credits(
-                db=db,
-                organization_id=org_id,
-                feature_code=FeatureCodes.AI_SENTIMENT,
-                quantity=1,
-                reference_type="conversation",
-                reference_id=session_id
-            )
+                    db=db,
+                    organization_id=org_id,
+                    feature_code=FeatureCodes.AI_SENTIMENT,
+                    quantity=1,
+                    reference_type="conversation",
+                    reference_id=session_id,
+                )
 
             if org_id not in funnel_categories_by_org:
-                funnel_categories_by_org[org_id] = db.query(FunnelCategory).filter(
-                    FunnelCategory.organization_id == org_id,
-                    FunnelCategory.is_active == True,
-                ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
-                
+                funnel_categories_by_org[org_id] = (
+                    db.query(FunnelCategory)
+                    .filter(
+                        FunnelCategory.organization_id == org_id,
+                        FunnelCategory.is_active == True,
+                    )
+                    .order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc())
+                    .all()
+                )
+
             # FUNNEL STAGE ANALYSIS TO BE DONE
-                
+
             # inferred_funnel_stage = _classify_funnel_stage_with_llm(
             #     transcript,
             #     funnel_categories_by_org.get(org_id, []),
             # )
-            
+
             inferred_funnel_stage = (
                 FUNNEL_STAGE["LEAD_QUALIFICATION"]
                 if is_lead_value
@@ -330,7 +352,7 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                     else FUNNEL_STAGE["UNASSIGNED"]
                 )
             )
-            
+
             db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
@@ -342,7 +364,7 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
                 },
                 synchronize_session=False,
             )
-            
+
             # Update LeadActivity outcome by session_id
             db.query(LeadActivity).filter(
                 LeadActivity.session_id == session_id,
@@ -353,22 +375,27 @@ def process_pending_session_outcomes(db: Session, batch_size: int = 100, organiz
             )
 
             # Keep leads in sync with the resolved conversation outcome.
-            lead_rows = db.query(Lead).join(
-                LeadContactMapping,
-                LeadContactMapping.lead_id == Lead.id
-            ).join(
-                Conversation,
-                Conversation.contact_id == LeadContactMapping.contact_id
-            ).filter(
-                Conversation.organization_id == org_id,
-                Conversation.session_id == session_id,
-                Lead.organization_id == org_id
-            ).distinct(Lead.id).all()
-            
+            lead_rows = (
+                db.query(Lead)
+                .join(LeadContactMapping, LeadContactMapping.lead_id == Lead.id)
+                .join(
+                    Conversation,
+                    Conversation.contact_id == LeadContactMapping.contact_id,
+                )
+                .filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                    Lead.organization_id == org_id,
+                    Lead.funnel_stage.is_(None),
+                )
+                .distinct(Lead.id)
+                .all()
+            )
+
             for lead in lead_rows:
                 if (lead.lead_outcome or "").strip().lower() != outcome:
                     lead.lead_outcome = outcome
-                if inferred_funnel_stage and not (lead.funnel_stage or '').strip():
+                if inferred_funnel_stage and not (lead.funnel_stage or "").strip():
                     lead.funnel_stage = inferred_funnel_stage
 
             logger.info(
@@ -401,57 +428,78 @@ def process_pending_lead_outcomes(
     organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
     """Backfill lead_outcome from existing conversation outcomes for matching sessions."""
-    
+
     lead_query = db.query(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
-    ).filter(
-        Lead.lead_outcome.is_(None)
-    )
+    ).filter(Lead.lead_outcome.is_(None))
 
     if organization_id is not None:
         lead_query = lead_query.filter(Lead.organization_id == organization_id)
 
-    pending_lead_sessions = lead_query.group_by(
-        Lead.organization_id,
-        Lead.session_id,
-        Lead.id,
-    ).limit(batch_size).all()
+    pending_lead_sessions = (
+        lead_query.group_by(
+            Lead.organization_id,
+            Lead.session_id,
+            Lead.id,
+        )
+        .limit(batch_size)
+        .all()
+    )
 
     synced = 0
     failed = 0
 
-    for org_id, session_id, lead_id  in pending_lead_sessions:
+    for org_id, session_id, lead_id in pending_lead_sessions:
         try:
-            contact_id = db.query(LeadContactMapping.contact_id).filter(
-                LeadContactMapping.lead_id == lead_id
-            ).scalar()
-            
-            if not contact_id:
-                latest_with_outcome = db.query(Conversation).filter(
-                    Conversation.organization_id == org_id,
-                    Conversation.session_id == session_id,
-                    Conversation.outcome.isnot(None),
-                ).order_by(Conversation.created_at.desc()).first()
-            else :
-                latest_with_outcome = db.query(Conversation).filter(
-                    Conversation.organization_id == org_id,
-                    Conversation.contact_id == contact_id,
-                    Conversation.outcome.isnot(None),
-                ).order_by(Conversation.created_at.desc()).first()
+            contact_id = (
+                db.query(LeadContactMapping.contact_id)
+                .filter(LeadContactMapping.lead_id == lead_id)
+                .scalar()
+            )
 
-            if not latest_with_outcome or not (latest_with_outcome.outcome or "").strip():
+            if not contact_id:
+                latest_with_outcome = (
+                    db.query(Conversation)
+                    .filter(
+                        Conversation.organization_id == org_id,
+                        Conversation.session_id == session_id,
+                        Conversation.outcome.isnot(None),
+                    )
+                    .order_by(Conversation.created_at.desc())
+                    .first()
+                )
+            else:
+                latest_with_outcome = (
+                    db.query(Conversation)
+                    .filter(
+                        Conversation.organization_id == org_id,
+                        Conversation.contact_id == contact_id,
+                        Conversation.outcome.isnot(None),
+                    )
+                    .order_by(Conversation.created_at.desc())
+                    .first()
+                )
+
+            if (
+                not latest_with_outcome
+                or not (latest_with_outcome.outcome or "").strip()
+            ):
                 continue
 
             normalized_outcome = _normalize_outcome(latest_with_outcome.outcome)
-            updated_rows = db.query(Lead).filter(
-                Lead.organization_id == org_id,
-                Lead.id == lead_id,
-                Lead.lead_outcome.is_(None),
-            ).update(
-                {Lead.lead_outcome: normalized_outcome},
-                synchronize_session=False,
+            updated_rows = (
+                db.query(Lead)
+                .filter(
+                    Lead.organization_id == org_id,
+                    Lead.id == lead_id,
+                    Lead.lead_outcome.is_(None),
+                )
+                .update(
+                    {Lead.lead_outcome: normalized_outcome},
+                    synchronize_session=False,
+                )
             )
 
             db.commit()
@@ -481,18 +529,20 @@ def process_pending_lead_funnel_tags(
         Lead.organization_id,
         Lead.session_id,
         Lead.id,
-    ).filter(
-        Lead.funnel_stage.is_(None)
-    )
+    ).filter(Lead.funnel_stage.is_(None))
 
     if organization_id is not None:
         lead_query = lead_query.filter(Lead.organization_id == organization_id)
 
-    pending_sessions = lead_query.group_by(
-        Lead.organization_id,
-        Lead.session_id,
-        Lead.id,
-    ).limit(batch_size).all()
+    pending_sessions = (
+        lead_query.group_by(
+            Lead.organization_id,
+            Lead.session_id,
+            Lead.id,
+        )
+        .limit(batch_size)
+        .all()
+    )
 
     tagged = 0
     failed = 0
@@ -500,45 +550,68 @@ def process_pending_lead_funnel_tags(
 
     for org_id, session_id, lead_id in pending_sessions:
         try:
-            contact_id = db.query(LeadContactMapping.contact_id).filter(
-                LeadContactMapping.lead_id == lead_id
-            ).scalar()
-            
-            if not contact_id: # guest lead without contact mapping, try to find conversations by session_id if available
-                rows = db.query(Conversation).filter(
-                    Conversation.organization_id == org_id,
-                    Conversation.session_id == session_id
-                ).order_by(Conversation.created_at.asc()).all()
-            else :
-                rows = db.query(Conversation).filter(
-                    Conversation.organization_id == org_id,
-                    Conversation.contact_id == contact_id
-                ).order_by(Conversation.created_at.asc()).all()
-            
+            contact_id = (
+                db.query(LeadContactMapping.contact_id)
+                .filter(LeadContactMapping.lead_id == lead_id)
+                .scalar()
+            )
+
+            if (
+                not contact_id
+            ):  # guest lead without contact mapping, try to find conversations by session_id if available
+                rows = (
+                    db.query(Conversation)
+                    .filter(
+                        Conversation.organization_id == org_id,
+                        Conversation.session_id == session_id,
+                    )
+                    .order_by(Conversation.created_at.asc())
+                    .all()
+                )
+            else:
+                rows = (
+                    db.query(Conversation)
+                    .filter(
+                        Conversation.organization_id == org_id,
+                        Conversation.contact_id == contact_id,
+                    )
+                    .order_by(Conversation.created_at.asc())
+                    .all()
+                )
+
             if not rows:
                 continue
 
             if org_id not in funnel_categories_by_org:
-                funnel_categories_by_org[org_id] = db.query(FunnelCategory).filter(
-                    FunnelCategory.organization_id == org_id,
-                    FunnelCategory.is_active == True,
-                ).order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc()).all()
-                
+                funnel_categories_by_org[org_id] = (
+                    db.query(FunnelCategory)
+                    .filter(
+                        FunnelCategory.organization_id == org_id,
+                        FunnelCategory.is_active == True,
+                    )
+                    .order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc())
+                    .all()
+                )
+
             logger.info(f"Running llm for lead : {lead_id}")
 
             # inferred_funnel_stage = _classify_funnel_stage_with_llm(
             #     _build_transcript(rows),
             #     funnel_categories_by_org.get(org_id, []),
             # )
-            
-            lead = db.query(Lead).filter(
-                Lead.organization_id == org_id,
-                Lead.id == lead_id,
-                or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
-            ).first()
-            
+
+            lead = (
+                db.query(Lead)
+                .filter(
+                    Lead.organization_id == org_id,
+                    Lead.id == lead_id,
+                    or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ""),
+                )
+                .first()
+            )
+
             inferred_funnel_stage = None
-            
+
             if lead:
                 inferred_funnel_stage = (
                     FUNNEL_STAGE["LEAD_QUALIFICATION"]
@@ -549,17 +622,21 @@ def process_pending_lead_funnel_tags(
                         else FUNNEL_STAGE["UNASSIGNED"]
                     )
                 )
-            
-            if not inferred_funnel_stage:
-                    continue
 
-            updated_rows = db.query(Lead).filter(
-                Lead.organization_id == org_id,
-                Lead.id == lead_id,
-                or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ''),
-            ).update(
-                {Lead.funnel_stage: inferred_funnel_stage},
-                synchronize_session=False,
+            if not inferred_funnel_stage:
+                continue
+
+            updated_rows = (
+                db.query(Lead)
+                .filter(
+                    Lead.organization_id == org_id,
+                    Lead.id == lead_id,
+                    or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ""),
+                )
+                .update(
+                    {Lead.funnel_stage: inferred_funnel_stage},
+                    synchronize_session=False,
+                )
             )
 
             db.commit()
@@ -578,6 +655,7 @@ def process_pending_lead_funnel_tags(
 
     return tagged, failed
 
+
 def process_call_campaigns_data(
     db: Session,
     batch_size: int = 100,
@@ -585,40 +663,33 @@ def process_call_campaigns_data(
     last_id: Optional[int] = None,
 ) -> Tuple[int, int, Optional[int]]:
     SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
-    
-    pending_execution_exists = (
-        db.query(WorkflowExecution.id)
-        .filter(
-            WorkflowExecution.campaign_id == CallCampaign.id,
-            WorkflowExecution.status == "pending"
-        )
-        .exists()
+
+    pending_execution_exists = exists().where(
+        (WorkflowExecution.campaign_id == CallCampaign.id)
+        & (WorkflowExecution.status != "completed")
     )
 
     query = db.query(CallCampaign).filter(
         CallCampaign.is_deleted == False,
         or_(
             CallCampaign.status.in_(SYNC_STATUSES),
-            and_(
-                CallCampaign.status == "completed",
-                pending_execution_exists
-            )
-        )
+            and_(CallCampaign.status == "completed", pending_execution_exists),
+        ),
     )
 
     if last_id:
         query = query.filter(CallCampaign.id < last_id)
 
     campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
-    
+
     org_map = defaultdict(list)
 
     for campaign in campaign_models:
         org_map[campaign.organization_id].append(campaign)
-        
+
     synced = 0
     failed = 0
-    
+
     for org_id, campaigns in org_map.items():
         echolead_client = EcholeadsClient(org_id)
 
@@ -633,6 +704,7 @@ def process_call_campaigns_data(
     new_last_id = campaign_models[-1].id if campaign_models else None
     return synced, failed, new_last_id
 
+
 def process_test_call_data(
     db: Session,
     batch_size: int = 100,
@@ -640,14 +712,13 @@ def process_test_call_data(
     last_id: Optional[int] = None,
 ) -> Tuple[int, int, Optional[int]]:
     SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
-    
-    
+
     query = (
         db.query(CallingAgentTestCall)
         .options(joinedload(CallingAgentTestCall.agent))
         .filter(
             CallingAgentTestCall.status == "queued",
-            CallingAgentTestCall.external_call_id.isnot(None)
+            CallingAgentTestCall.external_call_id.isnot(None),
         )
     )
 
@@ -655,23 +726,24 @@ def process_test_call_data(
         query = query.filter(CallingAgentTestCall.id < last_id)
 
     test_calls = query.order_by(CallingAgentTestCall.id.desc()).limit(batch_size).all()
-    
+
     org_map = defaultdict(list)
-    
+
     for call in test_calls:
         org_id = call.agent.organization_id
         org_map[org_id].append(call)
 
-   
     synced = 0
     failed = 0
 
     for org_id, calls in org_map.items():
         echolead_client = EcholeadsClient(org_id)
-         
+
         for call in calls:
             try:
-                sync_test_call_log(db, echolead_client, call.agent_id, call.external_call_id)
+                sync_test_call_log(
+                    db, echolead_client, call.agent_id, call.external_call_id
+                )
                 synced += 1
             except Exception as exc:
                 failed += 1
@@ -680,7 +752,10 @@ def process_test_call_data(
     new_last_id = test_calls[-1].id if test_calls else None
     return synced, failed, new_last_id
 
-def run_outcome_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
+
+def run_outcome_processing_batches(
+    batch_size: int, max_batches: int, organization_id: Optional[int] = None
+) -> Tuple[int, int]:
     total_processed = 0
     total_failed = 0
 
@@ -719,9 +794,10 @@ def _seconds_until_next_run(hour_utc: int, minute_utc: int) -> float:
         target = target + timedelta(days=1)
     return max((target - now).total_seconds(), 1.0)
 
-def _seconds_until_next_interval(interval_seconds: int) -> float: 
-    now = datetime.now(timezone.utc).timestamp() 
-    next_run = ((now // interval_seconds) + 1) * interval_seconds 
+
+def _seconds_until_next_interval(interval_seconds: int) -> float:
+    now = datetime.now(timezone.utc).timestamp()
+    next_run = ((now // interval_seconds) + 1) * interval_seconds
     return max(next_run - now, 1.0)
 
 
@@ -768,9 +844,11 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
 
         except Exception as exc:
             logger.error("Scheduled outcome processing failed: %s", exc, exc_info=True)
-            
-            
-def run_call_campaign_processing_batches(batch_size: int, max_batches: int, organization_id: Optional[int] = None) -> Tuple[int, int]:
+
+
+def run_call_campaign_processing_batches(
+    batch_size: int, max_batches: int, organization_id: Optional[int] = None
+) -> Tuple[int, int]:
     total_processed = 0
     total_failed = 0
 
@@ -778,28 +856,37 @@ def run_call_campaign_processing_batches(batch_size: int, max_batches: int, orga
     try:
         last_id = None
         test_last_id = None
+        last_scheduled_id = None
         for _ in range(max_batches):
-            synced, sync_failed, last_id  = process_call_campaigns_data(
+            synced, sync_failed, last_id = process_call_campaigns_data(
                 db,
                 batch_size=batch_size,
                 organization_id=organization_id,
-                last_id =last_id
+                last_id=last_id,
             )
             processed, failed, test_last_id = process_test_call_data(
                 db,
                 batch_size=batch_size,
                 organization_id=organization_id,
-                last_id=test_last_id
+                last_id=test_last_id,
+            )
+
+            scheduled, scheduled_failed, last_scheduled_id = (
+                process_workflow_scheduled_calls(
+                    db, batch_size=batch_size, last_id=last_scheduled_id
+                )
             )
             total_processed += synced
-            total_failed += sync_failed + failed
-            if synced == 0 and processed == 0:
+            total_failed += sync_failed + failed + scheduled_failed
+
+            if synced == 0 and processed == 0 and scheduled:
                 break
-            
+
     finally:
         db.close()
 
     return total_processed, total_failed
+
 
 async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
     """Call campaign daemon with non-blocking execution"""
@@ -832,7 +919,7 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
         wait_seconds = _seconds_until_next_interval(
             settings.OUTCOME_DAEMON_INTERVAL_SECONDS
         )
-        
+
         logger.info(f"Current UTC: {datetime.now(timezone.utc)}")
         logger.info(f"Next run in {wait_seconds} sec (~{wait_seconds/3600:.2f} hrs)")
 
@@ -861,5 +948,3 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
                 exc,
                 exc_info=True,
             )
-            
-     

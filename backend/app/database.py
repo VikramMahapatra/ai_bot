@@ -718,7 +718,7 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE workflow_steps

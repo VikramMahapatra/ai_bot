@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -12,14 +11,24 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
-from app.schemas.call_campaign import CampaignCreate, CampaignLookupParameters, CampaignStatusUpdate, CampaignUpdate, ContactCreate
+from app.schemas.call_campaign import (
+    CampaignCreate,
+    CampaignLookupParameters,
+    CampaignStatusUpdate,
+    CampaignUpdate,
+    ContactCreate,
+)
 from app.models.campaign import Contact, ContactList
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
 from app.services.call_log_service import extract_placeholders, process_call
 from app.models.user import Organization
-from app.models.call_campaign_analytics import CampaignAIRecommendation, CampaignKeyInsight, CampaignSentiment
+from app.models.call_campaign_analytics import (
+    CampaignAIRecommendation,
+    CampaignKeyInsight,
+    CampaignSentiment,
+)
 from app.models.products import Product
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
@@ -29,9 +38,8 @@ from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
 from app.models.workflows import WorkflowExecution, WorkflowExecutionLog
 
-
 STALE_MINUTES = 1
-SYNC_STATUSES = ["active", "running", "pending", "scheduled"] 
+SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
 
 logger = logging.getLogger(__name__)
 
@@ -43,25 +51,27 @@ def should_sync(campaign):
     # if not campaign.updated_at:
     #     return True
 
-    #return campaign.updated_at < datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
+    # return campaign.updated_at < datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
     return True
 
 
 def get_campaign_stats(db: Session, organization_id: int):
 
-    stats = db.query(
-        CallCampaign.status,
-        func.count(CallCampaign.id)
-    ).filter(
-        CallCampaign.organization_id == organization_id,
-        CallCampaign.is_deleted == False
-    ).group_by(CallCampaign.status).all()
+    stats = (
+        db.query(CallCampaign.status, func.count(CallCampaign.id))
+        .filter(
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False,
+        )
+        .group_by(CallCampaign.status)
+        .all()
+    )
 
     result = {
         "totalCampaigns": 0,
         "activeCampaigns": 0,
         "pausedCampaigns": 0,
-        "completedCampaigns": 0
+        "completedCampaigns": 0,
     }
 
     for status, count in stats:
@@ -75,25 +85,29 @@ def get_campaign_stats(db: Session, organization_id: int):
 
     return result
 
+
 def sync_campaigns(
     db: Session,
     organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
 ):
     campaign_models = db.query(CallCampaign).filter(
         CallCampaign.is_deleted == False,
-        CallCampaign.organization_id == organization_id
+        CallCampaign.organization_id == organization_id,
     )
 
     if search:
-        campaign_models = campaign_models.filter(
-            CallCampaign.name.ilike(f"%{search}%")
-        )
+        campaign_models = campaign_models.filter(CallCampaign.name.ilike(f"%{search}%"))
 
-    campaign_models = campaign_models.order_by(CallCampaign.created_at.desc()).offset(skip).limit(limit).all()
-    
+    campaign_models = (
+        campaign_models.order_by(CallCampaign.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
     echolead_client = EcholeadsClient(organization_id)
 
     for campaign in campaign_models:
@@ -102,28 +116,22 @@ def sync_campaigns(
 
     db.commit()
 
+
 def list_campaigns(
     background_tasks: BackgroundTasks,
     db: Session,
-    organization_id:int,
+    organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
 ):
     ###SYNC FROM ECHOLEAD
-    background_tasks.add_task(
-        sync_campaigns,
-        db,
-        organization_id,
-        search,
-        skip,
-        limit
-    )
+    background_tasks.add_task(sync_campaigns, db, organization_id, search, skip, limit)
 
     contact_count_subq = (
         db.query(
             CampaignContact.campaign_id,
-            func.count(CampaignContact.id).label("contact_count")
+            func.count(CampaignContact.id).label("contact_count"),
         )
         .group_by(CampaignContact.campaign_id)
         .subquery()
@@ -141,33 +149,29 @@ def list_campaigns(
             (Product.name + " (" + Product.code + ")").label("product_name"),
             CallCampaign.total_calls,
             CallCampaign.completed_calls,
-            contact_count_subq.c.contact_count
+            contact_count_subq.c.contact_count,
         )
         .join(CallingAgent, CallingAgent.id == CallCampaign.agent_id)
         .outerjoin(Product, Product.id == CallCampaign.product_id)
         .outerjoin(
-            contact_count_subq,
-            CallCampaign.id == contact_count_subq.c.campaign_id
+            contact_count_subq, CallCampaign.id == contact_count_subq.c.campaign_id
         )
         .filter(
             CallCampaign.organization_id == organization_id,
-            CallCampaign.is_deleted == False
+            CallCampaign.is_deleted == False,
         )
     )
 
     # SEARCH FILTER
     if search:
-        base_query = base_query.filter(
-            CallCampaign.name.ilike(f"%{search}%")
-        )
+        base_query = base_query.filter(CallCampaign.name.ilike(f"%{search}%"))
 
     # TOTAL COUNT (before pagination)
     total = base_query.count()
-   
+
     # PAGINATION
     campaigns = (
-        base_query
-        .order_by(CallCampaign.created_at.desc())
+        base_query.order_by(CallCampaign.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -178,29 +182,27 @@ def list_campaigns(
         progress = 0
         if campaign.total_calls:
             progress = int((campaign.completed_calls / campaign.total_calls) * 100)
-            
-        rows.append({
-            "id": campaign.id,
-            "name": campaign.name,
-            "category": campaign.category,
-            "agent_name": campaign.agent_name,
-            "product_name": campaign.product_name,
-            "calling_no": campaign.calling_no,
-            "status": campaign.status,
-            "contacts": campaign.contact_count,
-            "progress": progress,
-            "created_at": campaign.created_at.replace(tzinfo=timezone.utc).isoformat()
-        })
 
-    return {
-        "items": rows,
-        "pagination": {
-            "total": total,
-            "skip": skip,
-            "limit": limit
-        }
-    }
-    
+        rows.append(
+            {
+                "id": campaign.id,
+                "name": campaign.name,
+                "category": campaign.category,
+                "agent_name": campaign.agent_name,
+                "product_name": campaign.product_name,
+                "calling_no": campaign.calling_no,
+                "status": campaign.status,
+                "contacts": campaign.contact_count,
+                "progress": progress,
+                "created_at": campaign.created_at.replace(
+                    tzinfo=timezone.utc
+                ).isoformat(),
+            }
+        )
+
+    return {"items": rows, "pagination": {"total": total, "skip": skip, "limit": limit}}
+
+
 def get_campaign(db: Session, campaign_id: int):
 
     campaign = (
@@ -208,7 +210,7 @@ def get_campaign(db: Session, campaign_id: int):
         .options(
             joinedload(CallCampaign.contacts),
             joinedload(CallCampaign.schedule),
-            joinedload(CallCampaign.instant_replies)
+            joinedload(CallCampaign.instant_replies),
         )
         .filter(CallCampaign.id == campaign_id)
         .first()
@@ -235,91 +237,91 @@ def get_campaign(db: Session, campaign_id: int):
         "agent_id": campaign.agent_id,
         "calling_no": campaign.calling_no,
         "product_id": campaign.product_id,
-
         "contacts": [c.contact_id for c in campaign.contacts],
-
         "start_datetime": schedule.start_datetime if schedule else None,
         "end_datetime": schedule.end_datetime if schedule else None,
         "timezone": schedule.timezone if schedule else None,
         "call_start_time": schedule.call_start_time if schedule else None,
         "call_end_time": schedule.call_end_time if schedule else None,
         "call_interval": schedule.call_interval if schedule else None,
-
-        "active_days": schedule.active_days.split(",") if schedule and schedule.active_days else [],
-
+        "active_days": (
+            schedule.active_days.split(",") if schedule and schedule.active_days else []
+        ),
         "max_retry_attempts": schedule.max_retry_attempts if schedule else None,
         "retry_interval": schedule.retry_interval if schedule else None,
-
         "retry_on_no_answer": schedule.retry_no_answer if schedule else None,
         "retry_on_busy": schedule.retry_busy if schedule else None,
         "retry_on_voicemail": schedule.retry_voicemail if schedule else None,
-
         "instant_reply": len(instant_reply_modes) > 0,
         "instant_reply_modes": instant_reply_modes,
-        "instant_reply_templates": instant_reply_templates
+        "instant_reply_templates": instant_reply_templates,
     }
-    
-def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign_id: int):
+
+
+def get_campaign_detail(
+    background_tasks: BackgroundTasks, db: Session, campaign_id: int
+):
     campaign = (
-        db.query(
-            CallCampaign,
-            Product.name.label("product_name"),
-            CampaignSchedule
-        )
-        .options(
-            joinedload(CallCampaign.instant_replies)  # ✅ IMPORTANT
-        )
+        db.query(CallCampaign, Product.name.label("product_name"), CampaignSchedule)
+        .options(joinedload(CallCampaign.instant_replies))  # ✅ IMPORTANT
         .outerjoin(Product, Product.id == CallCampaign.product_id)
         .outerjoin(CampaignSchedule, CampaignSchedule.campaign_id == CallCampaign.id)
-        .outerjoin(CallCampaignInstantReply, CallCampaignInstantReply.call_campaign_id == CallCampaign.id)
-        .outerjoin(MessageTemplate, MessageTemplate.id == CallCampaignInstantReply.template_id)
-        .filter(
-            CallCampaign.id == campaign_id,
-            CallCampaign.is_deleted == False
+        .outerjoin(
+            CallCampaignInstantReply,
+            CallCampaignInstantReply.call_campaign_id == CallCampaign.id,
         )
+        .outerjoin(
+            MessageTemplate, MessageTemplate.id == CallCampaignInstantReply.template_id
+        )
+        .filter(CallCampaign.id == campaign_id, CallCampaign.is_deleted == False)
         .first()
     )
 
     if not campaign:
         return None
-    
+
     campaign_obj, product_name, schedule = campaign
-     
+
     echolead_client = EcholeadsClient(campaign_obj.organization_id)
     background_tasks.add_task(
-            sync_campaign_from_echoleads,
-            db,
-            echolead_client,
-            campaign_obj.id
+        sync_campaign_from_echoleads, db, echolead_client, campaign_obj.id
     )
-    
-    send_option = "scheduled" if schedule and (schedule.start_datetime or schedule.active_days) else "instant"
 
-        # Total contacts
-    total_contacts = db.query(CampaignContact).filter(
-        CampaignContact.campaign_id == campaign_id
-    ).count()
-    
+    send_option = (
+        "scheduled"
+        if schedule and (schedule.start_datetime or schedule.active_days)
+        else "instant"
+    )
+
+    # Total contacts
+    total_contacts = (
+        db.query(CampaignContact)
+        .filter(CampaignContact.campaign_id == campaign_id)
+        .count()
+    )
+
     attempted_calls = (
         db.query(CallLog)
         .filter(
-            CallLog.campaign_id == campaign_id, 
+            CallLog.campaign_id == campaign_id,
             CallLog.source == "campaign_call",
-            CallLog.status == "ended"
+            CallLog.status == "ended",
         )
         .count()
     )
-    
+
     successful_calls = (
         db.query(CallLog)
         .join(CallTranscript, CallTranscript.call_log_id == CallLog.id)
         .filter(CallLog.campaign_id == campaign_id, CallLog.source == "campaign_call")
         .count()
     )
-    
+
     rescheduled_calls = (
         db.query(CallLog)
-        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "rescheduled_call")
+        .filter(
+            CallLog.campaign_id == campaign_id, CallLog.source == "rescheduled_call"
+        )
         .count()
     )
 
@@ -328,13 +330,13 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         .filter(
             CampaignContact.campaign_id == campaign_id,
             ~exists().where(
-                (CallLog.campaign_id == campaign_id) &
-                (CallLog.contact_id == CampaignContact.contact_id)
-            )
+                (CallLog.campaign_id == campaign_id)
+                & (CallLog.contact_id == CampaignContact.contact_id)
+            ),
         )
         .count()
     )
-    
+
     instant_reply_modes = []
     instant_reply_templates = {}
 
@@ -342,34 +344,29 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         instant_reply_modes.append(reply.mode)
         instant_reply_templates[reply.mode] = {
             "template_id": reply.template_id,
-            "name": reply.template.name if reply.template else None
+            "name": reply.template.name if reply.template else None,
         }
 
     return {
         "id": campaign_obj.id,
         "name": campaign_obj.name,
         "category": campaign_obj.category,
-
         "send_option": send_option,
-
         "scheduled_at": schedule.start_datetime if schedule else None,
         "timezone": schedule.timezone if schedule else None,
         "call_start_time": schedule.call_start_time if schedule else None,
         "call_end_time": schedule.call_end_time if schedule else None,
         "call_interval": schedule.call_interval if schedule else None,
         "active_days": schedule.active_days if schedule else None,
-
         "agent_name": campaign_obj.agent.name,
         "calling_no": campaign_obj.calling_no,
         "product_name": product_name,
-
         "status": campaign_obj.status,
         "created_at": campaign_obj.created_at,
         "total_calls": campaign_obj.total_calls,
         "completed_calls": campaign_obj.completed_calls,
         "success_rate": campaign_obj.success_rate,
         "response_rate": campaign_obj.response_rate,
-
         "total_contacts": total_contacts,
         "attempted_calls": attempted_calls or 0,
         "successful_calls": successful_calls or 0,
@@ -377,22 +374,30 @@ def get_campaign_detail(background_tasks: BackgroundTasks, db: Session, campaign
         "pending_scheduled_calls": pending_scheduled_calls,
         "instant_reply": len(instant_reply_modes) > 0,
         "instant_reply_modes": instant_reply_modes,
-        "instant_reply_templates": instant_reply_templates
+        "instant_reply_templates": instant_reply_templates,
     }
-    
-def get_workflow_history(db : Session, campaign_id : int, contact_id : int):
 
-    execution = db.query(WorkflowExecution).filter(
-        WorkflowExecution.campaign_id == campaign_id,
-        WorkflowExecution.contact_id == contact_id
-    ).first()
+
+def get_workflow_history(db: Session, campaign_id: int, contact_id: int):
+
+    execution = (
+        db.query(WorkflowExecution)
+        .filter(
+            WorkflowExecution.campaign_id == campaign_id,
+            WorkflowExecution.contact_id == contact_id,
+        )
+        .first()
+    )
 
     if not execution:
         return []
 
-    logs = db.query(WorkflowExecutionLog).filter(
-        WorkflowExecutionLog.execution_id == execution.id
-    ).order_by(WorkflowExecutionLog.created_at.asc()).all()
+    logs = (
+        db.query(WorkflowExecutionLog)
+        .filter(WorkflowExecutionLog.execution_id == execution.id)
+        .order_by(WorkflowExecutionLog.created_at.asc())
+        .all()
+    )
 
     return [
         {
@@ -405,45 +410,42 @@ def get_workflow_history(db : Session, campaign_id : int, contact_id : int):
             "outcome": (log.event_metadata or {}).get("outcome"),
             "scheduled_at": (log.event_metadata or {}).get("scheduled_at"),
             "reason": (log.event_metadata or {}).get("reason"),
+            "error": (log.event_metadata or {}).get("error"),
             "time": log.created_at,
         }
         for log in logs
     ]
-    
+
+
 def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
-    org = db.query(Organization).filter(
-        Organization.id == organization_id
-    ).first()
-    
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+
     contacts_count = len(data.contacts)
     retries = data.max_retry_attempts or 0
 
     calls_needed = contacts_count * (1 + retries)
-    
+
     if data.start_datetime or data.active_days:
         send_option = "schedule"
     else:
         send_option = "instant"
-    
-    organization_channel_service.validate_channel_available(db, organization_id, "campaign")
+
+    organization_channel_service.validate_channel_available(
+        db, organization_id, "campaign"
+    )
 
     valid = organization_credit_service.validate_feature_usage(
-        db,
-        org.id,
-        FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-        calls_needed
+        db, org.id, FeatureCodes.CORE_CALL_OUT_ATTEMPT, calls_needed
     )
-    
+
     if not valid:
         raise HTTPException(
             status_code=400,
-            detail="Insufficient credits. Please add more credits to continue."
-        )            
-            
-    agent = db.query(CallingAgent).filter(
-            CallingAgent.id == data.agent_id
-        ).first()
-    
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
+
+    agent = db.query(CallingAgent).filter(CallingAgent.id == data.agent_id).first()
+
     unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
 
     campaign = CallCampaign(
@@ -455,10 +457,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         priority=data.priority,
         agent_id=data.agent_id,
         product_id=data.product_id,
-        status= "draft",
-        external_campaign_name= unique_campaign_code,
-        instant_reply= data.instant_reply,
-        workflow_id=data.workflow_id
+        status="draft",
+        external_campaign_name=unique_campaign_code,
+        instant_reply=data.instant_reply,
+        workflow_id=data.workflow_id,
     )
 
     db.add(campaign)
@@ -466,18 +468,17 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
 
     # contacts
     for contact_id in data.contacts:
-        db.add(
-            CampaignContact(
-                campaign_id=campaign.id,
-                contact_id=contact_id
-            )
-        )
+        db.add(CampaignContact(campaign_id=campaign.id, contact_id=contact_id))
 
     # schedule
     schedule = CampaignSchedule(
         campaign_id=campaign.id,
-        start_datetime=datetime.fromisoformat(data.start_datetime) if data.start_datetime else None,
-        end_datetime=datetime.fromisoformat(data.end_datetime) if data.end_datetime else None,
+        start_datetime=(
+            datetime.fromisoformat(data.start_datetime) if data.start_datetime else None
+        ),
+        end_datetime=(
+            datetime.fromisoformat(data.end_datetime) if data.end_datetime else None
+        ),
         timezone=data.timezone,
         call_start_time=data.call_start_time,
         call_end_time=data.call_end_time,
@@ -487,10 +488,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         retry_interval=data.retry_interval,
         retry_no_answer=data.retry_on_no_answer,
         retry_busy=data.retry_on_busy,
-        retry_voicemail=data.retry_on_voicemail
+        retry_voicemail=data.retry_on_voicemail,
     )
     db.add(schedule)
-    
+
     if data.instant_reply and data.instant_reply_modes:
 
         for mode in data.instant_reply_modes:
@@ -504,25 +505,21 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
 
             elif mode == "email" and data.instant_reply_templates:
                 template_id = data.instant_reply_templates.email
-                
+
             if template_id:
                 db.add(
                     CallCampaignInstantReply(
-                        call_campaign_id=campaign.id,
-                        mode=mode,
-                        template_id=template_id
+                        call_campaign_id=campaign.id, mode=mode, template_id=template_id
                     )
                 )
-    
+
     client = EcholeadsClient(organization_id)
     external_contact_ids = get_external_contact_ids(db, data.contacts, client)
-    
-    contacts = db.query(Contact).filter(
-        Contact.id.in_(data.contacts)
-    ).all()
-    
+
+    contacts = db.query(Contact).filter(Contact.id.in_(data.contacts)).all()
+
     contacts_payload = build_contacts_payload(contacts, agent)
-    
+
     dialer_start_date = None
     dialer_end_date = None
     schedule_date = None
@@ -535,7 +532,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
 
     if data.end_datetime:
         dialer_end_date = data.end_datetime.split("T")[0]
-        
+
     # Active Days Selected
     if data.active_days and not data.start_datetime:
         today = datetime.utcnow().date()
@@ -543,10 +540,10 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
 
         dialer_start_date = today.isoformat()
         dialer_end_date = ten_years_later.isoformat()
-        
+
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
-    
+
     payload = {
         "campaign_name": unique_campaign_code,
         "agent_id": agent.external_agent_id,
@@ -563,17 +560,16 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         "retries": data.max_retry_attempts,
         "retry_after": data.retry_interval,
         "contacts": contacts_payload,
-        "dialer_schedule_days": build_schedule_days(data)
+        "dialer_schedule_days": build_schedule_days(data),
     }
 
-    
     echo_failed = False
     echoleads_campaign_id = None
     echoleads_campaign_status = "draft"
     try:
         print("Create campaign payload:", payload)
         echo_response = client.create_campaign(payload)
-        
+
         if echo_response and "campaign" in echo_response:
             echoleads_campaign_id = echo_response["campaign"]["id"]
             echoleads_campaign_status = echo_response["campaign"]["status"]
@@ -582,69 +578,72 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     except Exception as e:
         print(f"EchoLeads API failed: {str(e)}")
         echo_failed = True
-        
+
     campaign.status = echoleads_campaign_status
     campaign.external_campaign_id = echoleads_campaign_id
-    db.flush() 
-    
+    db.flush()
+
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
-        
+
         organization_credit_service.reserve_credits(
             db=db,
             organization_id=agent.organization_id,
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=str(campaign.id)
-        )     
+            reference_id=str(campaign.id),
+        )
     else:
         message = "Campaign created successfully"
-        
+
         organization_credit_service.deduct_credits(
             db=db,
             organization_id=agent.organization_id,
             feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
             quantity=calls_needed,
             reference_type="call_campaign",
-            reference_id=str(campaign.id)
+            reference_id=str(campaign.id),
         )
-        
+
         organization_channel_service.reserve_channel(
             db,
             organization_id=agent.organization_id,
             call_type="campaign",
-            reference_id=campaign.id
+            reference_id=campaign.id,
         )
-            
-        
-    db.commit()    
+
+    db.commit()
 
     return {
         "message": message,
         "campaign_id": campaign.id,
-        "echoleads_campaign_id": echoleads_campaign_id
+        "echoleads_campaign_id": echoleads_campaign_id,
     }
+
 
 def update_campaign(
     db: Session,
     campaign_id: int,
     data: CampaignUpdate,
 ):
-    
-    campaign = db.query(CallCampaign).filter(
-        CallCampaign.id == campaign_id,
-        CallCampaign.is_deleted == False
-    ).first()
+
+    campaign = (
+        db.query(CallCampaign)
+        .filter(CallCampaign.id == campaign_id, CallCampaign.is_deleted == False)
+        .first()
+    )
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    
+
     client = EcholeadsClient(campaign.organization_id)
-    
-    org = db.query(Organization).filter(
-        Organization.id == campaign.organization_id
-    ).first()
+
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == campaign.organization_id)
+        .first()
+    )
 
     update_data = data.dict(exclude_unset=True)
 
@@ -657,14 +656,16 @@ def update_campaign(
     # Fetch agent external id if agent updated
     agent = None
     if "agent_id" in update_data:
-        agent = db.query(CallingAgent).filter(
-            CallingAgent.id == update_data["agent_id"]
-        ).first()
+        agent = (
+            db.query(CallingAgent)
+            .filter(CallingAgent.id == update_data["agent_id"])
+            .first()
+        )
     else:
-        agent = db.query(CallingAgent).filter(
-            CallingAgent.id == campaign.agent_id
-        ).first()
-        
+        agent = (
+            db.query(CallingAgent).filter(CallingAgent.id == campaign.agent_id).first()
+        )
+
     # update contacts (DB + external)
     external_contact_ids = None
     if data.contacts is not None:
@@ -674,22 +675,15 @@ def update_campaign(
         ).delete()
 
         for contact_id in data.contacts:
-            db.add(
-                CampaignContact(
-                    campaign_id=campaign_id,
-                    contact_id=contact_id
-                )
-            )
+            db.add(CampaignContact(campaign_id=campaign_id, contact_id=contact_id))
 
         # get external ids
         external_contact_ids = get_external_contact_ids(db, data.contacts, client)
-        
-    contacts = db.query(Contact).filter(
-        Contact.id.in_(data.contacts)
-    ).all()
-    
+
+    contacts = db.query(Contact).filter(Contact.id.in_(data.contacts)).all()
+
     contacts_payload = build_contacts_payload(contacts, agent)
-    
+
     dialer_start_date = None
     dialer_end_date = None
     schedule_date = None
@@ -702,7 +696,7 @@ def update_campaign(
 
     if data.end_datetime:
         dialer_end_date = data.end_datetime.split("T")[0]
-        
+
     # Active Days Selected
     if data.active_days and not data.start_datetime:
         today = datetime.utcnow().date()
@@ -710,16 +704,17 @@ def update_campaign(
 
         dialer_start_date = today.isoformat()
         dialer_end_date = ten_years_later.isoformat()
-        
+
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
-        
+
     pattern = rf"^ORG{org.id}CAM[A-F0-9]{{5}}$"
     unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
-    if not campaign.external_campaign_name or not re.match(pattern, campaign.external_campaign_name):
+    if not campaign.external_campaign_name or not re.match(
+        pattern, campaign.external_campaign_name
+    ):
         campaign.external_campaign_name = unique_campaign_code
-        
-        
+
     payload = {
         "campaign_name": campaign.external_campaign_name,
         "agent_id": agent.external_agent_id if agent else None,
@@ -735,25 +730,21 @@ def update_campaign(
         "contact_ids": external_contact_ids,
         "retries": data.max_retry_attempts,
         "retry_after": data.retry_interval,
-        "dialer_schedule_days": build_schedule_days(data)
+        "dialer_schedule_days": build_schedule_days(data),
     }
-    
+
     print("Update campaign payload:", payload)
 
     if external_contact_ids is not None:
         payload["contact_ids"] = external_contact_ids
         payload["contacts"] = contacts_payload
-        
+
     print(payload)
 
-    
     echo_failed = False
     try:
-        response = client.update_campaign(
-            campaign.external_campaign_id,
-            payload
-        )
-        
+        response = client.update_campaign(campaign.external_campaign_id, payload)
+
         if response and "campaign" in response:
             campaign.status = response["campaign"].get("status", campaign.status)
     except Exception as e:
@@ -761,14 +752,23 @@ def update_campaign(
         echo_failed = False
 
     # update basic fields
-    for field in ["name", "description", "category", "priority", "agent_id", "calling_no"]:
+    for field in [
+        "name",
+        "description",
+        "category",
+        "priority",
+        "agent_id",
+        "calling_no",
+    ]:
         if field in update_data:
             setattr(campaign, field, update_data[field])
 
     # update schedule
-    schedule = db.query(CampaignSchedule).filter(
-        CampaignSchedule.campaign_id == campaign_id
-    ).first()
+    schedule = (
+        db.query(CampaignSchedule)
+        .filter(CampaignSchedule.campaign_id == campaign_id)
+        .first()
+    )
 
     if not schedule:
         schedule = CampaignSchedule(campaign_id=campaign_id)
@@ -776,7 +776,7 @@ def update_campaign(
 
     if data.start_datetime is not None:
         schedule.start_datetime = datetime.fromisoformat(data.start_datetime)
-        
+
     if data.end_datetime is not None:
         schedule.end_datetime = datetime.fromisoformat(data.end_datetime)
 
@@ -809,7 +809,7 @@ def update_campaign(
 
     if data.retry_on_voicemail is not None:
         schedule.retry_voicemail = data.retry_on_voicemail
-        
+
     if data.instant_reply is not None:
 
         # Delete existing replies
@@ -834,7 +834,7 @@ def update_campaign(
                 elif mode == "email" and templates:
                     template_id = templates.email
 
-                if template_id:   
+                if template_id:
                     db.add(
                         CallCampaignInstantReply(
                             call_campaign_id=campaign_id,
@@ -842,46 +842,51 @@ def update_campaign(
                             template_id=template_id,
                         )
                     )
-    
+
     if echo_failed:
         message = "Campaign updated successfully, but sync failed. Please reload the list to sync the campaign."
     else:
         message = "Campaign updated successfully"
-        
-        if send_option == "instant" :
+
+        if send_option == "instant":
             organization_channel_service.reserve_channel(
                 db,
                 organization_id=agent.organization_id,
                 call_type="campaign",
-                reference_id=campaign.id
+                reference_id=campaign.id,
             )
-        
+
     db.commit()
 
     return {
         "success": echo_failed == False,
         "message": message,
-        "campaign_id": campaign.id
+        "campaign_id": campaign.id,
     }
+
 
 def build_schedule_days(data):
     schedule_days = {}
 
     DAY_MAP = {
-        "mon": "mon", "monday": "mon",
-        "tue": "tue", "tuesday": "tue",
-        "wed": "wed", "wednesday": "wed",
-        "thu": "thu", "thursday": "thu",
-        "fri": "fri", "friday": "fri",
-        "sat": "sat", "saturday": "sat",
-        "sun": "sun", "sunday": "sun",
+        "mon": "mon",
+        "monday": "mon",
+        "tue": "tue",
+        "tuesday": "tue",
+        "wed": "wed",
+        "wednesday": "wed",
+        "thu": "thu",
+        "thursday": "thu",
+        "fri": "fri",
+        "friday": "fri",
+        "sat": "sat",
+        "saturday": "sat",
+        "sun": "sun",
+        "sunday": "sun",
     }
 
-    active_days = [
-        DAY_MAP.get(day.lower())
-        for day in (data.active_days or [])
-    ]
-    
+    active_days = [DAY_MAP.get(day.lower()) for day in (data.active_days or [])]
+
     print("start date and end date:", data.start_datetime, data.end_datetime)
 
     if data.start_datetime and data.end_datetime:
@@ -898,7 +903,7 @@ def build_schedule_days(data):
 
             schedule_days[date_key] = {
                 "startTime": data.call_start_time if is_active else None,
-                "endTime": data.call_end_time if is_active else None
+                "endTime": data.call_end_time if is_active else None,
             }
 
             current += timedelta(days=1)
@@ -908,46 +913,47 @@ def build_schedule_days(data):
             for day in active_days:
                 schedule_days[day] = {
                     "startTime": data.call_start_time,
-                    "endTime": data.call_end_time
+                    "endTime": data.call_end_time,
                 }
 
     return schedule_days
+
 
 def delete_campaign(
     db: Session,
     campaign_id: int,
 ):
 
-    campaign = db.query(CallCampaign).filter(
-        CallCampaign.id == campaign_id,
-        CallCampaign.is_deleted == False
-    ).first()
+    campaign = (
+        db.query(CallCampaign)
+        .filter(CallCampaign.id == campaign_id, CallCampaign.is_deleted == False)
+        .first()
+    )
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    
-    
+
     if campaign.status not in ["draft", "completed"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted."
+            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted.",
         )
-    
 
     campaign.is_deleted = True
-    
+
     organization_credit_service.release_reserved_credits(
-        db=db,
-        reference_type="call_campaign",
-        reference_id=str(campaign.id)
+        db=db, reference_type="call_campaign", reference_id=str(campaign.id)
     )
 
     db.commit()
 
     return {"message": "Campaign deleted"}
 
+
 def build_contacts_payload(contacts, agent):
-    placeholders = extract_placeholders(agent.greeting) | extract_placeholders(agent.prompt)
+    placeholders = extract_placeholders(agent.greeting) | extract_placeholders(
+        agent.prompt
+    )
     payload = []
 
     for contact in contacts:
@@ -960,21 +966,19 @@ def build_contacts_payload(contacts, agent):
                 if field == "name" and value:
                     value = value.split()[0]
 
-                other_fields.append({
-                    "field": field,
-                    "value": value or "",
-                    "mergeField": field
-                })
+                other_fields.append(
+                    {"field": field, "value": value or "", "mergeField": field}
+                )
 
-        payload.append({
-            "id": contact.external_contact_id,
-            "other_fields": other_fields
-        })
+        payload.append(
+            {"id": contact.external_contact_id, "other_fields": other_fields}
+        )
 
     return payload
 
 
 #### Campaign Contacts
+
 
 def get_contacts_by_ids(db: Session, ids: list[int]):
     contacts = (
@@ -982,27 +986,28 @@ def get_contacts_by_ids(db: Session, ids: list[int]):
         .filter(Contact.id.in_(ids), Contact.phone.isnot(None), Contact.phone != "")
         .all()
     )
-    
+
     return [
-            {
-                "id": row.id,
-                "label": f"{row.name} ({row.phone})",
-                "name": row.name,
-                "email": row.email,
-                "phone": row.phone,
-                "company": row.company,
-                "contact_list_id": row.contact_list_id,
-                "created_at": row.created_at,
-            }
-            for row in contacts
-        ]
+        {
+            "id": row.id,
+            "label": f"{row.name} ({row.phone})",
+            "name": row.name,
+            "email": row.email,
+            "phone": row.phone,
+            "company": row.company,
+            "contact_list_id": row.contact_list_id,
+            "created_at": row.created_at,
+        }
+        for row in contacts
+    ]
+
 
 def get_contacts(
     db: Session,
     organization_id: int,
     search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 50
+    limit: int = 50,
 ):
 
     query = (
@@ -1017,14 +1022,14 @@ def get_contacts(
     if search:
         search_term = f"%{search.strip()}%"
         query = query.filter(
-            Contact.name.ilike(search_term) |
-            Contact.email.ilike(search_term) |
-            Contact.phone.ilike(search_term) |
-            Contact.company.ilike(search_term) |
-            Contact.whatsapp_number.ilike(search_term) |
-            Contact.designation.ilike(search_term) |
-            Contact.item_name.ilike(search_term) |
-            Contact.item_category.ilike(search_term)
+            Contact.name.ilike(search_term)
+            | Contact.email.ilike(search_term)
+            | Contact.phone.ilike(search_term)
+            | Contact.company.ilike(search_term)
+            | Contact.whatsapp_number.ilike(search_term)
+            | Contact.designation.ilike(search_term)
+            | Contact.item_name.ilike(search_term)
+            | Contact.item_category.ilike(search_term)
         )
 
     # ---------------------------
@@ -1035,13 +1040,7 @@ def get_contacts(
     # ---------------------------
     # Pagination
     # ---------------------------
-    rows = (
-        query
-        .order_by(Contact.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    rows = query.order_by(Contact.created_at.desc()).offset(skip).limit(limit).all()
 
     # ---------------------------
     # Response
@@ -1051,7 +1050,9 @@ def get_contacts(
             {
                 "id": row.id,
                 "contact_list_id": row.contact_list_id,
-                "contact_list_name": row.contact_list.list_name if row.contact_list else None,
+                "contact_list_name": (
+                    row.contact_list.list_name if row.contact_list else None
+                ),
                 "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})",
                 "name": row.name,
                 "email": row.email,
@@ -1082,15 +1083,17 @@ def get_contacts(
             "limit": limit,
         },
     }
-    
+
+
 def get_contacts_lookup(db: Session, organization_id: int):
     print(f"organization {organization_id}")
     rows = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
-        .filter(ContactList.organization_id == organization_id, 
-                Contact.phone.isnot(None), 
-                func.trim(Contact.phone) != ""
+        .filter(
+            ContactList.organization_id == organization_id,
+            Contact.phone.isnot(None),
+            func.trim(Contact.phone) != "",
         )
         .order_by(Contact.name.asc())
         .all()
@@ -1105,28 +1108,34 @@ def get_contacts_lookup(db: Session, organization_id: int):
             "phone": row.phone,
             "company": row.company,
             "contact_list_id": row.contact_list_id,
-            "contact_list_name": row.contact_list.list_name
+            "contact_list_name": row.contact_list.list_name,
         }
         for row in rows
     ]
 
 
 def get_contact_lists(db: Session, organization_id: int):
-    return db.query(ContactList).filter(ContactList.organization_id == organization_id).all()
+    return (
+        db.query(ContactList)
+        .filter(ContactList.organization_id == organization_id)
+        .all()
+    )
+
 
 def create_contact(db: Session, data: ContactCreate):
-    existing = db.query(Contact).filter(
-        Contact.contact_list_id == data.contact_list_id,
-        or_(
-            Contact.phone == data.phone,
-            Contact.email == data.email
+    existing = (
+        db.query(Contact)
+        .filter(
+            Contact.contact_list_id == data.contact_list_id,
+            or_(Contact.phone == data.phone, Contact.email == data.email),
         )
-    ).first()
+        .first()
+    )
 
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Contact with phone {data.phone} or email {data.email} already exists in this list"
+            detail=f"Contact with phone {data.phone} or email {data.email} already exists in this list",
         )
 
     contact = Contact(**data.dict())
@@ -1136,7 +1145,7 @@ def create_contact(db: Session, data: ContactCreate):
 
     return {
         **contact.__dict__,
-         "label": f"{contact.contact_list.list_name} - {contact.name} ({contact.phone})",
+        "label": f"{contact.contact_list.list_name} - {contact.name} ({contact.phone})",
     }
 
 
@@ -1145,19 +1154,20 @@ def update_contact(db: Session, contact_id: int, data: ContactCreate):
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    existing = db.query(Contact).filter(
-        Contact.contact_list_id == data.contact_list_id,
-        Contact.id != contact_id,
-        or_(
-            Contact.phone == data.phone,
-            Contact.email == data.email
+    existing = (
+        db.query(Contact)
+        .filter(
+            Contact.contact_list_id == data.contact_list_id,
+            Contact.id != contact_id,
+            or_(Contact.phone == data.phone, Contact.email == data.email),
         )
-    ).first()
+        .first()
+    )
 
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Another contact with phone {data.phone} or email {data.email} already exists in this list"
+            detail=f"Another contact with phone {data.phone} or email {data.email} already exists in this list",
         )
 
     # Update fields
@@ -1168,6 +1178,7 @@ def update_contact(db: Session, contact_id: int, data: ContactCreate):
     db.refresh(contact)
     return contact
 
+
 def update_campaign_status(
     db: Session,
     campaign_id: int,
@@ -1176,80 +1187,84 @@ def update_campaign_status(
     # Get the agent
     campaign = db.query(CallCampaign).filter(CallCampaign.id == campaign_id).first()
     client = EcholeadsClient(campaign.organization_id)
-    
+
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    
+
     if not campaign.external_campaign_id:
-        raise HTTPException(status_code=404, detail="Campaign not sync, kindly refresh the campaign list")
+        raise HTTPException(
+            status_code=404,
+            detail="Campaign not sync, kindly refresh the campaign list",
+        )
 
     # If pausing, check for active campaigns
     if data.status.lower() == "paused":
-        if campaign.status !=  "running":
+        if campaign.status != "running":
             raise HTTPException(
-                status_code=400,
-                detail=f"Only running campaign can be paused"
+                status_code=400, detail=f"Only running campaign can be paused"
             )
     elif data.status.lower() == "running":
-        if campaign.status !=  "paused":
+        if campaign.status != "paused":
             raise HTTPException(
-                status_code=400,
-                detail=f"Only paused campaign can be started"
+                status_code=400, detail=f"Only paused campaign can be started"
             )
     elif data.status.lower() == "cancelled":
         if campaign.status not in ("paused", "running"):
             raise HTTPException(
-                status_code=400,
-                detail=f"Only running/paused campaign can be cancelled"
+                status_code=400, detail=f"Only running/paused campaign can be cancelled"
             )
-        #SYNC LATEST CAMPAIGN DETAILS
+        # SYNC LATEST CAMPAIGN DETAILS
         try:
             sync_campaign_from_echoleads(db, client, campaign.id)
         except Exception as e:
             print(f"EchoLeads Campaign Sync API failed: {str(e)}")
             echo_success = False
-            
-            
+
     payload = {
-        "status": "paused" if data.status.lower() == "cancelled" else data.status 
+        "status": "paused" if data.status.lower() == "cancelled" else data.status
     }
-    
+
     echo_success = True
     try:
-        
-        if data.status.lower() in ("paused", "cancelled"): 
-            response = client.update_campaign(
-                campaign.external_campaign_id,
-                payload
-            )
-            
+
+        if data.status.lower() in ("paused", "cancelled"):
+            response = client.update_campaign(campaign.external_campaign_id, payload)
+
             if response and "campaign" in response:
                 echo_status = response["campaign"].get("status", campaign.status)
-                campaign.status = "cancelled" if data.status.lower() == "cancelled" else echo_status
+                campaign.status = (
+                    "cancelled" if data.status.lower() == "cancelled" else echo_status
+                )
             else:
                 echo_success = False
         else:
             response = client.start_campaign(campaign.external_campaign_id)
             campaign.status = "running"
-        
+
     except Exception as e:
         print(f"EchoLeads API failed: {str(e)}")
         echo_success = False
-        
-    
+
     if echo_success and data.status.lower() == "cancelled":
-        total_campaign_call_made =  db.query(func.count(func.distinct(CallLog.id))).filter(
-                CallLog.campaign_id == campaign.id
-        ).scalar() or 0
-        
+        total_campaign_call_made = (
+            db.query(func.count(func.distinct(CallLog.id)))
+            .filter(CallLog.campaign_id == campaign.id)
+            .scalar()
+            or 0
+        )
+
         pending_calls = campaign.total_calls - total_campaign_call_made
-        
+
         if pending_calls > 0:
-            existing_refund = db.query(OrganizationCreditUsage).filter(
-                OrganizationCreditUsage.reference_id == str(campaign.id),
-                OrganizationCreditUsage.status == "refunded"
-            ).first()
-             
+            existing_refund = (
+                db.query(OrganizationCreditUsage)
+                .filter(
+                    OrganizationCreditUsage.reference_id == str(campaign.id),
+                    OrganizationCreditUsage.status == "refunded",
+                )
+                .first()
+            )
+
             if not existing_refund:
                 organization_credit_service.refund_credits(
                     db=db,
@@ -1257,14 +1272,13 @@ def update_campaign_status(
                     feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
                     quantity=pending_calls,
                     reference_type="call_campaign",
-                    reference_id=str(campaign.id)
+                    reference_id=str(campaign.id),
                 )
-    
+
     db.commit()
     db.refresh(campaign)
-    
+
     status = data.status.lower()
-    
 
     if status == "paused":
         error_status_code = "pause"
@@ -1276,57 +1290,44 @@ def update_campaign_status(
         error_status_code = "update"
 
     return {
-        "message": "Campaign status updated" if echo_success else f"Failed to {error_status_code} the campaign",
+        "message": (
+            "Campaign status updated"
+            if echo_success
+            else f"Failed to {error_status_code} the campaign"
+        ),
         "agent_id": campaign.id,
         "status": campaign.status,
-        "success": echo_success
+        "success": echo_success,
     }
-    
-def campaign_lookup(
-    db: Session, 
-    organization_id: int,
-    params: CampaignLookupParameters):
 
-    query = db.query(
-        CallCampaign.id,
-        CallCampaign.name
-    ).filter(
-        CallCampaign.organization_id == organization_id, 
+
+def campaign_lookup(
+    db: Session, organization_id: int, params: CampaignLookupParameters
+):
+
+    query = db.query(CallCampaign.id, CallCampaign.name).filter(
+        CallCampaign.organization_id == organization_id,
         CallCampaign.is_deleted == False,
     )
 
     if params.search:
-        query = query.filter(
-            CallCampaign.name.ilike(f"%{params.search}%")
-        )
-        
+        query = query.filter(CallCampaign.name.ilike(f"%{params.search}%"))
+
     if params.agent_id:
-        query = query.filter(
-            CallCampaign.agent_id == params.agent_id
-        )
-        
+        query = query.filter(CallCampaign.agent_id == params.agent_id)
 
     campaigns = query.order_by(CallCampaign.name.asc()).all()
 
-    return [
-        {
-            "id": campaign.id,
-            "name": campaign.name
-        }
-        for campaign in campaigns
-    ]
-    
-def get_campaign_analytics(
-    db: Session,
-    campaign_id: int,
-    organization_id: int
-):
+    return [{"id": campaign.id, "name": campaign.name} for campaign in campaigns]
+
+
+def get_campaign_analytics(db: Session, campaign_id: int, organization_id: int):
     campaign = (
         db.query(CallCampaign)
         .filter(
             CallCampaign.id == campaign_id,
             CallCampaign.organization_id == organization_id,
-            CallCampaign.is_deleted == False
+            CallCampaign.is_deleted == False,
         )
         .first()
     )
@@ -1335,26 +1336,28 @@ def get_campaign_analytics(
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     # Key Insights
-    key_insights = db.query(CampaignKeyInsight).filter(
-        CampaignKeyInsight.campaign_id == campaign_id
-    ).all()
+    key_insights = (
+        db.query(CampaignKeyInsight)
+        .filter(CampaignKeyInsight.campaign_id == campaign_id)
+        .all()
+    )
 
     # Sentiment
-    sentiments = db.query(CampaignSentiment).filter(
-        CampaignSentiment.campaign_id == campaign_id
-    ).all()
+    sentiments = (
+        db.query(CampaignSentiment)
+        .filter(CampaignSentiment.campaign_id == campaign_id)
+        .all()
+    )
 
     # AI Recommendations
-    ai_recommendations = db.query(CampaignAIRecommendation).filter(
-        CampaignAIRecommendation.campaign_id == campaign_id
-    ).all()
+    ai_recommendations = (
+        db.query(CampaignAIRecommendation)
+        .filter(CampaignAIRecommendation.campaign_id == campaign_id)
+        .all()
+    )
 
     # Convert sentiment list to object
-    sentiment_map = {
-        "positive": 0,
-        "neutral": 0,
-        "negative": 0
-    }
+    sentiment_map = {"positive": 0, "neutral": 0, "negative": 0}
 
     for s in sentiments:
         sentiment_map[s.sentiment] = s.rate
@@ -1367,18 +1370,21 @@ def get_campaign_analytics(
         "avg_duration": getattr(campaign, "avg_duration", "00:00"),
         "response_rate": f"{campaign.response_rate}%",
         "status": campaign.status,
-
         # Sentiment
         "sentiment": sentiment_map,
-
         # Timeline
         "timeline": {
-            "created_at": campaign.created_at.strftime("%m/%d/%Y, %I:%M %p")
-            if campaign.created_at else None,
-            "updated_at": campaign.updated_at.strftime("%m/%d/%Y, %I:%M %p")
-            if campaign.updated_at else None,
+            "created_at": (
+                campaign.created_at.strftime("%m/%d/%Y, %I:%M %p")
+                if campaign.created_at
+                else None
+            ),
+            "updated_at": (
+                campaign.updated_at.strftime("%m/%d/%Y, %I:%M %p")
+                if campaign.updated_at
+                else None
+            ),
         },
-
         # Key Insights
         "key_insights": [
             {
@@ -1386,28 +1392,24 @@ def get_campaign_analytics(
                 "value": f"{k.percentage}%",
                 "change": f"{k.change}%",
                 "description": k.description,
-                "color": get_insight_color(k.title)
+                "color": get_insight_color(k.title),
             }
             for k in key_insights
         ],
-
         # AI Recommendations
         "ai_recommendations": [
-            {
-                "title": r.recommendation,
-                "impact": r.impact_level
-            }
+            {"title": r.recommendation, "impact": r.impact_level}
             for r in ai_recommendations
         ],
-
         # Engagement
         "engagement": {
             "engagement_rate": campaign.response_rate,
             "conversion": campaign.success_rate,
-            "avg_call_time": getattr(campaign, "avg_duration", "00:00")
-        }
+            "avg_call_time": getattr(campaign, "avg_duration", "00:00"),
+        },
     }
-    
+
+
 def get_insight_color(title):
     title = title.lower()
 
@@ -1421,12 +1423,14 @@ def get_insight_color(title):
         return "orange"
 
     return "blue"
-    
-    
+
+
 ############### SYNC METHODS
 
 
-def get_external_contact_ids(db: Session, contact_ids: list[int], client: EcholeadsClient) -> list[int]:
+def get_external_contact_ids(
+    db: Session, contact_ids: list[int], client: EcholeadsClient
+) -> list[int]:
 
     external_contact_ids = []
 
@@ -1446,16 +1450,14 @@ def get_external_contact_ids(db: Session, contact_ids: list[int], client: Echole
         if contact.external_contact_id:
             external_contact_ids.append(contact.external_contact_id)
         else:
-            contacts_to_create.append({
-                "firstName": contact.name,
-                "phone": normalize_phone(contact.phone)
-            })
+            contacts_to_create.append(
+                {"firstName": contact.name, "phone": normalize_phone(contact.phone)}
+            )
             unsynced_contacts.append(contact)
 
     if contacts_to_create:
         response = client.create_contacts_bulk(contacts_to_create)
-        
-        
+
         print(response)
 
         if not response.get("success"):
@@ -1464,18 +1466,12 @@ def get_external_contact_ids(db: Session, contact_ids: list[int], client: Echole
         created_contacts = response.get("contacts", [])
         skipped_contacts = response.get("skipped", [])
 
-        created_map = {
-            normalize_phone(c["phone"]): c["id"]
-            for c in created_contacts
-        }
+        created_map = {normalize_phone(c["phone"]): c["id"] for c in created_contacts}
 
-        skipped_map = {
-            normalize_phone(c["phone"]): c["id"]
-            for c in skipped_contacts
-        }
+        skipped_map = {normalize_phone(c["phone"]): c["id"] for c in skipped_contacts}
 
         combined_map = {**created_map, **skipped_map}
-        
+
         for c in unsynced_contacts:
             print(c.id, c.name, c.phone)
 
@@ -1485,8 +1481,7 @@ def get_external_contact_ids(db: Session, contact_ids: list[int], client: Echole
 
             if not external_id:
                 raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to map contact {contact.phone}"
+                    status_code=500, detail=f"Failed to map contact {contact.phone}"
                 )
 
             contact.external_contact_id = external_id
@@ -1503,6 +1498,7 @@ def get_external_contact_ids(db: Session, contact_ids: list[int], client: Echole
 
     return unique_external_ids
 
+
 def normalize_phone(phone: str):
     if not phone:
         return None
@@ -1517,39 +1513,30 @@ def normalize_phone(phone: str):
 
 
 def sync_campaign_from_echoleads(
-    db: Session,
-    echolead_client: EcholeadsClient,
-    campaign_id: int
+    db: Session, echolead_client: EcholeadsClient, campaign_id: int
 ):
     try:
         # Fetch Campaign
-        campaign = db.query(CallCampaign).filter(
-            CallCampaign.id == campaign_id
-        ).first()
+        campaign = db.query(CallCampaign).filter(CallCampaign.id == campaign_id).first()
 
         if not campaign:
             return
-    
+
         if campaign.external_campaign_name and not campaign.external_campaign_id:
             response = echolead_client.get_campaign_by_name(
                 campaign.external_campaign_name
             )
             campaigns = response.get("campaigns", []) if response else []
             campaign_data = campaigns[0] if campaigns else None
-        elif  campaign.external_campaign_id:
-            response = echolead_client.get_campaign_by_id(
-                    campaign.external_campaign_id
-                )
+        elif campaign.external_campaign_id:
+            response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
             campaign_data = response.get("campaign") if response else None
-            
 
         if not campaign_data:
             if campaign.status == "draft":
                 organization_credit_service.release_reserved_credits(
-                db=db,
-                reference_type="call_campaign",
-                reference_id=campaign.id
-            )  
+                    db=db, reference_type="call_campaign", reference_id=campaign.id
+                )
             return
         else:
             if campaign.status == "draft":
@@ -1557,9 +1544,9 @@ def sync_campaign_from_echoleads(
                     db=db,
                     reference_type="call_campaign",
                     reference_id=campaign.id,
-                    actual_quantity=campaign.total_calls
+                    actual_quantity=campaign.total_calls,
                 )
-                
+
             if (
                 campaign.status == "scheduled"
                 and campaign_data.get("status", "").lower() == "running"
@@ -1568,15 +1555,17 @@ def sync_campaign_from_echoleads(
                     db,
                     organization_id=agent.organization_id,
                     call_type="campaign",
-                    reference_id=campaign.id
+                    reference_id=campaign.id,
                 )
-                
-                
 
         # -------------------------
         # Update Basic Campaign Data
         # -------------------------
-        campaign.status = "cancelled" if campaign.status == "cancelled" else campaign_data.get("status", campaign.status)
+        campaign.status = (
+            "cancelled"
+            if campaign.status == "cancelled"
+            else campaign_data.get("status", campaign.status)
+        )
         campaign.external_campaign_id = campaign_data.get(
             "id", campaign.external_campaign_id
         )
@@ -1592,10 +1581,12 @@ def sync_campaign_from_echoleads(
         # -------------------------
         for call in campaign_data.get("calls", []):
             agent_id = str(call.get("agent_id")) if call.get("agent_id") else None
-            
-            agent = db.query(CallingAgent).filter(
-                CallingAgent.external_agent_id == agent_id
-            ).first()
+
+            agent = (
+                db.query(CallingAgent)
+                .filter(CallingAgent.external_agent_id == agent_id)
+                .first()
+            )
 
             if agent:
                 process_call(call, agent)
@@ -1625,22 +1616,20 @@ def sync_campaign_from_echoleads(
                     title=insight.get("key_insights_title"),
                     description=insight.get("key_insights_desc"),
                     percentage=insight.get("key_insights_per"),
-                    change=insight.get("key_insights_updown")
+                    change=insight.get("key_insights_updown"),
                 )
             )
 
         # -------------------------
         # Sync Sentiment
         # -------------------------
-        for sentiment in campaign_data.get(
-            "campaign_sentiment_dists", []
-        ):
+        for sentiment in campaign_data.get("campaign_sentiment_dists", []):
             db.add(
                 CampaignSentiment(
                     campaign_id=campaign.id,
                     sentiment=sentiment.get("sentiment_info"),
                     rate=sentiment.get("sentiment_rate"),
-                    value=sentiment.get("sentiment_value")
+                    value=sentiment.get("sentiment_value"),
                 )
             )
 
@@ -1652,41 +1641,20 @@ def sync_campaign_from_echoleads(
                 CampaignAIRecommendation(
                     campaign_id=campaign.id,
                     recommendation=rec.get("recommendation"),
-                    impact_level=rec.get("impact_level")
+                    impact_level=rec.get("impact_level"),
                 )
             )
 
         db.commit()
-        
+
         if campaign.status == "completed":
-            # Case 1: Campaign has workflow → check executions
-            if campaign.workflow_id:
-
-                pending_execution_exists = db.query(
-                    exists().where(
-                        WorkflowExecution.campaign_id == campaign.id,
-                        WorkflowExecution.status.in_(["pending", "scheduled"])
-                    )
-                ).scalar()
-
-                if not pending_execution_exists:
-                    organization_channel_service.release_channel(
-                        db,
-                        call_type="campaign",
-                        reference_id=campaign.id
-                    )
-
-            # Case 2: No workflow → release immediately
-            else:
-                organization_channel_service.release_channel(
-                    db,
-                    call_type="campaign",
-                    reference_id=campaign.id
-                )
+            organization_channel_service.release_channel(
+                db, call_type="campaign", reference_id=campaign.id
+            )
 
     except Exception as e:
         print("Sync failed:", str(e))
-    
+
 
 def parse_datetime(dt):
     if not dt:

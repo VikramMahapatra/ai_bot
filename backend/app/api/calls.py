@@ -11,7 +11,6 @@ from app.models.call_campaigns import CallCampaign
 from app.models.call_logs import CallLog, CallTranscript
 import logging
 from app.database import get_db
-from app.services.call_log_service import sync_call_logs
 from app.models.appointment import Appointment
 from app.utils.echoleads_client import EcholeadsClient
 from dateutil import parser
@@ -56,9 +55,6 @@ def call_analytics(
     current_user: User = Depends(get_current_user)
 ):
     org_id = current_user.organization_id
-    
-    ## SYNC WITH ECHOLEADS
-    #sync_call_logs(db, org_id, None, start_date, end_date)
     
     # --- Get all campaigns in the org ---
     campaigns = db.query(CallCampaign).filter(

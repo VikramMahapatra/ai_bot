@@ -5,6 +5,21 @@ export interface CallTranscript {
     speaker: "Agent" | "Contact";
     text: string;
 }
+
+export interface InstantReplyChannel {
+    channel: "sms" | "email" | "whatsapp";
+    status: "success" | "failed";
+    error?: string | null;
+}
+
+export interface InstantReply {
+    decision?: "send_now" | "do_not_send_now";
+    status: "pending" | "success" | "failed" | "skipped";
+    error?: string | null;
+    channels: InstantReplyChannel[];
+    created_at?: string;
+}
+
 export interface CallLog {
     id: string;
     contact_id?: number;
@@ -41,6 +56,8 @@ export interface CallLog {
     lead_qualified_status?: string;
     transcript: CallTranscript[];
     follow_up_count: number;
+    source?: "campaign_call" | "rescheduled_call" | "reschedule_call" | "test_call";
+    instant_reply?: InstantReply;
 }
 
 export type StatusType =
