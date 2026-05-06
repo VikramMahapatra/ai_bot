@@ -77,7 +77,7 @@ def get_credit_summary(
                 case(
                     (
                         OrganizationCreditUsage.status == "consumed",
-                        1
+                        OrganizationCreditUsage.used_quantity
                     ),
                     else_=0
                 )

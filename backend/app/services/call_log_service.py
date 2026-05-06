@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, time, timedelta, timezone
 import json
 import random
@@ -277,7 +278,7 @@ def get_call_logs(
             "phone": log.phone,
             "status": log.status,
             "date": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
-            "startTime": log.created_at.replace(tzinfo=timezone.utc).isoformat(),
+            "startTime": log.start_time.replace(tzinfo=timezone.utc).isoformat(),
             "endTime": log.end_time.replace(tzinfo=timezone.utc).isoformat() if log.end_time else None,
             "duration": duration,
             "industry": log.industry,
@@ -567,11 +568,9 @@ def sync_call_logs(
     
 def process_call(call, agent):
     db = SessionLocal()
-    normalized_transcript = None
     try:
-     
-        call_start = parse_datetime(call.get("created_at"))
-        if not call_start:
+        call_created_at = parse_datetime(call.get("created_at"))
+        if not call_created_at:
             return
 
         existing = db.query(CallLog).filter(
@@ -579,6 +578,9 @@ def process_call(call, agent):
         ).first()
         
         campaign = None
+        contact = None
+        call_log = None
+        normalized_transcript = None
         
         if not existing or existing.status != "ended":
             campaign_external_id = call["campaign_id"]
@@ -615,6 +617,7 @@ def process_call(call, agent):
             lead_info = call.get("lead_info")
             success_eval_str = call.get("success_evaluation") if call.get("success_evaluation") else "false"
             source = call.get("source")
+            call_start = parse_datetime(call.get("call_started_at"))
 
             # convert extract_data if string
             if isinstance(extract_data, str):
@@ -686,7 +689,7 @@ def process_call(call, agent):
                     lead_info=lead_info,
                     source=source,
                     success_evaluation=success_eval_str.lower() == "true",
-                    created_at = parse_datetime(call.get("created_at")),
+                    created_at = call_created_at,
                 )
 
                 try:
@@ -722,134 +725,57 @@ def process_call(call, agent):
                 campaign = db.query(CallCampaign).filter(
                         CallCampaign.id == existing.campaign_id
                     ).first()  
-
-        # Only create lead for Campaign calls, not for test calls.
-        if campaign:
-            
-            contact = db.query(Contact).filter(
-                    Contact.id == call_log.contact_id
-            ).first() 
-            
-            
-            lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
-
-            if lead:
-                # Mark call_log as lead qualified
-                call_log.is_lead_qualified = True
-                
-            # WORKFLOW EXECUTION
-            if campaign.workflow_id and contact:
-                
-                if call_log.workflow_execution_id:
-                    return None
-                
-                if call_log.status not in ["completed", "ended", "calling fail"]:
-                    return None
-
-                execution = db.query(WorkflowExecution).filter(
-                    WorkflowExecution.campaign_id == call_log.campaign_id,
-                    WorkflowExecution.contact_id == call_log.contact_id,
-                    WorkflowExecution.external_reference_id == call.get("id"),
-                    WorkflowExecution.status.in_(["pending", "scheduled"])
-                ).order_by(WorkflowExecution.id.desc()).first()
-                
-                print(f"Call ID : {call_log.external_call_id} and Execution Details : {execution}")
-
-                if execution:              
-                    continue_workflow_from_call(db, execution, call_log, call)
-                    return None
-                        
-                trigger_workflow_from_call(
-                    db,
-                    campaign.workflow_id,
-                    call_log,
-                    call
-                )
-                
-            db.flush()
+        
         
         test_call = db.query(CallingAgentTestCall).filter(
             CallingAgentTestCall.external_call_id == str(call["call_id"])
         ).first()
+        
+        call_status = call.get("status")
+        is_call_ended = call_status and call_status.lower() == "ended"
 
         if test_call:
             test_call.status = call.get("status").lower() if call.get("status").lower() else test_call.status
             
-            if call.get("status").lower() == "ended":
+            if is_call_ended:
                 organization_channel_service.release_channel(
                     db,
                     call_type="test",
                     reference_id=test_call.id
                 )
                 
+       
+        # Only create lead for Campaign calls, not for test calls.
+        if campaign and is_call_ended:
+            
+            contact = db.query(Contact).filter(
+                    Contact.id == call_log.contact_id
+            ).first() 
+            
+            lead = create_lead_from_call(db, call_log, call, agent, campaign, contact)
+
+            if lead:
+                # Mark call_log as lead qualified
+                call_log.is_lead_qualified = True
+            
+            # Create conversation
+            create_conversation_from_transcripts(
+                db=db,
+                call_log=call_log,
+                agent=agent
+            )      
+                    
         db.commit()
                 
-        replies_data = []
-        whatsapp_data = None
-        org_settings = None
-        call_log_id = None
-        
-        should_send = (
-            campaign
-            and campaign.instant_reply
-            and contact
-            and not call_log.instant_reply_sent   
-        )
-        
-        if should_send and normalized_transcript:
-            
-            response = analyze_conversation(normalized_transcript)
+        if is_call_ended and campaign and campaign.workflow_id and contact:
+            asyncio.create_task(
+                handle_workflow_async(call_log.id, call)
+            )
 
-            if response.get("instant_reply_decision") == "send_now":
-                replies = (
-                        db.query(CallCampaignInstantReply)
-                        .filter(CallCampaignInstantReply.call_campaign_id == campaign.id)
-                        .all()
-                    )
-
-                replies_data = [
-                        {
-                            "mode": r.mode,
-                            "template": {
-                                "content": r.template.content,
-                                "subject": r.template.subject
-                            }
-                        }
-                        for r in replies
-                    ]
-
-                config = db.query(WhatsAppChannel).filter(
-                        WhatsAppChannel.organization_id == campaign.organization_id,
-                        WhatsAppChannel.is_active == True,
-                    ).first()
-
-                if config:
-                    whatsapp_data = {
-                            "phone_number_id": config.phone_number_id,
-                            "access_token": config.access_token
-                        }
-
-                org_settings = get_org_settings(db, campaign.organization_id)
-
-                call_log_id = call_log.id
-                
-                success = dispatch_instant_replies_safe(
-                    replies=replies_data,
-                    contact=contact,  
-                    campaign=campaign,
-                    org_settings=org_settings,
-                    whatsapp_config=whatsapp_data
-                )
-                
-                if success and call_log_id:
-                    db2 = SessionLocal()
-                    try:
-                        log = db2.query(CallLog).get(call_log_id)
-                        if log:
-                            log.instant_reply_sent = True
-                            db2.commit()
-                    finally:
-                        db2.close()
+        if is_call_ended and campaign and contact:
+            asyncio.create_task(
+                handle_instant_replies_async(call_log.id, normalized_transcript)
+            )
         
     except Exception as e:
         db.rollback()
@@ -858,6 +784,142 @@ def process_call(call, agent):
 
     finally:
         db.close()  
+        
+async def handle_workflow_async(call_log_id, call):
+    db = SessionLocal()
+    try:
+        call_log = db.query(CallLog).get(call_log_id)
+        campaign = db.query(CallCampaign).get(call_log.campaign_id)
+        contact = db.query(Contact).get(call_log.contact_id)
+
+        if not call_log or not campaign or not contact:
+            return
+
+        handle_workflow(db, call_log, campaign, call)
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+    finally:
+        db.close()
+        
+def handle_workflow(db : Session, call_log : CallLog, campaign : CallCampaign, call : dict):
+    if call_log.workflow_execution_id:
+        return None
+                
+    if call_log.status not in ["completed", "ended", "calling fail"]:
+        return None
+
+    execution = db.query(WorkflowExecution).filter(
+        WorkflowExecution.campaign_id == call_log.campaign_id,
+        WorkflowExecution.contact_id == call_log.contact_id,
+        WorkflowExecution.external_reference_id == call.get("id"),
+        WorkflowExecution.status.in_(["pending", "scheduled"])
+    ).order_by(WorkflowExecution.id.desc()).first()
+                
+    print(f"Call ID : {call_log.external_call_id} and Execution Details : {execution}")
+
+    if execution:              
+        continue_workflow_from_call(db, execution, call_log, call)
+        return None
+                        
+    trigger_workflow_from_call(
+        db,
+        campaign.workflow_id,
+        call_log,
+        call
+    )
+                
+    db.commit()
+    
+async def handle_instant_replies_async(call_log_id, normalized_transcript):
+    db = SessionLocal()
+    try:
+        call_log = db.query(CallLog).get(call_log_id)
+        campaign = db.query(CallCampaign).get(call_log.campaign_id)
+        contact = db.query(Contact).get(call_log.contact_id)
+
+        if not call_log or not campaign or not contact:
+            return
+
+        handle_instant_replies(db, campaign, contact, call_log, normalized_transcript)
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+    finally:
+        db.close()
+        
+def handle_instant_replies(campaign:CallCampaign, contact: Contact, call_log: CallLog, normalized_transcript : str):
+    db1 = SessionLocal()
+    
+    replies_data = []
+    whatsapp_data = None
+    org_settings = None
+    call_log_id = None
+        
+    should_send = (
+        campaign
+        and campaign.instant_reply
+        and contact
+        and not call_log.instant_reply_sent   
+    )
+        
+    if should_send and normalized_transcript:
+            
+        response = analyze_conversation(normalized_transcript)
+
+        if response.get("instant_reply_decision") == "send_now":
+            replies = (
+                    db1.query(CallCampaignInstantReply)
+                    .filter(CallCampaignInstantReply.call_campaign_id == campaign.id)
+                    .all()
+                )
+
+            replies_data = [
+                    {
+                        "mode": r.mode,
+                        "template": {
+                        "content": r.template.content,
+                        "subject": r.template.subject
+                    }
+                }
+                for r in replies
+            ]
+
+            config = db1.query(WhatsAppChannel).filter(
+                WhatsAppChannel.organization_id == campaign.organization_id,
+                WhatsAppChannel.is_active == True,
+            ).first()
+
+            if config:
+                whatsapp_data = {
+                    "phone_number_id": config.phone_number_id,
+                    "access_token": config.access_token
+                }
+
+            org_settings = get_org_settings(db1, campaign.organization_id)
+
+            call_log_id = call_log.id
+                
+            success = dispatch_instant_replies_safe(
+                replies=replies_data,
+                contact=contact,  
+                campaign=campaign,
+                org_settings=org_settings,
+                whatsapp_config=whatsapp_data
+            )
+                
+            if success and call_log_id:
+                db2 = SessionLocal()
+                try:
+                    log = db2.query(CallLog).get(call_log_id)
+                    if log:
+                        log.instant_reply_sent = True
+                        db2.commit()
+                finally:
+                    db2.close()
+                
         
 def save_transcripts(db: Session, call_log: CallLog, transcript: str):
     if not transcript or not call_log.id:
@@ -1060,6 +1122,7 @@ def dispatch_instant_replies_safe(
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
     lead = None
     phone = contact.phone if contact and contact.phone else call.get("phone")
+    is_rescheduled = call_log.source == "rescheduled"
     
     try:
         existing = (
@@ -1088,7 +1151,14 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
             }
 
         # If existing & not closed → update
-        if existing and existing.funnel_stage not in ["closed_won", "closed_lost"] or call_log.is_lead_qualified:
+        if is_rescheduled:
+            # Never create new lead
+            lead = existing
+
+        elif (
+            call_log.is_lead_qualified or 
+            (existing and existing.funnel_stage not in ["closed_won", "closed_lost"])
+        ):
 
             existing.session_id = call_log.call_session_id
             existing.widget_id = agent.widget_id
@@ -1157,12 +1227,7 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
                 except:
                     pass
 
-        # Create conversation
-        create_conversation_from_transcripts(
-            db=db,
-            call_log=call_log,
-            agent=agent
-        )
+        
 
         # Add Lead Activity
         if lead:
@@ -1577,9 +1642,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
 
     elif step_outcome.delay_unit == "days":
         scheduled_at = datetime.utcnow() + timedelta(days=delay)
-        
-    step_executed = False
-
+      
     # If action is call → schedule call
     if step_outcome.step_type == "call":
         response = reschedule_contact(

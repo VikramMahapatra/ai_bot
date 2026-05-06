@@ -385,37 +385,44 @@ def build_lead_filters(
     if product_id:
         filters.append(Lead.product_id == product_id)
 
+    # if campaign_id:
+    #     if source == "voice":
+    #         filters.append(
+    #             exists().where(
+    #                 (LeadContactMapping.lead_id == Lead.id)
+    #                 & (LeadContactMapping.contact_id == CampaignContact.contact_id)
+    #                 & (CampaignContact.campaign_id == campaign_id)
+    #             )
+    #         )
+    #     else:
+    #         campaign_contact_list_id = (
+    #             db.query(CallCampaign.contact_list_id)
+    #             .filter(
+    #                 CallCampaign.id == campaign_id,
+    #                 CallCampaign.organization_id == current_user.organization_id,
+    #             )
+    #             .scalar()
+    #         )
+
+    #         if not campaign_contact_list_id:
+    #             return None  # handle separately
+
+    #         filters.append(
+    #             exists()
+    #             .select_from(LeadContactMapping)
+    #             .join(Contact, Contact.id == LeadContactMapping.contact_id)
+    #             .where(
+    #                 LeadContactMapping.lead_id == Lead.id,
+    #                 Contact.contact_list_id == campaign_contact_list_id,
+    #             )
+    #         )
     if campaign_id:
-        if source == "voice":
-            filters.append(
-                exists().where(
-                    (LeadContactMapping.lead_id == Lead.id)
-                    & (LeadContactMapping.contact_id == CampaignContact.contact_id)
-                    & (CampaignContact.campaign_id == campaign_id)
-                )
+        filters.append(
+            exists().where(
+                (LeadActivity.lead_id == Lead.id) &
+                (LeadActivity.campaign_id == campaign_id)
             )
-        else:
-            campaign_contact_list_id = (
-                db.query(CallCampaign.contact_list_id)
-                .filter(
-                    CallCampaign.id == campaign_id,
-                    CallCampaign.organization_id == current_user.organization_id,
-                )
-                .scalar()
-            )
-
-            if not campaign_contact_list_id:
-                return None  # handle separately
-
-            filters.append(
-                exists()
-                .select_from(LeadContactMapping)
-                .join(Contact, Contact.id == LeadContactMapping.contact_id)
-                .where(
-                    LeadContactMapping.lead_id == Lead.id,
-                    Contact.contact_list_id == campaign_contact_list_id,
-                )
-            )
+        )
 
     return filters
 

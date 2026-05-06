@@ -719,6 +719,11 @@ def _seconds_until_next_run(hour_utc: int, minute_utc: int) -> float:
         target = target + timedelta(days=1)
     return max((target - now).total_seconds(), 1.0)
 
+def _seconds_until_next_interval(interval_seconds: int) -> float: 
+    now = datetime.now(timezone.utc).timestamp() 
+    next_run = ((now // interval_seconds) + 1) * interval_seconds 
+    return max(next_run - now, 1.0)
+
 
 async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
     """Outcome daemon that never blocks event loop"""
@@ -738,9 +743,8 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
         logger.error("Initial outcome processing failed: %s", exc, exc_info=True)
 
     while not stop_event.is_set():
-        wait_seconds = _seconds_until_next_run(
-            settings.OUTCOME_DAEMON_HOUR_UTC,
-            settings.OUTCOME_DAEMON_MINUTE_UTC,
+        wait_seconds = _seconds_until_next_interval(
+            settings.OUTCOME_DAEMON_INTERVAL_SECONDS
         )
 
         try:
@@ -825,9 +829,8 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
         )
 
     while not stop_event.is_set():
-        wait_seconds = _seconds_until_next_run(
-            settings.OUTCOME_DAEMON_HOUR_UTC,
-            settings.OUTCOME_DAEMON_MINUTE_UTC,
+        wait_seconds = _seconds_until_next_interval(
+            settings.OUTCOME_DAEMON_INTERVAL_SECONDS
         )
         
         logger.info(f"Current UTC: {datetime.now(timezone.utc)}")
