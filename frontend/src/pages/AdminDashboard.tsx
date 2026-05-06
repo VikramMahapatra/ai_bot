@@ -934,7 +934,7 @@ const AdminDashboard: React.FC = () => {
               }}
             >
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Pickup trend (30 days)
+                Call Pickup Trend (30 days)
               </Typography>
 
               {pickupTrend.length > 0 ? (

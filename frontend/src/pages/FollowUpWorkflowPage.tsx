@@ -17,7 +17,10 @@ export default function FollowUpWorkflowPage() {
             <Box sx={{ maxWidth: 1380, mx: 'auto', px: { xs: 0, md: 0.5 }, position: 'relative' }}>
                 {view === "list" ? (
                     <WorkflowList
-                        onCreate={() => setView("create")}
+                        onCreate={() => {
+                            setSelectedWorkflow(null);
+                            setView("create");
+                        }}
                         onEdit={(id) => {
                             setSelectedWorkflow(id);
                             setView("edit");
