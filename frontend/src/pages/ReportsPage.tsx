@@ -69,6 +69,10 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import { FunnelCategory } from "../types";
 import { funnelCategoryService } from "../services/funnelCategoryService";
 import { useDateFormatter } from "../hooks/useDateFormatter";
+import EmailIcon from "@mui/icons-material/Email";
+import EllipsisCell from "../components/EllipsisCell";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import { formatDate } from "../utils/dateUtils";
 
 export const ActionMenu = ({
   handleExportCSV,
@@ -1960,7 +1964,7 @@ const ReportsPage: React.FC = () => {
                         fullWidth
                         size="small"
                         type="date"
-                        label="Created From"
+                        label="Lead Created From"
                         value={voiceCreatedFrom}
                         onChange={(e) => setVoiceCreatedFrom(e.target.value)}
                         InputLabelProps={{ shrink: true }}
@@ -1971,7 +1975,7 @@ const ReportsPage: React.FC = () => {
                         fullWidth
                         size="small"
                         type="date"
-                        label="Created To"
+                        label="Lead Created To"
                         value={voiceCreatedTo}
                         onChange={(e) => setVoiceCreatedTo(e.target.value)}
                         InputLabelProps={{ shrink: true }}
@@ -2094,13 +2098,11 @@ const ReportsPage: React.FC = () => {
                   >
                     <TableHead>
                       <TableRow>
-                        <TableCell>Agent Name</TableCell>
                         <TableCell>Customer Name</TableCell>
-                        <TableCell>Email</TableCell>
                         <TableCell>Campaign Name</TableCell>
+                        <TableCell>Campaign Start Date</TableCell>
                         <TableCell>Lead Sentiment</TableCell>
-                        <TableCell>Product</TableCell>
-                        <TableCell>Created At</TableCell>
+                        <TableCell>Lead Created Date</TableCell>
                         <TableCell align="center">Action</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2109,22 +2111,103 @@ const ReportsPage: React.FC = () => {
                         voiceItems.map((item, idx) => (
                           <TableRow key={`${item.email || "voice"}-${idx}`}>
                             <TableCell sx={voiceWrapCellSx}>
-                              {item.agent_name || "-"}
+                              <Box
+                                display="flex"
+                                flexDirection="column"
+                                gap={0.5}
+                              >
+                                <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 600, lineHeight: 1.35 }}
+                              >
+                                {item.customer_name || "-"}
+                              </Typography>
+                              {item.email?.trim() ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 0.5,
+                                    lineHeight: 1.35,
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  <EmailIcon
+                                    sx={{
+                                      fontSize: 13,
+                                      flexShrink: 0,
+                                      opacity: 0.85,
+                                    }}
+                                  />
+                                  <Box
+                                    component="span"
+                                    sx={{ wordBreak: "break-word" }}
+                                  >
+                                    {item.email}
+                                  </Box>
+                                </Typography>
+                              ) : null}
+                              </Box>
                             </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.customer_name || "-"}
+                            {/* CAMPAIGN NAME */}
+                            <TableCell>
+                              <Box
+                                display="flex"
+                                flexDirection="column"
+                                gap={0.5}
+                              >
+                                <Typography fontWeight={600}>
+                                  {item.campaign_name}
+                                </Typography>
+
+                                {/* Agent */}
+                                <Box
+                                  display="flex"
+                                  alignItems="center"
+                                  gap={0.5}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Agent:
+                                  </Typography>
+                                  <EllipsisCell value={item.agent_name} />
+                                </Box>
+
+                                <Box display="flex" alignItems="center" gap={2}>
+                                  {/* Product */}
+                                  {item.product_name && (
+                                    <Box
+                                      display="flex"
+                                      alignItems="center"
+                                      gap={0.5}
+                                    >
+                                      <Inventory2Icon
+                                        fontSize="small"
+                                        sx={{ fontSize: 16 }}
+                                        color="action"
+                                      />
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        {item.product_name}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                              </Box>
                             </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.email || "-"}
-                            </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.campaign_name || "-"}
+                            <TableCell sx={voiceNoWrapCellSx}>
+                              {item.campaign_start_date
+                                ? formatDisplayDate(item.campaign_start_date)
+                                : "-"}
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
                               <OutcomeChip value={item.lead_outcome} />
-                            </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.product_name || "-"}
                             </TableCell>
                             <TableCell sx={voiceNoWrapCellSx}>
                               {item.created_at
@@ -2234,6 +2317,16 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="caption" color="text.secondary">
+                    Campaign Start Date
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.campaign_start_date
+                                ? formatDisplayDate(voiceDetailsItem.campaign_start_date)
+                                : "-"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">
                     Campaign Source
                   </Typography>
                   <Typography variant="body1">
@@ -2271,7 +2364,7 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="caption" color="text.secondary">
-                    Created At
+                    Lead Created Date
                   </Typography>
                   <Typography variant="body1">
                     {voiceDetailsItem.created_at

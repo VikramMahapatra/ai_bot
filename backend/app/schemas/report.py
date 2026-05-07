@@ -62,7 +62,7 @@ class ReportResponse(BaseModel):
     average_conversation_duration: float
     average_satisfaction_rating: Optional[float]
     plan_usage: Optional[PlanUsageSummary] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -102,6 +102,7 @@ class VoiceCampaignReportRow(BaseModel):
     lead_outcome: Optional[str]
     created_at: Optional[datetime]
     product_name: Optional[str]
+    campaign_start_date: Optional[datetime]
 
 
 class VoiceCampaignReportSummary(BaseModel):
