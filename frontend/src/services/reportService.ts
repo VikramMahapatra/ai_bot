@@ -106,6 +106,7 @@ export interface VoiceCampaignReportItem {
   funnel_stage: string | null;
   lead_outcome: string | null;
   created_at: string | null;
+  campaign_start_date: string | null;
   product_name: string | null;
 }
 
@@ -755,7 +756,7 @@ export const reportService = {
       ['Success Rate (%)', successRate, 'Sum of Call Duration', summary?.sum_call_duration_label || '0s'],
       ['Campaign Duration', summary?.campaign_duration_label || '0s', '', ''],
       [],
-      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name', 'Campaign Source', 'Funnel Stage', 'Lead Outcome', 'Product', 'Created At'],
+      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name','Campaign Start Date', 'Campaign Source','Lead Sentiment', 'Funnel Stage', 'Lead Outcome', 'Product', 'Lead Created Date'],
     ];
 
     const detailRows = items.map((item) => ([
@@ -765,7 +766,9 @@ export const reportService = {
       item.company || '-',
       item.organization_name || '-',
       item.campaign_name || '-',
+      formatDate(item.campaign_start_date),
       item.campaign_source || '-',
+      item.lead_outcome || '-',
       item.funnel_stage || '-',
       normalizeLeadOutcome(item.lead_outcome),
       item.product_name || '-',

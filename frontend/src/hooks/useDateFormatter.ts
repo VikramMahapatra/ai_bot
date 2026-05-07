@@ -7,8 +7,7 @@ export const useDateFormatter = () => {
 };
 
 export const useOnlyDateFormatter = () => {
-    const { user } = useAuth();
-    return (date?: string | Date | null) => formatDate(date);
+    return (date?: string | Date) => formatDate(date);
 };
 
 export const useTimeFormatter = () => {
