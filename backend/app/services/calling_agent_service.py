@@ -20,7 +20,7 @@ from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
-from app.services.call_log_service import process_call, sync_call_logs
+from app.services.call_log_service import process_call, sync_test_call_log
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_channel_service
@@ -662,10 +662,10 @@ def test_call(
         api_response = echoleads.create_call(payload)
         
         if api_response and "data" in api_response:
-            sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
-            
             external_call_id = api_response["data"].get("id")
             call_status = api_response["data"].get("status")
+            
+            sync_test_call_log(db = db, organization_id=agent.organization_id, agent_id=agent.id, external_call_id=external_call_id)
         else:
             echo_success = False
     except Exception as e:

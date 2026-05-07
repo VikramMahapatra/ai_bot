@@ -185,6 +185,7 @@ export interface WorkflowEvent {
     scheduled_at?: string;
     time: string;
     metadata?: any;
+    error?: string;
 }
 
 export interface CampaignResponse {

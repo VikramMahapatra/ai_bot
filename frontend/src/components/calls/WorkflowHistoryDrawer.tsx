@@ -30,6 +30,9 @@ const getIcon = (stepType?: string, event?: string) => {
     if (event === "workflow_scheduled") return <ScheduleIcon color="warning" />;
     if (event === "workflow_executed") return <BoltIcon color="primary" />;
     if (stepType === "call") return <PhoneIcon color="primary" />;
+    if (event === "workflow_execution_failed") return <BoltIcon color="error" />;
+    if (event === "workflow_schedule_failed") return <ScheduleIcon color="error" />;
+    if (event === "workflow_failed") return <CloseIcon color="error" />;
     return <MessageIcon color="secondary" />;
 };
 
@@ -136,7 +139,7 @@ export default function WorkflowHistoryDrawer({
                                     <Box mt={0.5}>
 
                                         {/* WORKFLOW TRIGGERED */}
-                                        {item.event === "workflow_triggered" && (
+                                        {["workflow_triggered", "workflow_executed"].includes(item.event) && (
                                             <>
                                                 {item.call_status && (
                                                     <Typography variant="body2" color="text.secondary">
@@ -198,14 +201,38 @@ export default function WorkflowHistoryDrawer({
                                             </Typography>
                                         )}
 
-                                        {/* EXECUTED */}
-                                        {item.event === "executed" && (
-                                            <Typography variant="body2" color="text.secondary">
-                                                {item.step_type === "call"
-                                                    ? `Call ${item.call_status || ""}`
-                                                    : `${item.step_type} sent`}
-                                            </Typography>
+                                        {/* FAILURE EVENTS */}
+                                        {["workflow_execution_failed", "workflow_schedule_failed", "workflow_failed"].includes(item.event) && (
+                                            <>
+                                                {item.step_type && (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Action:
+                                                        </Box>{" "}
+                                                        <b>{titleCase(item.step_type)}</b>
+                                                    </Typography>
+                                                )}
+
+                                                {item.error && (
+                                                    <Typography variant="body2" color="error.main">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Error:
+                                                        </Box>{" "}
+                                                        <b>{item.error}</b>
+                                                    </Typography>
+                                                )}
+
+                                                {item.reason && (
+                                                    <Typography variant="body2" color="error.main">
+                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
+                                                            Reason:
+                                                        </Box>{" "}
+                                                        <b>{item.reason}</b>
+                                                    </Typography>
+                                                )}
+                                            </>
                                         )}
+
                                     </Box>
 
                                     {/* TIME */}
