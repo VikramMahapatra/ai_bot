@@ -98,6 +98,7 @@ import {
 } from "../Common/StatusChips";
 import { useDateFormatter, useOnlyDateFormatter } from "../../hooks/useDateFormatter";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
+import { formatEndedReason } from "../calls/CallDetailDrawer";
 
 const LEAD_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
 
@@ -2242,16 +2243,10 @@ const LeadManager: React.FC = () => {
                         </Typography>
 
                         {/* META */}
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Typography fontSize={12} color="text.secondary">
-                            {a.source || "Unknown source"}
-                          </Typography>
-
+                        <Box display = "flex" alignItems = "center"  gap = {1}>
                           {a.created_at && (
                             <>
-                              <Typography fontSize={12} color="text.secondary">
+                              <Typography fontSize={15} fontWeight={700}  color="text.secondary">
                                 •
                               </Typography>
                               <Typography fontSize={12} color="text.secondary">
@@ -2260,15 +2255,27 @@ const LeadManager: React.FC = () => {
                             </>
                           )}
                         </Box>
+                        
+                        {a.status && (
+                       <Box display="flex" alignItems="center" gap={0.5}>
+                                                    <Typography fontSize={13} variant="body2" color="text.secondary">
+                                                        Status:
+                                                    </Typography>
+                                                    <Typography fontSize={13} variant="body2" fontWeight={600} color="error.main">
+                                                        {formatEndedReason(a.status)}
+                                                    </Typography>
+                                                </Box>
+                    )}
+
                       </Box>
                     </Box>
 
-                    {/* CHIPS */}
-                    <Box mt={0.8} display="flex" gap={1} flexWrap="wrap">
-                      {a.status && <Chip size="small" label={a.status} />}
-                      {a.outcome && <Chip size="small" label={a.outcome} />}
+                      {/* CHIPS */}
+                    <Box mt={1} display="flex" gap={1} flexWrap="wrap">
+                      <SourceChip value={a.source || "Unknown source"} />
+                      <OutcomeChip value={a.outcome} />
                     </Box>
-
+                    
                     {/* SUMMARY (VISUAL DE-EMPHASIS FIX) */}
                     {a.summary && (
                       <Box
