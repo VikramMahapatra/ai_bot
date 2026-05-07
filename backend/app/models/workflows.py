@@ -124,7 +124,7 @@ class WorkflowExecution(Base):
 
     step_id = Column(Integer)
     step_type = Column(String(50))
-    external_reference_id = Column(Integer, nullable=True)
+    external_reference_id = Column(String, nullable=True)
 
     status = Column(String(50))
     # pending / completed

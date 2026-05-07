@@ -5,6 +5,7 @@ import re
 from typing import List, Optional
 from urllib import response
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import and_, case, exists, func, literal, or_
 from sqlalchemy.orm import Session, joinedload
@@ -36,7 +37,7 @@ from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.models.message_templates import MessageTemplate
 from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
-from app.models.workflows import WorkflowExecution, WorkflowExecutionLog
+from app.models.workflows import Workflow, WorkflowExecution, WorkflowExecutionLog
 
 STALE_MINUTES = 1
 SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
@@ -262,8 +263,13 @@ def get_campaign_detail(
     background_tasks: BackgroundTasks, db: Session, campaign_id: int
 ):
     campaign = (
-        db.query(CallCampaign, Product.name.label("product_name"), CampaignSchedule)
-        .options(joinedload(CallCampaign.instant_replies))  # ✅ IMPORTANT
+        db.query(
+            CallCampaign,
+            Product.name.label("product_name"),
+            CampaignSchedule,
+            Workflow.name.label("workflow_template_name"),
+        )
+        .options(joinedload(CallCampaign.instant_replies))
         .outerjoin(Product, Product.id == CallCampaign.product_id)
         .outerjoin(CampaignSchedule, CampaignSchedule.campaign_id == CallCampaign.id)
         .outerjoin(
@@ -273,6 +279,7 @@ def get_campaign_detail(
         .outerjoin(
             MessageTemplate, MessageTemplate.id == CallCampaignInstantReply.template_id
         )
+        .outerjoin(Workflow, Workflow.id == CallCampaign.workflow_id)
         .filter(CallCampaign.id == campaign_id, CallCampaign.is_deleted == False)
         .first()
     )
@@ -280,7 +287,7 @@ def get_campaign_detail(
     if not campaign:
         return None
 
-    campaign_obj, product_name, schedule = campaign
+    campaign_obj, product_name, schedule, workflow_name = campaign
 
     echolead_client = EcholeadsClient(campaign_obj.organization_id)
     background_tasks.add_task(
@@ -302,11 +309,7 @@ def get_campaign_detail(
 
     attempted_calls = (
         db.query(CallLog)
-        .filter(
-            CallLog.campaign_id == campaign_id,
-            CallLog.source == "campaign_call",
-            CallLog.status == "ended",
-        )
+        .filter(CallLog.campaign_id == campaign_id, CallLog.source == "campaign_call")
         .count()
     )
 
@@ -375,6 +378,8 @@ def get_campaign_detail(
         "instant_reply": len(instant_reply_modes) > 0,
         "instant_reply_modes": instant_reply_modes,
         "instant_reply_templates": instant_reply_templates,
+        "workflow_template_name": workflow_name,
+        "stop_reason": campaign_obj.stop_reason,
     }
 
 
@@ -524,6 +529,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     dialer_end_date = None
     schedule_date = None
     schedule_time = None
+    now = datetime.now(timezone.utc)
 
     if data.start_datetime:
         schedule_date = data.start_datetime.split("T")[0]
@@ -544,13 +550,25 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         schedule_date = dialer_start_date
         schedule_time = data.call_start_time
 
+    schedule_dt = None
+    if schedule_date and schedule_time:
+        timezone_str = (
+            campaign.schedule.timezone
+            or campaign.agent.prompt_timezone
+            or "Asia/Kolkata"
+        )
+
+        schedule_dt = get_valid_schedule_datetime(
+            schedule_date, schedule_time, timezone_str
+        )
+
     payload = {
         "campaign_name": unique_campaign_code,
         "agent_id": agent.external_agent_id,
         "from_number": data.calling_no,
         "send_option": send_option,
-        "schedule_date": schedule_date,
-        "schedule_time": schedule_time,
+        "schedule_date": schedule_dt.date().isoformat() if schedule_dt else None,
+        "schedule_time": schedule_dt.time().isoformat() if schedule_dt else None,
         "dialer_schedule_start_date": dialer_start_date,
         "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
@@ -620,6 +638,47 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         "campaign_id": campaign.id,
         "echoleads_campaign_id": echoleads_campaign_id,
     }
+
+
+def get_valid_schedule_datetime(schedule_date, schedule_time, tz_str="Asia/Kolkata"):
+    if not schedule_date or not schedule_time:
+        return None
+
+    # normalize inputs
+    if isinstance(schedule_date, str):
+        schedule_date = datetime.fromisoformat(schedule_date).date()
+
+    if isinstance(schedule_time, str):
+        schedule_time = parse_time(schedule_time)
+
+    # 1. build local datetime
+    naive_dt = datetime.combine(schedule_date, schedule_time)
+
+    local_tz = ZoneInfo(tz_str)
+    local_dt = naive_dt.replace(tzinfo=local_tz)
+
+    # 2. compare using UTC internally
+    utc_dt = local_dt.astimezone(timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+
+    # 3. if past → shift to next valid minute (in LOCAL time)
+    if utc_dt <= now_utc:
+        local_dt = datetime.now(local_tz) + timedelta(minutes=1)
+
+    # 4. return LOCAL timezone datetime (your requirement)
+    return local_dt
+
+
+def parse_time(schedule_time):
+    if isinstance(schedule_time, str):
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(schedule_time, fmt).time()
+            except ValueError:
+                continue
+        raise ValueError(f"Invalid time format: {schedule_time}")
+
+    return schedule_time
 
 
 def update_campaign(
@@ -715,13 +774,25 @@ def update_campaign(
     ):
         campaign.external_campaign_name = unique_campaign_code
 
+    schedule_dt = None
+    if schedule_date and schedule_time:
+        timezone_str = (
+            campaign.schedule.timezone
+            or campaign.agent.prompt_timezone
+            or "Asia/Kolkata"
+        )
+
+        schedule_dt = get_valid_schedule_datetime(
+            schedule_date, schedule_time, timezone_str
+        )
+
     payload = {
         "campaign_name": campaign.external_campaign_name,
         "agent_id": agent.external_agent_id if agent else None,
         "from_number": data.calling_no,
         "send_option": send_option,
-        "schedule_date": schedule_date,
-        "schedule_time": schedule_time,
+        "schedule_date": schedule_dt.date().isoformat() if schedule_dt else None,
+        "schedule_time": schedule_dt.time().isoformat() if schedule_dt else None,
         "dialer_schedule_start_date": dialer_start_date,
         "dialer_schedule_end_date": dialer_end_date,
         "timezone": data.timezone,
@@ -1522,21 +1593,42 @@ def sync_campaign_from_echoleads(
         if not campaign:
             return
 
-        if campaign.external_campaign_name and not campaign.external_campaign_id:
-            response = echolead_client.get_campaign_by_name(
-                campaign.external_campaign_name
+        campaign_data = None
+
+        try:
+            if campaign.external_campaign_name and not campaign.external_campaign_id:
+                response = echolead_client.get_campaign_by_name(
+                    campaign.external_campaign_name
+                )
+                campaigns = response.get("campaigns", []) if response else []
+                campaign_data = campaigns[0] if campaigns else None
+
+            elif campaign.external_campaign_id:
+                response = echolead_client.get_campaign_by_id(
+                    campaign.external_campaign_id
+                )
+                campaign_data = response.get("campaign") if response else None
+
+        except Exception as e:
+            logger.error(
+                "Echolead API failed for campaign sync: %s",
+                str(e),
+                exc_info=True,
             )
-            campaigns = response.get("campaigns", []) if response else []
-            campaign_data = campaigns[0] if campaigns else None
-        elif campaign.external_campaign_id:
-            response = echolead_client.get_campaign_by_id(campaign.external_campaign_id)
-            campaign_data = response.get("campaign") if response else None
+            campaign_data = None
 
         if not campaign_data:
+            organization_channel_service.release_channel(
+                db, call_type="campaign", reference_id=campaign.id
+            )
+
             if campaign.status == "draft":
                 organization_credit_service.release_reserved_credits(
                     db=db, reference_type="call_campaign", reference_id=campaign.id
                 )
+            if campaign.status in ["draft", "pending"]:
+                campaign.status = "failed"
+            db.commit()
             return
         else:
             if campaign.status == "draft":
@@ -1553,7 +1645,7 @@ def sync_campaign_from_echoleads(
             ):
                 organization_channel_service.reserve_channel(
                     db,
-                    organization_id=agent.organization_id,
+                    organization_id=campaign.organization_id,
                     call_type="campaign",
                     reference_id=campaign.id,
                 )
@@ -1575,6 +1667,8 @@ def sync_campaign_from_echoleads(
         campaign.completed_calls = campaign_data.get("completed_calls", 0)
         campaign.success_rate = campaign_data.get("success_rate", 0.0)
         campaign.response_rate = campaign_data.get("response_rate", 0.0)
+        campaign.stop_reason = campaign_data.get("stop_reason", "")
+        db.commit()
 
         # -------------------------
         # Sync Calls

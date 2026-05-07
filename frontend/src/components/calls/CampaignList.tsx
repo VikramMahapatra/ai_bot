@@ -225,6 +225,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
             case "running":
                 return "#dcfce7";
 
+            case "scheduled":
+                return "#fef3c7";
+
             case "paused":
                 return "#fef3c7";
 
@@ -233,6 +236,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
             case "cancelled":
                 return "#fee2e2"; // light red
+
+            case "failed":
+                return "#fee2e2";
 
             default:
                 return "#f3f4f6";
@@ -248,11 +254,17 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
             case "paused":
                 return "#b45309";
 
+            case "scheduled":
+                return "#b45309";
+
             case "completed":
                 return "#1d4ed8";
 
             case "cancelled":
                 return "#b91c1c"; // dark red
+
+            case "failed":
+                return "#b91c1c";
 
             default:
                 return "#374151";
@@ -661,7 +673,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 <EditIcon />
                                             </IconButton>
                                         )}
-                                        {["draft"].includes(campaign.status) && (
+                                        {["draft", "failed"].includes(campaign.status) && (
                                             <IconButton
                                                 size="small"
                                                 color="error"

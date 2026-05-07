@@ -386,15 +386,13 @@ def process_pending_session_outcomes(
                     Conversation.organization_id == org_id,
                     Conversation.session_id == session_id,
                     Lead.organization_id == org_id,
-                    Lead.funnel_stage.is_(None),
                 )
                 .distinct(Lead.id)
                 .all()
             )
 
             for lead in lead_rows:
-                if (lead.lead_outcome or "").strip().lower() != outcome:
-                    lead.lead_outcome = outcome
+                lead.lead_outcome = outcome
                 if inferred_funnel_stage and not (lead.funnel_stage or "").strip():
                     lead.funnel_stage = inferred_funnel_stage
 
@@ -881,6 +879,10 @@ def run_call_campaign_processing_batches(
 
             if synced == 0 and processed == 0 and scheduled:
                 break
+
+    except Exception:
+        db.rollback()
+        raise
 
     finally:
         db.close()

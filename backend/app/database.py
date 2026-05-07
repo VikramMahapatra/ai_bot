@@ -729,3 +729,13 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE call_campaigns
+                ADD COLUMN IF NOT EXISTS stop_reason VARCHAR(255);
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
