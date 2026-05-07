@@ -123,6 +123,21 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     email: "",
     phone: "",
     company: "",
+    designation: "",
+    gender: "",
+    whatsapp_number: "",
+    item_name: "",
+    item_category: "",
+    item_type: "",
+    amount: null,
+    interest_stage: "",
+    offer_value: "",
+    city: "",
+    state: "",
+    country: "",
+    source: "",
+    lifecycle_stage: "",
+    tags: "",
     contact_list_id: null,
   });
 
@@ -278,6 +293,21 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       phone: "",
       company: "",
       contact_list_id: (selectedListId as number) || null,
+      designation: "",
+       gender: "",
+    whatsapp_number: "",
+    item_name: "",
+    item_category: "",
+    item_type: "",
+    amount: null,
+    interest_stage: "",
+    offer_value: "",
+    city: "",
+    state: "",
+    country: "",
+    source: "",
+    lifecycle_stage: "",
+    tags: "",
     });
     setErrors({});
     setOpenForm(true);
@@ -296,6 +326,22 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       phone: contact.phone,
       company: contact.company || "",
       contact_list_id: contact.contact_list_id,
+      designation: contact.designation,
+       gender: contact.gender,
+    whatsapp_number: contact.whatsapp_number,
+    item_name: contact.item_name,
+    item_category: contact.item_category,
+    item_type: contact.item_type,
+    amount: contact.amount,
+    interest_stage: contact.interest_stage,
+    offer_value: contact.offer_value,
+    city: contact.city,
+    state: contact.state,
+    country: contact.country,
+    source: contact.source,
+    lifecycle_stage: contact.lifecycle_stage,
+    tags: contact.tags,
+      
     });
 
     setOpenForm(true);
@@ -1813,6 +1859,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
               <Box>
                 <PhoneInput
+                  placeholder="Enter phone number"
                   country={"in"}
                   value={form.phone}
                   onChange={(phone) =>
@@ -1828,6 +1875,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   containerStyle={{
                     width: "100%",
                   }}
+                  
                 />
 
                 {errors.phone && (
@@ -1835,14 +1883,127 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     {errors.phone}
                   </Typography>
                 )}
+                
               </Box>
 
               <TextField
                 label="Company"
                 value={form.company}
                 onChange={(e) => setForm({ ...form, company: e.target.value })}
-                error={!!errors.company}
-                helperText={errors.company}
+              />
+
+              <TextField
+                label="Designation"
+                value={form.designation}
+                onChange={(e) => setForm({ ...form, designation: e.target.value })}
+              />
+
+              <TextField
+                label="Gender"
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              />
+
+
+              <Box>
+                <PhoneInput
+                  placeholder="Enter whatsapp number"
+                  country={"in"}
+                  value={form.whatsapp_number}
+                  onChange={(phone) =>
+                    setForm({
+                      ...form,
+                      whatsapp_number: `+${phone}`,
+                    })
+                  }
+                  inputStyle={{
+                    width: "100%",
+                    height: "56px",
+                  }}
+                  containerStyle={{
+                    width: "100%",
+                  }}
+                />
+              </Box>
+
+              <TextField
+                label="Item Name"
+                value={form.item_name}
+                onChange={(e) => setForm({ ...form, item_name: e.target.value })}
+              />
+
+              <TextField
+                label="Item Category"
+                value={form.item_category}
+                onChange={(e) => setForm({ ...form, item_category: e.target.value })}
+              
+              />
+
+              <TextField
+                label="Item Type"
+                value={form.item_type}
+                onChange={(e) => setForm({ ...form, item_type: e.target.value })}
+           
+              />
+
+              <TextField
+                label="Amount"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value === "" ? null : Number(e.target.value) })}
+          
+              />
+
+              <TextField
+                label="Interest Stage"
+                value={form.interest_stage}
+                onChange={(e) => setForm({ ...form, interest_stage: e.target.value })}
+                
+              />
+
+              <TextField
+                label="Offer Value"
+                value={form.offer_value}
+                onChange={(e) => setForm({ ...form, offer_value: e.target.value })}
+             
+              />
+
+              <TextField
+                label="City"
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+             
+              />
+
+              <TextField
+                label="State"
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+          
+              />
+
+              <TextField
+                label="Country"
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+           
+              />
+
+              <TextField
+                label="Source"
+                value={form.source}
+                onChange={(e) => setForm({ ...form, source: e.target.value })}            
+              />
+
+               <TextField
+                label="Lifecycle Stage"
+                value={form.lifecycle_stage}
+                onChange={(e) => setForm({ ...form, lifecycle_stage: e.target.value })}
+              />
+
+               <TextField
+                label="Tags"
+                value={form.tags}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
               />
             </Box>
           </DialogContent>
