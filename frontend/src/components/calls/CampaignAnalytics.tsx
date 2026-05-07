@@ -398,7 +398,7 @@ const CampaignAnalytics = () => {
       {/* SECOND ROW PANELS */}
       <Grid container spacing={3} mb={3}>
         {/* CALL VOLUME */}
-        <Grid item xs={12} md={9}>
+        <Grid item xs={12} md={12}>
           <Card sx={{ height: 320 }}>
             <CardContent>
               <Typography fontWeight={600}>Call Volume Timeline</Typography>
@@ -412,16 +412,7 @@ const CampaignAnalytics = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          <Card sx={{ height: 320 }}>
-            <CardContent>
-              <Typography fontWeight={600}>Recent Calls</Typography>
-              <Box mt={2}>
-                <LiveCalls recentCalls={summary.recent_calls || []} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+
       </Grid>
 
       {/* THIRD ROW PANELS */}
@@ -458,6 +449,17 @@ const CampaignAnalytics = () => {
                 {" "}
                 {/* increase chart container */}
                 <CallOutcomesChart data={callOutcomesData} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: 350, display: "flex", flexDirection: "column" }}>
+            <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <Typography fontWeight={600}>Recent Calls</Typography>
+
+              <Box sx={{ mt: 2, flex: 1, minHeight: 0 }}>
+                <LiveCalls recentCalls={summary.recent_calls || []} />
               </Box>
             </CardContent>
           </Card>

@@ -62,6 +62,7 @@ import { useAuth } from "../../context/AuthContext";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import { formatDate } from "../../utils/dateUtils";
 
 interface Props {
   campaignId: number;
@@ -88,6 +89,9 @@ const getStatusBg = (status: string) => {
     case "running":
       return "#dcfce7";
 
+    case "scheduled":
+      return "#fef3c7";
+
     case "paused":
       return "#fef3c7";
 
@@ -96,6 +100,9 @@ const getStatusBg = (status: string) => {
 
     case "cancelled":
       return "#fee2e2"; // light red
+
+    case "failed":
+      return "#fee2e2";
 
     default:
       return "#f3f4f6";
@@ -111,11 +118,17 @@ const getStatusText = (status: string) => {
     case "paused":
       return "#b45309";
 
+    case "scheduled":
+      return "#b45309";
+
     case "completed":
       return "#1d4ed8";
 
     case "cancelled":
       return "#b91c1c"; // dark red
+
+    case "failed":
+      return "#b91c1c";
 
     default:
       return "#374151";
@@ -379,9 +392,19 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 variant="outlined"
               />
             </Box>
+
+            {/* ✅ NEW: Status Note */}
+            {campaign?.stop_reason && (
+              <Typography
+                variant="body2"
+                sx={{ mt: 0.5, color: "text.secondary" }}
+              >
+                Status Note - {campaign.stop_reason}
+              </Typography>
+            )}
           </Box>
         </Box>
-        {["pending", "scheduled"].includes(campaign?.status) && (
+        {["draft"].includes(campaign?.status) && (
           <Button variant="outlined" onClick={() => onEdit(campaignId)}>
             Edit
           </Button>
@@ -590,7 +613,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </Typography>
                   <Typography fontWeight={600}>
                     {campaign?.scheduled_at
-                      ? formatDisplayDate(campaign?.scheduled_at)
+                      ? formatDate(campaign?.scheduled_at)
                       : "-"}
                   </Typography>
                 </Grid>
@@ -637,75 +660,131 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             </Box>
           )}
 
-          {/* INSTANT REPLY */}
+
+
+          {/* Workflow & INSTANT REPLY */}
           {(() => {
             const irRows = getInstantReplyDetailRows(
               campaign?.instant_reply_templates,
             );
+
+            const validRows = irRows.filter(
+              (r) => r.name && r.name !== "—"
+            );
+
             const modes: string[] = Array.isArray(campaign?.instant_reply_modes)
               ? campaign.instant_reply_modes
               : [];
-            const showInstantReply =
-              campaign?.instant_reply || modes.length > 0 || irRows.length > 0;
-            if (!showInstantReply) return null;
+
             return (
               <Box
                 sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  bgcolor: "grey.50",
+                  display: "flex",
+                  gap: 2,
                   mt: 2,
+                  flexWrap: { xs: "wrap", md: "nowrap" },
                 }}
               >
+                {/* WORKFLOW */}
                 <Box
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  flexWrap="wrap"
-                  gap={1}
-                  mb={1.5}
+                  sx={{
+                    flex: 1,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: "grey.50",
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                  }}
                 >
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Instant reply
+                  <Typography variant="subtitle2" color="text.secondary" mb={1.5}>
+                    Workflow
                   </Typography>
-                  {modes.length ? (
-                    <Box display="flex" gap={0.75} flexWrap="wrap">
-                      {modes.map((m) => (
-                        <Chip
-                          key={m}
-                          size="small"
-                          label={instantReplyChannelLabel(m)}
-                        />
+
+                  <Typography variant="caption" color="text.secondary">
+                    Follow Workflow Template
+                  </Typography>
+
+                  <Typography
+                    fontWeight={600}
+                    color={campaign?.workflow_template_name ? "text.primary" : "text.secondary"}
+                  >
+                    {campaign?.workflow_template_name || "No workflow selected"}
+                  </Typography>
+                </Box>
+
+                {/* INSTANT REPLY */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: "grey.50",
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 2,
+                  }}
+                >
+                  {/* LEFT */}
+                  <Box sx={{ minWidth: 160, flexShrink: 0 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Instant reply
+                    </Typography>
+
+                    {modes.length > 0 ? (
+                      <Box display="flex" gap={0.75} flexWrap="wrap" mt={1}>
+                        {modes.map((m) => (
+                          <Chip
+                            key={m}
+                            size="small"
+                            label={instantReplyChannelLabel(m)}
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" mt={1}>
+                        No channels selected
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {/* RIGHT */}
+                  {validRows.length > 0 ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 2,
+                        flex: 1,
+                      }}
+                    >
+                      {validRows.map((row) => (
+                        <Box
+                          key={row.channelKey}
+                          sx={{
+                            flex: "1 1 120px",
+                            maxWidth: 200,
+                            minWidth: 120,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            {row.channelLabel}
+                          </Typography>
+
+                          <Typography fontWeight={600} noWrap>
+                            {row.name}
+                          </Typography>
+                        </Box>
                       ))}
                     </Box>
-                  ) : null}
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                      No instant reply templates selected
+                    </Typography>
+                  )}
                 </Box>
-                {irRows.length ? (
-                  <Box
-                    display="flex"
-                    gap={2}
-                    sx={{
-                      flexWrap: { xs: "wrap", md: "nowrap" },
-                      "& > *": {
-                        flex: "1 1 0",
-                        minWidth: { xs: "100%", sm: 260 },
-                      },
-                    }}
-                  >
-                    {irRows.map((row) => (
-                      <Box key={row.channelKey}>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.channelLabel}
-                        </Typography>
-                        <Typography fontWeight={600}>{row.name}</Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No instant reply templates configured.
-                  </Typography>
-                )}
               </Box>
             );
           })()}
@@ -851,6 +930,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                           label={titleCase(log.status)}
                           color={getStatusColor(log.status) as any}
                           size="small"
+                          variant="outlined"
                         />
                       </TableCell>
                       <TableCell>

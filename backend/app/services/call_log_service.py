@@ -818,6 +818,11 @@ def process_call(call, agent):
 
         call_status = call.get("status")
         is_call_ended = call_status and call_status.lower() == "ended"
+        is_call_completed_or_failed = call_status and call_status.lower() in [
+            "ended",
+            "executing",
+            "calling fail",
+        ]
 
         if test_call:
             test_call.status = (
@@ -847,26 +852,44 @@ def process_call(call, agent):
             # Create conversation
             create_conversation_from_transcripts(db=db, call_log=call_log, agent=agent)
 
+        if campaign and is_call_completed_or_failed:
             # update the status of scheduled call
             job = (
                 db.query(WorkflowScheduledCall)
                 .filter(
                     WorkflowScheduledCall.external_call_id
-                    == str(call_log.external_call_id),
+                    == call_log.external_call_a_id,
                     WorkflowScheduledCall.status == "processing",
                 )
                 .first()
             )
 
             if job:
-                job.status = "done"
+                job.status = "done" if is_call_ended else "failed"
                 organization_channel_service.release_channel(
                     db=db, call_type="rescheduled_call", reference_id=job.id
                 )
 
+                if not is_call_ended:
+                    execution = db.query(WorkflowExecution).get(job.execution_id)
+
+                    execution.status = "failed"
+                    log_event(
+                        db=db,
+                        execution_id=execution.id,
+                        step_id=None,
+                        event_type="workflow_failed",
+                        metadata={"reason": "Provider failure"},
+                    )
+
         db.commit()
 
-        if is_call_ended and campaign and campaign.workflow_id and contact:
+        if (
+            is_call_completed_or_failed
+            and campaign
+            and campaign.workflow_id
+            and contact
+        ):
             threading.Thread(
                 target=handle_workflow_async, args=(call_log.id, call), daemon=True
             ).start()
@@ -911,7 +934,7 @@ def handle_workflow(db: Session, call_log: CallLog, campaign: CallCampaign, call
     if call_log.workflow_execution_id:
         return None
 
-    if call_log.status not in ["completed", "ended", "calling fail"]:
+    if call_log.status not in ["completed", "ended", "calling fail", "executing"]:
         return None
 
     execution = (
@@ -919,7 +942,7 @@ def handle_workflow(db: Session, call_log: CallLog, campaign: CallCampaign, call
         .filter(
             WorkflowExecution.campaign_id == call_log.campaign_id,
             WorkflowExecution.contact_id == call_log.contact_id,
-            WorkflowExecution.external_reference_id == call.get("id"),
+            WorkflowExecution.external_reference_id == call.get("call_id"),
             WorkflowExecution.status.in_(["pending", "scheduled"]),
         )
         .order_by(WorkflowExecution.id.desc())
@@ -962,14 +985,14 @@ def handle_instant_replies(
     call_log: CallLog,
     normalized_transcript: str,
 ):
-    latest = (
+    existing = (
         db.query(InstantReplyLog)
         .filter(InstantReplyLog.call_log_id == call_log.id)
         .order_by(InstantReplyLog.id.desc())
         .first()
     )
 
-    if latest and latest.status in ["success", "skipped"]:
+    if existing:
         return  # already processed → skip everything
 
     log_entry = InstantReplyLog(
@@ -1613,7 +1636,7 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         return
 
     logger.info(
-        f"new workflow trigger for status {call_log.status} & call data {call_log.__dict__}"
+        f"new workflow trigger for status {call_status} & call data {call_log.__dict__}"
     )
 
     # Create execution
@@ -2024,14 +2047,17 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
         None,
     )
 
-    print("reshedule response :", response)
+    logger.info(f"reshedule response {response}")
     return response
 
 
 def get_call_result(call):
     from app.services.conversation_outcome_service import _classify_outcome_with_llm
 
-    if call.get("transcript") and int(call.get("duration") or 0) > 0:
+    transcript = call.get("transcript")
+    has_transcript = transcript is not None and str(transcript).strip() != ""
+
+    if has_transcript and int(call.get("duration") or 0) > 0:
         call_status = "connected"
     else:
         call_status = "not_connected"
@@ -2216,10 +2242,11 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 job.status = "processing"
                 job.executed_at = now
 
-                call_log_id = response.get("call_log_id")
+                call_log_id = response.get("call_id")
                 execution.external_reference_id = call_log_id
                 job.external_call_id = call_log_id
 
+                db.flush()
             else:
                 job.status = "failed"
                 failed += 1
@@ -2229,6 +2256,8 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 )
 
                 execution.status = "failed"
+                db.flush()
+
                 error_msg = response.get("error") or "Provider failure"
                 log_event(
                     db=db,
