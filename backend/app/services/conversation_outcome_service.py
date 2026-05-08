@@ -169,7 +169,7 @@ def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
                     "- negative = customer clearly rejects, angry response, complaint, hostility, or strong refusal.\n"
                     "- satisfactory = issue/help request was successfully addressed OR conversation ended helpfully with useful engagement.\n"
                     "- neutral = polite conversation but no business opportunity / no intent / already customer / irrelevant / no current need.\n"
-                    "- unresolved = customer has interest/problem/question but next action is pending or issue not closed.\n"
+                    # "- unresolved = customer has interest/problem/question but next action is pending or issue not closed.\n"
                     "- other = unclear / unrelated.\n\n"
                     "Lead rules:\n"
                     "- lead = potential sales opportunity exists.\n"

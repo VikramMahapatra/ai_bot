@@ -988,12 +988,11 @@ def handle_instant_replies(
     existing = (
         db.query(InstantReplyLog)
         .filter(InstantReplyLog.call_log_id == call_log.id)
-        .order_by(InstantReplyLog.id.desc())
         .first()
     )
 
     if existing:
-        return  # already processed → skip everything
+        return
 
     log_entry = InstantReplyLog(
         call_log_id=call_log.id,
@@ -1002,26 +1001,16 @@ def handle_instant_replies(
     db.add(log_entry)
     db.flush()
 
-    replies_data = []
-    whatsapp_data = None
-    org_settings = None
-
     try:
-        should_send = (
-            campaign
-            and campaign.instant_reply
-            and contact
-            and not call_log.instant_reply_sent
-        )
-
-        if not should_send or not normalized_transcript:
+        if not (
+            campaign and campaign.instant_reply and contact and normalized_transcript
+        ):
             log_entry.status = "skipped"
             db.commit()
             return
 
         response = analyze_conversation(normalized_transcript)
         decision = response.get("instant_reply_decision")
-
         log_entry.decision = decision
 
         if decision != "send_now":
@@ -1029,7 +1018,6 @@ def handle_instant_replies(
             db.commit()
             return
 
-        # ---- send logic ----
         replies = (
             db.query(CallCampaignInstantReply)
             .filter(CallCampaignInstantReply.call_campaign_id == campaign.id)
@@ -1047,6 +1035,7 @@ def handle_instant_replies(
             for r in replies
         ]
 
+        whatsapp_data = None
         config = (
             db.query(WhatsAppChannel)
             .filter(
@@ -1063,16 +1052,15 @@ def handle_instant_replies(
             }
 
         org_settings = get_org_settings(db, campaign.organization_id)
-
         twilio_config = get_twilio_sms_config(
             db=db, organization_id=campaign.organization_id
         )
 
-        call_log_id = call_log.id
-
         logger.info(
-            f"Instant Reply initiated for Call : {call_log.id} and Contact: {contact.name}"
+            f"Instant Reply initiated for Call: {call_log.id}, Contact: {contact.name}"
         )
+
+        db.commit()
 
         results = dispatch_instant_replies_safe(
             replies=replies_data,
@@ -1082,6 +1070,11 @@ def handle_instant_replies(
             whatsapp_config=whatsapp_data,
             twilio_config=twilio_config,
         )
+
+        logger.info(f"Instant Reply Result: {results}")
+
+        # reopen session
+        db.expire_all()
 
         all_success = True
 
@@ -1098,26 +1091,24 @@ def handle_instant_replies(
             if not result.get("success"):
                 all_success = False
 
-        if all_success:
-            log_entry.status = "success"
-            call_log.instant_reply_sent = True
-        else:
-            log_entry.status = "failed"
-            log_entry.error = "Dispatch failed"
+        log_entry.status = "success" if all_success else "failed"
+        log_entry.error = None if all_success else "Dispatch failed"
+
+        call_log.instant_reply_sent = all_success
 
         db.commit()
 
     except Exception as e:
         db.rollback()
+        logger.error("Instant reply failed", exc_info=True)
 
-        # reopen session-safe update
         try:
-            log_entry.error = str(e)
             log_entry.status = "failed"
+            log_entry.error = str(e)
             db.add(log_entry)
             db.commit()
         except:
-            pass
+            logger.error("Failed to persist instant reply error", exc_info=True)
 
 
 def save_transcripts(db: Session, call_log: CallLog, transcript: str):
@@ -1847,7 +1838,11 @@ def continue_workflow_from_call(
 def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
     logger.info(f"Scheduling step for Call id : {call_log.id}")
 
+    call_log.workflow_execution_id = execution.id
+    execution.step_id = next_step_id
+
     delay = step_outcome.delay or 0
+    scheduled_at = datetime.utcnow()
 
     if step_outcome.delay_unit == "minutes":
         scheduled_at = datetime.utcnow() + timedelta(minutes=delay)
@@ -1916,59 +1911,40 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             .first()
         )
 
+        org_settings = get_org_settings(db, call_log.organization_id)
+
+        campaign_name = (
+            db.query(CallCampaign.name)
+            .filter(CallCampaign.id == call_log.campaign_id)
+            .scalar()
+        )
+
+        db.flush()
+
         message = render_template(template.content, contact)
 
-        if step_outcome.step_type == "sms":
-            logger.info(f"Sending SMS to {contact.phone} with message: {message}")
-            try:
+        execution_completed = False
+        error_message = None
+        message_id = None
+
+        try:
+            if step_outcome.step_type == "sms":
+                logger.info(f"Sending SMS to {contact.phone} with message: {message}")
+
                 success, error = send_sms(
                     message=message,
                     to_number=contact.phone,
                     organization_id=call_log.organization_id,
                 )
 
-                logger.info(f"SMS send result: {success}")
-
                 if success:
-                    log_event(
-                        db=db,
-                        execution_id=execution.id,
-                        step_id=next_step_id,
-                        event_type="workflow_executed",
-                        metadata={
-                            "step_type": step_outcome.step_type,
-                            "phone": contact.phone,
-                            "message_id": message_id,
-                        },
-                    )
-            except Exception as e:
-                execution.status = "failed"
-                log_event(
-                    db=db,
-                    execution_id=execution.id,
-                    step_id=next_step_id,
-                    event_type="workflow_execution_failed",
-                    metadata={
-                        "step_type": "sms",
-                        "phone": contact.phone,
-                        "reason": "Provider returned failure",
-                        "error": str(e),
-                    },
+                    execution_completed = True
+
+            elif step_outcome.step_type == "email":
+                logger.info(
+                    f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}"
                 )
 
-        elif step_outcome.step_type == "email":
-            logger.info(
-                f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}"
-            )
-            org_settings = get_org_settings(db, call_log.organization_id)
-
-            campaign_name = (
-                db.query(CallCampaign.name)
-                .filter(CallCampaign.id == call_log.campaign_id)
-                .scalar()
-            )
-
-            try:
                 success, error, message_id = send_campaign_email(
                     campaign_name=campaign_name,
                     subject=template.subject or "Update",
@@ -1979,35 +1955,44 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                 )
 
                 if success:
-                    log_event(
-                        db=db,
-                        execution_id=execution.id,
-                        step_id=next_step_id,
-                        event_type="workflow_executed",
-                        metadata={
-                            "step_type": step_outcome.step_type,
-                            "email": contact.email,
-                            "message_id": message_id,
-                        },
-                    )
+                    execution_completed = True
 
-            except Exception as e:
-                execution.status = "failed"
-                log_event(
-                    db=db,
-                    execution_id=execution.id,
-                    step_id=next_step_id,
-                    event_type="workflow_execution_failed",
-                    metadata={
-                        "step_type": "email",
-                        "email": contact.email,
-                        "reason": "Provider returned failure",
-                        "error": str(e),
-                    },
-                )
+        except Exception as e:
+            execution_completed = False
+            error_message = str(e)
+            logger.error(
+                f"Failed to execute step for Call id : {call_log.id}", excinfo=True
+            )
 
-    call_log.workflow_execution_id = execution.id
-    execution.step_id = next_step_id
+        db.expire_all()  # expire to get fresh data for logging
+
+        if execution_completed:
+            log_event(
+                db=db,
+                execution_id=execution.id,
+                step_id=next_step_id,
+                event_type="workflow_executed",
+                metadata={
+                    "step_type": step_outcome.step_type,
+                    "phone": contact.phone,
+                    "message_id": message_id,
+                },
+            )
+        else:
+            execution.status = "failed"
+            log_event(
+                db=db,
+                execution_id=execution.id,
+                step_id=next_step_id,
+                event_type="workflow_execution_failed",
+                metadata={
+                    "step_type": step_outcome.step_type,
+                    "email": contact.email,
+                    "phone": contact.phone,
+                    "reason": "Provider returned failure",
+                    "error": str(e),
+                },
+            )
 
 
 def reschedule_contact(db, campaign_id, contact_id, scheduled_at):

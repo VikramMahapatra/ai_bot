@@ -676,19 +676,6 @@ export const CallLogsTab = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Successful Calls</Typography>
-                <CheckCircleIcon color="success" />
-              </Box>
-              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
-                {callStats.successful}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
 
         {/* TEST CALLS */}
         <Grid item xs={12} md={3}>
@@ -704,6 +691,20 @@ export const CallLogsTab = () => {
             </CardContent>
           </Card>
         </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Successful Calls</Typography>
+                <CheckCircleIcon color="success" />
+              </Box>
+              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
+                {callStats.successful}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
       </Grid>
       {/* Table */}
       <Paper>
