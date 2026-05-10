@@ -898,6 +898,7 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
                     {/* Title Section */}
                     <Grid item xs={12} md={3}>
                         <TextField
+                            required
                             fullWidth
                             size="small"
                             label="Workflow Name"
@@ -918,6 +919,7 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
                     {/* Description */}
                     <Grid item xs={12} md={5}>
                         <TextField
+                            required
                             fullWidth
                             size="small"
                             label="Description"

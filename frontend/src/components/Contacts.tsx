@@ -62,7 +62,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Field from "./Common/Field";
-import { formatDate } from "../utils/dateUtils";
+import { formatDate, formatDateTime } from "../utils/dateUtils";
 
 type ContactForm = Omit<ContactItem, "id" | "created_at">;
 
@@ -150,6 +150,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const secondSectionRef = useRef<HTMLDivElement | null>(null);
+  const [sortBy, setSortBy] = useState<"name" | "newest" | "oldest">("name");
 
   const handleView = (contact: any) => {
     setSelectedContact(contact);
@@ -237,7 +238,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   useEffect(() => {
     loadAllContacts();
     setUploadResult(null);
-  }, [allContactSearch, allContactPage, allContactRowsPerPage]);
+  }, [allContactSearch, allContactPage, allContactRowsPerPage,sortBy]);
 
   /* ---------------------------
     Search Filter
@@ -294,20 +295,20 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       company: "",
       contact_list_id: (selectedListId as number) || null,
       designation: "",
-       gender: "",
-    whatsapp_number: "",
-    item_name: "",
-    item_category: "",
-    item_type: "",
-    amount: null,
-    interest_stage: "",
-    offer_value: "",
-    city: "",
-    state: "",
-    country: "",
-    source: "",
-    lifecycle_stage: "",
-    tags: "",
+      gender: "",
+      whatsapp_number: "",
+      item_name: "",
+      item_category: "",
+      item_type: "",
+      amount: null,
+      interest_stage: "",
+      offer_value: "",
+      city: "",
+      state: "",
+      country: "",
+      source: "",
+      lifecycle_stage: "",
+      tags: "",
     });
     setErrors({});
     setOpenForm(true);
@@ -327,21 +328,20 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       company: contact.company || "",
       contact_list_id: contact.contact_list_id,
       designation: contact.designation,
-       gender: contact.gender,
-    whatsapp_number: contact.whatsapp_number,
-    item_name: contact.item_name,
-    item_category: contact.item_category,
-    item_type: contact.item_type,
-    amount: contact.amount,
-    interest_stage: contact.interest_stage,
-    offer_value: contact.offer_value,
-    city: contact.city,
-    state: contact.state,
-    country: contact.country,
-    source: contact.source,
-    lifecycle_stage: contact.lifecycle_stage,
-    tags: contact.tags,
-      
+      gender: contact.gender,
+      whatsapp_number: contact.whatsapp_number,
+      item_name: contact.item_name,
+      item_category: contact.item_category,
+      item_type: contact.item_type,
+      amount: contact.amount,
+      interest_stage: contact.interest_stage,
+      offer_value: contact.offer_value,
+      city: contact.city,
+      state: contact.state,
+      country: contact.country,
+      source: contact.source,
+      lifecycle_stage: contact.lifecycle_stage,
+      tags: contact.tags,
     });
 
     setOpenForm(true);
@@ -442,6 +442,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   const loadAllContacts = async () => {
     const data = await callCampaignService.allContacts({
       search: allContactSearch || undefined,
+      sort_by: sortBy || undefined,
       skip: allContactPage * allContactRowsPerPage,
       limit: allContactRowsPerPage,
     });
@@ -723,12 +724,20 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
         <Box>
           {/* FILTERS */}
 
-          <Grid container spacing={2} mb={2} alignItems="center">
-            <Grid item xs={12} md={6}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            alignItems={{ xs: "stretch", sm: "center" }}
+            justifyContent="space-between"
+            mb={2}
+            width="100%"
+          >
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} flex={0.7}>
+              {/* Search box bigger */}
               <TextField
                 fullWidth
                 size="small"
-                label="Search Contacts"
+                label="Search contact"
                 value={allContactSearch}
                 onChange={(e) => setAllContactSearch(e.target.value)}
                 InputProps={{
@@ -739,9 +748,27 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   ),
                 }}
               />
-            </Grid>
 
-            <Grid item xs={12} md={6} textAlign="right">
+              {/* Sorting smaller */}
+              <TextField
+                size="small"
+                select
+                label="Sort By"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+               // sx={{ flex: 1 }} // take 1/4 of the row
+               sx={{
+    minWidth: 180, // prevents shrinking
+    width: 180,
+  }}
+              >
+                <MenuItem value="name">Name</MenuItem>
+                <MenuItem value="newest">Newest</MenuItem>
+                <MenuItem value="oldest">Oldest</MenuItem>
+              </TextField>
+            </Stack>
+
+            <Box mt={{ xs: 1, sm: 0 }}>
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
@@ -749,8 +776,8 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               >
                 Add Contact
               </Button>
-            </Grid>
-          </Grid>
+            </Box>
+          </Stack>
 
           {/* CONTACT TABLE */}
 
@@ -761,6 +788,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   <TableCell>Contact List</TableCell>
                   <TableCell>Contact</TableCell>
                   <TableCell>Company</TableCell>
+                  <TableCell>Created At</TableCell>
                   <TableCell width={120}>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -885,6 +913,8 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                       {/* Company */}
                       <TableCell>{contact.company || "N/A"}</TableCell>
 
+                      <TableCell>{formatDate(contact.created_at)}</TableCell>
+
                       {/* Actions */}
                       <TableCell>
                         <Box display="flex" gap={1}>
@@ -950,6 +980,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   sx={compactInputSx}
                   fullWidth
                   label="List Name"
+                  required={true}
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
                 />
@@ -1399,7 +1430,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
             </Grid>
           </Paper>
 
-          <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+          {/* <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
               Manual Entry (Optional)
             </Typography>
@@ -1567,7 +1598,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                 </Table>
               </TableContainer>
             )}
-          </Paper>
+          </Paper> */}
 
           <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
             <Box
@@ -1850,6 +1881,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               />
 
               <TextField
+                required
                 label="Email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -1875,7 +1907,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   containerStyle={{
                     width: "100%",
                   }}
-                  
                 />
 
                 {errors.phone && (
@@ -1883,7 +1914,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     {errors.phone}
                   </Typography>
                 )}
-                
               </Box>
 
               <TextField
@@ -1895,7 +1925,9 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               <TextField
                 label="Designation"
                 value={form.designation}
-                onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, designation: e.target.value })
+                }
               />
 
               <TextField
@@ -1903,7 +1935,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                 value={form.gender}
                 onChange={(e) => setForm({ ...form, gender: e.target.value })}
               />
-
 
               <Box>
                 <PhoneInput
@@ -1929,78 +1960,88 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               <TextField
                 label="Item Name"
                 value={form.item_name}
-                onChange={(e) => setForm({ ...form, item_name: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, item_name: e.target.value })
+                }
               />
 
               <TextField
                 label="Item Category"
                 value={form.item_category}
-                onChange={(e) => setForm({ ...form, item_category: e.target.value })}
-              
+                onChange={(e) =>
+                  setForm({ ...form, item_category: e.target.value })
+                }
               />
 
               <TextField
                 label="Item Type"
                 value={form.item_type}
-                onChange={(e) => setForm({ ...form, item_type: e.target.value })}
-           
+                onChange={(e) =>
+                  setForm({ ...form, item_type: e.target.value })
+                }
               />
 
               <TextField
                 label="Amount"
                 value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value === "" ? null : Number(e.target.value) })}
-          
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    amount:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
               />
 
               <TextField
                 label="Interest Stage"
                 value={form.interest_stage}
-                onChange={(e) => setForm({ ...form, interest_stage: e.target.value })}
-                
+                onChange={(e) =>
+                  setForm({ ...form, interest_stage: e.target.value })
+                }
               />
 
               <TextField
                 label="Offer Value"
                 value={form.offer_value}
-                onChange={(e) => setForm({ ...form, offer_value: e.target.value })}
-             
+                onChange={(e) =>
+                  setForm({ ...form, offer_value: e.target.value })
+                }
               />
 
               <TextField
                 label="City"
                 value={form.city}
                 onChange={(e) => setForm({ ...form, city: e.target.value })}
-             
               />
 
               <TextField
                 label="State"
                 value={form.state}
                 onChange={(e) => setForm({ ...form, state: e.target.value })}
-          
               />
 
               <TextField
                 label="Country"
                 value={form.country}
                 onChange={(e) => setForm({ ...form, country: e.target.value })}
-           
               />
 
               <TextField
                 label="Source"
                 value={form.source}
-                onChange={(e) => setForm({ ...form, source: e.target.value })}            
+                onChange={(e) => setForm({ ...form, source: e.target.value })}
               />
 
-               <TextField
+              <TextField
                 label="Lifecycle Stage"
                 value={form.lifecycle_stage}
-                onChange={(e) => setForm({ ...form, lifecycle_stage: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, lifecycle_stage: e.target.value })
+                }
               />
 
-               <TextField
+              <TextField
                 label="Tags"
                 value={form.tags}
                 onChange={(e) => setForm({ ...form, tags: e.target.value })}
