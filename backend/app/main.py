@@ -41,6 +41,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+logger.info("Configured CORS origins: %s", settings.cors_origins_list)
 
 outcome_daemon_task = None
 outcome_daemon_stop_event = asyncio.Event()
@@ -58,11 +59,20 @@ app = FastAPI(
     version=settings.APP_VERSION,
 )
 
+# Always allow local dev origins on localhost/127.0.0.1 regardless of port.
+# Also allow Origin: null for file:// test pages used during local widget testing.
+_local_origin_regex = r"(^https?://(localhost|127\.0\.0\.1)(:\d+)?$)|(^null$)"
+_configured_origin_regex = (settings.CORS_ALLOW_ORIGIN_REGEX or "").strip()
+if _configured_origin_regex:
+    effective_origin_regex = f"(?:{_local_origin_regex})|(?:{_configured_origin_regex})"
+else:
+    effective_origin_regex = _local_origin_regex
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_origin_regex=settings.CORS_ALLOW_ORIGIN_REGEX or None,
+    allow_origin_regex=effective_origin_regex,
     allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
     allow_methods=settings.cors_allow_methods_list,
     allow_headers=settings.cors_allow_headers_list,

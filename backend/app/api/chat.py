@@ -277,7 +277,6 @@ def _parse_datetime_input(text: str) -> Optional[datetime]:
         return None
 
     candidate = text.strip()
-    parsed = datetime.strptime(candidate, fmt)
     now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
 
     lower = candidate.lower()
@@ -1380,6 +1379,20 @@ def _get_monthly_session_count(db: Session, organization_id: int) -> int:
     return int(query.scalar() or 0)
 
 
+def _ensure_chat_credits_available(db: Session, organization_id: int) -> None:
+    valid = organization_credit_service.validate_feature_usage(
+        db,
+        organization_id,
+        FeatureCodes.CORE_CHATBOT_WEB_MESSAGE,
+        1,
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
+
+
 def _canonical_timezone(tz_name: Optional[str]) -> Optional[str]:
     if not tz_name:
         return tz_name
@@ -1531,6 +1544,8 @@ async def chat(
                 raise HTTPException(status_code=403, detail="Subscription inactive or expired")
 
         usage = subscription_usage or get_or_create_usage(db, user.organization_id)
+
+        _ensure_chat_credits_available(db, user.organization_id)
 
         is_new_session = db.query(Conversation.id).filter(
             Conversation.organization_id == user.organization_id,
@@ -1954,6 +1969,8 @@ async def chat_stream(
                 raise HTTPException(status_code=403, detail="Subscription inactive or expired")
 
         usage = subscription_usage or get_or_create_usage(db, user.organization_id)
+
+        _ensure_chat_credits_available(db, user.organization_id)
 
         is_new_session = db.query(Conversation.id).filter(
             Conversation.organization_id == user.organization_id,

@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str
     UPLOAD_DIR: str
     EXPORT_DIR: str
+    MAX_FILE_SIZE_MB: int = 10
+    MAX_TOTAL_UPLOAD_SIZE_MB: int = 50
     
     # JWT Configuration
     JWT_SECRET: str
@@ -106,6 +108,10 @@ class Settings(BaseSettings):
     DB_PORT: str 
     DB_SSLMODE: str 
     DB_NAME: str 
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
     
     @property
     def cors_origins_list(self) -> List[str]:

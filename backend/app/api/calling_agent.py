@@ -2,15 +2,40 @@ import json
 import logging
 from typing import Annotated, List, Optional
 from uuid import UUID
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, HTTPException
 from app.schemas.calling_agent import AgentStatusUpdate, CallingAgentCreate, CallingAgentRead, CallingAgentUpdate, TestCallRequest
 from app.database import get_db
+from app.config import settings
 from sqlalchemy.orm import Session
 from app.services import calling_agent_service as service
 from app.auth import get_current_user
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_file_sizes(files: Optional[List[UploadFile]]) -> None:
+    """Validate that uploaded files don't exceed size limits."""
+    if not files:
+        return
+    
+    total_size = 0
+    for file in files:
+        # Check individual file size
+        if file.size and file.size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{file.filename}' exceeds maximum allowed size of {settings.MAX_FILE_SIZE_MB}MB. Current file size: {file.size / (1024*1024):.2f}MB",
+            )
+        total_size += file.size or 0
+    
+    # Check total upload size
+    if total_size > settings.MAX_TOTAL_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Total upload size exceeds maximum allowed size of {settings.MAX_TOTAL_UPLOAD_SIZE_MB}MB. Current total: {total_size / (1024*1024):.2f}MB",
+        )
+
 
 router = APIRouter(
     prefix="/api/calling-agent", 
@@ -25,6 +50,7 @@ def create_agent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    _validate_file_sizes(attachments)
     agent_dict = json.loads(agent)
     agent_data = CallingAgentCreate(**agent_dict)
     return service.create_agent(db, current_user.organization_id,  agent_data, attachments)
@@ -38,6 +64,7 @@ def update_agent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    _validate_file_sizes(attachments)
     agent_dict = json.loads(agent)
     agent_data = CallingAgentUpdate(**agent_dict)
     return service.update_agent(db, agent_id, agent_data, attachments)

@@ -76,6 +76,19 @@ interface AppointmentBookingResponse {
 export class ChatAPI {
   private baseURL: string;
 
+  private async buildError(response: Response, fallbackMessage: string): Promise<Error> {
+    try {
+      const payload = await response.json();
+      const detail = typeof payload?.detail === 'string' ? payload.detail : '';
+      if (detail) {
+        return new Error(detail);
+      }
+    } catch {
+      // Ignore JSON parse failures and fall back to default message.
+    }
+    return new Error(fallbackMessage);
+  }
+
   constructor(baseURL: string) {
     this.baseURL = baseURL;
   }
@@ -102,7 +115,7 @@ export class ChatAPI {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to send message');
+      throw await this.buildError(response, 'Failed to send message');
     }
 
     return response.json();
@@ -132,7 +145,7 @@ export class ChatAPI {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to stream chat response');
+      throw await this.buildError(response, 'Failed to stream chat response');
     }
 
     return response;

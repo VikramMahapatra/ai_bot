@@ -14,6 +14,7 @@ from typing import List, Dict
 from pydantic import BaseModel
 from app.database import get_db, SessionLocal
 from app.auth import require_admin
+from app.config import settings
 from app.models import User, KnowledgeSource, SourceType
 from app.schemas import (
     KnowledgeSourceResponse,
@@ -419,6 +420,13 @@ async def upload_document(
                 status_code=403, detail="Subscription inactive or expired"
             )
 
+        # Validate file size before reading
+        if file.size and file.size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size exceeds maximum allowed size of {settings.MAX_FILE_SIZE_MB}MB. Current file size: {file.size / (1024*1024):.2f}MB",
+            )
+
         # Determine file type
         filename = file.filename.lower()
         if filename.endswith(".pdf"):
@@ -433,12 +441,29 @@ async def upload_document(
         # Read file content
         content = await file.read()
 
+        # Double-check file size after reading
+        if len(content) > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size exceeds maximum allowed size of {settings.MAX_FILE_SIZE_MB}MB. Current file size: {len(content) / (1024*1024):.2f}MB",
+            )
+
         # Ingest document
         source = ingest_document(
             content, file.filename, source_type, current_user.id, widget_id, db
         )
 
-        increment_usage(db, current_user.organization_id, documents_count=1)
+        # Usage tracking should not fail the upload response if a transient DB
+        # connection drop happens after ingestion already succeeded.
+        try:
+            increment_usage(db, current_user.organization_id, documents_count=1)
+        except Exception as usage_err:
+            db.rollback()
+            logger.warning(
+                "Upload succeeded but usage increment failed for org %s: %s",
+                current_user.organization_id,
+                str(usage_err),
+            )
 
         return DocumentUploadResponse(
             id=source.id,
