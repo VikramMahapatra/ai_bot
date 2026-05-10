@@ -96,7 +96,10 @@ import {
   StageChip,
   titleCase,
 } from "../Common/StatusChips";
-import { useDateFormatter, useOnlyDateFormatter } from "../../hooks/useDateFormatter";
+import {
+  useDateFormatter,
+  useOnlyDateFormatter,
+} from "../../hooks/useDateFormatter";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { formatEndedReason } from "../calls/CallDetailDrawer";
 
@@ -135,7 +138,15 @@ const normalizeHexColor = (value?: string) => {
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
 };
 
-const LeadManager: React.FC = () => {
+type LeadManagerProps = {
+  openFunnelCatDialog: boolean;
+  setOpenFunnelCatDialog: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+const LeadManager = ({
+  openFunnelCatDialog,
+  setOpenFunnelCatDialog,
+}: LeadManagerProps) => {
   const theme = useTheme();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [widgets, setWidgets] = useState<OrganizationWidget[]>([]);
@@ -184,13 +195,15 @@ const LeadManager: React.FC = () => {
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [closeDateOpen, setCloseDateOpen] = useState(false);
-  const [closeDate, setCloseDate] = useState("");
+  const [closeDate, setCloseDate] = useState(
+  new Date().toISOString().split("T")[0]
+);
   const [summary, setSummary] = useState<any>({});
   const formatDisplayDate = useDateFormatter();
   const formatDisplayOnlyDate = useOnlyDateFormatter();
   const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   const panelSx = {
     borderRadius: "18px",
     border: `1px solid ${alpha(theme.palette.common.white, 0.64)}`,
@@ -701,7 +714,7 @@ const LeadManager: React.FC = () => {
       const updated = await leadService.moveLeadToFunnel(
         selectedLead.id,
         moveStage,
-        closeDate
+        closeDate,
       );
       setLeads((prev) =>
         prev.map((lead) => (lead.id === updated.id ? updated : lead)),
@@ -1144,7 +1157,7 @@ const LeadManager: React.FC = () => {
 
   const filterPanel = (
     <>
-      {leadOverviewPanel}
+      {/* {leadOverviewPanel} */}
       {advancedLeadsFilterPanel}
     </>
   );
@@ -1184,145 +1197,6 @@ const LeadManager: React.FC = () => {
           {success}
         </Alert>
       )}
-
-      <Paper sx={{ ...panelSx, p: 2.4, mb: 2.6 }}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 1.5,
-            mb: funnelMasterOpen ? 1.3 : 0,
-          }}
-        >
-          <Box
-            role="button"
-            tabIndex={0}
-            aria-expanded={funnelMasterOpen}
-            aria-controls="funnel-category-master-panel"
-            onClick={() => setFunnelMasterOpen((open) => !open)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setFunnelMasterOpen((open) => !open);
-              }
-            }}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              gap: 0.75,
-              cursor: "pointer",
-              userSelect: "none",
-              flexShrink: 0,
-              minWidth: 0,
-              outline: "none",
-              "&:focus-visible": {
-                boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.35)}`,
-                borderRadius: 1,
-              },
-            }}
-          >
-            <ExpandMoreIcon
-              sx={{
-                color: "text.secondary",
-                transform: funnelMasterOpen ? "rotate(180deg)" : "rotate(0deg)",
-                transition: theme.transitions.create("transform", {
-                  duration: theme.transitions.duration.shortest,
-                }),
-              }}
-            />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Funnel Category Master
-            </Typography>
-          </Box>
-          {/* <Button
-            startIcon={<AddIcon />}
-            variant="outlined"
-            onClick={openCreateCategoryDialog}
-            sx={{ flexShrink: 0 }}
-          >
-            Add Category
-          </Button> */}
-        </Box>
-
-        <Collapse in={funnelMasterOpen} timeout="auto">
-          <TableContainer
-            id="funnel-category-master-panel"
-            sx={{
-              borderRadius: "12px",
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-            }}
-          >
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Key</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Position</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Color</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {funnelCategories.map((category) => (
-                  <TableRow key={category.id} hover>
-                    <TableCell>{category.name}</TableCell>
-                    <TableCell sx={{ fontFamily: "monospace" }}>
-                      {category.key}
-                    </TableCell>
-                    <TableCell>{category.position}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={category.color}
-                        size="small"
-                        sx={{
-                          bgcolor: alpha(category.color, 0.15),
-                          color: category.color,
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={category.is_active ? "Active" : "Inactive"}
-                        size="small"
-                        color={category.is_active ? "success" : "default"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => openEditCategoryDialog(category)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {/* <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDeleteCategory(category)}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip> */}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {funnelCategories.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center">
-                      No funnel categories found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Collapse>
-      </Paper>
 
       {filterPanel}
 
@@ -1470,7 +1344,7 @@ const LeadManager: React.FC = () => {
                 <TableCell sx={{ fontWeight: 700 }}>Latest Sentiment</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Created Date</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Closed Date</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Exp/Actual Closed Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -1569,7 +1443,9 @@ const LeadManager: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>{formatDisplayDate(lead.created_at)}</TableCell>
-                  <TableCell>{formatDisplayOnlyDate(lead.close_date)}</TableCell>
+                  <TableCell>
+                    {formatDisplayOnlyDate(lead.close_date)}
+                  </TableCell>
                   <TableCell>
                     <Box
                       sx={{
@@ -1858,44 +1734,48 @@ const LeadManager: React.FC = () => {
                   </Select>
                 )}
                 {/* Show Close Date field below dropdown */}
-                {(selectedLead?.funnel_stage !== "closed_won" &&
-                selectedLead?.funnel_stage !== "closed_lost") && (moveStage === "closed_won" ||
-                  moveStage === "closed_lost") && (
-                  <>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ mt: 2, mb: 0.5 }} // same spacing as above
-                    >
-                      Select Close Date
-                    </Typography>
+                {selectedLead?.funnel_stage !== "closed_won" &&
+                  selectedLead?.funnel_stage !== "closed_lost" &&
+                  (moveStage === "closed_won" ||
+                    moveStage === "closed_lost") && (
+                    <>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 2, mb: 0.5 }} // same spacing as above
+                      >
+                        Select Close Date
+                      </Typography>
 
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      value={closeDate || selectedLead.close_date || ""}
-                      onChange={(e) => setCloseDate(e.target.value)}
-                      InputLabelProps={{
-                        shrink: true,
-                      }}
-                      inputProps={{
-    // Prevent future date selection
-    max: new Date().toISOString().split("T")[0],
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        value={closeDate}
+                        disabled={moveStage === "closed_lost"}
+                        onChange={(e) => setCloseDate(e.target.value)}
+                        InputLabelProps={{
+                          shrink: true,
+                        }}
+                        inputProps={{
+                          // Prevent future date selection
+                          max: new Date().toISOString().split("T")[0],
 
-    // Prevent selecting before created_date
-    min: selectedLead?.created_at
-      ? new Date(selectedLead.created_at).toISOString().split("T")[0]
-      : undefined,
-  }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          borderRadius: 1, // rectangle like Select
-                        },
-                      }}
-                    />
-                  </>
-                )}
+                          // Prevent selecting before created_date
+                          min: selectedLead?.created_at
+                            ? new Date(selectedLead.created_at)
+                                .toISOString()
+                                .split("T")[0]
+                            : undefined,
+                        }}
+                        sx={{
+                          "& .MuiOutlinedInput-root": {
+                            borderRadius: 1, // rectangle like Select
+                          },
+                        }}
+                      />
+                    </>
+                  )}
               </FormControl>
             </Stack>
           )}
@@ -1906,16 +1786,13 @@ const LeadManager: React.FC = () => {
             variant="contained"
             onClick={() => setConfirmationDialogOpen(true)}
             disabled={moving || !moveStage}
-            startIcon={
-              moving 
-            }
+            startIcon={moving}
           >
             {"Confirm & Move"}
           </Button>
         </DialogActions>
       </Dialog>
 
-     
       <Dialog
         open={closeDateOpen}
         onClose={() => setCloseDateOpen(false)}
@@ -2098,19 +1975,111 @@ const LeadManager: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-       <ConfirmDialog
-                          open={confirmationDialogOpen}
-                          title="Save funnel stage data"
-                          description={
-                            `Are you sure you want to save funnel stage data?`
-                          }
-                          confirmLabel="Save"
-                          cancelLabel="Cancel"
-                          confirmColor="success"
-                          loading={moving}
-                          onCancel={() => setConfirmationDialogOpen(false)}
-                          onConfirm={handleMoveLead}
+      <ConfirmDialog
+        open={confirmationDialogOpen}
+        title="Save funnel stage data"
+        description={`Are you sure you want to save funnel stage data?`}
+        confirmLabel="Save"
+        cancelLabel="Cancel"
+        confirmColor="success"
+        loading={moving}
+        onCancel={() => setConfirmationDialogOpen(false)}
+        onConfirm={handleMoveLead}
+      />
+
+      <Dialog
+              open={openFunnelCatDialog}
+              onClose={() => setOpenFunnelCatDialog(false)}
+              sx={{
+                "& .MuiDialog-paper": {
+                  maxWidth: "60%",
+                  margin: 0,
+                  overflowX: "hidden",
+                },
+              }}
+        fullWidth
+            >
+              <DialogTitle>Funnel Category Master</DialogTitle>
+              <DialogContent sx={{ overflowX: "hidden" }}>
+                <TableContainer
+            id="funnel-category-master-panel"
+            sx={{
+              borderRadius: "12px",
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+            }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Key</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Position</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Color</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {funnelCategories.map((category) => (
+                  <TableRow key={category.id} hover>
+                    <TableCell>{category.name}</TableCell>
+                    <TableCell sx={{ fontFamily: "monospace" }}>
+                      {category.key}
+                    </TableCell>
+                    <TableCell>{category.position}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={category.color}
+                        size="small"
+                        sx={{
+                          bgcolor: alpha(category.color, 0.15),
+                          color: category.color,
+                        }}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={category.is_active ? "Active" : "Inactive"}
+                        size="small"
+                        color={category.is_active ? "success" : "default"}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => openEditCategoryDialog(category)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {/* <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteCategory(category)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip> */}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {funnelCategories.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      No funnel categories found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenFunnelCatDialog(false)}>Close</Button>
+              </DialogActions>
+            </Dialog>
 
       <Drawer
         anchor="right"
@@ -2243,10 +2212,14 @@ const LeadManager: React.FC = () => {
                         </Typography>
 
                         {/* META */}
-                        <Box display = "flex" alignItems = "center"  gap = {1}>
+                        <Box display="flex" alignItems="center" gap={1}>
                           {a.created_at && (
                             <>
-                              <Typography fontSize={15} fontWeight={700}  color="text.secondary">
+                              <Typography
+                                fontSize={15}
+                                fontWeight={700}
+                                color="text.secondary"
+                              >
                                 •
                               </Typography>
                               <Typography fontSize={12} color="text.secondary">
@@ -2255,27 +2228,35 @@ const LeadManager: React.FC = () => {
                             </>
                           )}
                         </Box>
-                        
-                        {a.status && (
-                       <Box display="flex" alignItems="center" gap={0.5}>
-                                                    <Typography fontSize={13} variant="body2" color="text.secondary">
-                                                        Status:
-                                                    </Typography>
-                                                    <Typography fontSize={13} variant="body2" fontWeight={600} color="error.main">
-                                                        {formatEndedReason(a.status)}
-                                                    </Typography>
-                                                </Box>
-                    )}
 
+                        {a.status && (
+                          <Box display="flex" alignItems="center" gap={0.5}>
+                            <Typography
+                              fontSize={13}
+                              variant="body2"
+                              color="text.secondary"
+                            >
+                              Status:
+                            </Typography>
+                            <Typography
+                              fontSize={13}
+                              variant="body2"
+                              fontWeight={600}
+                              color="error.main"
+                            >
+                              {formatEndedReason(a.status)}
+                            </Typography>
+                          </Box>
+                        )}
                       </Box>
                     </Box>
 
-                      {/* CHIPS */}
+                    {/* CHIPS */}
                     <Box mt={1} display="flex" gap={1} flexWrap="wrap">
                       <SourceChip value={a.source || "Unknown source"} />
                       <OutcomeChip value={a.outcome} />
                     </Box>
-                    
+
                     {/* SUMMARY (VISUAL DE-EMPHASIS FIX) */}
                     {a.summary && (
                       <Box

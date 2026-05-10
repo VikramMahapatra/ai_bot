@@ -167,6 +167,10 @@ const CreateChatAgentPage: React.FC = () => {
     lead_fields: '',
   });
 
+  const [errors, setErrors] = useState({
+      name: "",
+    });
+
   const [createdWidgetId, setCreatedWidgetId] = useState('');
   const [shareLink, setShareLink] = useState('');
   const [shareLinkExpiresAt, setShareLinkExpiresAt] = useState('');
@@ -784,8 +788,14 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const saveWidgetProfile = async () => {
+
+     const newErrors = {
+      name: ""
+    }
+
     if (!widget.name.trim()) {
-      setError(`Please enter a widget name to ${isEditMode ? 'update' : 'create'} your agent.`);
+      newErrors.name = `Please enter a widget name to ${isEditMode ? 'update' : 'create'} your agent.`;
+      setErrors(newErrors);
       return;
     }
 
@@ -1341,8 +1351,11 @@ const CreateChatAgentPage: React.FC = () => {
                       </Box>
 
                       <TextField
+                        required
                         label="Agent Name"
                         value={widget.name}
+                        error={!!errors.name}
+                        helperText={errors.name}
                         onChange={(e) => setWidget((prev) => ({ ...prev, name: e.target.value }))}
                         placeholder="Sales Assistant"
                         fullWidth

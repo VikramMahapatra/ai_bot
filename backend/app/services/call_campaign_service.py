@@ -1076,6 +1076,7 @@ def get_contacts_by_ids(db: Session, ids: list[int]):
 def get_contacts(
     db: Session,
     organization_id: int,
+    sort_by: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
@@ -1094,6 +1095,7 @@ def get_contacts(
         search_term = f"%{search.strip()}%"
         query = query.filter(
             Contact.name.ilike(search_term)
+            | ContactList.list_name.ilike(search_term)
             | Contact.email.ilike(search_term)
             | Contact.phone.ilike(search_term)
             | Contact.company.ilike(search_term)
@@ -1108,10 +1110,18 @@ def get_contacts(
     # ---------------------------
     total = query.count()
 
+    # SORT
+    if sort_by == "name":
+        query = query.order_by(Contact.name.asc())
+    elif sort_by == "oldest":
+        query = query.order_by(Contact.created_at.asc())
+    else:
+        query = query.order_by(Contact.created_at.desc())
+
     # ---------------------------
     # Pagination
     # ---------------------------
-    rows = query.order_by(Contact.created_at.desc()).offset(skip).limit(limit).all()
+    rows = query.offset(skip).limit(limit).all()
 
     # ---------------------------
     # Response

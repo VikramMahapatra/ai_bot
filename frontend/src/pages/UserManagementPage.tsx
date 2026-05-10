@@ -81,6 +81,11 @@ const UserManagementPage: React.FC = () => {
     role: "USER",
     assigned_widget_ids: [],
   });
+  const [errors, setErrors] = useState({
+    username: "",
+    email: "",
+    password: "",
+  });
 
   const [search, setSearch] = useState("");
   const [userTotal, setUserTotal] = useState(0);
@@ -189,12 +194,44 @@ const UserManagementPage: React.FC = () => {
     });
   };
 
+  const validateForm = () => {
+    let valid = true;
+
+    const newErrors = {
+      username: "",
+      email: "",
+      password: "",
+    };
+
+    // 🔹 Basic validations (existing)
+    if (!formData.username.trim()) {
+      newErrors.username = "Username is required";
+      valid = false;
+    }
+
+    if (!formData.email) {
+      newErrors.email = "Email is required";
+      valid = false;
+    }
+
+    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = "Invalid email";
+    }
+
+    if (!formData.password.trim()) {
+      newErrors.password = "Password is required";
+      valid = false;
+    }
+
+    setErrors(newErrors);
+
+    return valid;
+  }
+
   const handleCreateUser = async () => {
+    if (!validateForm()) return
+  
     try {
-      if (!formData.username || !formData.email || !formData.password) {
-        setError("All fields are required");
-        return;
-      }
 
       if (
         formData.role === "USER_HANDOFF" &&
@@ -623,9 +660,12 @@ const UserManagementPage: React.FC = () => {
           </DialogTitle>
           <DialogContent sx={{ pt: 3 }}>
             <TextField
+              required
               fullWidth
               label="Username"
               value={formData.username}
+              error={!!errors.username}
+              helperText={errors.username}
               onChange={(e) =>
                 setFormData({ ...formData, username: e.target.value })
               }
@@ -633,10 +673,13 @@ const UserManagementPage: React.FC = () => {
               margin="normal"
             />
             <TextField
+              required
               fullWidth
               label="Email"
               type="email"
               value={formData.email}
+              error={!!errors.email}
+              helperText={errors.email}
               onChange={(e) =>
                 setFormData({ ...formData, email: e.target.value })
               }
@@ -645,10 +688,13 @@ const UserManagementPage: React.FC = () => {
             />
             {!editingUser && (
               <TextField
+                required
                 fullWidth
                 label="Password"
                 type="password"
                 value={formData.password}
+                error={!!errors.password}
+                helperText={errors.password}
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
                 }
