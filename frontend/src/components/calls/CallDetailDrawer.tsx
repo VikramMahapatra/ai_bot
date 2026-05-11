@@ -10,7 +10,8 @@ import {
     Button,
     Tooltip,
     Avatar,
-    Chip
+    Chip,
+    Divider
 } from '@mui/material';
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CloseIcon from '@mui/icons-material/Close';
@@ -28,12 +29,18 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
 import CallMadeIcon from '@mui/icons-material/CallMade';
 import CallReceivedIcon from '@mui/icons-material/CallReceived';
-import { formatDateTime } from '../../utils/dateUtils';
 import LeadIcon from "@mui/icons-material/HowToReg";
 import SentimentDissatisfiedIcon from "@mui/icons-material/SentimentDissatisfied";
 import SentimentNeutralIcon from "@mui/icons-material/SentimentNeutral";
 import SentimentVerySatisfiedIcon from "@mui/icons-material/SentimentVerySatisfied";
 import SentimentVeryDissatisfiedIcon from "@mui/icons-material/SentimentVeryDissatisfied";
+import MessageIcon from "@mui/icons-material/Message";
+import SmsIcon from "@mui/icons-material/Sms";
+import EmailIcon from "@mui/icons-material/Email";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import InfoIcon from "@mui/icons-material/Info";
+import { useDateFormatter } from '../../hooks/useDateFormatter';
 
 
 
@@ -86,10 +93,46 @@ const getTypeIcon = (type: string) => type === 'Outbound' ? <CallMadeIcon fontSi
 const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall, onClose }) => {
     if (!selectedCall) return null;
 
+    const formatDisplayDate = useDateFormatter();
+
     const sentiment = selectedCall?.sentiment?.toLowerCase();
     const config = sentimentConfig[sentiment] || {
         color: "text.primary",
         icon: <SentimentNeutralIcon />,
+    };
+
+    const getSourceIcon = (source?: string) => {
+        switch (source) {
+            case "campaign_call":
+                return <CampaignIcon fontSize="small" color="primary" />;
+            case "rescheduled_call":
+                return <ScheduleIcon fontSize="small" color="warning" />;
+            case "test_call":
+                return <BugReportIcon fontSize="small" color="error" />;
+            default:
+                return <InfoIcon fontSize="small" />;
+        }
+    };
+
+    const getChannelIcon = (channel: string) => {
+        switch (channel) {
+            case "sms":
+                return <SmsIcon fontSize="small" color="primary" />;
+            case "email":
+                return <EmailIcon fontSize="small" color="secondary" />;
+            case "whatsapp":
+                return <WhatsAppIcon fontSize="small" color="success" />;
+            default:
+                return <MessageIcon fontSize="small" />;
+        }
+    };
+
+    const formatSource = (source?: string) => {
+        if (!source) return "N/A";
+
+        return source
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
     };
 
     return (
@@ -144,7 +187,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.startTime
-                                        ? formatDateTime(selectedCall.startTime)
+                                        ? formatDisplayDate(selectedCall.startTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -156,7 +199,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                                 <Typography variant="body2" fontWeight={600}>
                                     {selectedCall.endTime
-                                        ? formatDateTime(selectedCall.endTime)
+                                        ? formatDisplayDate(selectedCall.endTime)
                                         : "-"}
                                 </Typography>
                             </Box>
@@ -244,12 +287,14 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
-                                <BugReportIcon fontSize="small" color="warning" />
+                                {getSourceIcon(selectedCall.source)}
+
                                 <Typography variant="body2" color="text.secondary">
-                                    Test Call:
+                                    Source:
                                 </Typography>
+
                                 <Typography variant="body2" fontWeight={600}>
-                                    {selectedCall.testCall ? "Yes" : "No"}
+                                    {formatSource(selectedCall.source)}
                                 </Typography>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
@@ -264,16 +309,6 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                 </Typography>
                             </Box>
 
-                            {/* <Box display="flex" alignItems="center" gap={1}>
-                                <AttachMoneyIcon fontSize="small" />
-                                <Typography variant="body2" color="text.secondary">
-                                    Cost:
-                                </Typography>
-                                <Typography variant="body2" fontWeight={600} color="success.main">
-                                    {selectedCall.cost || "N/A"}
-                                </Typography>
-                            </Box> */}
-
                             <Box display="flex" alignItems="center" gap={1}>
                                 <CallEndIcon fontSize="small" color="error" />
                                 <Typography variant="body2" color="text.secondary">
@@ -285,6 +320,51 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                             </Box>
                         </Stack>
                     </Stack>
+                    {selectedCall.instant_reply && (
+                        <>
+                            <Divider sx={{ my: 2 }} />
+
+                            <Typography variant="subtitle2" color="text.secondary">
+                                Instant Reply
+                            </Typography>
+
+                            <Box mt={1}>
+                                <Typography variant="body2">
+                                    Decision:{" "}
+                                    <b>{titleCase(selectedCall.instant_reply.decision || "N/A")}</b>
+                                </Typography>
+
+                                <Typography variant="body2">
+                                    Status:{" "}
+                                    <b>{titleCase(selectedCall.instant_reply.status)}</b>
+                                </Typography>
+
+                                {selectedCall.instant_reply.channels?.map((ch: any, i: number) => (
+                                    <Box key={i} display="flex" alignItems="center" gap={1} mt={1}>
+                                        {getChannelIcon(ch.channel)}
+
+                                        <Typography variant="body2">
+                                            {titleCase(ch.channel)}:
+                                        </Typography>
+
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={600}
+                                            color={ch.status === "success" ? "success.main" : "error.main"}
+                                        >
+                                            {titleCase(ch.status)}
+                                        </Typography>
+
+                                        {ch.error && (
+                                            <Typography variant="caption" color="error">
+                                                ({ch.error})
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                ))}
+                            </Box>
+                        </>
+                    )}
                 </Grid>
 
                 {/* RIGHT PANEL: Audio + Transcript */}

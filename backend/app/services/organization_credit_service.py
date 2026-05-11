@@ -71,6 +71,19 @@ def get_credit_summary(
         PriceMatrixItem.module,
         PriceMatrixItem.sub_module,
         PriceMatrixItem.feature_code,
+        
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        OrganizationCreditUsage.status == "consumed",
+                        OrganizationCreditUsage.used_quantity
+                    ),
+                    else_=0
+                )
+            ),
+            0
+        ).label("items_used"),
 
         # -------------------------
         # Reserved
@@ -132,7 +145,8 @@ def get_credit_summary(
         OrganizationCreditUsage,
         and_(
             OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
-            OrganizationCreditUsage.organization_id == organization_id  # ✅ move filter here
+            OrganizationCreditUsage.organization_id == organization_id ,
+            func.date_trunc("month", OrganizationCreditUsage.created_at) == current_month 
         )
     ).group_by(
         PriceMatrixItem.module,
@@ -174,7 +188,8 @@ def get_credit_summary(
                 "reserved": row.reserved,
                 "consumed": row.consumed,
                 "refunded": row.refunded,
-                "used": row.used
+                "used": row.used,
+                "items_used": row.items_used
             }
             for row in feature_summary
         ],

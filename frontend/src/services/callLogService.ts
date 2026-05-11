@@ -1,11 +1,28 @@
 import api from './api';
+import { ContactItem, ContactListResponse } from './campaignService';
 
 export interface CallTranscript {
     speaker: "Agent" | "Contact";
     text: string;
 }
+
+export interface InstantReplyChannel {
+    channel: "sms" | "email" | "whatsapp";
+    status: "success" | "failed";
+    error?: string | null;
+}
+
+export interface InstantReply {
+    decision?: "send_now" | "do_not_send_now";
+    status: "pending" | "success" | "failed" | "skipped";
+    error?: string | null;
+    channels: InstantReplyChannel[];
+    created_at?: string;
+}
+
 export interface CallLog {
     id: string;
+    contact_id?: number;
     phone: string;
     contact?: string;
     agent?: string;
@@ -38,6 +55,9 @@ export interface CallLog {
     cost?: string;
     lead_qualified_status?: string;
     transcript: CallTranscript[];
+    follow_up_count: number;
+    source?: "campaign_call" | "rescheduled_call" | "reschedule_call" | "test_call";
+    instant_reply?: InstantReply;
 }
 
 export type StatusType =
@@ -51,6 +71,8 @@ export type SentimentType = "positive" | "negative" | "neutral";
 
 export type LeadQualityType = "high" | "medium" | "low" | "poor";
 
+export type ContactType = "all" | "initiated" | "rescheduled" | "pending"
+
 export interface CallLogFilterState {
     search?: string;
     fromDate?: string;
@@ -61,6 +83,7 @@ export interface CallLogFilterState {
     sentiment?: SentimentType | "All";
     evaluation: boolean | "All";
     is_lead_qualified?: boolean | "All";
+    sort_by?: 'newest' | 'oldest';
 }
 
 export interface CallLogFilters {
@@ -86,6 +109,7 @@ export interface CallLogFilters {
 
     lead_quality?: string;
     is_lead_qualified?: boolean;
+    sort_by?: 'newest' | 'oldest';
 }
 
 export interface CallLogListResponse {
@@ -118,6 +142,16 @@ export interface CallLogResponse {
     success: boolean;
 }
 
+export interface CampaignContactResponse {
+    contact_id: number;
+    name: string;
+    email: string;
+    phone: string;
+    status: string;
+    ended_reason: string;
+    date: string;
+}
+
 
 export const callLogService = {
 
@@ -147,4 +181,9 @@ export const callLogService = {
         return response.data;
     },
 
+    async getCampaignContacts(campaign_id: number, contactType: ContactType): Promise<CampaignContactResponse[]> {
+        const params = { type: contactType, campaign_id: campaign_id };
+        const response = await api.get<CampaignContactResponse[]>(`/api/call-log/contacts-by-type`, { params });
+        return response.data;
+    },
 };

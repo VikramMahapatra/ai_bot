@@ -407,6 +407,9 @@ async def get_leads_funnel(
                 counts[normalized] = int(count)
             else:
                 unassigned += int(count)
+                
+        if unassigned:
+            counts["unassigned"] = counts.get("unassigned", 0) + unassigned
 
         top_count = counts[categories[0].key] if categories else 0
         data = []
@@ -426,7 +429,7 @@ async def get_leads_funnel(
                 }
             )
 
-        if unassigned:
+        if unassigned and "unassigned" not in counts:
             data.append(
                 {
                     "stage_key": "unassigned",

@@ -409,7 +409,7 @@ def run_rule_engine(
                 custom_fields=_dumps_json(conversion_metadata),
                 lead_outcome="campaign_engaged",
                 source=campaign_type if campaign_type in {"email", "sms", "whatsapp"} else "chat",
-                funnel_stage=(rule.target_funnel_stage or "qualified"),
+                funnel_stage=(rule.target_funnel_stage or "lead_qualification"),
             )
 
             converted_count += 1

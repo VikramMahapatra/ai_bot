@@ -7,7 +7,7 @@ from app.auth import get_current_user
 from app.services import workflow_service as service
 from app.database import get_db
 from app.models.user import User
-from app.schemas.workflow import WorkflowCreate, WorkflowRequest
+from app.schemas.workflow import StatusUpdateRequest, WorkflowCreate, WorkflowRequest
 
 
 logger = logging.getLogger(__name__)
@@ -71,3 +71,12 @@ def update(
         user.organization_id,
         payload
     )
+    
+@router.patch("/{workflow_id:int}/status")
+def update_status(
+    workflow_id: int,
+    payload: StatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.update_workflow_status(db, workflow_id, current_user.organization_id, payload.is_active)

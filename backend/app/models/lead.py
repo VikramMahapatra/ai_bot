@@ -1,23 +1,28 @@
-from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Date, Identity, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
 
 
 class Lead(Base):
     __tablename__ = "leads"
-    
+
     id = Column(Integer, Identity(), primary_key=True)
     session_id = Column(String, index=True, nullable=False)
     widget_id = Column(String, index=True, nullable=True)
     product_id = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=True, index=True
+    )
     name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     company = Column(String, nullable=True)
     custom_fields = Column(Text, nullable=True)  # JSON string
     lead_outcome = Column(String, nullable=True)
-    source = Column(String, nullable=False, default="chat", server_default="chat", index=True)
+    source = Column(
+        String, nullable=False, default="chat", server_default="chat", index=True
+    )
     funnel_stage = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    close_date = Column(Date, server_default=func.current_date())

@@ -1,14 +1,15 @@
-import api from './api';
+import api from "./api";
 
 export interface Product {
   id: number;
   name: string;
   code: string;
+  isActive: boolean;
+  organisation: string;
   description?: string;
   label?: string;
   created_at?: string;
 }
-
 
 export interface ProductFilters {
   // pagination
@@ -34,13 +35,11 @@ export interface ProductUpdateResponse {
   success: boolean;
 }
 
-
-
-
 export const productService = {
-
-  async listProducts(params: ProductFilters = {}): Promise<ProductListResponse> {
-    const response = await api.get('/api/products/all', { params });
+  async listProducts(
+    params: ProductFilters = {},
+  ): Promise<ProductListResponse> {
+    const response = await api.get("/api/products/all", { params });
     return response.data;
   },
 
@@ -49,11 +48,14 @@ export const productService = {
     code: string;
     description: string;
   }): Promise<ProductUpdateResponse> {
-    const response = await api.post<ProductUpdateResponse>('/api/products/create', {
-      name: data.name,
-      code: data.code,
-      description: data.description
-    });
+    const response = await api.post<ProductUpdateResponse>(
+      "/api/products/create",
+      {
+        name: data.name,
+        code: data.code,
+        description: data.description,
+      },
+    );
     return response.data;
   },
 
@@ -63,9 +65,12 @@ export const productService = {
       name: string;
       code: string;
       description: string;
-    }
+    },
   ): Promise<ProductUpdateResponse> {
-    const response = await api.put<ProductUpdateResponse>(`/api/products/update/${userId}`, data);
+    const response = await api.put<ProductUpdateResponse>(
+      `/api/products/update/${userId}`,
+      data,
+    );
     return response.data;
   },
 
@@ -74,7 +79,7 @@ export const productService = {
   },
 
   async productLookup(): Promise<Product[]> {
-    const response = await api.get<Product[]>('/api/products/lookup');
+    const response = await api.get<Product[]>("/api/products/lookup");
     return response.data;
   },
 };

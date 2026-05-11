@@ -29,6 +29,7 @@ import {
   LinearProgress,
   InputAdornment,
   Tooltip,
+  Snackbar,
 } from "@mui/material";
 
 import { alpha, useTheme } from "@mui/material/styles";
@@ -37,20 +38,91 @@ import AdminLayout from "../components/Layout/AdminLayout";
 import {
   messageTemplateService,
   Template,
+  TemplateForm,
   TemplateType,
+  VariableMapping,
+  WhatsAppCategory,
 } from "../services/messageTemplateService";
 import SearchIcon from "@mui/icons-material/Search";
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { useDateFormatter } from "../hooks/useDateFormatter";
+import { SourceChip, StatusChip, titleCase } from "../components/Common/StatusChips";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
-type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
+const contactFieldOptions = [
+  // Basic
+  { value: "name", label: "Name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "whatsapp_number", label: "WhatsApp Number" },
+  { value: "company", label: "Company" },
+  { value: "designation", label: "Designation" },
 
-const emptyTemplateForm = {
+  // Product
+  { value: "item_name", label: "Item Name" },
+  { value: "item_type", label: "Item Type" },
+  { value: "interest_stage", label: "Interest Stage" },
+  { value: "item_category", label: "Item Category" },
+
+  // Other
+  { value: "amount", label: "Amount" },
+  { value: "offer_value", label: "Offer Value" },
+  { value: "city", label: "City" },
+  { value: "state", label: "State" },
+  { value: "country", label: "Country" },
+  { value: "source", label: "Source" },
+  { value: "lifecycle_stage", label: "Lifecycle Stage" },
+  { value: "tags", label: "Tags" },
+];
+
+export const generatePreview = (
+  content: string,
+  mappings: Record<string, VariableMapping>
+) => {
+
+  let preview = content;
+
+  Object.entries(mappings).forEach(([key, value]) => {
+
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+
+    preview = preview.replace(
+      regex,
+      value.sample || `{{${key}}}`
+    );
+
+  });
+
+  console.log("Generated preview:", preview);
+
+  return preview;
+};
+
+const emptyTemplateForm: TemplateForm = {
   name: "",
-  type: "whatsapp",
+  type: "whatsapp" as TemplateType,
   category: "MARKETING" as WhatsAppCategory,
   language: "en",
   subject: "",
   content: "",
+  variable_mappings: {},
+  meta_status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED" | "FAILED",
+}
+
+interface TemplateErrors {
+  name?: string;
+  type?: string;
+  subject?: string;
+  content?: string;
+
+  variable_mappings?: Record<
+    string,
+    {
+      field?: string;
+      sample?: string;
+    }
+  >;
 }
 
 function TemplateList() {
@@ -59,6 +131,7 @@ function TemplateList() {
   const [editItem, setEditItem] = useState<Template | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [success, setSuccess] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [templateTotal, setTemplateTotal] = useState(0);
@@ -70,17 +143,15 @@ function TemplateList() {
     null,
   );
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [errors, setErrors] = useState({
-    name: "",
-    type: "",
-    subject: "",
-    content: "",
-  });
+  const [errors, setErrors] = useState<TemplateErrors>({});
+  const [templateStatusToUpdate, setTemplateStatusToUpdate] = useState<Template | null>(null);
+
+  const formatDisplayDate = useDateFormatter();
 
 
-
-  const [form, setForm] = useState(emptyTemplateForm);
+  const [form, setForm] = useState<TemplateForm>(emptyTemplateForm);
   const [type, setType] = useState("all");
+  const [syncing, setSyncing] = useState(false);
 
   const formatTemplateName = (name: string) => {
     return name
@@ -95,15 +166,18 @@ function TemplateList() {
       setForm({
         name: item.name,
         type: item.type,
-        category: "MARKETING" as WhatsAppCategory,
-        language: "en",
+        category: item.category || "MARKETING" as WhatsAppCategory,
+        language: item.language || "en",
         subject: item.subject || "",
         content: item.content,
+        meta_status: item.meta_status || "PENDING" as any,
+        variable_mappings: item.variable_mappings || {},
       });
     } else {
       setEditItem(null);
       setForm(emptyTemplateForm);
     }
+    setTemplateError(null);
     setOpen(true);
   };
 
@@ -130,6 +204,29 @@ function TemplateList() {
     }
   };
 
+
+  const handleSyncWhatsAppTemplates = async () => {
+    try {
+      setSyncing(true);
+
+      const res = await messageTemplateService.syncWhatsAppTemplates();
+
+      setSuccess(
+        res.message || "WhatsApp templates synced",
+      );
+
+      fetchTemplates();
+
+    } catch (error: any) {
+      setError(
+        error?.response?.data?.detail || "Sync failed"
+      );
+
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleCloseDialog = () => {
     setOpen(false);
     setEditItem(null);
@@ -137,7 +234,7 @@ function TemplateList() {
 
   const handleCreate = async () => {
     if (!validateForm()) return;
-
+    setLoading(true);
     try {
       const response = await messageTemplateService.createTemplate(form);
       if (response.success) {
@@ -148,6 +245,8 @@ function TemplateList() {
       }
     } catch {
       setTemplateError("Failed to create template");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -156,6 +255,7 @@ function TemplateList() {
 
     if (!validateForm()) return;
 
+    setLoading(true);
     try {
       const response = await messageTemplateService.updateTemplate(
         editItem.id,
@@ -169,10 +269,12 @@ function TemplateList() {
       }
     } catch {
       setTemplateError("Failed to update template");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleConfirmDeleteProduct = async () => {
+  const handleConfirmDeleteTemplate = async () => {
     if (!templateToDelete?.id) return;
 
     setDeleteSubmitting(true);
@@ -183,6 +285,41 @@ function TemplateList() {
     setDeleteSubmitting(false);
   };
 
+  const handleToggleStatus = async () => {
+    if (!templateStatusToUpdate?.id) return;
+    setError('');
+    setDeleteSubmitting(true);
+    setLoading(true);
+    try {
+
+      const newStatus = templateStatusToUpdate.status === "Active" ? "Inactive" : "Active";
+      // call API
+      const response = await messageTemplateService.updateTemplateStatus(templateStatusToUpdate.id, newStatus.toLowerCase() as any)
+
+      if (response.success) {
+        // update UI locally (important for instant feedback)
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === templateStatusToUpdate.id ? { ...t, status: newStatus } : t
+          )
+        );
+
+      }
+      else {
+        setError(response.message);
+      }
+
+      setTemplateStatusToUpdate(null);
+
+    } catch (err) {
+      console.error("Failed to update status", err);
+      setError("Failed to update status");
+    } finally {
+      setDeleteSubmitting(false);
+      setLoading(false);
+    }
+  };
+
   const validateForm = () => {
     let valid = true;
 
@@ -191,6 +328,7 @@ function TemplateList() {
       type: "",
       subject: "",
       content: "",
+      variable_mappings: {} as Record<string, { field?: string; sample?: string }>,
     };
 
     // 🔹 Basic validations (existing)
@@ -216,6 +354,14 @@ function TemplateList() {
 
     // WhatsApp-specific validation
     if (form.type === "whatsapp") {
+      const mappingErrors: Record<
+        string,
+        {
+          field?: string;
+          sample?: string;
+        }
+      > = {};
+
       const content = form.content;
 
       //Extract variables like {{1}}, {{2}}
@@ -249,6 +395,39 @@ function TemplateList() {
           break;
         }
       }
+
+      uniqueSorted.forEach((variableNumber) => {
+
+        const key = String(variableNumber);
+
+        const mapping =
+          form.variable_mappings?.[key];
+
+        if (!mapping?.field) {
+
+          if (!mappingErrors[key]) {
+            mappingErrors[key] = {};
+          }
+
+          mappingErrors[key].field =
+            `Please map {{${key}}} to a contact field`;
+
+          valid = false;
+        }
+
+        if (!mapping?.sample?.trim()) {
+
+          if (!mappingErrors[key]) {
+            mappingErrors[key] = {};
+          }
+
+          mappingErrors[key].sample =
+            `Please enter sample value for {{${key}}}`;
+
+          valid = false;
+        }
+
+      });
 
       //Spam keyword check
       const spamWords = [
@@ -285,11 +464,44 @@ function TemplateList() {
           valid = false;
         }
       }
+
+      if (form.category === "MARKETING") {
+        if (!/offer|discount|sale|promotion/i.test(content)) {
+          newErrors.content =
+            "Marketing templates should include promotional context.";
+          valid = false;
+        }
+      }
+
+      if (Object.keys(mappingErrors).length > 0) {
+        newErrors.variable_mappings = mappingErrors;
+      }
     }
 
     setErrors(newErrors);
     return valid;
   };
+
+  const extractWhatsAppVariables = (content: string) => {
+    const matches = content.match(/{{\d+}}/g) || [];
+
+    return [
+      ...new Set(
+        matches.map((m) => m.replace(/[{}]/g, ""))
+      ),
+    ];
+  };
+
+
+
+  const isActive = templateStatusToUpdate?.status === "Active";
+  const actionLabel = isActive ? "Deactivate" : "Activate";
+  const whatsappVariables = extractWhatsAppVariables(form.content);
+
+  const isWhatsAppEditLocked =
+    form.type === "whatsapp" &&
+    (form.meta_status === "APPROVED" || form.meta_status === "PENDING");
+
   return (
     <AdminLayout>
       <Box sx={{ p: 3 }}>
@@ -304,58 +516,93 @@ function TemplateList() {
                 Manage SMS, WhatsApp & Email templates
               </Typography>
             </Box>
-
-            <Box display="flex" alignItems="center" gap={2}>
+          </Box>
+        </Paper>
+        <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            {/* SEARCH */}
+            <Grid item xs={12} md={5}>
               <TextField
+                fullWidth
                 size="small"
                 label="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                sx={{ width: 260 }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <SearchIcon fontSize="small" />
+                      <IconButton>
+                        <SearchIcon />
+                      </IconButton>
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
+            </Grid>
+            <Grid item xs={12} md={2}>
               <TextField
                 select
+                fullWidth
                 label="Type"
                 size="small"
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                sx={{ width: 200 }}
               >
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="sms">SMS</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
                 <MenuItem value="email">Email</MenuItem>
               </TextField>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Stack direction="row" spacing={2}>
 
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => handleOpen()}
-              >
-                Create Template
-              </Button>
-            </Box>
-          </Box>
+                <Button
+                  variant="outlined"
+                  onClick={handleSyncWhatsAppTemplates}
+                  disabled={syncing}
+                >
+                  {syncing ? "Syncing..." : "Sync WhatsApp"}
+                </Button>
+
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => handleOpen()}
+                >
+                  Create Template
+                </Button>
+
+              </Stack>
+            </Grid>
+          </Grid>
         </Paper>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
+        <Snackbar
+          open={Boolean(success || error)}
+          autoHideDuration={4000}
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        >
+          <Alert
+            severity={error ? "error" : "success"}
+            onClose={() => {
+              setError("");
+              setSuccess("");
+            }}
+            sx={{
+              borderRadius: "14px",
+              boxShadow: (theme) =>
+                `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+                }20`,
+            }}
+          >
+            {error || success}
           </Alert>
-        )}
-
-        {loading && (
-          <Box mb={3}>
-            <LinearProgress sx={{ borderRadius: 1.2 }} />
-          </Box>
-        )}
+        </Snackbar>
 
         {/* TABLE */}
         <TableContainer component={Paper}>
@@ -375,7 +622,7 @@ function TemplateList() {
             <TableBody>
               {templates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ py: 8, textAlign: "center" }}>
+                  <TableCell colSpan={7} sx={{ py: 8, textAlign: "center" }}>
                     <SearchIcon
                       sx={{ fontSize: 40, color: "text.secondary" }}
                     />
@@ -385,25 +632,75 @@ function TemplateList() {
               ) : (
                 templates.map((t) => (
                   <TableRow key={t.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
-
                     <TableCell>
-                      <Chip
-                        label={t.type === "whatsapp" ? "WHATSAPP" : t.type.toUpperCase()}
-                        size="small"
-                        color={t.type === "whatsapp" ? "primary" : "default"}
+                      <Stack spacing={0.3}>
+                        <Typography fontWeight={600}>
+                          {t.name}
+                        </Typography>
+
+                        {t.type === "whatsapp" && t.category && (
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            alignItems="center"
+                          >
+                            <WhatsAppIcon
+                              sx={{
+                                fontSize: 14,
+                                color:
+                                  t.category === "MARKETING"
+                                    ? "warning.main"
+                                    : t.category === "UTILITY"
+                                      ? "info.main"
+                                      : "success.main",
+                              }}
+                            />
+
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: "text.secondary",
+                                fontSize: 11,
+                              }}
+                            >
+                              Category:
+                            </Typography>
+
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 700,
+                                color:
+                                  t.category === "MARKETING"
+                                    ? "warning.main"
+                                    : t.category === "UTILITY"
+                                      ? "info.main"
+                                      : "success.main",
+                                fontSize: 11,
+                              }}
+                            >
+                              {titleCase(t.category)}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <SourceChip
+                        value={t.type}
                       />
                     </TableCell>
-
                     <TableCell>{t.subject || "-"}</TableCell>
-
                     <TableCell>
-
-                      <Chip
-                        label={t.status}
-                        color={t.status === "Active" ? "success" : "default"}
-                        size="small"
-                      />
+                      <Tooltip title="Click to toggle status">
+                        <span>
+                          <StatusChip
+                            value={t.status}
+                            onClick={() => setTemplateStatusToUpdate(t)}
+                          />
+                        </span>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>
                       {t.type === "whatsapp" ? (
@@ -437,7 +734,7 @@ function TemplateList() {
                       )}
                     </TableCell>
 
-                    <TableCell>{t.created_at}</TableCell>
+                    <TableCell>{formatDisplayDate(t.created_at)}</TableCell>
 
                     <TableCell align="right">
                       <IconButton onClick={() => handleOpen(t)}>
@@ -455,20 +752,32 @@ function TemplateList() {
         </TableContainer>
 
         {/* CREATE / EDIT MODAL */}
-        <Dialog open={open} fullWidth maxWidth="sm">
+        <Dialog open={open} fullWidth maxWidth="md">
           <DialogTitle>
             {editItem ? "Edit Template" : "Create Template"}
           </DialogTitle>
 
           <DialogContent>
+            {templateError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {templateError}
+              </Alert>
+            )}
+            {isWhatsAppEditLocked && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This template cannot be edited because it is {form.meta_status}.
+              </Alert>
+            )}
             <Stack spacing={2} mt={1}>
               <TextField
+                required
                 label="Template Name"
                 fullWidth
                 value={form.name}
                 error={!!errors.name}
                 helperText={errors.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                disabled={isWhatsAppEditLocked}
               />
               {form.type === "whatsapp" && (
                 <TextField
@@ -481,7 +790,6 @@ function TemplateList() {
                   helperText="Auto-generated from Template Name (lowercase, underscores only)"
                 />
               )}
-
               <TextField
                 select
                 label="Type"
@@ -491,6 +799,9 @@ function TemplateList() {
                 onChange={(e) =>
                   setForm({ ...form, type: e.target.value as TemplateType })
                 }
+                InputProps={{
+                  readOnly: isWhatsAppEditLocked,
+                }}
               >
                 <MenuItem value="sms">SMS</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -507,6 +818,7 @@ function TemplateList() {
                   onChange={(e) =>
                     setForm({ ...form, subject: e.target.value })
                   }
+                  disabled={isWhatsAppEditLocked}
                 />
               )}
               {form.type === "whatsapp" && (
@@ -520,6 +832,9 @@ function TemplateList() {
                         setForm({ ...form, category: e.target.value as any })
                       }
                       fullWidth
+                      InputProps={{
+                        readOnly: isWhatsAppEditLocked,
+                      }}
                     >
                       <MenuItem value="MARKETING">Marketing</MenuItem>
                       <MenuItem value="UTILITY">Utility</MenuItem>
@@ -534,15 +849,19 @@ function TemplateList() {
                       }
                       fullWidth
                       helperText="e.g. en, en_US"
+                      InputProps={{
+                        readOnly: isWhatsAppEditLocked,
+                      }}
                     />
                   </Stack>
                 </Stack>
               )}
 
               <TextField
+                required
                 label="Message Content"
                 multiline
-                rows={4}
+                rows={12}
                 fullWidth
                 InputLabelProps={{ shrink: true }}
                 placeholder={
@@ -554,7 +873,9 @@ function TemplateList() {
                 }
                 value={form.content}
                 error={!!errors.content}
+                helperText={errors.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
+                disabled={isWhatsAppEditLocked}
               />
               <Alert severity="info">
                 In <b>Message Content</b>,
@@ -569,7 +890,223 @@ function TemplateList() {
                   </>
                 )}
               </Alert>
+
+
             </Stack>
+            {form.type === "whatsapp" && whatsappVariables.length > 0 &&
+              <Grid container spacing={2} mt={1}>
+                <Grid item xs={12}>
+                  <Stack >
+
+                    <Typography
+                      variant="h6"
+                      fontWeight={700}
+                    >
+                      Variable Configuration
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      Map WhatsApp variables to contact fields
+                      and preview the final message.
+                    </Typography>
+
+                  </Stack>
+
+                </Grid>
+
+                {/* LEFT */}
+                <Grid item xs={12} md={6}>
+
+                  <Box
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "background.paper",
+                      height: "100%",
+                    }}
+                  >
+
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={700}
+                      mb={2}
+                    >
+                      Variable Mapping
+                    </Typography>
+
+                    <Stack spacing={2}>
+                      {extractWhatsAppVariables(form.content).map((variable) => (
+
+                        <Box
+                          key={variable}
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: "grey.50",
+                            border: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+
+                          <Stack spacing={2}>
+
+                            <Chip
+                              label={`{{${variable}}}`}
+                              color={
+                                form.variable_mappings?.[variable]?.field
+                                  ? "success"
+                                  : "default"
+                              }
+                              size="small"
+                              sx={{
+                                width: "fit-content",
+                                fontWeight: 700,
+                              }}
+                            />
+
+                            <TextField
+                              select
+                              fullWidth
+                              size="small"
+                              label="Contact Field"
+                              value={
+                                form.variable_mappings?.[variable]?.field || ""
+                              }
+                              onChange={(e) =>
+                                setForm((prev) => ({
+                                  ...prev,
+
+                                  variable_mappings: {
+                                    ...prev.variable_mappings,
+
+                                    [variable]: {
+                                      ...prev.variable_mappings?.[variable],
+
+                                      field: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                              error={
+                                !!errors.variable_mappings?.[variable]?.field
+                              }
+                              helperText={
+                                errors.variable_mappings?.[variable]?.field
+                              }
+                            >
+                              {contactFieldOptions.map((field) => (
+                                <MenuItem
+                                  key={field.value}
+                                  value={field.value}
+                                >
+                                  {field.label}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Sample Value"
+                              value={
+                                form.variable_mappings?.[variable]?.sample || ""
+                              }
+                              onChange={(e) =>
+                                setForm((prev) => ({
+                                  ...prev,
+
+                                  variable_mappings: {
+                                    ...prev.variable_mappings,
+
+                                    [variable]: {
+                                      ...prev.variable_mappings?.[variable],
+
+                                      sample: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                              error={
+                                !!errors.variable_mappings?.[variable]?.sample
+                              }
+
+                              helperText={
+                                errors.variable_mappings?.[variable]?.sample
+                              }
+                            />
+
+                          </Stack>
+
+                        </Box>
+
+                      ))}
+                    </Stack>
+
+                  </Box>
+
+                </Grid>
+
+                {/* RIGHT */}
+                <Grid item xs={12} md={6}>
+
+                  <Box
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "#efeae2",
+                      minHeight: 320,
+                    }}
+                  >
+
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={700}
+                      mb={2}
+                    >
+                      WhatsApp Preview
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+
+                      <Box
+                        sx={{
+                          maxWidth: "85%",
+                          bgcolor: "#d9fdd3",
+                          px: 2,
+                          py: 1.5,
+                          borderRadius: "18px",
+                          boxShadow: 1,
+                          whiteSpace: "pre-wrap",
+                          fontSize: 14,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {generatePreview(
+                          form.content,
+                          form.variable_mappings || {}
+                        )}
+                      </Box>
+
+                    </Box>
+
+                  </Box>
+
+                </Grid>
+
+              </Grid>
+            }
           </DialogContent>
 
           <DialogActions>
@@ -577,12 +1114,30 @@ function TemplateList() {
             <Button
               variant="contained"
               onClick={editItem ? handleUpdate : handleCreate}
+              disabled={loading}
             >
               {editItem ? "Update" : "Create"}
             </Button>
           </DialogActions>
         </Dialog>
       </Box>
+
+      <ConfirmDialog
+        open={Boolean(templateStatusToUpdate)}
+        title={`${actionLabel} template?`}
+        description={
+          templateStatusToUpdate
+            ? `Are you sure you want to ${actionLabel.toLowerCase()} "${templateStatusToUpdate.name}"? 
+              This will mark it as ${isActive ? "inactive" : "active"} and you can change it anytime.`
+            : undefined
+        }
+        confirmLabel={actionLabel}
+        cancelLabel="Cancel"
+        confirmColor={isActive ? "warning" : "success"}
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setTemplateStatusToUpdate(null)}
+        onConfirm={handleToggleStatus}
+      />
     </AdminLayout>
   );
 }

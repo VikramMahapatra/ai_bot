@@ -76,11 +76,12 @@ export const leadService = {
     return response.data;
   },
 
-  async moveLeadToFunnel(leadId: number, funnelStage: string): Promise<Lead> {
+  async moveLeadToFunnel(leadId: number, funnelStage: string, close_date?: string): Promise<Lead> {
     const response = await api.patch<Lead>(
       `/api/admin/leads/${leadId}/funnel-stage`,
       {
         funnel_stage: funnelStage,
+        close_date: close_date
       },
     );
     return response.data;

@@ -1,12 +1,90 @@
 import { Chip } from "@mui/material";
 import { FunnelCategory } from "../../types";
 import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import BlockIcon from "@mui/icons-material/Block";
 
-export const titleCase = (value: string) =>
-    value
+export const titleCase = (value?: string | null): string => {
+    if (!value) return "";
+
+    return value
         .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
         .join(" ");
+};
+
+export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?: () => void; }) => {
+    if (!value || !value.trim()) {
+        return (
+            <Chip
+                label="N/A"
+                size="small"
+                variant="outlined"
+                sx={{
+                    color: "#9e9e9e",
+                    borderColor: "#e0e0e0",
+                    backgroundColor: "#fafafa",
+                }}
+            />
+        );
+    }
+
+    const normalized = value.toLowerCase().trim();
+
+    type StatusType = "active" | "inactive";
+
+    const isStatusType = (value: string): value is StatusType => {
+        return value === "active" || value === "inactive";
+    };
+
+    const configMap: Record<
+        StatusType,
+        {
+            label: string;
+            color: "success" | "default";
+            icon: React.ReactElement;
+        }
+    > = {
+        active: {
+            label: "Active",
+            color: "success",
+            icon: <CheckCircleIcon fontSize="small" />,
+        },
+        inactive: {
+            label: "Inactive",
+            color: "default",
+            icon: <BlockIcon fontSize="small" />,
+        },
+    };
+
+    const config = isStatusType(normalized)
+        ? configMap[normalized] // ✅ now TS knows it's valid
+        : {
+            label: value,
+            color: "default" as const,
+            icon: undefined,
+        };
+
+    return (
+        <Chip
+            label={config.label}
+            size="small"
+            variant="outlined"
+            color={config.color}
+            icon={config.icon}
+            clickable
+            onClick={onClick}
+            sx={{
+                cursor: "pointer",
+                "&:hover": {
+                    opacity: 0.8,
+                    transform: "scale(1.05)",
+                },
+                transition: "all 0.15s ease",
+            }}
+        />
+    );
+};
 
 export const OutcomeChip = ({ value }: { value?: string | null }) => {
     if (!value || !value.trim()) return <Chip

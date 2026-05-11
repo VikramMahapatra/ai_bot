@@ -25,6 +25,7 @@ import SmsIcon from "@mui/icons-material/Sms";
 import EmailIcon from "@mui/icons-material/Email";
 import { messageTemplateService } from "../../services/messageTemplateService";
 import { WorkflowLookupItem, workflowService } from "../../services/workflowService";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
 interface CampaignInfoProps {
   form: any;
@@ -45,13 +46,13 @@ const getInstantTemplateId = (value: unknown): number | undefined => {
 };
 
 const MODES = [
-  // {
-  //   key: "whatsapp",
-  //   label: "WhatsApp",
-  //   icon: <WhatsAppIcon />,
-  //   color: "success",
-  //   filterType: "whatsapp",
-  // },
+  {
+    key: "whatsapp",
+    label: "WhatsApp",
+    icon: <WhatsAppIcon />,
+    color: "success",
+    filterType: "whatsapp",
+  },
   {
     key: "sms",
     label: "SMS",
@@ -358,6 +359,11 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                 Click on WhatsApp / SMS / Email to enable that mode, then choose
                 a template.
               </Alert>
+              {form.instant_reply_modes?.includes("whatsapp") && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Only <b>UTILITY</b> WhatsApp templates can be used for sending test messages.
+                </Alert>
+              )}
               {MODES.map((mode) => {
                 const isActive = form.instant_reply_modes?.includes(mode.key);
 
@@ -422,7 +428,15 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
                         <MenuItem value="">Select template</MenuItem>
 
                         {templates
-                          ?.filter((t) => t.type === mode.filterType)
+                          ?.filter((t) => {
+                            if (mode.filterType !== "whatsapp") {
+                              return t.type === mode.filterType;
+                            }
+                            return (
+                              t.type === "whatsapp" &&
+                              t.category === "UTILITY"
+                            );
+                          })
                           .map((t) => (
                             <MenuItem key={t.id} value={t.id}>
                               {t.name}

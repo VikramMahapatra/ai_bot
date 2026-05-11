@@ -1,5 +1,5 @@
-import React from 'react';
-import { alpha } from '@mui/material/styles';
+import React from "react";
+import { alpha } from "@mui/material/styles";
 import {
   Drawer,
   List,
@@ -13,18 +13,19 @@ import {
   Avatar,
   Tooltip,
   Chip,
-} from '@mui/material';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import BusinessIcon from '@mui/icons-material/Business';
-import InsightsIcon from '@mui/icons-material/Insights';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import SupportAgentIcon from '@mui/icons-material/SupportAgent';
-import TableChartIcon from '@mui/icons-material/TableChart';
-import CalculateIcon from '@mui/icons-material/Calculate';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+} from "@mui/material";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import BusinessIcon from "@mui/icons-material/Business";
+import InsightsIcon from "@mui/icons-material/Insights";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import TableChartIcon from "@mui/icons-material/TableChart";
+import CalculateIcon from "@mui/icons-material/Calculate";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import InventoryIcon from "@mui/icons-material/Inventory";
 
 const drawerWidth = 274;
 
@@ -40,28 +41,62 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { text: 'Overview', icon: <DashboardIcon />, path: '/superadmin' },
-  { text: 'Price Matrix', icon: <TableChartIcon />, path: '/superadmin/price-matrix' },
-  { text: 'Credit Estimator', icon: <CalculateIcon />, path: '/superadmin/credit-estimator' },
-  { text: 'Credit Billing', icon: <AccountBalanceWalletIcon />, path: '/superadmin/org-credit-billing' },
-  { text: 'Credit Usage', icon: <CalendarMonthIcon />, path: '/superadmin/credit-usage' },
-  { text: 'Organizations', icon: <BusinessIcon />, path: '/superadmin/organizations' },
-  { text: 'Analytics', icon: <InsightsIcon />, path: '/superadmin/analytics' },
-  { text: 'Call Analytics', icon: <SupportAgentIcon />, path: '/superadmin/call-analytics' },
+  { text: "Overview", icon: <DashboardIcon />, path: "/superadmin" },
+  {
+    text: "Price Matrix",
+    icon: <TableChartIcon />,
+    path: "/superadmin/price-matrix",
+  },
+  {
+    text: "Credit Estimator",
+    icon: <CalculateIcon />,
+    path: "/superadmin/credit-estimator",
+  },
+  {
+    text: "Credit Billing",
+    icon: <AccountBalanceWalletIcon />,
+    path: "/superadmin/org-credit-billing",
+  },
+  {
+    text: "Credit Usage",
+    icon: <CalendarMonthIcon />,
+    path: "/superadmin/credit-usage",
+  },
+  {
+    text: "Organizations",
+    icon: <BusinessIcon />,
+    path: "/superadmin/organizations",
+  },
+  {
+    text: "Channel Management",
+    icon: <InventoryIcon />,
+    path: "/superadmin/channel-management",
+  },
+  { text: "Analytics", icon: <InsightsIcon />, path: "/superadmin/analytics" },
+  {
+    text: "Call Analytics",
+    icon: <SupportAgentIcon />,
+    path: "/superadmin/call-analytics",
+  },
 ];
 
-const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
+const SuperAdminSidebar: React.FC<SidebarProps> = ({
+  mobileOpen,
+  onMobileClose,
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
 
   const resetScrollPosition = () => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
-    document.querySelectorAll<HTMLElement>('[data-scroll-reset="true"]').forEach((el) => {
-      el.scrollTop = 0;
-    });
+    document
+      .querySelectorAll<HTMLElement>('[data-scroll-reset="true"]')
+      .forEach((el) => {
+        el.scrollTop = 0;
+      });
   };
 
   const handleNavigation = (path: string) => {
@@ -77,27 +112,44 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
   const drawer = (
     <Box
       sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        bgcolor: 'background.paper',
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "background.paper",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.94)} 0%, ${alpha(
             theme.palette.primary.main,
-            0.08
+            0.08,
           )} 100%)`,
-        backdropFilter: 'blur(12px)',
+        backdropFilter: "blur(12px)",
       }}
     >
-      <Box sx={{ p: 2.4, display: 'flex', alignItems: 'center', gap: 1.6 }}>
-        <Avatar sx={{ width: 42, height: 42, background: 'linear-gradient(135deg, #366dff 0%, #36c4ff 100%)' }}>
+      <Box sx={{ p: 2.4, display: "flex", alignItems: "center", gap: 1.6 }}>
+        <Avatar
+          sx={{
+            width: 42,
+            height: 42,
+            background: "linear-gradient(135deg, #366dff 0%, #36c4ff 100%)",
+          }}
+        >
           <AdminPanelSettingsIcon fontSize="large" />
         </Avatar>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1, fontSize: '1.05rem' }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 800,
+              color: "primary.main",
+              lineHeight: 1,
+              fontSize: "1.05rem",
+            }}
+          >
             Zentrixel AI
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
+          <Typography
+            variant="caption"
+            sx={{ color: "text.secondary", fontSize: "0.72rem" }}
+          >
             Super Admin Console
           </Typography>
         </Box>
@@ -106,9 +158,19 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
       <Divider />
 
       <Box sx={{ px: 1.8, py: 1.4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-            {user?.username || 'superadmin'}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 1,
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, color: "text.secondary" }}
+          >
+            {user?.username || "superadmin"}
           </Typography>
           <Chip
             label="SUPERADMIN"
@@ -118,8 +180,8 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
             sx={{ height: 22 }}
           />
         </Box>
-        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-          {user?.email || 'superadmin@zentrixel.ai'}
+        <Typography variant="caption" sx={{ color: "text.disabled" }}>
+          {user?.email || "superadmin@zentrixel.ai"}
         </Typography>
       </Box>
 
@@ -131,26 +193,26 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
           minHeight: 0,
           px: 1.8,
           py: 1.6,
-          display: 'flex',
-          flexDirection: 'column',
+          display: "flex",
+          flexDirection: "column",
           gap: 0.6,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(54,109,255,0.78) rgba(54,109,255,0.14)',
-          '&::-webkit-scrollbar': {
+          overflowY: "auto",
+          overflowX: "hidden",
+          scrollbarWidth: "thin",
+          scrollbarColor: "rgba(54,109,255,0.78) rgba(54,109,255,0.14)",
+          "&::-webkit-scrollbar": {
             width: 10,
           },
-          '&::-webkit-scrollbar-track': {
-            backgroundColor: 'rgba(54,109,255,0.14)',
+          "&::-webkit-scrollbar-track": {
+            backgroundColor: "rgba(54,109,255,0.14)",
             borderRadius: 10,
           },
-          '&::-webkit-scrollbar-thumb': {
-            backgroundColor: 'rgba(54,109,255,0.7)',
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "rgba(54,109,255,0.7)",
             borderRadius: 10,
           },
-          '&::-webkit-scrollbar-thumb:hover': {
-            backgroundColor: 'rgba(54,109,255,0.9)',
+          "&::-webkit-scrollbar-thumb:hover": {
+            backgroundColor: "rgba(54,109,255,0.9)",
           },
         }}
       >
@@ -166,25 +228,31 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
                     border: (theme) =>
                       `1px solid ${isActive ? alpha(theme.palette.primary.main, 0.44) : alpha(theme.palette.primary.main, 0.14)}`,
                     background: isActive
-                      ? 'linear-gradient(90deg, rgba(54,109,255,0.18) 0%, rgba(54,196,255,0.18) 100%)'
-                      : 'transparent',
-                    color: 'text.primary',
-                    '&:hover': {
-                      background: 'linear-gradient(90deg, rgba(54,109,255,0.12) 0%, rgba(54,196,255,0.14) 100%)',
-                      borderColor: 'primary.main',
+                      ? "linear-gradient(90deg, rgba(54,109,255,0.18) 0%, rgba(54,196,255,0.18) 100%)"
+                      : "transparent",
+                    color: "text.primary",
+                    "&:hover": {
+                      background:
+                        "linear-gradient(90deg, rgba(54,109,255,0.12) 0%, rgba(54,196,255,0.14) 100%)",
+                      borderColor: "primary.main",
                     },
-                    transition: 'all 0.2s ease',
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  <ListItemIcon sx={{ color: isActive ? 'primary.main' : 'text.secondary', minWidth: 38 }}>
+                  <ListItemIcon
+                    sx={{
+                      color: isActive ? "primary.main" : "text.secondary",
+                      minWidth: 38,
+                    }}
+                  >
                     {item.icon}
                   </ListItemIcon>
                   <ListItemText
                     primary={item.text}
                     primaryTypographyProps={{
                       fontWeight: isActive ? 600 : 500,
-                      fontSize: '0.95rem',
-                      color: isActive ? 'primary.main' : 'text.primary',
+                      fontSize: "0.95rem",
+                      color: isActive ? "primary.main" : "text.primary",
                     }}
                   />
                 </ListItemButton>
@@ -201,13 +269,13 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
       <Drawer
         variant="permanent"
         sx={{
-          display: { xs: 'none', md: 'block' },
+          display: { xs: "none", md: "block" },
           width: drawerWidth,
           flexShrink: 0,
-          '& .MuiDrawer-paper': {
+          "& .MuiDrawer-paper": {
             width: drawerWidth,
-            boxSizing: 'border-box',
-            borderRight: 'none',
+            boxSizing: "border-box",
+            borderRight: "none",
           },
         }}
       >
@@ -222,10 +290,10 @@ const SuperAdminSidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }
           keepMounted: true,
         }}
         sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': {
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": {
             width: drawerWidth,
-            boxSizing: 'border-box',
+            boxSizing: "border-box",
           },
         }}
       >

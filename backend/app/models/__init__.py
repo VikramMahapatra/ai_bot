@@ -44,7 +44,17 @@ from app.models.followup_sequences import FollowUpSequence
 from app.models.message_templates import MessageTemplate
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
-from app.models.workflows import Workflow, WorkflowStep, WorkflowStepOutcome, WorkflowEdge, WorkflowExecution, WorkflowExecutionLog
+from app.models.workflows import (
+    Workflow,
+    WorkflowStep,
+    WorkflowStepOutcome,
+    WorkflowEdge,
+    WorkflowExecution,
+    WorkflowExecutionLog,
+    WorkflowScheduledCall,
+)
+from app.models.channels import Channel, ChannelReservation, OrganizationChannel
+from app.models.instant_reply_logs import InstantReplyLog, InstantReplyChannelLog
 
 __all__ = [
     "User",
@@ -97,9 +107,15 @@ __all__ = [
     "LeadContactMapping",
     "Workflow",
     "WorkflowStep",
-    "WorkflowStepOutcome"
+    "WorkflowStepOutcome",
     "WorkflowEdge",
     "WorkflowExecution",
     "WorkflowExecutionLog",
-    "FunnelCategoryMaster"
+    "FunnelCategoryMaster",
+    "Channel",
+    "OrganizationChannel",
+    "ChannelReservation",
+    "InstantReplyLog",
+    "WorkflowScheduledCall",
+    "InstantReplyChannelLog",
 ]

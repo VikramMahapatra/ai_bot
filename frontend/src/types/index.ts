@@ -284,6 +284,7 @@ export interface SuperAdminOrganization {
   admin_username?: string;
   admin_email?: string;
   limits?: OrganizationLimits;
+  echoleads_api_key?: string;
 }
 
 
@@ -293,6 +294,20 @@ export interface CallingNumber {
   type: 'inbound' | 'outbound';
   is_default?: boolean;
   is_active?: boolean;
+}
+
+export interface Channel {
+  id: number;
+  name: string;
+  channel_type: string;
+  is_active?: boolean;
+}
+
+export interface OrganizationChannel {
+  id: number;
+  channel_id: number;
+  name: string;
+  channel_type: string;
 }
 
 export interface PriceMatrixItem {

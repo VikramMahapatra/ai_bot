@@ -44,6 +44,7 @@ import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import api from "../services/api";
 import { buildPublicUrl } from "../config/env";
 import SearchIcon from "@mui/icons-material/Search";
+import { useDateFormatter } from "../hooks/useDateFormatter";
 
 interface WidgetConfig {
   id?: number;
@@ -197,6 +198,7 @@ const WidgetManagementPage: React.FC = () => {
   const [widgetTotal, setWidgetTotal] = useState(0);
   const [widgetPage, setWidgetPage] = useState(0);
   const [widgetRowsPerPage, setWidgetRowsPerPage] = useState(10);
+  const formatDisplayDate = useDateFormatter();
 
   // Fetch widgets on mount
   useEffect(() => {
@@ -393,7 +395,7 @@ const WidgetManagementPage: React.FC = () => {
         if (!silent) {
           setError(
             err?.response?.data?.detail ||
-              "Failed to generate expiring test URL",
+            "Failed to generate expiring test URL",
           );
         }
         return null;
@@ -891,9 +893,9 @@ const WidgetManagementPage: React.FC = () => {
                           : DAY_MS;
                       const barValue = expiryTs
                         ? Math.max(
-                            0,
-                            Math.min(100, (remainingMs / windowMs) * 100),
-                          )
+                          0,
+                          Math.min(100, (remainingMs / windowMs) * 100),
+                        )
                         : 0;
 
                       return (
@@ -1014,9 +1016,7 @@ const WidgetManagementPage: React.FC = () => {
                                 >
                                   Start:{" "}
                                   {linkMeta.startAt
-                                    ? new Date(
-                                        linkMeta.startAt,
-                                      ).toLocaleString()
+                                    ? formatDisplayDate(linkMeta.startAt)
                                     : "-"}
                                 </Typography>
                                 <Typography
@@ -1024,9 +1024,7 @@ const WidgetManagementPage: React.FC = () => {
                                   color="text.secondary"
                                 >
                                   End:{" "}
-                                  {new Date(
-                                    linkMeta.expiresAt,
-                                  ).toLocaleString()}
+                                  {formatDisplayDate(linkMeta.expiresAt)}
                                 </Typography>
                               </Stack>
                             ) : (
@@ -1719,23 +1717,23 @@ const WidgetManagementPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-  
-      <ConfirmDialog
-        open={Boolean(widgetToDelete)}
-        title="Delete agent?"
-        description={
-          widgetToDelete
-            ? `This will permanently remove "${widgetToDelete.name}" and its configuration. This action cannot be undone.`
-            : undefined
-        }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        confirmColor="error"
-        loading={deleteSubmitting}
-        onCancel={() => !deleteSubmitting && setWidgetToDelete(null)}
-        onConfirm={handleConfirmDeleteWidget}
-      />
-    </Box>
+
+        <ConfirmDialog
+          open={Boolean(widgetToDelete)}
+          title="Delete agent?"
+          description={
+            widgetToDelete
+              ? `This will permanently remove "${widgetToDelete.name}" and its configuration. This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmColor="error"
+          loading={deleteSubmitting}
+          onCancel={() => !deleteSubmitting && setWidgetToDelete(null)}
+          onConfirm={handleConfirmDeleteWidget}
+        />
+      </Box>
     </AdminLayout>
   );
 };

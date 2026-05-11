@@ -33,6 +33,8 @@ from app.models import (
 from app.schemas.superadmin import (
     CallingNumberCreate,
     CallingNumberUpdate,
+    OrganizationChannelCreate,
+    OrganizationChannelUpdate,
     SuperAdminLoginRequest,
     SuperAdminLoginResponse,
     SuperAdminBootstrapRequest,
@@ -91,6 +93,7 @@ from app.api.organization_setting import get_settings
 from app.models.organization_settings import OrganizationSettings
 from app.schemas.org_credit_billing import OrgCreditAdminMonthSummaryResponse
 from app.services import org_credit_billing_service
+from app.models.channels import Channel, OrganizationChannel
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +161,7 @@ def _build_org_response(
         admin_username=admin_user.username if admin_user else None,
         admin_email=admin_user.email if admin_user else None,
         limits=limits,
+        echoleads_api_key=org.echoleads_api_key,
     )
 
 
@@ -800,8 +804,6 @@ def _apply_profile_patch(
         profile.expiry_days = data["expiry_days"]
     if "notes" in data:
         profile.notes = data["notes"]
-        
-
 
 
 @router.post("/bootstrap", status_code=status.HTTP_201_CREATED)
@@ -883,6 +885,7 @@ async def create_organization_with_admin(
         effective_joining_date=request.effective_joining_date,
         org_domain=_build_org_domain(org_name),
         access_token=secrets.token_urlsafe(32),
+        echoleads_api_key=request.echoleads_api_key,
     )
     db.add(org)
     db.commit()
@@ -921,6 +924,7 @@ async def create_organization_with_admin(
         admin_username=admin_user.username,
         admin_email=admin_user.email,
         limits=limits,
+        echoleads_api_key=org.echoleads_api_key,
     )
 
 
@@ -974,6 +978,8 @@ async def update_organization_with_admin(
         org.joining_date = request.joining_date
     if request.effective_joining_date is not None:
         org.effective_joining_date = request.effective_joining_date
+    if request.echoleads_api_key is not None:
+        org.echoleads_api_key = request.echoleads_api_key
 
     admin_username = (
         request.admin_username.strip() if request.admin_username is not None else None
@@ -3070,6 +3076,119 @@ def update_calling_number(
 
     db.commit()
     return obj
+
+
+### Master Channel
+@router.get("/master/channels")
+def get_master_channels(
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    return db.query(Channel).filter(Channel.is_active == True).all()
+
+
+### Organization Channel
+@router.get("/org/{org_id}/channels")
+def get_channels(
+    org_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    result = (
+        db.query(
+            OrganizationChannel.id.label("id"),
+            Channel.id.label("channel_id"),
+            Channel.name.label("name"),
+        )
+        .join(Channel, OrganizationChannel.channel_id == Channel.id)
+        .filter(OrganizationChannel.organization_id == org_id)
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "channel_id": row.channel_id,
+            "name": row.name,
+        }
+        for row in result
+    ]
+
+
+@router.post("/org/{org_id}/channel")
+def create_org_channel(
+    org_id: int,
+    payload: OrganizationChannelCreate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    # Optional: prevent duplicate
+    existing = (
+        db.query(OrganizationChannel)
+        .filter_by(organization_id=org_id, channel_id=payload.channel_id)
+        .first()
+    )
+
+    print("existing", existing)
+
+    if existing:
+        raise HTTPException(
+            status_code=400, detail="Channel already exists for this organization"
+        )
+
+    obj = OrganizationChannel(organization_id=org_id, channel_id=payload.channel_id)
+
+    print("Obj", obj)
+
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+
+    return obj
+
+
+@router.put("/org/channel/{id}")
+def update_org_channel(
+    id: int,
+    payload: OrganizationChannelUpdate,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    obj = db.query(OrganizationChannel).get(id)
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="OrganizationChannel not found")
+
+    # 🔥 Check duplicate (exclude current record)
+    duplicate = (
+        db.query(OrganizationChannel)
+        .filter(
+            OrganizationChannel.organization_id == obj.organization_id,
+            OrganizationChannel.channel_id == payload.channel_id,
+            OrganizationChannel.id != id,
+        )
+        .first()
+    )
+
+    if duplicate:
+        raise HTTPException(
+            status_code=400, detail="Channel already exists for this organization"
+        )
+
+    obj.channel_id = payload.channel_id
+
+    db.commit()
+    return obj
+
+
+@router.delete("/org/channel/{id}")
+def delete_org_channel(id: int, db: Session = Depends(get_db)):
+    obj = db.query(OrganizationChannel).get(id)
+
+    db.delete(obj)
+    db.commit()
+
+    return {"success": True}
 
 
 @router.patch("/org/calling-number/{id}/active")

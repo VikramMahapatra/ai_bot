@@ -11,6 +11,7 @@ export interface CreditItem {
     used: number;
     remaining: number;
     reserved: number;
+    item_used: number;
 }
 
 export interface CreditMonthlySummary {

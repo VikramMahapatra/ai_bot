@@ -81,6 +81,7 @@ class CallingAgent(Base):
     external_agent_a_id = Column(String, nullable=True)
     
     campaigns = relationship("CallCampaign", back_populates="agent")
+    call_logs = relationship("CallLog", back_populates="agent")
     
     __table_args__ = (
         Index("idx_agent_external_id", "external_agent_id"),
@@ -99,3 +100,5 @@ class CallingAgentTestCall(Base):
     status = Column(String, default="Triggered")
     created_at = Column(DateTime, default=datetime.utcnow)
     external_call_id = Column(String, nullable=True)  # NEW COLUMN
+    
+    agent = relationship("CallingAgent")

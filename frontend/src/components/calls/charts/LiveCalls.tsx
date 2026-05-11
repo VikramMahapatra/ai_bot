@@ -2,6 +2,7 @@ import { Avatar, Box, Chip, Stack, Typography } from "@mui/material";
 import CallMissedOutgoingOutlinedIcon from "@mui/icons-material/CallMissedOutgoingOutlined";
 import CallIcon from '@mui/icons-material/Call';
 import { RecentCall } from "../../../services/callService";
+import { titleCase } from "../../Common/StatusChips";
 
 type Props = {
     recentCalls: RecentCall[];
@@ -11,12 +12,10 @@ export default function LiveCalls({ recentCalls }: Props) {
     return (
         <Box
             sx={{
-                height: "100%", // fill parent Card
+                height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: recentCalls.length === 0 ? "center" : "flex-start",
-                alignItems: "center",
-                width: "100%",
+                minHeight: 0,   // 🔥 REQUIRED
             }}
         >
             {recentCalls.length === 0 ? (
@@ -47,8 +46,15 @@ export default function LiveCalls({ recentCalls }: Props) {
                     </Typography>
                 </Box>
             ) : (
-                <Box width="100%">
-                    <Stack spacing={2} width="100%">
+                <Box
+                    sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: "auto",
+                        pr: 1,
+                    }}
+                >
+                    <Stack spacing={2}>
                         {recentCalls.map((call, i) => (
                             <Box
                                 key={i}
@@ -67,10 +73,11 @@ export default function LiveCalls({ recentCalls }: Props) {
                                 <Avatar sx={{ bgcolor: "primary.main", mr: 2 }}>
                                     <CallIcon />
                                 </Avatar>
+
                                 <Box flex={1}>
                                     <Typography fontWeight={600}>{call.name}</Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        {call.campaign} {call.agent ? `- Agent: ${call.agent}` : ""}
+                                        {call.campaign}
                                     </Typography>
                                     {call.phone && (
                                         <Typography variant="body2" color="text.secondary">
@@ -78,9 +85,19 @@ export default function LiveCalls({ recentCalls }: Props) {
                                         </Typography>
                                     )}
                                 </Box>
-                                <Box textAlign="right">
+
+                                <Box
+                                    sx={{
+                                        textAlign: "right",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "flex-end",
+                                        gap: 0.5,
+                                        minWidth: 80,
+                                    }}
+                                >
                                     <Chip
-                                        label={call.status.toUpperCase()}
+                                        label={titleCase(call.status)}
                                         color={
                                             call.status === "live"
                                                 ? "success"
@@ -89,9 +106,17 @@ export default function LiveCalls({ recentCalls }: Props) {
                                                     : "default"
                                         }
                                         size="small"
+                                        variant="outlined"
                                         sx={{ mb: 0.5 }}
                                     />
-                                    <Typography variant="caption" color="text.secondary">
+
+                                    <Typography
+                                        variant="caption"
+                                        sx={{
+                                            color: "text.secondary",
+                                            fontSize: "0.72rem",
+                                        }}
+                                    >
                                         {call.duration}
                                     </Typography>
                                 </Box>

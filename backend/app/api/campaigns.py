@@ -56,7 +56,6 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.lead_contact_mapping import LeadContactMapping
 
-
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
 ALLOWED_CAMPAIGN_TYPES = {"email", "whatsapp", "sms"}
@@ -1884,15 +1883,16 @@ async def delete_contact(
 
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-    
-    mapping_exists = db.query(LeadContactMapping.id).filter(
-        LeadContactMapping.contact_id == contact_id
-    ).first()
+
+    mapping_exists = (
+        db.query(LeadContactMapping.id)
+        .filter(LeadContactMapping.contact_id == contact_id)
+        .first()
+    )
 
     if mapping_exists:
         raise HTTPException(
-            status_code=400,
-            detail="Cannot delete contact: linked to existing lead"
+            status_code=400, detail="Cannot delete contact: linked to existing lead"
         )
 
     db.delete(contact)
@@ -2015,6 +2015,15 @@ async def create_campaign(
     db.add(campaign)
     db.commit()
     db.refresh(campaign)
+
+    organization_credit_service.reserve_credits(
+        db=db,
+        organization_id=current_user.organization_id,
+        feature_code=get_feature_code_for_campaign_type(payload.campaign_type),
+        quantity=len(contacts),
+        reference_type="campaign",
+        reference_id=str(campaign.id),
+    )
 
     return _serialize_campaign(
         campaign,

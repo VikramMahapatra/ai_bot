@@ -43,7 +43,7 @@ async def get_report_summary_endpoint(
     # Parse date strings to datetime objects
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    
+
     summary = get_report_summary(
         db,
         current_user.organization_id,
@@ -64,13 +64,19 @@ async def get_conversations_report(
     min_tokens: Optional[int] = Query(None),
     max_tokens: Optional[int] = Query(None),
     has_lead: Optional[int] = Query(None),
-    sort_by: str = Query("conversation_start", regex="^(conversation_start|total_tokens|total_messages|has_lead)$"),
+    sort_by: str = Query(
+        "conversation_start",
+        regex="^(conversation_start|total_tokens|total_messages|has_lead)$",
+    ),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    search: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    sentiments: Optional[List[str]] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get detailed conversation metrics with pagination and filtering"""
-    
+
     # Parse date strings
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
@@ -88,10 +94,13 @@ async def get_conversations_report(
         has_lead=has_lead,
         sort_by=sort_by,
         sort_order=sort_order,
+        search=search,
+        outcome=outcome,
+        sentiments=sentiments,
     )
     metrics = report_data["metrics"]
     total = report_data["total"]
-    
+
     # Get summary
     summary = get_report_summary(
         db,
@@ -100,7 +109,7 @@ async def get_conversations_report(
         end_dt,
         widget_id,
     )
-    
+
     return DetailedReportResponse(
         summary=summary,
         metrics=metrics,
@@ -119,7 +128,7 @@ async def get_token_usage_report_endpoint(
     # Parse date strings
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    
+
     report = get_token_usage_report(
         db,
         current_user.organization_id,
@@ -140,7 +149,7 @@ async def get_leads_report_endpoint(
     # Parse date strings
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    
+
     report = get_leads_report(
         db,
         current_user.organization_id,
@@ -150,7 +159,9 @@ async def get_leads_report_endpoint(
     return report
 
 
-@router.get("/voice-campaign/filters", response_model=VoiceCampaignFilterOptionsResponse)
+@router.get(
+    "/voice-campaign/filters", response_model=VoiceCampaignFilterOptionsResponse
+)
 async def get_voice_campaign_filter_options_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -211,11 +222,11 @@ async def export_conversations_csv(
     import csv
     from io import StringIO
     from fastapi.responses import StreamingResponse
-    
+
     # Parse date strings
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    
+
     query = get_conversation_metrics_query(
         db,
         current_user.organization_id,
@@ -223,50 +234,62 @@ async def export_conversations_csv(
         end_dt,
         widget_id,
     )
-    
+
     metrics = query.order_by(ConversationMetrics.conversation_start.desc()).all()
-    
+
     # Create CSV
     output = StringIO()
     writer = csv.writer(output)
-    
+
     # Write header
-    writer.writerow([
-        "Session ID",
-        "Widget ID",
-        "Total Messages",
-        "Total Tokens",
-        "Prompt Tokens",
-        "Completion Tokens",
-        "Avg Response Time (s)",
-        "Duration (s)",
-        "Satisfaction",
-        "Lead Captured",
-        "Lead Name",
-        "Lead Email",
-        "Start Time",
-        "End Time",
-    ])
-    
+    writer.writerow(
+        [
+            "Session ID",
+            "Widget ID",
+            "Total Messages",
+            "Total Tokens",
+            "Prompt Tokens",
+            "Completion Tokens",
+            "Avg Response Time (s)",
+            "Duration (s)",
+            "Satisfaction",
+            "Lead Captured",
+            "Lead Name",
+            "Lead Email",
+            "Start Time",
+            "End Time",
+        ]
+    )
+
     # Write data
     for metric in metrics:
-        writer.writerow([
-            metric.session_id,
-            metric.widget_id or "",
-            metric.total_messages,
-            metric.total_tokens,
-            metric.prompt_tokens,
-            metric.completion_tokens,
-            f"{(metric.average_response_time or 0):.2f}",
-            f"{(metric.conversation_duration or 0):.2f}",
-            f"{metric.user_satisfaction:.1f}" if metric.user_satisfaction else "",
-            "Yes" if metric.has_lead else "No",
-            metric.lead_name or "",
-            metric.lead_email or "",
-            metric.conversation_start.strftime("%Y-%m-%d %H:%M:%S") if metric.conversation_start else "",
-            metric.conversation_end.strftime("%Y-%m-%d %H:%M:%S") if metric.conversation_end else "",
-        ])
-    
+        writer.writerow(
+            [
+                metric.session_id,
+                metric.widget_id or "",
+                metric.total_messages,
+                metric.total_tokens,
+                metric.prompt_tokens,
+                metric.completion_tokens,
+                f"{(metric.average_response_time or 0):.2f}",
+                f"{(metric.conversation_duration or 0):.2f}",
+                f"{metric.user_satisfaction:.1f}" if metric.user_satisfaction else "",
+                "Yes" if metric.has_lead else "No",
+                metric.lead_name or "",
+                metric.lead_email or "",
+                (
+                    metric.conversation_start.strftime("%Y-%m-%d %H:%M:%S")
+                    if metric.conversation_start
+                    else ""
+                ),
+                (
+                    metric.conversation_end.strftime("%Y-%m-%d %H:%M:%S")
+                    if metric.conversation_end
+                    else ""
+                ),
+            ]
+        )
+
     # Return as streaming response
     output.seek(0)
     return StreamingResponse(

@@ -3,6 +3,13 @@ import api from './api';
 
 export type TemplateType = "sms" | "whatsapp" | "email";
 
+export interface VariableMapping {
+  field?: string;
+  sample?: string;
+}
+
+export type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
+
 export interface Template {
   id: number;
   name: string;
@@ -14,11 +21,23 @@ export interface Template {
   created_at: string;
 
   // WhatsApp fields
-  category?: string;
+  category?: WhatsAppCategory;
   language?: string;
   meta_status?: "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
   meta_template_id?: string;
   rejection_reason?: string;
+  variable_mappings?: Record<string, VariableMapping>;
+}
+
+export interface TemplateForm {
+  name: string;
+  type: TemplateType;
+  subject: string;
+  content: string;
+  category?: WhatsAppCategory;
+  language?: string;
+  meta_status?: "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+  variable_mappings?: Record<string, VariableMapping>;
 }
 
 export interface TemplateFilters {
@@ -57,6 +76,7 @@ type TemplatePayload = {
   // WhatsApp only
   category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
   language?: string;
+  variable_mappings?: Record<string, VariableMapping>;
 };
 
 const buildPayload = (data: TemplatePayload) => {
@@ -70,6 +90,7 @@ const buildPayload = (data: TemplatePayload) => {
   if (data.type === "whatsapp") {
     payload.category = data.category;
     payload.language = data.language;
+    payload.variable_mappings = data.variable_mappings;
   }
 
   return payload;
@@ -103,6 +124,18 @@ export const messageTemplateService = {
     return response.data;
   },
 
+  async updateTemplateStatus(
+    templateId: number,
+    status: "active" | "inactive"
+  ): Promise<TemplateUpdateResponse> {
+    const response = await api.patch<TemplateUpdateResponse>(
+      `/api/templates/${templateId}/status`,
+      { status }
+    );
+
+    return response.data;
+  },
+
   async deleteTemplate(templateId: number): Promise<void> {
     await api.delete(`/api/templates/delete/${templateId}`);
   },
@@ -111,4 +144,18 @@ export const messageTemplateService = {
     const response = await api.get<Template[]>('/api/templates/lookup');
     return response.data;
   },
+
+  async syncWhatsAppTemplates(): Promise<{ success: boolean; message: string }> {
+    const response = await api.post('/api/templates/sync-whatsapp');
+    return response.data;
+  },
+
+  async getWhatsappTemplates(payload: { category: string }): Promise<Template[]> {
+    const response = await api.get('/api/templates/whatsapp/utility-templates', { params: payload });
+    return response.data;
+  },
+
+  async getWhatsappUtilityTemplates(): Promise<Template[]> {
+    return this.getWhatsappTemplates({ category: "UTILITY" });
+  }
 };

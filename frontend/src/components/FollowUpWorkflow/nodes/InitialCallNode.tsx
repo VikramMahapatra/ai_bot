@@ -26,13 +26,31 @@ export default function InitialCallNode({ data, id }: any) {
         );
 
         if (existingEdge) {
+            const targetNodeId = existingEdge.target;
+
             // 1. remove edge
             onDeleteEdge(existingEdge.id);
 
-            // 2. remove node
-            setNodes((nds: any[]) =>
-                nds.filter((n) => n.id !== existingEdge.target)
+            // 2. check if target node is used by other edges
+            const isNodeStillUsed = edges.some(
+                (e: any) =>
+                    e.id !== existingEdge.id &&
+                    (e.source === targetNodeId || e.target === targetNodeId)
             );
+
+            // 3. prevent deleting STOP node
+            setNodes((nds: any[]) => {
+                const targetNode = nds.find((n) => n.id === targetNodeId);
+
+                const isStopNode =
+                    targetNode?.type === "stop" || targetNode?.id === "stop";
+
+                if (!isNodeStillUsed && !isStopNode) {
+                    return nds.filter((n) => n.id !== targetNodeId);
+                }
+
+                return nds;
+            });
 
             return;
         }
@@ -277,7 +295,7 @@ export default function InitialCallNode({ data, id }: any) {
 
                 </Box>
 
-                <div className="nodrag nopan mt-4 border-t pt-3">
+                {/* <div className="nodrag nopan mt-4 border-t pt-3">
                     <FormControl size="small" fullWidth>
                         <label
                             className="
@@ -315,7 +333,7 @@ export default function InitialCallNode({ data, id }: any) {
                             </MenuItem>
                         </Select>
                     </FormControl>
-                </div>
+                </div> */}
 
             </div>
 

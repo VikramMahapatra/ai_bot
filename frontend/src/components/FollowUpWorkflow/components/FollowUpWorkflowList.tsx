@@ -18,6 +18,7 @@ import {
     Paper,
     InputAdornment,
     Stack,
+    Tooltip,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import {
@@ -35,7 +36,9 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { Workflow, workflowService } from "../../../services/workflowService";
-import { formatDateTime } from "../../../utils/dateUtils";
+import { useDateFormatter } from "../../../hooks/useDateFormatter";
+import { StatusChip } from "../../Common/StatusChips";
+import { ConfirmDialog } from "../../Common/ConfirmDialog";
 
 interface WorkflowListProps {
     onCreate: () => void;
@@ -49,10 +52,11 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
+    const [workflowStatusToUpdate, setWorkflowStatusToUpdate] = useState<Workflow | null>(null);
     const [workflowTotal, setWorkflowTotal] = useState(0);
     const [workflowPage, setWorkflowPage] = useState(0);
     const [workflowRowsPerPage, setWorkflowRowsPerPage] = useState(10);
+    const formatDisplayDate = useDateFormatter();
 
     useEffect(() => {
         fetchProducts();
@@ -75,6 +79,42 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
             setLoading(false);
         }
     };
+
+    const handleToggleStatus = async () => {
+        if (!workflowStatusToUpdate?.id) return;
+        setError('');
+        setLoading(true);
+        try {
+
+            const newStatus = workflowStatusToUpdate.is_active ? false : true;
+            // call API
+            const response = await workflowService.updateWorkflowStatus(workflowStatusToUpdate.id, newStatus)
+
+            if (response.success) {
+                // update UI locally (important for instant feedback)
+                setWorkflows((prev) =>
+                    prev.map((t) =>
+                        t.id === workflowStatusToUpdate.id ? { ...t, is_active: newStatus } : t
+                    )
+                );
+
+            }
+            else {
+                setError(response.message);
+            }
+
+            setWorkflowStatusToUpdate(null);
+
+        } catch (err) {
+            console.error("Failed to update status", err);
+            setError("Failed to update status");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const isActive = workflowStatusToUpdate?.is_active;
+    const actionLabel = isActive ? "Deactivate" : "Activate";
 
     return (
         <Box>
@@ -281,16 +321,19 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
 
                                 {/* Status */}
                                 <TableCell>
-                                    <Chip
-                                        label={workflow.is_active ? "Active" : "Inactive"}
-                                        color={workflow.is_active ? "success" : "default"}
-                                        size="small"
-                                    />
+                                    <Tooltip title="Click to toggle status">
+                                        <span>
+                                            <StatusChip
+                                                value={workflow.is_active ? "Active" : "Inactive"}
+                                                onClick={() => setWorkflowStatusToUpdate(workflow)}
+                                            />
+                                        </span>
+                                    </Tooltip>
                                 </TableCell>
 
                                 {/* Created */}
                                 <TableCell>
-                                    {formatDateTime(workflow.created_at) || "-"}
+                                    {formatDisplayDate(workflow.created_at) || "-"}
                                 </TableCell>
 
                                 {/* Actions */}
@@ -308,6 +351,22 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
                     </TableBody>
                 </Table>
             </TableContainer>
+            <ConfirmDialog
+                open={Boolean(workflowStatusToUpdate)}
+                title={`${actionLabel} template?`}
+                description={
+                    workflowStatusToUpdate
+                        ? `Are you sure you want to ${actionLabel.toLowerCase()} "${workflowStatusToUpdate.name}"? 
+                          This will mark it as ${isActive ? "inactive" : "active"} and you can change it anytime.`
+                        : undefined
+                }
+                confirmLabel={actionLabel}
+                cancelLabel="Cancel"
+                confirmColor={isActive ? "warning" : "success"}
+                loading={loading}
+                onCancel={() => !loading && setWorkflowStatusToUpdate(null)}
+                onConfirm={handleToggleStatus}
+            />
         </Box>
     );
 }

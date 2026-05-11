@@ -1,4 +1,14 @@
-from sqlalchemy import Column, Identity, Index, Integer, Numeric, String, DateTime, Text, ForeignKey
+from sqlalchemy import (
+    Column,
+    Identity,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    DateTime,
+    Text,
+    ForeignKey,
+)
 from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
@@ -8,12 +18,14 @@ class ContactList(Base):
     __tablename__ = "contact_lists"
 
     id = Column(Integer, Identity(), primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, index=True
+    )
     list_name = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     contacts = relationship("Contact", back_populates="contact_list")
 
 
@@ -21,7 +33,9 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(Integer, Identity(), primary_key=True)
-    contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
+    contact_list_id = Column(
+        Integer, ForeignKey("contact_lists.id"), nullable=False, index=True
+    )
 
     # Basic Info
     name = Column(String, nullable=True)
@@ -55,27 +69,30 @@ class Contact(Base):
     tags = Column(String, nullable=True)  # comma separated OR JSON
 
     # System Fields
-    session_id = Column(String, index=True, nullable=True) # for chat's contact sync
+    session_id = Column(String, index=True, nullable=True)  # for chat's contact sync
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     external_contact_id = Column(Integer, nullable=True)
 
     contact_list = relationship("ContactList", back_populates="contacts")
     campaign_links = relationship("CampaignContact", back_populates="contact")
+    call_logs = relationship("CallLog", back_populates="contact")
 
-    __table_args__ = (
-        Index("idx_contact_external_id", "external_contact_id"),
-    )
+    __table_args__ = (Index("idx_contact_external_id", "external_contact_id"),)
 
 
 class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Integer, Identity(), primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, index=True
+    )
     campaign_name = Column(String, nullable=False, index=True)
     campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
     message_template = Column(Text, nullable=False)
-    contact_list_id = Column(Integer, ForeignKey("contact_lists.id"), nullable=False, index=True)
+    contact_list_id = Column(
+        Integer, ForeignKey("contact_lists.id"), nullable=False, index=True
+    )
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
     status = Column(String, nullable=False, default="draft", index=True)
@@ -89,7 +106,9 @@ class CampaignLog(Base):
     __tablename__ = "campaign_logs"
 
     id = Column(Integer, Identity(), primary_key=True)
-    campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
+    campaign_id = Column(
+        Integer, ForeignKey("campaigns.id"), nullable=False, index=True
+    )
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
     run_sequence = Column(Integer, nullable=False, default=1, index=True)
     run_started_at = Column(DateTime(timezone=True), nullable=True)
@@ -110,7 +129,9 @@ class CampaignLog(Base):
     last_event_at = Column(DateTime(timezone=True), nullable=True)
     event_payload = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
-    converted_lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    converted_lead_id = Column(
+        Integer, ForeignKey("leads.id"), nullable=True, index=True
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -118,7 +139,9 @@ class CampaignLeadRule(Base):
     __tablename__ = "campaign_lead_rules"
 
     id = Column(Integer, Identity(), primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, index=True
+    )
     rule_name = Column(String, nullable=False, default="Default Campaign to Lead Rule")
     is_active = Column(Integer, nullable=False, default=1, index=True)
     auto_convert_enabled = Column(Integer, nullable=False, default=0)
@@ -137,12 +160,20 @@ class CampaignLeadConversion(Base):
     __tablename__ = "campaign_lead_conversions"
 
     id = Column(Integer, Identity(), primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False, index=True)
-    campaign_log_id = Column(Integer, ForeignKey("campaign_logs.id"), nullable=False, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    campaign_id = Column(
+        Integer, ForeignKey("campaigns.id"), nullable=False, index=True
+    )
+    campaign_log_id = Column(
+        Integer, ForeignKey("campaign_logs.id"), nullable=False, index=True
+    )
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
-    rule_id = Column(Integer, ForeignKey("campaign_lead_rules.id"), nullable=False, index=True)
+    rule_id = Column(
+        Integer, ForeignKey("campaign_lead_rules.id"), nullable=False, index=True
+    )
     score = Column(Integer, nullable=False, default=0)
     status = Column(String, nullable=False, default="skipped", index=True)
     reason = Column(Text, nullable=True)
