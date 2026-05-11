@@ -22,10 +22,37 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ widgetId, onStarted, on
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const maxFileSizeMb = Number(import.meta.env.VITE_MAX_FILE_SIZE_MB || 10);
+  const maxTotalUploadSizeMb = Number(import.meta.env.VITE_MAX_TOTAL_UPLOAD_SIZE_MB || 50);
+
+  const formatBytesToMb = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(2);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
+
+    const oversizedFile = Array.from(files).find(
+      (file) => file.size > maxFileSizeMb * 1024 * 1024
+    );
+    if (oversizedFile) {
+      setError(
+        `File \"${oversizedFile.name}\" is ${formatBytesToMb(oversizedFile.size)} MB, which exceeds the per-file limit of ${maxFileSizeMb} MB.`
+      );
+      setSuccess('');
+      event.target.value = '';
+      return;
+    }
+
+    const totalSizeBytes = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+    const totalSizeLimitBytes = maxTotalUploadSizeMb * 1024 * 1024;
+    if (totalSizeBytes > totalSizeLimitBytes) {
+      setError(
+        `Total upload size is ${formatBytesToMb(totalSizeBytes)} MB, which exceeds the allowed ${maxTotalUploadSizeMb} MB limit.`
+      );
+      setSuccess('');
+      event.target.value = '';
+      return;
+    }
 
     setUploading(true);
     onStarted && onStarted();
@@ -67,7 +94,22 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ widgetId, onStarted, on
           </Stack>
         </Box>
 
-        {error && <Alert severity="error">{error}</Alert>}
+        {error && (
+          <Alert
+            severity="error"
+            sx={{
+              borderWidth: 2,
+              borderStyle: 'solid',
+              borderColor: 'error.main',
+              backgroundColor: '#ffebee',
+              color: 'error.dark',
+              fontWeight: 700,
+              '& .MuiAlert-icon': { color: 'error.main' },
+            }}
+          >
+            {error}
+          </Alert>
+        )}
         {success && <Alert severity="success">{success}</Alert>}
 
         <Box
@@ -98,6 +140,12 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ widgetId, onStarted, on
 
             <Typography variant="caption" color="text.secondary">
               You can select multiple files in one go. Files are embedded automatically after upload.
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700 }}>
+              Max per file: {maxFileSizeMb} MB
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700 }}>
+              Max total per upload: {maxTotalUploadSizeMb} MB
             </Typography>
 
             {uploading && <LinearProgress sx={{ mt: 0.5, borderRadius: 1 }} />}

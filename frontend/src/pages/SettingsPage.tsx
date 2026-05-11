@@ -15,6 +15,11 @@ import {
   IconButton,
   Stack,
   Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  MenuItem,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -36,6 +41,8 @@ import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import { launchWhatsAppEmbeddedSignup, loadFacebookSdk } from "../services/metaEmbeddedSignup";
 import axios from "axios";
 import { whatsappService } from "../services/whatsappService";
+import { messageTemplateService, Template } from "../services/messageTemplateService";
+import { generatePreview } from "./TemplatePage";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -85,6 +92,14 @@ const SettingsPage: React.FC = () => {
   const [testEmail, setTestEmail] = useState("");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testToNumber, setTestToNumber] = useState('');
+  const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
+  const [whatsappTesting, setWhatsappTesting] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+
 
   const getToday = () => {
     const today = new Date();
@@ -173,6 +188,7 @@ const SettingsPage: React.FC = () => {
 
     loadTwilioConfig();
     loadWhatsAppConfig();
+    loadWhatsAppUtilityTemplates();
   }, []);
 
 
@@ -193,7 +209,20 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const loadWhatsAppUtilityTemplates = async () => {
+    try {
+      const templateList = await messageTemplateService.getWhatsappUtilityTemplates();
 
+      setTemplates(templateList || []);
+      // For demo, just pick the first one. In a real UI, you'd show a list to choose from.
+      if (templateList.length > 0) {
+        setSelectedTemplate(templateList[0]);
+        setSelectedTemplateId(String(templateList[0].id));
+      }
+    } catch (err) {
+      console.error("Failed to load WhatsApp utility templates", err);
+    }
+  };
 
   const handleTwilioFieldChange = <K extends keyof TwilioFormState>(
     key: K,
@@ -498,6 +527,44 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+
+  const sendWhatsAppTest = async () => {
+
+    if (!testToNumber.trim()) {
+      setError("Enter recipient number.");
+      return;
+    }
+
+    if (!selectedTemplateId) {
+      setError("Select WhatsApp template.");
+      return;
+    }
+
+    try {
+      setWhatsappTesting(true);
+      setError("");
+      await whatsappService.sendTestMessage({
+        to_number: testToNumber.trim(),
+        template_id: selectedTemplateId,
+      });
+
+      setSuccess(
+        "WhatsApp template message sent successfully."
+      );
+
+      setTestOpen(false);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.detail ||
+        err?.detail ||
+        "Failed to send WhatsApp message."
+      );
+
+    } finally {
+      setWhatsappTesting(false);
+    }
+  };
+
   const showError = (message: string) => {
     setSuccess("");
     setError(message);
@@ -507,6 +574,15 @@ const SettingsPage: React.FC = () => {
     setError("");
     setSuccess(message);
   };
+
+
+  const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '12px',
+      backgroundColor: alpha(theme.palette.common.white, 0.72),
+    },
+  } as const;
+
 
   return (
     <AdminLayout>
@@ -1383,16 +1459,23 @@ const SettingsPage: React.FC = () => {
                         <Stack direction="row" spacing={1}>
 
                           <Button
-                            variant="contained"
-                            disabled
+                            variant="outlined"
+                            size="small"
+                            onClick={() => setTestOpen(true)}
                             sx={{
-                              background: "#4caf50",
+                              minWidth: 150,
+                              py: 0.7,
+                              px: 2,
+                              fontWeight: 600,
+                              borderColor: "#25D366",
+                              color: "#25D366",
                               "&:hover": {
-                                background: "#43a047"
+                                borderColor: "#1ebe5d",
+                                background: "rgba(37, 211, 102, 0.08)"
                               }
                             }}
                           >
-                            Connected
+                            Send Test Message
                           </Button>
 
                           <Button
@@ -1429,35 +1512,133 @@ const SettingsPage: React.FC = () => {
                         ` • ${whatsappData.business_name}`}
                     </Alert>
                   )}
-                  <Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 600, mb: 2 }}
-                  >
-                    Requirements
-                  </Typography>
+                  {!whatsappData && (
+                    <>
+                      <Alert severity="warning" sx={{ mb: 2 }}>
+                        WhatsApp not connected. Please connect to enable WhatsApp messaging.
+                      </Alert>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ fontWeight: 600, mb: 2 }}
+                      >
+                        Requirements
+                      </Typography>
 
-                  <Stack spacing={1.5}>
-                    <Alert severity="info">
-                      You must have a valid dedicated phone number
-                    </Alert>
+                      <Stack spacing={1.5}>
+                        <Alert severity="info">
+                          You must have a valid dedicated phone number
+                        </Alert>
 
-                    <Alert severity="info">
-                      Phone number must not be linked to another provider
-                    </Alert>
+                        <Alert severity="info">
+                          Phone number must not be linked to another provider
+                        </Alert>
 
-                    <Alert severity="info">
-                      You need a personal Facebook account
-                    </Alert>
+                        <Alert severity="info">
+                          You need a personal Facebook account
+                        </Alert>
 
-                    <Alert severity="warning">
-                      Verify your Meta Business Account
-                    </Alert>
-                  </Stack>
+                        <Alert severity="warning">
+                          Verify your Meta Business Account
+                        </Alert>
+                      </Stack>
+                    </>
+
+                  )}
+
                 </CardContent>
               </Card>
             </Grid>
           </>
         )}
+
+        <Dialog open={testOpen} maxWidth="sm" fullWidth onClose={() => setTestOpen(false)}  >
+          <DialogTitle>Send WhatsApp Test Message</DialogTitle>
+
+          <DialogContent>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Only <b>UTILITY</b> WhatsApp templates can be used for sending test messages.
+            </Alert>
+            <Stack sx={{ mt: 1 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Recipient Number"
+                    value={testToNumber}
+                    onChange={(e) => setTestToNumber(e.target.value)}
+                    placeholder="9198XXXXXXXX"
+                    fullWidth
+                    sx={fieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    select
+                    label="WhatsApp Template"
+                    value={selectedTemplateId}
+                    onChange={(e) => {
+                      setSelectedTemplateId(e.target.value);
+
+                      const selected = templates.find(
+                        (t) => t.id === Number(e.target.value)
+                      );
+
+                      setSelectedTemplate(selected || null);
+                    }}
+                    fullWidth
+                    sx={fieldSx}
+                  >
+                    {(templates || []).map((template) => (
+                      <MenuItem
+                        key={template.id}
+                        value={template.id}
+                      >
+                        {template.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              </Grid>
+              {selectedTemplate && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: "#efeae2",
+                  }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    mb={1}
+                  >
+                    Template Preview
+                  </Typography>
+
+                  <Box
+                    sx={{
+                      bgcolor: "#d9fdd3",
+                      p: 1.5,
+                      borderRadius: 2,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {generatePreview(
+                      selectedTemplate.content,
+                      selectedTemplate.variable_mappings || {}
+                    )}
+                  </Box>
+                </Box>
+              )}
+            </Stack>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setTestOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={sendWhatsAppTest} disabled={whatsappTesting} sx={{ background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)` }} >
+              Send
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </AdminLayout>
   );

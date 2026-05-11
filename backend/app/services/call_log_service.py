@@ -49,7 +49,10 @@ from app.services.email_service import send_campaign_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
 from app.models.whatsapp_channel import WhatsAppChannel
-from app.services.whatsapp_service import send_whatsapp_text_message
+from app.services.whatsapp_service import (
+    send_whatsapp_template_message,
+    send_whatsapp_text_message,
+)
 from app.models.lead_activities import LeadActivity
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.workflows import (
@@ -1027,10 +1030,7 @@ def handle_instant_replies(
         replies_data = [
             {
                 "mode": r.mode,
-                "template": {
-                    "content": r.template.content,
-                    "subject": r.template.subject,
-                },
+                "template": r.template,  # FULL ORM OBJECT
             }
             for r in replies
         ]
@@ -1040,6 +1040,7 @@ def handle_instant_replies(
             db.query(WhatsAppChannel)
             .filter(
                 WhatsAppChannel.organization_id == campaign.organization_id,
+                WhatsAppChannel.widget_id.is_(None),  # only org-level config
                 WhatsAppChannel.is_active == True,
             )
             .first()
@@ -1195,8 +1196,12 @@ def dispatch_instant_replies_safe(
 
     for reply in replies:
         template = reply["template"]
-        message = render_template(template["content"], contact)
         mode = reply["mode"]
+
+        if mode in ["sms", "email"]:
+            message = render_template(template.content, contact)
+        else:
+            message = None
 
         results[mode] = {"success": False, "error": None}
 
@@ -1222,11 +1227,12 @@ def dispatch_instant_replies_safe(
                 continue
 
             try:
-                send_whatsapp_text_message(
+                send_whatsapp_template_message(
                     phone_number_id=whatsapp_config["phone_number_id"],
                     access_token=whatsapp_config["access_token"],
                     to_number=contact.phone,
-                    message_text=message,
+                    template=template,
+                    contact=contact,
                 )
                 results[mode]["success"] = True
 
@@ -1238,7 +1244,7 @@ def dispatch_instant_replies_safe(
             try:
                 success, error, _ = send_campaign_email(
                     campaign_name=campaign.name,
-                    subject=template["subject"] or "Update",
+                    subject=template.subject or "Update",
                     message_template=message,
                     recipient_name=contact.name,
                     recipient_email=contact.email,

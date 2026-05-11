@@ -72,7 +72,7 @@ export const whatsappService = {
     return response.data;
   },
 
-  async sendTestMessage(payload: { to_number: string; message: string }) {
+  async sendTestMessage(payload: { to_number: string; template_id: string }) {
     const response = await api.post('/api/admin/whatsapp/test-message', payload);
     return response.data;
   },
@@ -95,4 +95,5 @@ export const whatsappService = {
     const response = await api.put('/api/admin/whatsapp/global-config', payload);
     return response.data;
   },
+
 };

@@ -10,6 +10,7 @@ from sqlalchemy import (
     func,
 )
 from app.database import Base
+from sqlalchemy.dialects.postgresql import JSONB
 import enum
 
 
@@ -54,6 +55,8 @@ class MessageTemplate(Base):
     version = Column(Integer, default=1)
     is_latest = Column(Boolean, default=True)
     is_archived = Column(Boolean, default=False)
+
+    variable_mappings = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())

@@ -275,6 +275,11 @@
 
   <!-- Widget Integration Script (Built IIFE) -->
   <script>
+    if (window.location.protocol === 'file:') {
+      console.error('Open this page via http://localhost:5500/html_page_test/test_index.html, not file://, to avoid CORS Origin:null errors.');
+      alert('Run "python -m http.server 5500" from project root, then open http://localhost:5500/html_page_test/test_index.html');
+    }
+
     // Set config BEFORE loading the widget script
     window.AIChatbot = {
       widgetId: '4fb706bd-2eda-4443-bd61-b8fd798f040e',

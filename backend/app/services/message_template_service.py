@@ -14,8 +14,12 @@ def format_whatsapp_name(name: str) -> str:
     return re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_"))
 
 
-def build_template_components(content: str):
-    matches = re.findall(r"{{\d+}}", content)
+def build_template_components(
+    content: str,
+    variable_mappings: dict | None = None,
+):
+
+    matches = re.findall(r"{{(\d+)}}", content)
 
     component = {
         "type": "BODY",
@@ -23,9 +27,20 @@ def build_template_components(content: str):
     }
 
     if matches:
-        component["example"] = {
-            "body_text": [[f"Sample{i+1}" for i in range(len(matches))]]
-        }
+
+        sample_values = []
+
+        for variable in matches:
+
+            sample = (
+                variable_mappings.get(variable, {}).get("sample")
+                if variable_mappings
+                else None
+            )
+
+            sample_values.append(sample or f"Sample{variable}")
+
+        component["example"] = {"body_text": [sample_values]}
 
     return [component]
 
@@ -37,6 +52,7 @@ def sync_whatsapp_templates(db: Session, organization_id):
         .filter(
             WhatsAppChannel.organization_id == organization_id,
             WhatsAppChannel.is_active == True,
+            WhatsAppChannel.widget_id.is_(None),
         )
         .first()
     )
@@ -76,6 +92,7 @@ def create_meta_template(db, data, organization_id):
         .filter(
             WhatsAppChannel.organization_id == organization_id,
             WhatsAppChannel.is_active == True,
+            WhatsAppChannel.widget_id.is_(None),
         )
         .first()
     )
@@ -97,7 +114,9 @@ def create_meta_template(db, data, organization_id):
         "name": data["whatsapp_template_name"],
         "language": data["language"],
         "category": data["category"],
-        "components": build_template_components(data["content"]),
+        "components": build_template_components(
+            data["content"], data.get("variable_mappings")
+        ),
     }
 
     try:
@@ -237,6 +256,8 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
     if not template:
         return None
 
+    is_locked_template = template.meta_status in ["PENDING", "APPROVED"]
+
     update_data = data.dict(exclude_unset=True)
 
     # -----------------------------------
@@ -256,10 +277,22 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
             "data": template,
         }
 
-    if template.meta_status in ["PENDING", "APPROVED"]:
+    if template.type == "whatsapp" and is_locked_template:
+        allowed_fields = {"variable_mappings"}
+
+        filtered_update = {k: v for k, v in update_data.items() if k in allowed_fields}
+
+        # prevent accidental overwrite
+        for k, v in filtered_update.items():
+            setattr(template, k, v)
+
+        db.commit()
+        db.refresh(template)
+
         return {
-            "success": False,
-            "message": ("Pending or approved WhatsApp templates " "cannot be edited."),
+            "success": True,
+            "message": "Variable mapping updated successfully",
+            "data": template,
         }
 
     # -----------------------------------
@@ -403,6 +436,8 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
     query = db.query(MessageTemplate).filter(
         MessageTemplate.organization_id == organization_id,
         MessageTemplate.status == TemplateStatus.active,
+        MessageTemplate.is_latest == True,
+        MessageTemplate.meta_status == "APPROVED",
     )
 
     if type:
@@ -410,4 +445,12 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
 
     templates = query.order_by(MessageTemplate.name.asc()).all()
 
-    return [{"id": t.id, "name": t.name, "type": t.type} for t in templates]
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "type": t.type,
+            "category": t.category,  # optional but useful for UI filtering
+        }
+        for t in templates
+    ]

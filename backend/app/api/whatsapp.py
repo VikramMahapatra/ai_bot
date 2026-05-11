@@ -21,6 +21,7 @@ from app.services.whatsapp_service import (
     verify_meta_signature,
 )
 from app.config import settings
+from app.models.message_templates import MessageTemplate
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -37,7 +38,7 @@ class WhatsAppConfigUpsertRequest(BaseModel):
 
 class WhatsAppTestMessageRequest(BaseModel):
     to_number: str
-    message: str
+    template_id: int
 
 
 class WhatsAppEmbeddedExchangeRequest(BaseModel):
@@ -152,6 +153,7 @@ async def upsert_global_whatsapp_config(
             phone_number_id=payload.phone_number_id,
             waba_id=payload.waba_id,
             is_active=payload.is_active,
+            verify_token=settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
         )
         db.add(config)
     else:
@@ -223,7 +225,7 @@ async def upsert_whatsapp_config(
             phone_number_id=payload.phone_number_id,
             waba_id=payload.waba_id,
             access_token=payload.access_token,
-            verify_token=payload.verify_token,
+            verify_token=settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
             business_phone_number=payload.business_phone_number,
             is_active=payload.is_active,
         )
@@ -233,7 +235,7 @@ async def upsert_whatsapp_config(
         config.phone_number_id = payload.phone_number_id
         config.waba_id = payload.waba_id
         config.access_token = payload.access_token
-        config.verify_token = payload.verify_token
+        config.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
         config.business_phone_number = payload.business_phone_number
         config.is_active = payload.is_active
 
@@ -276,11 +278,28 @@ async def send_test_whatsapp_message(
             status_code=404, detail="WhatsApp channel is not configured or inactive"
         )
 
+    template = (
+        db.query(MessageTemplate)
+        .filter(
+            MessageTemplate.id == payload.template_id,
+            MessageTemplate.organization_id == current_user.organization_id,
+            MessageTemplate.type == "whatsapp",
+            MessageTemplate.meta_status == "APPROVED",
+        )
+        .first()
+    )
+
+    if not template:
+        raise HTTPException(
+            status_code=404,
+            detail="Approved WhatsApp template not found",
+        )
+
     result = send_whatsapp_test_message(
         phone_number_id=config.phone_number_id,
         access_token=config.access_token,
         to_number=payload.to_number,
-        message_text=payload.message,
+        template=template,
     )
     return {"message": "Test message sent", "meta": result}
 
@@ -353,6 +372,7 @@ async def exchange_embedded_signup_code(
                 access_token=access_token,
                 widget_id=payload.widget_id,
                 is_active=payload.is_active,
+                verify_token=settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
                 token_type=exchange.get("token_type"),
                 token_expires_in=expires_in,
                 token_created_at=token_created_at,
@@ -475,15 +495,9 @@ async def verify_whatsapp_webhook(
             status_code=400, detail="Invalid webhook verification payload"
         )
 
-    config = (
-        db.query(WhatsAppChannel)
-        .filter(
-            WhatsAppChannel.verify_token == hub_verify_token,
-            WhatsAppChannel.is_active == True,
-        )
-        .first()
-    )
-    if not config:
+    is_verified = hub_verify_token == settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+
+    if not is_verified:
         raise HTTPException(status_code=403, detail="Webhook verify token mismatch")
 
     return hub_challenge or ""
@@ -520,6 +534,7 @@ async def receive_whatsapp_webhook(
                 .filter(
                     WhatsAppChannel.phone_number_id == str(phone_number_id),
                     WhatsAppChannel.is_active == True,
+                    WhatsAppChannel.widget_id.isnot(None),
                 )
                 .first()
             )

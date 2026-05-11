@@ -110,7 +110,7 @@ Create `.env` files in backend and frontend folders:
 ```
 DATABASE_URL=sqlite:///./app.db
 OPENAI_API_KEY=your_key_here
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:5174
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5500
 ```
 
 **Frontend `.env`:**

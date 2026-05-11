@@ -1,11 +1,13 @@
 import hashlib
 import hmac
-from http.client import HTTPException
 from typing import Optional
 
+from fastapi import HTTPException
 import requests
 
 from app.config import settings
+from app.models.message_templates import MessageTemplate
+from app.models.campaign import Contact
 
 
 class WhatsAppSendError(Exception):
@@ -67,7 +69,7 @@ def send_whatsapp_test_message(
     phone_number_id: str,
     access_token: str,
     to_number: str,
-    message_text: str,
+    template: MessageTemplate,
 ) -> dict:
     url = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{phone_number_id}/messages"
     headers = {
@@ -77,19 +79,104 @@ def send_whatsapp_test_message(
     payload = {
         "messaging_product": "whatsapp",
         "to": to_number,
-        "type": "text",
-        "text": {
-            "body": message_text
-            or "✅ Test message successful. WhatsApp integration is working!"
+        "type": "template",
+        "template": {
+            "name": template.whatsapp_template_name,
+            "language": {"code": template.language or "en"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": mapping.get("sample", "Test")}
+                        for _, mapping in sorted(
+                            (template.variable_mappings or {}).items(),
+                            key=lambda x: int(x[0]),
+                        )
+                    ],
+                }
+            ],
         },
     }
 
     response = requests.post(url, json=payload, headers=headers, timeout=20)
+
+    print("META STATUS:", response.status_code)
+    print("META RESPONSE:", response.text)
+
+    data = response.json()
+
     if response.status_code >= 400:
-        raise WhatsAppSendError(
-            f"Meta send failed: {response.status_code} {response.text}"
+
+        meta_error = data.get("error", {}).get("message") or response.text
+
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=meta_error,
         )
-    return response.json()
+
+    return data
+
+
+def send_whatsapp_template_message(
+    phone_number_id: str,
+    access_token: str,
+    to_number: str,
+    template: MessageTemplate,
+    contact: Contact,
+) -> dict:
+
+    url = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{phone_number_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    variable_mappings = template.variable_mappings or {}
+
+    parameters = []
+
+    for var_index, mapping in sorted(
+        variable_mappings.items(), key=lambda x: int(x[0])
+    ):
+        field_name = mapping.get("field")
+        sample_fallback = mapping.get("sample", "Test")
+
+        value = (
+            getattr(contact, field_name, "")
+            if field_name and getattr(contact, field_name, "") is not None
+            else sample_fallback
+        )
+
+        parameters.append({"type": "text", "text": str(value)})
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "template",
+        "template": {
+            "name": template.whatsapp_template_name,
+            "language": {"code": template.language or "en"},
+            "components": [{"type": "body", "parameters": parameters}],
+        },
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=20)
+
+    print("META STATUS:", response.status_code)
+    print("META RESPONSE:", response.text)
+
+    data = response.json()
+
+    if response.status_code >= 400:
+        meta_error = data.get("error", {}).get("message") or response.text
+
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=meta_error,
+        )
+
+    return data
 
 
 def _graph_version() -> str:

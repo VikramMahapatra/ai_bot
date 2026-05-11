@@ -38,23 +38,91 @@ import AdminLayout from "../components/Layout/AdminLayout";
 import {
   messageTemplateService,
   Template,
+  TemplateForm,
   TemplateType,
+  VariableMapping,
+  WhatsAppCategory,
 } from "../services/messageTemplateService";
 import SearchIcon from "@mui/icons-material/Search";
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useDateFormatter } from "../hooks/useDateFormatter";
-import { SourceChip, StatusChip } from "../components/Common/StatusChips";
+import { SourceChip, StatusChip, titleCase } from "../components/Common/StatusChips";
 import { ConfirmDialog } from "../components/Common/ConfirmDialog";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
-type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
+const contactFieldOptions = [
+  // Basic
+  { value: "name", label: "Name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "whatsapp_number", label: "WhatsApp Number" },
+  { value: "company", label: "Company" },
+  { value: "designation", label: "Designation" },
 
-const emptyTemplateForm = {
+  // Product
+  { value: "item_name", label: "Item Name" },
+  { value: "item_type", label: "Item Type" },
+  { value: "interest_stage", label: "Interest Stage" },
+  { value: "item_category", label: "Item Category" },
+
+  // Other
+  { value: "amount", label: "Amount" },
+  { value: "offer_value", label: "Offer Value" },
+  { value: "city", label: "City" },
+  { value: "state", label: "State" },
+  { value: "country", label: "Country" },
+  { value: "source", label: "Source" },
+  { value: "lifecycle_stage", label: "Lifecycle Stage" },
+  { value: "tags", label: "Tags" },
+];
+
+export const generatePreview = (
+  content: string,
+  mappings: Record<string, VariableMapping>
+) => {
+
+  let preview = content;
+
+  Object.entries(mappings).forEach(([key, value]) => {
+
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+
+    preview = preview.replace(
+      regex,
+      value.sample || `{{${key}}}`
+    );
+
+  });
+
+  console.log("Generated preview:", preview);
+
+  return preview;
+};
+
+const emptyTemplateForm: TemplateForm = {
   name: "",
-  type: "whatsapp",
+  type: "whatsapp" as TemplateType,
   category: "MARKETING" as WhatsAppCategory,
   language: "en",
   subject: "",
   content: "",
+  variable_mappings: {},
+  meta_status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED" | "FAILED",
+}
+
+interface TemplateErrors {
+  name?: string;
+  type?: string;
+  subject?: string;
+  content?: string;
+
+  variable_mappings?: Record<
+    string,
+    {
+      field?: string;
+      sample?: string;
+    }
+  >;
 }
 
 function TemplateList() {
@@ -75,18 +143,13 @@ function TemplateList() {
     null,
   );
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [errors, setErrors] = useState({
-    name: "",
-    type: "",
-    subject: "",
-    content: "",
-  });
+  const [errors, setErrors] = useState<TemplateErrors>({});
   const [templateStatusToUpdate, setTemplateStatusToUpdate] = useState<Template | null>(null);
 
   const formatDisplayDate = useDateFormatter();
 
 
-  const [form, setForm] = useState(emptyTemplateForm);
+  const [form, setForm] = useState<TemplateForm>(emptyTemplateForm);
   const [type, setType] = useState("all");
   const [syncing, setSyncing] = useState(false);
 
@@ -103,15 +166,18 @@ function TemplateList() {
       setForm({
         name: item.name,
         type: item.type,
-        category: "MARKETING" as WhatsAppCategory,
-        language: "en",
+        category: item.category || "MARKETING" as WhatsAppCategory,
+        language: item.language || "en",
         subject: item.subject || "",
         content: item.content,
+        meta_status: item.meta_status || "PENDING" as any,
+        variable_mappings: item.variable_mappings || {},
       });
     } else {
       setEditItem(null);
       setForm(emptyTemplateForm);
     }
+    setTemplateError(null);
     setOpen(true);
   };
 
@@ -262,6 +328,7 @@ function TemplateList() {
       type: "",
       subject: "",
       content: "",
+      variable_mappings: {} as Record<string, { field?: string; sample?: string }>,
     };
 
     // 🔹 Basic validations (existing)
@@ -287,6 +354,14 @@ function TemplateList() {
 
     // WhatsApp-specific validation
     if (form.type === "whatsapp") {
+      const mappingErrors: Record<
+        string,
+        {
+          field?: string;
+          sample?: string;
+        }
+      > = {};
+
       const content = form.content;
 
       //Extract variables like {{1}}, {{2}}
@@ -320,6 +395,39 @@ function TemplateList() {
           break;
         }
       }
+
+      uniqueSorted.forEach((variableNumber) => {
+
+        const key = String(variableNumber);
+
+        const mapping =
+          form.variable_mappings?.[key];
+
+        if (!mapping?.field) {
+
+          if (!mappingErrors[key]) {
+            mappingErrors[key] = {};
+          }
+
+          mappingErrors[key].field =
+            `Please map {{${key}}} to a contact field`;
+
+          valid = false;
+        }
+
+        if (!mapping?.sample?.trim()) {
+
+          if (!mappingErrors[key]) {
+            mappingErrors[key] = {};
+          }
+
+          mappingErrors[key].sample =
+            `Please enter sample value for {{${key}}}`;
+
+          valid = false;
+        }
+
+      });
 
       //Spam keyword check
       const spamWords = [
@@ -356,14 +464,43 @@ function TemplateList() {
           valid = false;
         }
       }
+
+      if (form.category === "MARKETING") {
+        if (!/offer|discount|sale|promotion/i.test(content)) {
+          newErrors.content =
+            "Marketing templates should include promotional context.";
+          valid = false;
+        }
+      }
+
+      if (Object.keys(mappingErrors).length > 0) {
+        newErrors.variable_mappings = mappingErrors;
+      }
     }
 
     setErrors(newErrors);
     return valid;
   };
 
+  const extractWhatsAppVariables = (content: string) => {
+    const matches = content.match(/{{\d+}}/g) || [];
+
+    return [
+      ...new Set(
+        matches.map((m) => m.replace(/[{}]/g, ""))
+      ),
+    ];
+  };
+
+
+
   const isActive = templateStatusToUpdate?.status === "Active";
   const actionLabel = isActive ? "Deactivate" : "Activate";
+  const whatsappVariables = extractWhatsAppVariables(form.content);
+
+  const isWhatsAppEditLocked =
+    form.type === "whatsapp" &&
+    (form.meta_status === "APPROVED" || form.meta_status === "PENDING");
 
   return (
     <AdminLayout>
@@ -495,7 +632,60 @@ function TemplateList() {
               ) : (
                 templates.map((t) => (
                   <TableRow key={t.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.3}>
+                        <Typography fontWeight={600}>
+                          {t.name}
+                        </Typography>
+
+                        {t.type === "whatsapp" && t.category && (
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            alignItems="center"
+                          >
+                            <WhatsAppIcon
+                              sx={{
+                                fontSize: 14,
+                                color:
+                                  t.category === "MARKETING"
+                                    ? "warning.main"
+                                    : t.category === "UTILITY"
+                                      ? "info.main"
+                                      : "success.main",
+                              }}
+                            />
+
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: "text.secondary",
+                                fontSize: 11,
+                              }}
+                            >
+                              Category:
+                            </Typography>
+
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 700,
+                                color:
+                                  t.category === "MARKETING"
+                                    ? "warning.main"
+                                    : t.category === "UTILITY"
+                                      ? "info.main"
+                                      : "success.main",
+                                fontSize: 11,
+                              }}
+                            >
+                              {titleCase(t.category)}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </TableCell>
                     <TableCell>
                       <SourceChip
                         value={t.type}
@@ -573,6 +763,11 @@ function TemplateList() {
                 {templateError}
               </Alert>
             )}
+            {isWhatsAppEditLocked && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This template cannot be edited because it is {form.meta_status}.
+              </Alert>
+            )}
             <Stack spacing={2} mt={1}>
               <TextField
                 required
@@ -582,6 +777,7 @@ function TemplateList() {
                 error={!!errors.name}
                 helperText={errors.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                disabled={isWhatsAppEditLocked}
               />
               {form.type === "whatsapp" && (
                 <TextField
@@ -594,7 +790,6 @@ function TemplateList() {
                   helperText="Auto-generated from Template Name (lowercase, underscores only)"
                 />
               )}
-
               <TextField
                 select
                 label="Type"
@@ -604,6 +799,9 @@ function TemplateList() {
                 onChange={(e) =>
                   setForm({ ...form, type: e.target.value as TemplateType })
                 }
+                InputProps={{
+                  readOnly: isWhatsAppEditLocked,
+                }}
               >
                 <MenuItem value="sms">SMS</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -620,6 +818,7 @@ function TemplateList() {
                   onChange={(e) =>
                     setForm({ ...form, subject: e.target.value })
                   }
+                  disabled={isWhatsAppEditLocked}
                 />
               )}
               {form.type === "whatsapp" && (
@@ -633,6 +832,9 @@ function TemplateList() {
                         setForm({ ...form, category: e.target.value as any })
                       }
                       fullWidth
+                      InputProps={{
+                        readOnly: isWhatsAppEditLocked,
+                      }}
                     >
                       <MenuItem value="MARKETING">Marketing</MenuItem>
                       <MenuItem value="UTILITY">Utility</MenuItem>
@@ -647,6 +849,9 @@ function TemplateList() {
                       }
                       fullWidth
                       helperText="e.g. en, en_US"
+                      InputProps={{
+                        readOnly: isWhatsAppEditLocked,
+                      }}
                     />
                   </Stack>
                 </Stack>
@@ -668,7 +873,9 @@ function TemplateList() {
                 }
                 value={form.content}
                 error={!!errors.content}
+                helperText={errors.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
+                disabled={isWhatsAppEditLocked}
               />
               <Alert severity="info">
                 In <b>Message Content</b>,
@@ -683,7 +890,223 @@ function TemplateList() {
                   </>
                 )}
               </Alert>
+
+
             </Stack>
+            {form.type === "whatsapp" && whatsappVariables.length > 0 &&
+              <Grid container spacing={2} mt={1}>
+                <Grid item xs={12}>
+                  <Stack >
+
+                    <Typography
+                      variant="h6"
+                      fontWeight={700}
+                    >
+                      Variable Configuration
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      Map WhatsApp variables to contact fields
+                      and preview the final message.
+                    </Typography>
+
+                  </Stack>
+
+                </Grid>
+
+                {/* LEFT */}
+                <Grid item xs={12} md={6}>
+
+                  <Box
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "background.paper",
+                      height: "100%",
+                    }}
+                  >
+
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={700}
+                      mb={2}
+                    >
+                      Variable Mapping
+                    </Typography>
+
+                    <Stack spacing={2}>
+                      {extractWhatsAppVariables(form.content).map((variable) => (
+
+                        <Box
+                          key={variable}
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: "grey.50",
+                            border: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+
+                          <Stack spacing={2}>
+
+                            <Chip
+                              label={`{{${variable}}}`}
+                              color={
+                                form.variable_mappings?.[variable]?.field
+                                  ? "success"
+                                  : "default"
+                              }
+                              size="small"
+                              sx={{
+                                width: "fit-content",
+                                fontWeight: 700,
+                              }}
+                            />
+
+                            <TextField
+                              select
+                              fullWidth
+                              size="small"
+                              label="Contact Field"
+                              value={
+                                form.variable_mappings?.[variable]?.field || ""
+                              }
+                              onChange={(e) =>
+                                setForm((prev) => ({
+                                  ...prev,
+
+                                  variable_mappings: {
+                                    ...prev.variable_mappings,
+
+                                    [variable]: {
+                                      ...prev.variable_mappings?.[variable],
+
+                                      field: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                              error={
+                                !!errors.variable_mappings?.[variable]?.field
+                              }
+                              helperText={
+                                errors.variable_mappings?.[variable]?.field
+                              }
+                            >
+                              {contactFieldOptions.map((field) => (
+                                <MenuItem
+                                  key={field.value}
+                                  value={field.value}
+                                >
+                                  {field.label}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Sample Value"
+                              value={
+                                form.variable_mappings?.[variable]?.sample || ""
+                              }
+                              onChange={(e) =>
+                                setForm((prev) => ({
+                                  ...prev,
+
+                                  variable_mappings: {
+                                    ...prev.variable_mappings,
+
+                                    [variable]: {
+                                      ...prev.variable_mappings?.[variable],
+
+                                      sample: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                              error={
+                                !!errors.variable_mappings?.[variable]?.sample
+                              }
+
+                              helperText={
+                                errors.variable_mappings?.[variable]?.sample
+                              }
+                            />
+
+                          </Stack>
+
+                        </Box>
+
+                      ))}
+                    </Stack>
+
+                  </Box>
+
+                </Grid>
+
+                {/* RIGHT */}
+                <Grid item xs={12} md={6}>
+
+                  <Box
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "#efeae2",
+                      minHeight: 320,
+                    }}
+                  >
+
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={700}
+                      mb={2}
+                    >
+                      WhatsApp Preview
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+
+                      <Box
+                        sx={{
+                          maxWidth: "85%",
+                          bgcolor: "#d9fdd3",
+                          px: 2,
+                          py: 1.5,
+                          borderRadius: "18px",
+                          boxShadow: 1,
+                          whiteSpace: "pre-wrap",
+                          fontSize: 14,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {generatePreview(
+                          form.content,
+                          form.variable_mappings || {}
+                        )}
+                      </Box>
+
+                    </Box>
+
+                  </Box>
+
+                </Grid>
+
+              </Grid>
+            }
           </DialogContent>
 
           <DialogActions>

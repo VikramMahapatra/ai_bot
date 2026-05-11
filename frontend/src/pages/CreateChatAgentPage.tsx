@@ -15,6 +15,7 @@ import {
   Divider,
   Grid,
   LinearProgress,
+  Snackbar,
   Stack,
   Step,
   StepLabel,
@@ -168,8 +169,8 @@ const CreateChatAgentPage: React.FC = () => {
   });
 
   const [errors, setErrors] = useState({
-      name: "",
-    });
+    name: "",
+  });
 
   const [createdWidgetId, setCreatedWidgetId] = useState('');
   const [shareLink, setShareLink] = useState('');
@@ -190,13 +191,12 @@ const CreateChatAgentPage: React.FC = () => {
 
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
   const [whatsappSaving, setWhatsappSaving] = useState(false);
-  const [whatsappTesting, setWhatsappTesting] = useState(false);
   const [whatsappConfigured, setWhatsappConfigured] = useState(false);
   const [whatsappForm, setWhatsappForm] = useState<WhatsAppFormState>(initialWhatsAppForm);
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaSdkReady, setMetaSdkReady] = useState(false);
   const [metaSdkFailed, setMetaSdkFailed] = useState(false);
-  const [testOpen, setTestOpen] = useState(false);
+
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
   const [showWidgetPreview, setShowWidgetPreview] = useState(true);
@@ -356,7 +356,7 @@ const CreateChatAgentPage: React.FC = () => {
     ...accentPanelSx,
     p: 0,
     height: '100%',
-    minHeight: { xs: 'auto', md: 234 },
+    minHeight: { xs: 'auto', md: 200 },
     '&:hover': {
       transform: { md: 'translateY(-3px)' },
       borderColor: alpha(theme.palette.primary.main, 0.4),
@@ -860,7 +860,7 @@ const CreateChatAgentPage: React.FC = () => {
 
   const saveWidgetProfile = async () => {
 
-     const newErrors = {
+    const newErrors = {
       name: ""
     }
 
@@ -1216,26 +1216,6 @@ const CreateChatAgentPage: React.FC = () => {
     }
   };
 
-  const sendWhatsAppTest = async () => {
-    if (!testToNumber.trim() || !testMessage.trim()) {
-      setError('Enter recipient number and test message.');
-      return;
-    }
-
-    try {
-      setWhatsappTesting(true);
-      setError('');
-      await whatsappService.sendTestMessage({
-        to_number: testToNumber.trim(),
-        message: testMessage.trim(),
-      });
-      setSuccess('WhatsApp test message sent successfully.');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err?.detail || 'Failed to send WhatsApp test message.');
-    } finally {
-      setWhatsappTesting(false);
-    }
-  };
 
   const validateCrawlingCredits = () => {
     const credits = getRequiredCreditInfo(FEATURE_CODES.KB_CHUNK);
@@ -1385,16 +1365,34 @@ const CreateChatAgentPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {error && (
-            <Alert severity="error" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}` }}>
-              {error}
+          <Snackbar
+            open={Boolean(success || error)}
+            autoHideDuration={4000}
+            onClose={() => {
+              setError("");
+              setSuccess("");
+            }}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            sx={{
+              zIndex: (theme) => theme.zIndex.modal + 9999,
+            }}
+          >
+            <Alert
+              severity={error ? "error" : "success"}
+              onClose={() => {
+                setError("");
+                setSuccess("");
+              }}
+              sx={{
+                borderRadius: "14px",
+                boxShadow: (theme) =>
+                  `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+                  }20`,
+              }}
+            >
+              {error || success}
             </Alert>
-          )}
-          {success && (
-            <Alert severity="success" sx={{ borderRadius: '14px', boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}` }}>
-              {success}
-            </Alert>
-          )}
+          </Snackbar>
 
           {activeStep === 0 && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
@@ -2391,7 +2389,15 @@ const CreateChatAgentPage: React.FC = () => {
                             <Typography variant="body2" color="text.secondary">
                               Connect Meta WhatsApp Cloud API for two-way messaging with the same knowledge base.
                             </Typography>
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}>
+                            <Stack
+                              direction={{ xs: 'column', sm: 'row' }}
+                              spacing={1}
+                              sx={{
+                                alignItems: { xs: 'stretch', sm: 'center' },
+                                justifyContent: 'center',
+                                flexWrap: 'wrap'
+                              }}
+                            >
                               {!whatsappConfigured ? (
                                 <Stack direction="row" spacing={1}>
                                   <Button
@@ -2426,25 +2432,6 @@ const CreateChatAgentPage: React.FC = () => {
                               ) : (
                                 <Stack direction="row" spacing={1}>
                                   <Button
-                                    variant="outlined"
-                                    size="small"
-                                    onClick={() => setTestOpen(true)}
-                                    sx={{
-                                      minWidth: 150,
-                                      py: 0.7,
-                                      px: 2,
-                                      fontWeight: 600,
-                                      borderColor: "#25D366",
-                                      color: "#25D366",
-                                      "&:hover": {
-                                        borderColor: "#1ebe5d",
-                                        background: "rgba(37, 211, 102, 0.08)"
-                                      }
-                                    }}
-                                  >
-                                    Send Test Message
-                                  </Button>
-                                  <Button
                                     variant="contained"
                                     color="error"
                                     size="small"
@@ -2470,13 +2457,16 @@ const CreateChatAgentPage: React.FC = () => {
                       <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
                         <CardContent>
                           <Stack spacing={1.5}>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <GroupsIcon color="primary" />
-                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                                Microsoft Teams
-                              </Typography>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <GroupsIcon color="primary" />
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                  Microsoft Teams
+                                </Typography>
+                              </Stack>
+
+                              <Chip label="Coming Soon" size="small" color="warning" />
                             </Stack>
-                            <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
                             <Typography variant="body2" color="text.secondary">
                               Teams channel integration is available as a roadmap option and can be enabled in the same flow.
                             </Typography>
@@ -2492,13 +2482,15 @@ const CreateChatAgentPage: React.FC = () => {
                       <Card sx={{ ...integrationCardSx, opacity: 0.93 }}>
                         <CardContent>
                           <Stack spacing={1.5}>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <ForumIcon color="primary" />
-                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                                Slack
-                              </Typography>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <ForumIcon color="primary" />
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                                  Slack
+                                </Typography>
+                              </Stack>
+                              <Chip label="Coming Soon" size="small" color="warning" />
                             </Stack>
-                            <Chip label="Coming Soon" size="small" color="warning" sx={{ width: 'fit-content' }} />
                             <Typography variant="body2" color="text.secondary">
                               Slack bot integration can be added here next with workspace OAuth and event webhook setup.
                             </Typography>
@@ -2685,38 +2677,6 @@ const CreateChatAgentPage: React.FC = () => {
                   </Grid>
 
                 </Grid>
-
-                <Divider />
-
-                <Stack spacing={1}>
-                  <Typography variant="subtitle2">Send Test Message</Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Recipient Number"
-                        value={testToNumber}
-                        onChange={(e) => setTestToNumber(e.target.value)}
-                        placeholder="9198XXXXXXXX"
-                        fullWidth
-                        sx={fieldSx}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Message"
-                        value={testMessage}
-                        onChange={(e) => setTestMessage(e.target.value)}
-                        fullWidth
-                        sx={fieldSx}
-                      />
-                    </Grid>
-                  </Grid>
-                  <Box>
-                    <Button variant="outlined" onClick={sendWhatsAppTest} disabled={whatsappTesting}>
-                      {whatsappTesting ? 'Sending...' : 'Send Test Message'}
-                    </Button>
-                  </Box>
-                </Stack>
               </Stack>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -2734,43 +2694,10 @@ const CreateChatAgentPage: React.FC = () => {
               </Button>
             </DialogActions>
           </Dialog>
-          <Dialog open={testOpen}>
-            <DialogTitle>Send WhatsApp Test Message</DialogTitle>
 
-            <DialogContent>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Recipient Number"
-                    value={testToNumber}
-                    onChange={(e) => setTestToNumber(e.target.value)}
-                    placeholder="9198XXXXXXXX"
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Message"
-                    value={testMessage}
-                    onChange={(e) => setTestMessage(e.target.value)}
-                    fullWidth
-                    sx={fieldSx}
-                  />
-                </Grid>
-              </Grid>
-            </DialogContent>
-
-            <DialogActions>
-              <Button onClick={() => setTestOpen(false)}>Cancel</Button>
-              <Button variant="contained" onClick={sendWhatsAppTest}>
-                Send
-              </Button>
-            </DialogActions>
-          </Dialog>
         </Stack>
       </Box>
-    </AdminLayout>
+    </AdminLayout >
   );
 };
 

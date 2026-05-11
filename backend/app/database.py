@@ -32,9 +32,10 @@ else:
     engine = create_engine(
         database_url,
         pool_pre_ping=True,
-        pool_recycle=1800,
-        pool_size=10,  # optional
-        max_overflow=20,  # optional
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_recycle=settings.DB_POOL_RECYCLE,
     )
 
 # Create SessionLocal class
@@ -800,4 +801,14 @@ def init_db():
                 ALTER COLUMN close_date DROP DEFAULT;
             """))
         except Exception as e:
-            print(f"Migration error (close_date default remove): {e}")
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS variable_mappings JSONB NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

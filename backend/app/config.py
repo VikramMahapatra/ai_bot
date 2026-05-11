@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -31,7 +30,7 @@ class Settings(BaseSettings):
     OUTCOME_DAEMON_HOUR_UTC: int
     OUTCOME_DAEMON_MINUTE_UTC: int
     OUTCOME_DAEMON_INITIAL_DELAY_SECONDS: int
-    OUTCOME_DAEMON_INTERVAL_SECONDS:int
+    OUTCOME_DAEMON_INTERVAL_SECONDS: int
     OUTCOME_DAEMON_BATCH_SIZE: int
     OUTCOME_DAEMON_MAX_BATCHES: int
     ORG_CREDIT_DAEMON_HOUR_UTC: int = 0
@@ -45,39 +44,53 @@ class Settings(BaseSettings):
     DEV_BYPASS_SUBSCRIPTION_CHECK: bool = False
 
     HUMAN_HANDOFF_DISTANCE_THRESHOLD: float = 0.65
-    HUMAN_HANDOFF_NO_ANSWER_PATTERNS: str = "i don't know|i do not know|don't have a reliable answer|unable to answer|no relevant context found|knowledge base doesn't contain|don't have reliable expertise|escalation contacts|would you like me to connect you"
-    HUMAN_HANDOFF_WAITING_MESSAGE: str = "I am connecting you to a human expert. Please share any additional details and we will respond shortly."
-    DEFAULT_ESCALATION_CONTACT_LEVEL_1: str = "Support Team: support@example.com | +1-555-0101"
-    DEFAULT_ESCALATION_CONTACT_LEVEL_2: str = "Escalation Manager: escalation@example.com | +1-555-0102"
+    HUMAN_HANDOFF_NO_ANSWER_PATTERNS: str = (
+        "i don't know|i do not know|don't have a reliable answer|unable to answer|no relevant context found|knowledge base doesn't contain|don't have reliable expertise|escalation contacts|would you like me to connect you"
+    )
+    HUMAN_HANDOFF_WAITING_MESSAGE: str = (
+        "I am connecting you to a human expert. Please share any additional details and we will respond shortly."
+    )
+    DEFAULT_ESCALATION_CONTACT_LEVEL_1: str = (
+        "Support Team: support@example.com | +1-555-0101"
+    )
+    DEFAULT_ESCALATION_CONTACT_LEVEL_2: str = (
+        "Escalation Manager: escalation@example.com | +1-555-0102"
+    )
     HUMAN_HANDOFF_WAIT_TIMEOUT_SECONDS: int = 120
     HUMAN_HANDOFF_MAX_WAIT_CYCLES: int = 2
-    HUMAN_HANDOFF_BUSY_MESSAGE: str = "Live users are currently busy. Do you want to wait for 2 more minutes while I try again, or would you like to schedule a meeting and I will set it up for you?"
-    HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE: str = "Live users are still busy, so I am moving you back to the bot. I can help you set up a meeting now, or you can type exit to end this chat session."
+    HUMAN_HANDOFF_BUSY_MESSAGE: str = (
+        "Live users are currently busy. Do you want to wait for 2 more minutes while I try again, or would you like to schedule a meeting and I will set it up for you?"
+    )
+    HUMAN_HANDOFF_FINAL_TIMEOUT_MESSAGE: str = (
+        "Live users are still busy, so I am moving you back to the bot. I can help you set up a meeting now, or you can type exit to end this chat session."
+    )
 
     # Reporting Defaults
     TOKEN_COST_PROMPT_PER_1K: float
     TOKEN_COST_COMPLETION_PER_1K: float
-    
+
     # Database Configuration
     CHROMA_PERSIST_DIR: str
     UPLOAD_DIR: str
     EXPORT_DIR: str
-    
+    MAX_FILE_SIZE_MB: int = 10
+    MAX_TOTAL_UPLOAD_SIZE_MB: int = 50
+
     # JWT Configuration
     JWT_SECRET: str
     JWT_ALGORITHM: str
     JWT_EXPIRATION_MINUTES: int
     TEST_LINK_EXPIRY_HOURS: int = 24
-    
+
     # CORS Configuration
     CORS_ORIGINS: str
     CORS_ALLOW_ORIGIN_REGEX: str
     CORS_ALLOW_CREDENTIALS: bool
     CORS_ALLOW_METHODS: str
     CORS_ALLOW_HEADERS: str
-    
+
     # Email Configuration
-    
+
     CAMPAIGN_EMAIL_RCPT_CHECK: bool = True
     CAMPAIGN_EMAIL_RCPT_CHECK_TIMEOUT_SECONDS: int = 10
     CAMPAIGN_EMAIL_TRACKING_BASE_URL: str = "http://localhost:8000"
@@ -94,37 +107,54 @@ class Settings(BaseSettings):
 
     # Frontend URLs used in notifications
     FRONTEND_DASHBOARD_LEADS_URL: str
-    
+
     # Echo Lead Keys
     ECHOL_API_BASE_URL: str
     ECHOL_API_KEY: str
-    
+
     CAN_AUTO_SYNC_CAMPAIGN_LEAD: bool = False
-    
-    DB_USER: str 
+
+    DB_USER: str
     DB_PASS: str
-    DB_HOST: str 
-    DB_PORT: str 
-    DB_SSLMODE: str 
-    DB_NAME: str 
-    
+    DB_HOST: str
+    DB_PORT: str
+    DB_SSLMODE: str
+    DB_NAME: str
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = "my_whatsapp_verify_token_123"
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
 
     @property
     def cors_allow_methods_list(self) -> List[str]:
-        return [method.strip() for method in self.CORS_ALLOW_METHODS.split(",") if method.strip()]
+        return [
+            method.strip()
+            for method in self.CORS_ALLOW_METHODS.split(",")
+            if method.strip()
+        ]
 
     @property
     def cors_allow_headers_list(self) -> List[str]:
-        return [header.strip() for header in self.CORS_ALLOW_HEADERS.split(",") if header.strip()]
+        return [
+            header.strip()
+            for header in self.CORS_ALLOW_HEADERS.split(",")
+            if header.strip()
+        ]
 
     @property
     def handoff_no_answer_patterns_list(self) -> List[str]:
-        return [item.strip().lower() for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|") if item.strip()]
-    
-    
+        return [
+            item.strip().lower()
+            for item in self.HUMAN_HANDOFF_NO_ANSWER_PATTERNS.split("|")
+            if item.strip()
+        ]
+
     @property
     def DATABASE_URL(self) -> str:
         """Generate full Postgres URL dynamically"""

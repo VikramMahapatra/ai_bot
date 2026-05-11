@@ -687,23 +687,27 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
 
         window.clearTimeout(timeoutId);
-      } catch {
-        const response = await chatAPI.current.sendMessage(
-          text,
-          activeSessionId,
-          widgetId,
-          shopDomain,
-          customerId ? String(customerId) : undefined
-        );
+      } catch (streamError) {
+        if (!receivedToken) {
+          const response = await chatAPI.current.sendMessage(
+            text,
+            activeSessionId,
+            widgetId,
+            shopDomain,
+            customerId ? String(customerId) : undefined
+          );
 
-        const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
-        const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
-        if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
-          removeAssistantPlaceholder();
-        } else {
-          replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+          const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
+          const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
+          if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
+            removeAssistantPlaceholder();
+          } else {
+            replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+          }
+          applyUiAction(response);
+        } else if (streamError instanceof Error && streamError.message.trim()) {
+          console.warn('Streaming ended after partial response:', streamError.message);
         }
-        applyUiAction(response);
       }
 
       applyUiAction(streamDonePayload);
@@ -727,8 +731,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           // Ignore lead-capture check failures.
         }
       }
-    } catch {
-      replaceAssistantMessage('Sorry, something went wrong. Please try again.');
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Sorry, something went wrong. Please try again.';
+      replaceAssistantMessage(detail);
       setLastActivityAtMs(Date.now());
     } finally {
       setLoading(false);
@@ -1212,18 +1219,6 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               </div>
             )}
 
-            {loading && (
-              <div className="chatbot-message assistant chatbot-fade-in">
-                <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
-                <div className="chatbot-message-bubble">
-                  <div className="chatbot-typing">
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
 
