@@ -187,7 +187,16 @@ def _run_crawl_job(
             progress_callback=_progress,
         )
 
-        increment_usage(db, organization_id, crawl_pages_count=pages_crawled)
+        try:
+            increment_usage(db, organization_id, crawl_pages_count=pages_crawled)
+        except Exception as usage_err:
+            db.rollback()
+            logger.warning(
+                "Crawl job %s completed ingestion but usage increment failed for org %s: %s",
+                job_id,
+                organization_id,
+                str(usage_err),
+            )
         unchanged = pages_crawled == 0
         message = (
             "No changes detected. Page already embedded."

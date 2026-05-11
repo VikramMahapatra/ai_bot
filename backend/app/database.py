@@ -31,6 +31,13 @@ else:
     # Postgres
     engine = create_engine(
         database_url,
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
         pool_pre_ping=True,
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,
@@ -51,9 +58,18 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except:
-        db.rollback()
+        # Only commit when there are pending ORM changes. This avoids turning
+        # read-only requests into commit-time failures on stale connections.
+        has_pending_writes = bool(db.new or db.dirty or db.deleted)
+        if has_pending_writes:
+            db.commit()
+        elif db.in_transaction():
+            db.rollback()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
     finally:
         db.close()

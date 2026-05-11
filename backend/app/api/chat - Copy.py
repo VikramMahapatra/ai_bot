@@ -1,19 +1,13 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import uuid
 import asyncio
-import logging
-import json
-import re
-
 from app.database import get_db
 from app.models import (
     Conversation,
@@ -34,7 +28,9 @@ from app.services.email_service import send_conversation_email
 from app.auth import get_current_user, get_current_user_optional
 from app.config import settings
 from app.services.handoff_hub import handoff_hub
-from app.services.intent_service import IntentDetectionResult, IntentType, detect_intent
+import logging
+import json
+import re
 
 try:
     from dateutil import parser as dateutil_parser
@@ -116,12 +112,16 @@ def _is_booking_intent(text: str) -> bool:
     if has_appointment_word and has_action_word:
         return True
 
-    return bool(has_action_word and "please" in tokens and len(tokens) <= 3)
+    # Handle concise intents like "please schedule" during escalation/handoff flows.
+    if has_action_word and "please" in tokens and len(tokens) <= 3:
+        return True
+
+    return False
 
 
 def _is_affirmative(text: str) -> bool:
     tokens = set(re.findall(r"[a-zA-Z0-9]+", (text or "").lower()))
-    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect"})
+    return bool(tokens & {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "book", "schedule", "connect", "sure"})
 
 
 def _is_escalation_opt_in(text: str) -> bool:
@@ -129,6 +129,7 @@ def _is_escalation_opt_in(text: str) -> bool:
     if not raw:
         return False
 
+    # Explicit scheduling intent should always qualify.
     if _is_booking_intent(raw):
         return True
 
@@ -146,12 +147,14 @@ def _is_escalation_opt_in(text: str) -> bool:
         "help me reach them",
         "proceed",
         "yes please",
+        "sure"
     }
     if raw in direct_phrases:
         return True
 
     tokens = re.findall(r"[a-zA-Z0-9]+", raw)
     if len(tokens) > 5:
+        # Long free-form text like "yes, I want to build..." should not auto-start booking.
         return False
 
     token_set = set(tokens)
@@ -173,120 +176,8 @@ def _is_greeting_or_smalltalk(text: str) -> bool:
     return lower in {
         "hi", "hello", "hey", "hola", "hii", "yo",
         "good morning", "good afternoon", "good evening",
-        "thanks", "thank you", "ok", "okay", "cool", "nice",
+        "thanks", "thank you", "ok", "okay", "cool", "nice"
     }
-
-
-def _get_previous_assistant_message(db: Session, session_id: str, widget_id: str) -> Optional[str]:
-    last = db.query(Conversation).filter(
-        Conversation.session_id == session_id,
-        Conversation.widget_id == widget_id,
-    ).order_by(Conversation.created_at.desc(), Conversation.id.desc()).first()
-    if not last:
-        return None
-    return (last.response or "").strip() or None
-
-
-def _build_intent_context(
-    session_id: str,
-    widget_id: str,
-    organization_id: int,
-    active_intake_field: Optional[str],
-    handoff_active: bool,
-) -> Dict[str, Any]:
-    return {
-        "session_id": session_id,
-        "widget_id": widget_id,
-        "organization_id": organization_id,
-        "active_intake_field": active_intake_field,
-        "handoff_active": handoff_active,
-    }
-
-
-def _legacy_intent_fallback(
-    text: str,
-    previous_assistant_message: Optional[str],
-    active_intake_field: Optional[str],
-    handoff_active: bool,
-) -> IntentDetectionResult:
-    cleaned = (text or "").strip()
-    lowered = cleaned.lower()
-    entities: Dict[str, Any] = {}
-
-    email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", cleaned)
-    if email_match:
-        entities["email"] = email_match.group(0)
-
-    phone_match = re.search(r"\+?\d[\d\s\-()]{7,}\d", cleaned)
-    if phone_match:
-        entities["phone"] = phone_match.group(0)
-
-    timezone_match = re.search(r"\b[A-Za-z_]+/[A-Za-z_]+\b", cleaned)
-    if timezone_match:
-        entities["timezone"] = timezone_match.group(0)
-
-    if active_intake_field == "name" and cleaned:
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_NAME, confidence=0.72, entities=entities)
-    if active_intake_field == "email" and entities.get("email"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.84, entities=entities)
-    if active_intake_field == "appointment_at":
-        if any(token in lowered for token in ["am", "pm", "tomorrow", "today", ":", "next", "date", "time"]):
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_DATETIME, confidence=0.74, entities=entities)
-    if active_intake_field == "timezone" and entities.get("timezone"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_TIMEZONE, confidence=0.8, entities=entities)
-
-    if _is_direct_live_agent_request(cleaned):
-        return IntentDetectionResult(primary_intent=IntentType.REQUEST_HUMAN, confidence=0.84, entities=entities)
-    if _is_booking_intent(cleaned):
-        return IntentDetectionResult(primary_intent=IntentType.BOOK_APPOINTMENT, confidence=0.8, entities=entities)
-    if _is_escalation_opt_in(cleaned):
-        return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.74, entities=entities)
-    if _is_affirmative(cleaned):
-        if previous_assistant_message and any(marker in previous_assistant_message.lower() for marker in ["reschedule", "preferred date", "preferred time"]):
-            return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.76, entities=entities)
-        if handoff_active:
-            return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.72, entities=entities)
-        return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.68, entities=entities)
-    if lowered in {"no", "nope", "nah", "not now", "never mind", "nevermind"}:
-        return IntentDetectionResult(primary_intent=IntentType.DENY, confidence=0.78, entities=entities)
-    if _is_greeting_or_smalltalk(cleaned):
-        return IntentDetectionResult(primary_intent=IntentType.SMALL_TALK, confidence=0.74, entities=entities)
-
-    if entities.get("datetime"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_DATETIME, confidence=0.7, entities=entities)
-    if entities.get("timezone"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_TIMEZONE, confidence=0.68, entities=entities)
-    if entities.get("email"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.76, entities=entities)
-    if entities.get("phone"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_PHONE, confidence=0.74, entities=entities)
-
-    return IntentDetectionResult(primary_intent=IntentType.GENERAL_CHAT, confidence=0.5, entities=entities)
-
-
-async def _resolve_message_intent(
-    text: str,
-    previous_assistant_message: Optional[str],
-    active_intake_field: Optional[str],
-    handoff_active: bool,
-    conversation_context: Optional[Dict[str, Any]] = None,
-) -> IntentDetectionResult:
-    try:
-        return await detect_intent(
-            user_message=text,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=active_intake_field,
-            handoff_active=handoff_active,
-            conversation_context=conversation_context,
-        )
-    except Exception as exc:
-        logger.warning("Intent detection wrapper fallback used: %s", str(exc))
-        return _legacy_intent_fallback(
-            text=text,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=active_intake_field,
-            handoff_active=handoff_active,
-        )
 
 
 def _is_resume_booking_intent(text: str) -> bool:
@@ -428,25 +319,6 @@ def _parse_time_only_input(text: str) -> Optional[tuple[int, int]]:
             pass
 
     return None
-
-
-def _parse_iso_datetime_entity(value: object) -> Optional[datetime]:
-    if not value:
-        return None
-
-    candidate = str(value).strip()
-    if not candidate:
-        return None
-
-    try:
-        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-        else:
-            parsed = parsed.astimezone(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-        return parsed
-    except Exception:
-        return None
 
 
 def _prompt_for_next_intake_field(next_field: str) -> str:
@@ -864,7 +736,6 @@ def _handoff_lead_capture_prompt_if_needed(
     session_id: str,
     widget_id: str,
     user_message: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[str]:
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
@@ -872,10 +743,7 @@ def _handoff_lead_capture_prompt_if_needed(
     offered_response = _latest_handoff_offer_response(db, session_id, widget_id)
     if not offered_response:
         return None
-    if message_intent is not None:
-        if message_intent.primary_intent not in {IntentType.CONFIRM, IntentType.REQUEST_HUMAN}:
-            return None
-    elif not _is_handoff_opt_in(user_message):
+    if not _is_handoff_opt_in(user_message):
         return None
     if _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
         return None
@@ -992,14 +860,10 @@ def _handoff_lead_capture_prompt_for_direct_request(
     session_id: str,
     widget_id: str,
     user_message: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[str]:
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
-    if message_intent is not None:
-        if message_intent.primary_intent != IntentType.REQUEST_HUMAN:
-            return None
-    elif not _is_direct_live_agent_request(user_message):
+    if not _is_direct_live_agent_request(user_message):
         return None
     if _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
         return None
@@ -1016,14 +880,10 @@ def _create_direct_handoff_request(
     session_id: str,
     widget_id: str,
     user_message: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[HandoffSession]:
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
-    if message_intent is not None:
-        if message_intent.primary_intent != IntentType.REQUEST_HUMAN:
-            return None
-    elif not _is_direct_live_agent_request(user_message):
+    if not _is_direct_live_agent_request(user_message):
         return None
     if not _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
         return None
@@ -1055,7 +915,6 @@ def _create_handoff_after_user_confirmation(
     session_id: str,
     widget_id: str,
     user_message: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[HandoffSession]:
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
@@ -1063,10 +922,7 @@ def _create_handoff_after_user_confirmation(
     offered_response = _latest_handoff_offer_response(db, session_id, widget_id)
     if not offered_response:
         return None
-    if message_intent is not None:
-        if message_intent.primary_intent not in {IntentType.CONFIRM, IntentType.REQUEST_HUMAN}:
-            return None
-    elif not _is_handoff_opt_in(user_message):
+    if not _is_handoff_opt_in(user_message):
         return None
     if not _has_captured_lead_for_session(db, organization_id, session_id, widget_id):
         return None
@@ -1263,33 +1119,16 @@ def _create_or_get_handoff_session(
     return handoff_session
 
 
-async def _route_user_message_to_handoff_if_active(
+def _route_user_message_to_handoff_if_active(
     db: Session,
     organization_id: int,
     session_id: str,
     widget_id: str,
     message_text: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[dict]:
     session = _get_open_handoff_session(db, session_id, widget_id, organization_id)
     if not session:
         return None
-
-    if message_intent is None:
-        previous_assistant_message = _get_previous_assistant_message(db, session_id, widget_id)
-        message_intent = await _resolve_message_intent(
-            text=message_text,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=None,
-            handoff_active=True,
-            conversation_context=_build_intent_context(
-                session_id=session_id,
-                widget_id=widget_id,
-                organization_id=organization_id,
-                active_intake_field=None,
-                handoff_active=True,
-            ),
-        )
 
     now = datetime.now(timezone.utc)
     response_text = settings.HUMAN_HANDOFF_WAITING_MESSAGE
@@ -1303,12 +1142,7 @@ async def _route_user_message_to_handoff_if_active(
             session.waiting_expires_at = _next_handoff_wait_expiry(now)
 
         current_wait_cycle = max(1, int(session.wait_cycle or 1))
-        wants_booking = message_intent.primary_intent in {
-            IntentType.BOOK_APPOINTMENT,
-            IntentType.RESCHEDULE_APPOINTMENT,
-            IntentType.PROVIDE_DATETIME,
-            IntentType.PROVIDE_TIMEZONE,
-        }
+        wants_booking = _is_booking_intent(message_text) or _mentions_appointment_topic(message_text)
 
         if session.waiting_timeout_notified and wants_booking:
             response_text = "If you would like to set a meeting, please fill this short form and I will set it up for you."
@@ -1340,7 +1174,7 @@ async def _route_user_message_to_handoff_if_active(
                 session.waiting_timeout_notified = True
                 response_text = settings.HUMAN_HANDOFF_BUSY_MESSAGE
                 add_bot_message_text = response_text
-        elif session.waiting_timeout_notified and message_intent.primary_intent == IntentType.WAIT_MORE:
+        elif session.waiting_timeout_notified and _is_wait_more_intent(message_text):
             if current_wait_cycle >= max_wait_cycles:
                 response_text = _final_handoff_timeout_message()
                 add_bot_message_text = response_text
@@ -1557,34 +1391,17 @@ def _finalize_intake_appointment(
     )
 
 
-async def _handle_appointment_intake_flow(
+def _handle_appointment_intake_flow(
     db: Session,
     user: User,
     widget_config: WidgetConfig,
     session_id: str,
     widget_id: str,
     incoming_text: str,
-    message_intent: Optional[IntentDetectionResult] = None,
 ) -> Optional[str]:
     text = (incoming_text or "").strip()
     if not text:
         return None
-
-    if message_intent is None:
-        previous_assistant_message = _get_previous_assistant_message(db, session_id, widget_id)
-        message_intent = await _resolve_message_intent(
-            text=text,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=None,
-            handoff_active=False,
-            conversation_context=_build_intent_context(
-                session_id=session_id,
-                widget_id=widget_id,
-                organization_id=user.organization_id,
-                active_intake_field=None,
-                handoff_active=False,
-            ),
-        )
 
     active = _get_active_intake(db, session_id, widget_id, user.organization_id)
 
@@ -1611,29 +1428,16 @@ async def _handle_appointment_intake_flow(
     if not active:
         if _has_booked_appointment(db, session_id, widget_id, user.organization_id):
             parsed_datetime = _parse_datetime_input(text)
-            reschedule_follow_up = _last_response_prompted_reschedule(db, session_id, widget_id) and message_intent.primary_intent == IntentType.CONFIRM
-            if message_intent.primary_intent in {
-                IntentType.BOOK_APPOINTMENT,
-                IntentType.RESCHEDULE_APPOINTMENT,
-                IntentType.PROVIDE_DATETIME,
-                IntentType.PROVIDE_TIMEZONE,
-            } or parsed_datetime is not None or reschedule_follow_up:
+            reschedule_follow_up = _last_response_prompted_reschedule(db, session_id, widget_id) and _is_affirmative(text)
+            if _is_booking_intent(text) or _mentions_appointment_topic(text) or parsed_datetime is not None or reschedule_follow_up:
                 return (
                     "Your meeting is already scheduled. "
                     "If you want to reschedule, just share a new preferred date and time."
                 )
             return None
 
-        booking_intent = message_intent.primary_intent in {
-            IntentType.BOOK_APPOINTMENT,
-            IntentType.RESCHEDULE_APPOINTMENT,
-            IntentType.PROVIDE_DATETIME,
-            IntentType.PROVIDE_TIMEZONE,
-        }
-        escalation_affirmation = _last_response_was_escalation(db, session_id, widget_id) and message_intent.primary_intent in {
-            IntentType.CONFIRM,
-            IntentType.REQUEST_HUMAN,
-        }
+        booking_intent = _is_booking_intent(text)
+        escalation_affirmation = _last_response_was_escalation(db, session_id, widget_id) and _is_escalation_opt_in(text)
         should_start = booking_intent or escalation_affirmation
         if not should_start:
             return None
@@ -1658,7 +1462,7 @@ async def _handle_appointment_intake_flow(
         )
 
     if active.next_field == "name":
-        name = str(message_intent.entities.get("name") or "").strip() or _extract_name(text)
+        name = _extract_name(text)
         if not name:
             return "Please share your full name (for example: My name is Vikram Mahapatra)."
         active.name = name
@@ -1667,7 +1471,7 @@ async def _handle_appointment_intake_flow(
         return f"Thanks, {name}. Please share your email address to continue booking."
 
     if active.next_field == "email":
-        email = str(message_intent.entities.get("email") or "").strip() or _extract_email(text)
+        email = _extract_email(text)
         if not email:
             return "Please share a valid email address (for example: name@example.com)."
         active.email = email
@@ -1686,12 +1490,10 @@ async def _handle_appointment_intake_flow(
         return _appointment_datetime_examples_message()
 
     if active.next_field == "appointment_at":
-        detected_timezone = str(message_intent.entities.get("timezone") or "").strip() or _extract_timezone(text)
+        detected_timezone = _extract_timezone(text)
         active.timezone = _canonical_timezone(detected_timezone or active.timezone or DEFAULT_APPOINTMENT_TIMEZONE)
 
-        dt_value = _parse_iso_datetime_entity(message_intent.entities.get("datetime"))
-        if not dt_value:
-            dt_value = _parse_datetime_input(text)
+        dt_value = _parse_datetime_input(text)
         if dt_value:
             active.appointment_at = dt_value
             db.commit()
@@ -1739,10 +1541,10 @@ async def _handle_appointment_intake_flow(
         return f"I could not parse the date/time. {_appointment_datetime_examples_message()}"
 
     if active.next_field == "timezone":
-        if message_intent.primary_intent == IntentType.DENY:
+        if _is_skip(text):
             active.timezone = DEFAULT_APPOINTMENT_TIMEZONE
         else:
-            timezone_name = str(message_intent.entities.get("timezone") or "").strip() or _extract_timezone(text)
+            timezone_name = _extract_timezone(text)
             if not timezone_name:
                 return "Please provide a valid timezone, for example: Asia/Kolkata, IST, Europe/London, or UTC."
             active.timezone = _canonical_timezone(timezone_name)
@@ -1764,7 +1566,7 @@ async def _handle_appointment_intake_flow(
 
 
     if active.next_field == "contact":
-        email = str(message_intent.entities.get("email") or "").strip() or _extract_email(text)
+        email = _extract_email(text)
         if not email:
             return "Please share a valid email address (for example: name@example.com)."
         active.email = email
@@ -1783,7 +1585,7 @@ async def _handle_appointment_intake_flow(
         return _appointment_datetime_examples_message()
 
     if active.next_field == "notes":
-        notes = None if message_intent.primary_intent == IntentType.DENY else text[:1000]
+        notes = None if _is_skip(text) else text[:1000]
         active.notes = notes
         db.commit()
         return _finalize_intake_appointment(
@@ -2014,31 +1816,13 @@ async def chat(
             db.commit()
             db.refresh(usage)
 
-        active_intake = _get_active_intake(db, message.session_id, message.widget_id, user.organization_id) if widget_config else None
-        open_handoff_session = _get_open_handoff_session(db, message.session_id, message.widget_id, user.organization_id) if limits.get("human_handoff_enabled") else None
-        previous_assistant_message = _get_previous_assistant_message(db, message.session_id, message.widget_id)
-        message_intent = await _resolve_message_intent(
-            text=message.message,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=active_intake.next_field if active_intake else None,
-            handoff_active=bool(open_handoff_session),
-            conversation_context=_build_intent_context(
-                session_id=message.session_id,
-                widget_id=message.widget_id,
-                organization_id=user.organization_id,
-                active_intake_field=active_intake.next_field if active_intake else None,
-                handoff_active=bool(open_handoff_session),
-            ),
-        )
-
         if limits.get("human_handoff_enabled"):
-            active_handoff = await _route_user_message_to_handoff_if_active(
+            active_handoff = _route_user_message_to_handoff_if_active(
                 db,
                 user.organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if active_handoff:
                 handoff_session = active_handoff["session"]
@@ -2095,7 +1879,6 @@ async def chat(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if direct_lead_prompt:
                 persist_conversation(
@@ -2139,7 +1922,6 @@ async def chat(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if direct_handoff:
                 waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
@@ -2194,7 +1976,6 @@ async def chat(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if lead_prompt:
                 persist_conversation(
@@ -2236,7 +2017,7 @@ async def chat(
             # This provides defense-in-depth for escalation-based handoffs
             escalation_confirmed = (
                 _last_response_was_escalation(db, message.session_id, message.widget_id) and
-                message_intent.primary_intent in {IntentType.CONFIRM, IntentType.REQUEST_HUMAN}
+                _is_escalation_opt_in(message.message)
             )
             if escalation_confirmed and not _has_captured_lead_for_session(db, user.organization_id, message.session_id, message.widget_id):
                 # Force lead capture prompt if not already captured
@@ -2285,7 +2066,6 @@ async def chat(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if confirmed_handoff:
                 waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
@@ -2352,14 +2132,13 @@ async def chat(
         else:
             intake_response = None
             if widget_config:
-                intake_response = await _handle_appointment_intake_flow(
+                intake_response = _handle_appointment_intake_flow(
                     db,
                     user,
                     widget_config,
                     message.session_id,
                     message.widget_id,
                     message.message,
-                    message_intent=message_intent,
                 )
 
             if intake_response:
@@ -2509,31 +2288,13 @@ async def chat_stream(
             db.commit()
             db.refresh(usage)
 
-        active_intake = _get_active_intake(db, message.session_id, message.widget_id, user.organization_id) if widget_config else None
-        open_handoff_session = _get_open_handoff_session(db, message.session_id, message.widget_id, user.organization_id) if limits.get("human_handoff_enabled") else None
-        previous_assistant_message = _get_previous_assistant_message(db, message.session_id, message.widget_id)
-        message_intent = await _resolve_message_intent(
-            text=message.message,
-            previous_assistant_message=previous_assistant_message,
-            active_intake_field=active_intake.next_field if active_intake else None,
-            handoff_active=bool(open_handoff_session),
-            conversation_context=_build_intent_context(
-                session_id=message.session_id,
-                widget_id=message.widget_id,
-                organization_id=user.organization_id,
-                active_intake_field=active_intake.next_field if active_intake else None,
-                handoff_active=bool(open_handoff_session),
-            ),
-        )
-
         if limits.get("human_handoff_enabled"):
-            active_handoff = await _route_user_message_to_handoff_if_active(
+            active_handoff = _route_user_message_to_handoff_if_active(
                 db,
                 user.organization_id,
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if active_handoff:
                 handoff_session = active_handoff["session"]
@@ -2601,7 +2362,6 @@ async def chat_stream(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if direct_lead_prompt:
                 def direct_lead_prompt_event_generator():
@@ -2648,7 +2408,6 @@ async def chat_stream(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if direct_handoff:
                 waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
@@ -2713,7 +2472,6 @@ async def chat_stream(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if lead_prompt:
                 def lead_prompt_event_generator():
@@ -2758,7 +2516,7 @@ async def chat_stream(
             # This provides defense-in-depth for escalation-based handoffs
             escalation_confirmed = (
                 _last_response_was_escalation(db, message.session_id, message.widget_id) and
-                message_intent.primary_intent in {IntentType.CONFIRM, IntentType.REQUEST_HUMAN}
+                _is_escalation_opt_in(message.message)
             )
             if escalation_confirmed and not _has_captured_lead_for_session(db, organization_id, message.session_id, message.widget_id):
                 # Force lead capture prompt if not already captured
@@ -2810,7 +2568,6 @@ async def chat_stream(
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
             if confirmed_handoff:
                 waiting_response = settings.HUMAN_HANDOFF_WAITING_MESSAGE
@@ -2871,14 +2628,13 @@ async def chat_stream(
 
         intake_response = None
         if widget_config:
-            intake_response = await _handle_appointment_intake_flow(
+            intake_response = _handle_appointment_intake_flow(
                 db,
                 user,
                 widget_config,
                 message.session_id,
                 message.widget_id,
                 message.message,
-                message_intent=message_intent,
             )
 
         if intake_response:

@@ -24,4 +24,5 @@ pydantic[email]
 Pillow
 cairosvg
 phonenumbers==8.13.45
+python-dateutil==2.9.0.post0
 

@@ -881,11 +881,34 @@ def _has_prior_turns(db: Session, session_id: str, widget_id: str) -> bool:
     ).first() is not None
 
 
-def append_appointment_cta_if_needed(response_text: str, is_first_turn: bool) -> str:
+def _looks_like_booking_intent(text: str) -> bool:
+    normalized = (text or "").lower().strip()
+    if not normalized:
+        return False
+
+    booking_keywords = [
+        "appointment",
+        "book",
+        "booking",
+        "schedule",
+        "calendar",
+        "slot",
+        "meeting",
+        "demo call",
+        "consultation",
+    ]
+    return any(keyword in normalized for keyword in booking_keywords)
+
+
+def append_appointment_cta_if_needed(response_text: str, is_first_turn: bool, user_message: Optional[str] = None) -> str:
     if not is_first_turn:
         return response_text
     if not response_text:
-        return APPOINTMENT_BOOKING_CTA
+        return response_text
+
+    # Only show appointment CTA when the user has booking intent.
+    if not _looks_like_booking_intent(user_message or ""):
+        return response_text
 
     lower = response_text.lower()
     appointment_keywords = ["appointment", "book", "booking", "schedule", "calendar", "slot"]
@@ -1366,7 +1389,7 @@ def generate_chat_response(
 
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-        ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn)
+        ai_response = append_appointment_cta_if_needed(ai_response, is_first_turn, message)
         retrieval_trace["escalation_triggered"] = escalation_triggered
         
         persist_conversation(
