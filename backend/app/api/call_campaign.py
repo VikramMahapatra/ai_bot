@@ -94,12 +94,15 @@ def get_contacts_by_ids(params: ContactByIdsRequest, db: Session = Depends(get_d
 @router.get("/contacts")
 def get_contacts(
     search: Optional[str] = None,
+    sort_by: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return service.get_contacts(db, current_user.organization_id, search, skip, limit)
+    return service.get_contacts(
+        db, current_user.organization_id, sort_by, search, skip, limit
+    )
 
 
 @router.get("/contacts/lookup")

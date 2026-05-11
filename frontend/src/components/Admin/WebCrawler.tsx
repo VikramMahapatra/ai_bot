@@ -24,10 +24,18 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ widgetId, onStarted, onComplete
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [errors,setErrors] = useState({
+    url: "",
+  })
 
   const handleCrawl = async () => {
-    if (!url) {
-      setError('Please enter a URL');
+    const newErrors = {
+      url: ""
+    }
+
+    if (!url.trim()) {
+      newErrors.url = 'Please enter a URL';
+      setErrors(newErrors);
       return;
     }
 
@@ -77,12 +85,14 @@ const WebCrawler: React.FC<WebCrawlerProps> = ({ widgetId, onStarted, onComplete
         >
           <Stack spacing={2}>
             <TextField
+              required
               label="Website URL"
               value={url}
+              error={!!errors.url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com"
               fullWidth
-              helperText="Use the main website or documentation URL you want the agent to learn from."
+              helperText={errors.url ? errors.url : "Use the main website or documentation URL you want the agent to learn from."}
             />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>

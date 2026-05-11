@@ -1714,6 +1714,7 @@ const CampaignManagementPage: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
                   <TextField
+                    required
                     size="small"
                     sx={compactInputSx}
                     fullWidth
@@ -1737,7 +1738,7 @@ const CampaignManagementPage: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={2}>
-                  <FormControl fullWidth size="small" sx={compactInputSx}>
+                  <FormControl required fullWidth size="small" sx={compactInputSx}>
                     <InputLabel>Campaign Type</InputLabel>
                     <Select
                       value={createCampaignType}
@@ -1754,8 +1755,9 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={2.5}>
                   <FormControl
+                    required
                     fullWidth
                     size="small"
                     sx={compactInputSx}
@@ -1791,6 +1793,7 @@ const CampaignManagementPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={2}>
                   <FormControl
+                    required
                     fullWidth
                     size="small"
                     sx={compactInputSx}
@@ -1823,7 +1826,7 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={1}>
+                <Grid item xs={12} md={1.2}>
                   <Button
                     size="small"
                     fullWidth
@@ -1898,6 +1901,7 @@ const CampaignManagementPage: React.FC = () => {
                         </Stack>
 
                         <TextField
+                          required
                           size="small"
                           sx={compactInputSx}
                           fullWidth
@@ -2410,6 +2414,7 @@ const CampaignManagementPage: React.FC = () => {
                   {(createCampaignType !== "email" ||
                     emailContentMode === "manual") && (
                       <TextField
+                        required
                         size="small"
                         sx={{
                           ...compactInputSx,

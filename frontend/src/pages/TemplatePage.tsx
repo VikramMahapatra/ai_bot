@@ -575,6 +575,7 @@ function TemplateList() {
             )}
             <Stack spacing={2} mt={1}>
               <TextField
+                required
                 label="Template Name"
                 fullWidth
                 value={form.name}
@@ -652,6 +653,7 @@ function TemplateList() {
               )}
 
               <TextField
+                required
                 label="Message Content"
                 multiline
                 rows={12}
