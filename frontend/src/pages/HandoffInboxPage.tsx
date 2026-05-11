@@ -93,9 +93,13 @@ const HandoffInboxPage: React.FC = () => {
     try {
       const data = await handoffService.listMessages(chatId, reset ? 0 : afterIdRef.current);
       if (reset) {
-        setMessages(data.items);
+        const unique = Array.from(new Map(data.items.map((item) => [item.id, item])).values());
+        setMessages(unique);
       } else if (data.items.length > 0) {
-        setMessages((prev) => [...prev, ...data.items]);
+        setMessages((prev) => {
+          const merged = [...prev, ...data.items];
+          return Array.from(new Map(merged.map((item) => [item.id, item])).values());
+        });
       }
 
       const newest = data.items[data.items.length - 1];

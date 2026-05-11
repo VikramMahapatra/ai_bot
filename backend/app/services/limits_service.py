@@ -112,8 +112,15 @@ def get_active_subscription(db: Session, organization_id: int) -> Optional[Organ
     return sub
 
 def get_effective_limits(db: Session, organization_id: int) -> dict:
-    limits = get_or_create_limits(db, organization_id)
-    effective = _build_effective_limits(limits)
+    limits = db.query(OrganizationLimits).filter(
+        OrganizationLimits.organization_id == organization_id
+    ).first()
+
+    if limits:
+        effective = _build_effective_limits(limits)
+    else:
+        effective = dict(DEFAULT_LIMITS)
+
     effective["subscription_active"] = True
     effective["days_left"] = None
     return effective
