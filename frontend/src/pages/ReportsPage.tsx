@@ -241,6 +241,7 @@ const ReportsPage: React.FC = () => {
   // Voice campaign report data
   const [voiceAgentName, setVoiceAgentName] = useState("");
   const [voiceCampaignName, setVoiceCampaignName] = useState("");
+  const [voiceSource, setVoiceSource] = useState("");
   const [voiceLeadOutcomes, setVoiceLeadOutcomes] = useState<string[]>([]);
   const [voiceCreatedFrom, setVoiceCreatedFrom] = useState("");
   const [voiceCreatedTo, setVoiceCreatedTo] = useState("");
@@ -466,6 +467,7 @@ const ReportsPage: React.FC = () => {
     overrides?: {
       agent_name?: string;
       campaign_name?: string;
+      source?: string;
       lead_outcomes?: string[];
       start_date?: string;
       end_date?: string;
@@ -503,6 +505,7 @@ const ReportsPage: React.FC = () => {
   const buildVoiceReportParams = () => ({
     agent_name: voiceAgentName || undefined,
     campaign_name: voiceCampaignName || undefined,
+    source: voiceSource || undefined,
     lead_outcomes: voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined,
     start_date: toIsoStartOfDay(voiceCreatedFrom),
     end_date: toIsoEndOfDay(voiceCreatedTo),
@@ -596,6 +599,7 @@ const ReportsPage: React.FC = () => {
     const resetCampaign = voiceDefaultCampaignName || "";
     setVoiceAgentName("");
     setVoiceCampaignName(resetCampaign);
+    setVoiceSource("");
     setVoiceLeadOutcomes([]);
     setVoiceCreatedFrom("");
     setVoiceCreatedTo("");
@@ -603,6 +607,7 @@ const ReportsPage: React.FC = () => {
     await fetchVoiceCampaignReport(0, {
       agent_name: undefined,
       campaign_name: resetCampaign || undefined,
+      source: undefined,
       lead_outcomes: undefined,
       start_date: undefined,
       end_date: undefined,
@@ -1928,6 +1933,22 @@ const ReportsPage: React.FC = () => {
                         </Select>
                       </FormControl>
                     </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Source</InputLabel>
+                        <Select
+                          value={voiceSource}
+                          label="Source"
+                          onChange={(e) => setVoiceSource(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          <MenuItem value="chat">Chat</MenuItem>
+                          <MenuItem value="voice">Voice</MenuItem>
+                          <MenuItem value="email">Email</MenuItem>
+                          <MenuItem value="sms">SMS</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth size="small">
                         <InputLabel>Sentiment</InputLabel>
@@ -2117,38 +2138,38 @@ const ReportsPage: React.FC = () => {
                                 gap={0.5}
                               >
                                 <Typography
-                                variant="body2"
-                                sx={{ fontWeight: 600, lineHeight: 1.35 }}
-                              >
-                                {item.customer_name || "-"}
-                              </Typography>
-                              {item.email?.trim() ? (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 0.5,
-                                    lineHeight: 1.35,
-                                    fontSize: "0.7rem",
-                                  }}
+                                  variant="body2"
+                                  sx={{ fontWeight: 600, lineHeight: 1.35 }}
                                 >
-                                  <EmailIcon
-                                    sx={{
-                                      fontSize: 13,
-                                      flexShrink: 0,
-                                      opacity: 0.85,
-                                    }}
-                                  />
-                                  <Box
-                                    component="span"
-                                    sx={{ wordBreak: "break-word" }}
-                                  >
-                                    {item.email}
-                                  </Box>
+                                  {item.customer_name || "-"}
                                 </Typography>
-                              ) : null}
+                                {item.email?.trim() ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 0.5,
+                                      lineHeight: 1.35,
+                                      fontSize: "0.7rem",
+                                    }}
+                                  >
+                                    <EmailIcon
+                                      sx={{
+                                        fontSize: 13,
+                                        flexShrink: 0,
+                                        opacity: 0.85,
+                                      }}
+                                    />
+                                    <Box
+                                      component="span"
+                                      sx={{ wordBreak: "break-word" }}
+                                    >
+                                      {item.email}
+                                    </Box>
+                                  </Typography>
+                                ) : null}
                               </Box>
                             </TableCell>
                             {/* CAMPAIGN NAME */}
@@ -2321,8 +2342,8 @@ const ReportsPage: React.FC = () => {
                   </Typography>
                   <Typography variant="body1">
                     {voiceDetailsItem.campaign_start_date
-                                ? formatDisplayDate(voiceDetailsItem.campaign_start_date)
-                                : "-"}
+                      ? formatDisplayDate(voiceDetailsItem.campaign_start_date)
+                      : "-"}
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
