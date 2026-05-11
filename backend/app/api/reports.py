@@ -72,6 +72,7 @@ async def get_conversations_report(
     search: Optional[str] = Query(None),
     outcome: Optional[str] = Query(None),
     sentiments: Optional[List[str]] = Query(None),
+    source: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -95,8 +96,9 @@ async def get_conversations_report(
         sort_by=sort_by,
         sort_order=sort_order,
         search=search,
-        outcome=outcome,
+        lead_conversion_outcome=outcome,
         sentiments=sentiments,
+        source=source,
     )
     metrics = report_data["metrics"]
     total = report_data["total"]

@@ -741,9 +741,11 @@ def init_db():
             pass
 
         try:
-    conn.execute(text("""
-        ALTER TABLE leads 
-        ALTER COLUMN close_date DROP DEFAULT;
-    """))
-except Exception as e:
-    print(f"Migration error (close_date default remove): {e}")
+            conn.execute(text("""
+                 ALTER TABLE leads 
+                 ALTER COLUMN close_date DROP DEFAULT;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
