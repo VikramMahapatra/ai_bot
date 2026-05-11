@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+from http.client import HTTPException
 from typing import Optional
 
 import requests
@@ -56,7 +57,9 @@ def send_whatsapp_text_message(
 
     response = requests.post(url, json=payload, headers=headers, timeout=20)
     if response.status_code >= 400:
-        raise WhatsAppSendError(f"Meta send failed: {response.status_code} {response.text}")
+        raise WhatsAppSendError(
+            f"Meta send failed: {response.status_code} {response.text}"
+        )
     return response.json()
 
 
@@ -74,21 +77,23 @@ def send_whatsapp_test_message(
     payload = {
         "messaging_product": "whatsapp",
         "to": to_number,
-        "type": "template",
-        "template": {
-            "name": "hello_world",
-            "language": {"code": "en_US"}
-        }
+        "type": "text",
+        "text": {
+            "body": message_text
+            or "✅ Test message successful. WhatsApp integration is working!"
+        },
     }
 
     response = requests.post(url, json=payload, headers=headers, timeout=20)
     if response.status_code >= 400:
-        raise WhatsAppSendError(f"Meta send failed: {response.status_code} {response.text}")
+        raise WhatsAppSendError(
+            f"Meta send failed: {response.status_code} {response.text}"
+        )
     return response.json()
 
 
 def _graph_version() -> str:
-    return (settings.WHATSAPP_GRAPH_VERSION or "v19.0").strip()
+    return (settings.WHATSAPP_GRAPH_VERSION or "v25.0").strip()
 
 
 def _as_data_list(value) -> list:
@@ -115,7 +120,10 @@ def _extract_whatsapp_ids_from_me_response(payload: dict) -> dict:
                     return {
                         "waba_id": waba_id,
                         "phone_number_id": phone_number_id,
-                        "business_phone_number": (number.get("display_phone_number") or "").strip() or None,
+                        "business_phone_number": (
+                            number.get("display_phone_number") or ""
+                        ).strip()
+                        or None,
                     }
 
     return {
@@ -123,6 +131,30 @@ def _extract_whatsapp_ids_from_me_response(payload: dict) -> dict:
         "phone_number_id": None,
         "business_phone_number": None,
     }
+
+
+def fetch_phone_number_details(phone_number_id: str, access_token: str):
+    version = _graph_version()
+    url = f"https://graph.facebook.com/{version}/" f"{phone_number_id}"
+
+    response = requests.get(
+        url,
+        params={
+            "fields": "display_phone_number,verified_name",
+            "access_token": access_token,
+        },
+        timeout=20,
+    )
+
+    data = response.json()
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=400,
+            detail=data,
+        )
+
+    return data
 
 
 def _fetch_whatsapp_embedded_details(access_token: str) -> dict:
@@ -147,16 +179,59 @@ def _fetch_whatsapp_embedded_details(access_token: str) -> dict:
     return _extract_whatsapp_ids_from_me_response(response.json() or {})
 
 
-def exchange_meta_embedded_signup_code(code: str, redirect_uri: Optional[str] = None) -> dict:
+def generate_long_lived_token(short_token: str) -> dict:
+
+    url = (
+        f"https://graph.facebook.com/"
+        f"{settings.WHATSAPP_GRAPH_VERSION}/oauth/access_token"
+    )
+
+    params = {
+        "grant_type": "fb_exchange_token",
+        "client_id": settings.META_APP_ID,
+        "client_secret": settings.META_APP_SECRET,
+        "fb_exchange_token": short_token,
+    }
+
+    response = requests.get(
+        url,
+        params=params,
+        timeout=20,
+    )
+
+    data = response.json()
+
+    if response.status_code >= 400:
+
+        error = data.get("error", {})
+
+        raise WhatsAppEmbeddedSignupError(
+            error.get("message") or "Failed to generate long-lived token"
+        )
+
+    return {
+        "access_token": data.get("access_token"),
+        "token_type": data.get("token_type"),
+        "expires_in": data.get("expires_in"),
+    }
+
+
+def exchange_meta_embedded_signup_code(
+    code: str, redirect_uri: Optional[str] = None
+) -> dict:
     app_id = (settings.META_APP_ID or "").strip()
     app_secret = (settings.META_APP_SECRET or "").strip()
     version = _graph_version()
 
     if not app_id or not app_secret:
-        raise WhatsAppEmbeddedSignupError("META_APP_ID and META_APP_SECRET must be configured")
+        raise WhatsAppEmbeddedSignupError(
+            "META_APP_ID and META_APP_SECRET must be configured"
+        )
 
     if not (code or "").strip():
-        raise WhatsAppEmbeddedSignupError("Missing authorization code from Meta embedded signup")
+        raise WhatsAppEmbeddedSignupError(
+            "Missing authorization code from Meta embedded signup"
+        )
 
     token_url = f"https://graph.facebook.com/{version}/oauth/access_token"
     params = {
@@ -165,7 +240,9 @@ def exchange_meta_embedded_signup_code(code: str, redirect_uri: Optional[str] = 
         "code": code.strip(),
     }
 
-    effective_redirect_uri = (redirect_uri or settings.META_EMBEDDED_REDIRECT_URI or "").strip()
+    effective_redirect_uri = (
+        redirect_uri or settings.META_EMBEDDED_REDIRECT_URI or ""
+    ).strip()
     if effective_redirect_uri:
         params["redirect_uri"] = effective_redirect_uri
 
@@ -176,14 +253,18 @@ def exchange_meta_embedded_signup_code(code: str, redirect_uri: Optional[str] = 
         )
 
     payload = token_response.json() or {}
-    access_token = (payload.get("access_token") or "").strip()
-    if not access_token:
-        raise WhatsAppEmbeddedSignupError("Meta code exchange succeeded but access_token was not returned")
+    short_lived_token = (payload.get("access_token") or "").strip()
 
-    details = _fetch_whatsapp_embedded_details(access_token)
+    if not short_lived_token:
+
+        raise WhatsAppEmbeddedSignupError(
+            "Meta code exchange succeeded " "but access_token was not returned"
+        )
+
+    long_lived = generate_long_lived_token(short_lived_token)
+
     return {
-        "access_token": access_token,
-        "token_type": payload.get("token_type"),
-        "expires_in": payload.get("expires_in"),
-        **details,
+        "access_token": long_lived.get("access_token"),
+        "token_type": long_lived.get("token_type"),
+        "expires_in": long_lived.get("expires_in"),
     }

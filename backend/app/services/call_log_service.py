@@ -227,14 +227,14 @@ def get_call_logs(
         ),
     ).first()
 
+    if params.sort_by == "oldest":
+        query = query.order_by(CallLog.created_at.asc())
+    else:
+        query = query.order_by(CallLog.created_at.desc())
+
     # PAGINATION
     if params.skip is not None and params.limit is not None:
-        logs = (
-            query.order_by(CallLog.created_at.desc())
-            .offset(params.skip)
-            .limit(params.limit)
-            .all()
-        )
+        logs = query.offset(params.skip).limit(params.limit).all()
     else:
         # Export case → fetch all
         logs = query.order_by(CallLog.created_at.desc()).all()
@@ -2205,6 +2205,14 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 blocked_orgs.add(job.organization_id)
                 continue
 
+            valid = organization_credit_service.validate_feature_usage(
+                db, job.organization_id, FeatureCodes.CORE_CALL_OUT_ATTEMPT, 1
+            )
+
+            if not valid:
+                blocked_orgs.add(job.organization_id)
+                continue
+
             try:
                 organization_channel_service.reserve_channel(
                     db=db,
@@ -2230,6 +2238,15 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 call_log_id = response.get("call_id")
                 execution.external_reference_id = call_log_id
                 job.external_call_id = call_log_id
+
+                organization_credit_service.deduct_credits(
+                    db=db,
+                    organization_id=job.organization_id,
+                    feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                    quantity=1,
+                    reference_type="rescheduled_call",
+                    reference_id=str(job.id),
+                )
 
                 db.flush()
             else:

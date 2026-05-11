@@ -5,7 +5,12 @@ from regex import search
 from sqlalchemy.orm import Session
 from app.database import get_db
 
-from app.schemas.message_template import StatusUpdateRequest, TemplateCreate, TemplateRequest, TemplateUpdate
+from app.schemas.message_template import (
+    StatusUpdateRequest,
+    TemplateCreate,
+    TemplateRequest,
+    TemplateUpdate,
+)
 from app.services import message_template_service
 from app.auth import get_current_user
 from app.models.user import User
@@ -15,6 +20,16 @@ router = APIRouter(
     tags=["Templates"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.post("/sync-whatsapp")
+def create_template(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return message_template_service.sync_whatsapp_templates(
+        db, current_user.organization_id
+    )
 
 
 @router.post("/create")
@@ -70,7 +85,9 @@ def update_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return message_template_service.update_template_status(db, template_id, payload.status)
+    return message_template_service.update_template_status(
+        db, template_id, payload.status
+    )
 
 
 @router.delete("/delete/{template_id}")

@@ -47,6 +47,19 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                         }}
                     />
                 </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                    <TextField
+                        size="small"
+                        select
+                        fullWidth
+                        label="Sort By"
+                        value={filters.sort_by}
+                        onChange={(e) => onFilterChange({ sort_by: e.target.value as any })}
+                    >
+                        <MenuItem value="oldest">Oldest</MenuItem>
+                        <MenuItem value="newest">Newest</MenuItem>
+                    </TextField>
+                </Grid>
 
                 {/* Filter Button */}
                 <Grid item xs={12} md="auto">

@@ -21,6 +21,10 @@ export interface CampaignContactFilters {
     search?: string;
     skip?: number;
     limit?: number;
+    status?: string | "All";
+    from_date?: string | null;
+    end_date?: string | null;
+    sort_by?: 'newest' | 'oldest';
 }
 
 

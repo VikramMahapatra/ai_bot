@@ -115,6 +115,7 @@ export const CallLogsTab = () => {
   const [evaluation, setEvaluation] = useState<string>("All");
   const [leadQuality, setLeadQuality] = useState<string>("All");
   const [leadQualified, setLeadQualified] = useState<string>("All");
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
 
   const [actionAnchor, setActionAnchor] = useState(null);
   const [openInsights, setOpenInsights] = useState(false);
@@ -201,6 +202,7 @@ export const CallLogsTab = () => {
       evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
       is_lead_qualified:
         leadQualified !== "All" ? leadQualified === "true" : undefined,
+      sort_by: sortBy,
     });
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);
@@ -247,6 +249,7 @@ export const CallLogsTab = () => {
         evaluation: evaluation !== "All" ? evaluation === "true" : undefined,
         is_lead_qualified:
           leadQualified !== "All" ? leadQualified === "true" : undefined,
+        sort_by: sortBy,
       });
       ExportToExcel(data, "Call_Logs", user?.timezone);
     } catch (error) {
@@ -283,6 +286,7 @@ export const CallLogsTab = () => {
     evaluation,
     leadQuality,
     leadQualified,
+    sortBy
   ]);
 
   useEffect(() => {
@@ -499,7 +503,7 @@ export const CallLogsTab = () => {
           <Grid container spacing={2} mt={1}>
 
             {/* Call End Reason */}
-            <Grid item xs={12} sm={6} md={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 select
                 fullWidth
@@ -522,7 +526,7 @@ export const CallLogsTab = () => {
               </TextField>
             </Grid>
             {/* Sentiment */}
-            <Grid item xs={12} sm={6} md={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 select
                 fullWidth
@@ -539,7 +543,7 @@ export const CallLogsTab = () => {
                 <MenuItem value="other">Other</MenuItem>
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={6} md={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 select
                 fullWidth
@@ -551,6 +555,19 @@ export const CallLogsTab = () => {
                 <MenuItem value="All">All</MenuItem>
                 <MenuItem value="true">Positive</MenuItem>
                 <MenuItem value="false">Negative</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                size="small"
+                select
+                fullWidth
+                label="Sort By"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+              >
+                <MenuItem value="newest">Newest</MenuItem>
+                <MenuItem value="oldest">Oldest</MenuItem>
               </TextField>
             </Grid>
 

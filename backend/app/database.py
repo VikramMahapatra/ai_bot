@@ -741,3 +741,55 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ALTER COLUMN widget_id DROP NOT NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS parent_template_id INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ADD COLUMN IF NOT EXISTS token_type VARCHAR NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_in INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS token_created_at TIMESTAMPTZ NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ NULL;
+            """))
+
+            # ---------------------------------------------------
+            # 1. DROP OLD WRONG UNIQUE CONSTRAINT (IMPORTANT)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                DROP INDEX IF EXISTS ix_whatsapp_channels_organization_id;
+            """))
+
+            # ---------------------------------------------------
+            # 2. CREATE PROPER GLOBAL UNIQUE CONSTRAINT
+            #    (ONLY ONE GLOBAL CONFIG PER ORG)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_global_org
+                ON whatsapp_channels (organization_id)
+                WHERE widget_id IS NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

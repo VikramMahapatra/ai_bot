@@ -192,6 +192,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaSdkReady, setMetaSdkReady] = useState(false);
   const [metaSdkFailed, setMetaSdkFailed] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
   const [showWidgetPreview, setShowWidgetPreview] = useState(true);
@@ -530,37 +531,55 @@ const CreateChatAgentPage: React.FC = () => {
     }
   };
 
+  const handleDisconnectWhatsApp = async () => {
+    try {
+      setMetaConnecting(true);
+      await whatsappService.disconnectWhatsApp();
+      setWhatsappForm(initialWhatsAppForm);
+      setWhatsappConfigured(false);
+      setSuccess("WhatsApp disconnected successfully");
+    } catch (error: any) {
+      setError(
+        error?.response?.data?.detail ||
+        error.message
+      );
+    } finally {
+      setMetaConnecting(false);
+    }
+  };
+
   const handleMetaAuthCode = useCallback(async (code: string, source: 'sdk' | 'redirect' = 'sdk') => {
     if (!createdWidgetId) {
       throw new Error('Save agent profile first before connecting WhatsApp.');
     }
 
-    const verifyToken = (whatsappForm.verify_token || '').trim() || `wa_verify_${Date.now()}`;
     const exchange = await whatsappService.exchangeEmbeddedSignupCode({
       code,
       redirect_uri: source === 'redirect' ? metaRedirectUri : undefined,
       widget_id: createdWidgetId,
-      verify_token: verifyToken,
       business_phone_number: (whatsappForm.business_phone_number || '').trim() || undefined,
       is_active: true,
       auto_save: true,
     });
 
-    setWhatsappForm((prev) => ({
-      ...prev,
-      phone_number_id: exchange.phone_number_id || prev.phone_number_id,
-      waba_id: exchange.waba_id || prev.waba_id,
-      access_token: exchange.access_token || prev.access_token,
-      verify_token: verifyToken,
-      business_phone_number: exchange.business_phone_number || prev.business_phone_number,
-      is_active: true,
-    }));
-    setWhatsappConfigured(Boolean(exchange.saved || exchange.phone_number_id));
     setSuccess(
       exchange.saved
         ? 'WhatsApp connected and saved successfully via Meta wizard.'
         : 'Meta wizard completed. Review values and save configuration.'
     );
+
+    const config = await whatsappService.getConfig(createdWidgetId);
+
+    if (config.configured) {
+      setWhatsappConfigured(Boolean(config.is_active));
+      setWhatsappForm((prev) => ({
+        ...prev,
+        phone_number_id: config.phone_number_id || '',
+        waba_id: config.waba_id || '',
+        business_phone_number: config.business_phone_number || '',
+        is_active: config.is_active ?? true,
+      }));
+    }
   }, [createdWidgetId, metaRedirectUri, whatsappForm.business_phone_number, whatsappForm.verify_token]);
 
   const openMetaWhatsAppWizard = async () => {
@@ -607,37 +626,89 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   useEffect(() => {
-    const onMetaMessage = async (event: MessageEvent) => {
-      const payload = event.data as any;
-      if (!payload || payload.type !== 'META_WHATSAPP_EMBEDDED_SIGNUP') {
+
+    const onMetaMessage = async (
+      event: MessageEvent
+    ) => {
+
+      if (
+        event.origin !==
+        "https://www.facebook.com" &&
+        event.origin !==
+        "https://web.facebook.com"
+      ) {
         return;
       }
 
-      if (payload.error) {
-        setError(`Meta signup failed: ${payload.error}`);
+      let payload: any;
+
+      try {
+
+        payload =
+          typeof event.data === "string"
+            ? JSON.parse(event.data)
+            : event.data;
+
+      } catch {
         return;
       }
 
-      const code = (payload.code || '').trim();
-      const source = payload.source === 'redirect' ? 'redirect' : 'sdk';
-      if (!code) {
+      if (
+        payload?.type !==
+        "WA_EMBEDDED_SIGNUP"
+      ) {
+        return;
+      }
+
+      if (
+        payload?.event !== "FINISH"
+      ) {
+        return;
+      }
+
+      const data = payload?.data;
+
+      if (!data?.phone_number_id || !data?.waba_id) {
         return;
       }
 
       try {
+
         setMetaConnecting(true);
-        setError('');
-        await handleMetaAuthCode(code, source);
+
+        await whatsappService.saveConfig({
+          widget_id: createdWidgetId,
+          phone_number_id: data.phone_number_id,
+          waba_id: data.waba_id
+        });
+
+        setSuccess(
+          "WhatsApp configuration saved successfully"
+        );
+
       } catch (err: any) {
-        setError(err?.response?.data?.detail || err?.message || 'Meta signup exchange failed.');
+        setError(
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Failed to save WhatsApp config"
+        );
       } finally {
         setMetaConnecting(false);
       }
     };
 
-    window.addEventListener('message', onMetaMessage);
-    return () => window.removeEventListener('message', onMetaMessage);
-  }, [handleMetaAuthCode]);
+    window.addEventListener(
+      "message",
+      onMetaMessage
+    );
+
+    return () =>
+      window.removeEventListener(
+        "message",
+        onMetaMessage
+      );
+
+  }, [createdWidgetId]);
 
   useEffect(() => {
     if (!createdWidgetId || activeStep !== 2) return;
@@ -646,7 +717,7 @@ const CreateChatAgentPage: React.FC = () => {
 
     const loadWhatsAppConfig = async () => {
       try {
-        const config = await whatsappService.getConfig();
+        const config = await whatsappService.getConfig(createdWidgetId);
         if (!active) return;
 
         if (config.configured) {
@@ -1150,7 +1221,7 @@ const CreateChatAgentPage: React.FC = () => {
       });
       setSuccess('WhatsApp test message sent successfully.');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to send WhatsApp test message.');
+      setError(err.response?.data?.detail || err?.detail || 'Failed to send WhatsApp test message.');
     } finally {
       setWhatsappTesting(false);
     }
@@ -2308,32 +2379,74 @@ const CreateChatAgentPage: React.FC = () => {
                               Connect Meta WhatsApp Cloud API for two-way messaging with the same knowledge base.
                             </Typography>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={openMetaWhatsAppWizard}
-                                disabled={metaConnecting}
-                                sx={{ minWidth: { sm: 128 }, py: 0.55, px: 1.25, whiteSpace: 'nowrap' }}
-                              >
-                                {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
-                              </Button>
-                              <Button
-                                variant="contained"
-                                size="small"
-                                onClick={() => setIntegrationDialogOpen(true)}
-                                sx={{ minWidth: { sm: 102 }, py: 0.55, px: 1.4, whiteSpace: 'nowrap' }}
-                              >
-                                Configure
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                startIcon={<OpenInNewIcon />}
-                                onClick={() => window.open('/integrations/whatsapp', '_blank', 'noopener,noreferrer')}
-                                sx={{ minWidth: { sm: 126 }, py: 0.55, px: 1.25 }}
-                              >
-                                Open Full Page
-                              </Button>
+                              {!whatsappConfigured ? (
+                                <Stack direction="row" spacing={1}>
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={openMetaWhatsAppWizard}
+                                    disabled={metaConnecting}
+                                    sx={{
+                                      minWidth: 160,
+                                      py: 0.7,
+                                      px: 2,
+                                      fontWeight: 600,
+                                      background: "#25D366",
+                                      "&:hover": { background: "#1ebe5d" }
+                                    }}
+                                  >
+                                    {metaConnecting ? 'Connecting...' : metaSdkReady ? 'Connect WhatsApp' : 'Loading Meta SDK...'}
+                                  </Button>
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={() => setIntegrationDialogOpen(true)}
+                                    sx={{
+                                      minWidth: 110,
+                                      py: 0.7,
+                                      px: 2
+                                    }}
+                                  >
+                                    Configure
+                                  </Button>
+                                </Stack>
+                              ) : (
+                                <Stack direction="row" spacing={1}>
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={() => setTestOpen(true)}
+                                    sx={{
+                                      minWidth: 150,
+                                      py: 0.7,
+                                      px: 2,
+                                      fontWeight: 600,
+                                      borderColor: "#25D366",
+                                      color: "#25D366",
+                                      "&:hover": {
+                                        borderColor: "#1ebe5d",
+                                        background: "rgba(37, 211, 102, 0.08)"
+                                      }
+                                    }}
+                                  >
+                                    Send Test Message
+                                  </Button>
+                                  <Button
+                                    variant="contained"
+                                    color="error"
+                                    size="small"
+                                    onClick={handleDisconnectWhatsApp}
+                                    sx={{
+                                      minWidth: 120,
+                                      py: 0.7,
+                                      px: 2,
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Disconnect
+                                  </Button>
+                                </Stack>
+                              )}
                             </Stack>
                           </Stack>
                         </CardContent>
@@ -2518,7 +2631,7 @@ const CreateChatAgentPage: React.FC = () => {
                 <TextField label="Agent ID" value={createdWidgetId} fullWidth disabled />
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <TextField
                       label="Phone Number ID *"
                       value={whatsappForm.phone_number_id}
@@ -2527,11 +2640,21 @@ const CreateChatAgentPage: React.FC = () => {
                       sx={fieldSx}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <TextField
                       label="WABA ID"
                       value={whatsappForm.waba_id}
                       onChange={(e) => handleWhatsAppField('waba_id', e.target.value)}
+                      fullWidth
+                      sx={fieldSx}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="Business Phone Number"
+                      value={whatsappForm.business_phone_number}
+                      onChange={(e) => handleWhatsAppField('business_phone_number', e.target.value)}
+                      placeholder="+91XXXXXXXXXX"
                       fullWidth
                       sx={fieldSx}
                     />
@@ -2547,55 +2670,8 @@ const CreateChatAgentPage: React.FC = () => {
                       sx={fieldSx}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="Webhook Verify Token *"
-                      value={whatsappForm.verify_token}
-                      onChange={(e) => handleWhatsAppField('verify_token', e.target.value)}
-                      fullWidth
-                      sx={fieldSx}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="Business Phone Number"
-                      value={whatsappForm.business_phone_number}
-                      onChange={(e) => handleWhatsAppField('business_phone_number', e.target.value)}
-                      placeholder="+91XXXXXXXXXX"
-                      fullWidth
-                      sx={fieldSx}
-                    />
-                  </Grid>
-                </Grid>
 
-                <Card sx={{ ...sectionPanelSx, borderRadius: '14px' }}>
-                  <CardContent>
-                    <Stack spacing={1}>
-                      <Typography variant="subtitle2">Meta Webhook Setup</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Callback URL: {webhookUrl}
-                      </Typography>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={<ContentCopyIcon />}
-                          onClick={() => copyToClipboard(webhookUrl, 'Webhook URL copied.')}
-                        >
-                          Copy Webhook URL
-                        </Button>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={<ContentCopyIcon />}
-                          onClick={() => copyToClipboard(whatsappForm.verify_token, 'Verify token copied.')}
-                        >
-                          Copy Verify Token
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  </CardContent>
-                </Card>
+                </Grid>
 
                 <Divider />
 
@@ -2642,6 +2718,40 @@ const CreateChatAgentPage: React.FC = () => {
                 }}
               >
                 {whatsappSaving ? 'Saving...' : 'Save WhatsApp Integration'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog open={testOpen}>
+            <DialogTitle>Send WhatsApp Test Message</DialogTitle>
+
+            <DialogContent>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Recipient Number"
+                    value={testToNumber}
+                    onChange={(e) => setTestToNumber(e.target.value)}
+                    placeholder="9198XXXXXXXX"
+                    fullWidth
+                    sx={fieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Message"
+                    value={testMessage}
+                    onChange={(e) => setTestMessage(e.target.value)}
+                    fullWidth
+                    sx={fieldSx}
+                  />
+                </Grid>
+              </Grid>
+            </DialogContent>
+
+            <DialogActions>
+              <Button onClick={() => setTestOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={sendWhatsAppTest}>
+                Send
               </Button>
             </DialogActions>
           </Dialog>

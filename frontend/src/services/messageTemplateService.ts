@@ -123,4 +123,9 @@ export const messageTemplateService = {
     const response = await api.get<Template[]>('/api/templates/lookup');
     return response.data;
   },
+
+  async syncWhatsAppTemplates(): Promise<{ success: boolean; message: string }> {
+    const response = await api.post('/api/templates/sync-whatsapp');
+    return response.data;
+  }
 };

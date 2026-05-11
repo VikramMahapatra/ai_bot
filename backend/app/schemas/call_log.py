@@ -23,8 +23,8 @@ class CallLogResponse(BaseModel):
     industry: str
     audioUrl: str
     transcript: List[TranscriptSchema]
-    
-    
+
+
 class CallLogCreate(BaseModel):
     contact_id: int
     agent_id: int
@@ -37,8 +37,8 @@ class CallLogCreate(BaseModel):
     end_time: datetime
     audio_url: str
     transcript: list[TranscriptSchema]
-    
-    
+
+
 class CallLogRequest(BaseModel):
     from_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -46,6 +46,8 @@ class CallLogRequest(BaseModel):
 
     skip: Optional[int] = None
     limit: Optional[int] = None
+    sort_by: Optional[str] = "newest"
+
     agent_id: Optional[int] = None
     campaign_id: Optional[int] = None
 
@@ -53,9 +55,10 @@ class CallLogRequest(BaseModel):
     call_end_reason: Optional[str] = None
     sentiment: Optional[str] = None
     evaluation: Optional[bool] = None
-    
+
     lead_quality: Optional[str] = None
     is_lead_qualified: Optional[bool] = None
-    
+
+
 class MoveToFunnelRequest(BaseModel):
     stage: str

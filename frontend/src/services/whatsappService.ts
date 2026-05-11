@@ -14,10 +14,16 @@ export interface WhatsAppConfigPayload {
   widget_id: string;
   phone_number_id: string;
   waba_id?: string;
-  access_token: string;
-  verify_token: string;
+  access_token?: string;
+  verify_token?: string;
   business_phone_number?: string;
   is_active?: boolean;
+}
+
+export interface WhatsAppEmbeddedSignupPayload {
+  widget_id?: string;
+  phone_number_id: string;
+  waba_id?: string;
 }
 
 export interface WhatsAppEmbeddedExchangePayload {
@@ -44,11 +50,22 @@ export interface WhatsAppEmbeddedExchangeResponse {
   expires_in?: number;
 }
 
+export interface WhatsAppDisconnectResponse {
+  success: boolean;
+  message: string;
+}
+
 export const whatsappService = {
-  async getConfig(): Promise<WhatsAppConfig> {
-    const response = await api.get('/api/admin/whatsapp/config');
+  async getConfig(widgetId: string): Promise<WhatsAppConfig> {
+    const response = await api.get(`/api/admin/whatsapp/config/${widgetId}`);
     return response.data;
   },
+
+  async getGlobalConfig(): Promise<WhatsAppConfig> {
+    const response = await api.get('/api/admin/whatsapp/global-config');
+    return response.data;
+  },
+
 
   async saveConfig(payload: WhatsAppConfigPayload) {
     const response = await api.put('/api/admin/whatsapp/config', payload);
@@ -62,6 +79,20 @@ export const whatsappService = {
 
   async exchangeEmbeddedSignupCode(payload: WhatsAppEmbeddedExchangePayload): Promise<WhatsAppEmbeddedExchangeResponse> {
     const response = await api.post('/api/admin/whatsapp/embedded/exchange', payload);
+    return response.data;
+  },
+
+
+  async disconnectWhatsApp(): Promise<WhatsAppDisconnectResponse> {
+    const response = await api.delete(
+      "/api/admin/whatsapp/disconnect"
+    );
+
+    return response.data;
+  },
+
+  async saveEmbeddedSignup(payload: WhatsAppEmbeddedSignupPayload) {
+    const response = await api.put('/api/admin/whatsapp/global-config', payload);
     return response.data;
   },
 };

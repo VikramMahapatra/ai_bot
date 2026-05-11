@@ -29,6 +29,7 @@ import {
   LinearProgress,
   InputAdornment,
   Tooltip,
+  Snackbar,
 } from "@mui/material";
 
 import { alpha, useTheme } from "@mui/material/styles";
@@ -62,6 +63,7 @@ function TemplateList() {
   const [editItem, setEditItem] = useState<Template | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [success, setSuccess] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [templateTotal, setTemplateTotal] = useState(0);
@@ -86,6 +88,7 @@ function TemplateList() {
 
   const [form, setForm] = useState(emptyTemplateForm);
   const [type, setType] = useState("all");
+  const [syncing, setSyncing] = useState(false);
 
   const formatTemplateName = (name: string) => {
     return name
@@ -135,6 +138,29 @@ function TemplateList() {
     }
   };
 
+
+  const handleSyncWhatsAppTemplates = async () => {
+    try {
+      setSyncing(true);
+
+      const res = await messageTemplateService.syncWhatsAppTemplates();
+
+      setSuccess(
+        res.message || "WhatsApp templates synced",
+      );
+
+      fetchTemplates();
+
+    } catch (error: any) {
+      setError(
+        error?.response?.data?.detail || "Sync failed"
+      );
+
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleCloseDialog = () => {
     setOpen(false);
     setEditItem(null);
@@ -142,7 +168,7 @@ function TemplateList() {
 
   const handleCreate = async () => {
     if (!validateForm()) return;
-
+    setLoading(true);
     try {
       const response = await messageTemplateService.createTemplate(form);
       if (response.success) {
@@ -153,6 +179,8 @@ function TemplateList() {
       }
     } catch {
       setTemplateError("Failed to create template");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -161,6 +189,7 @@ function TemplateList() {
 
     if (!validateForm()) return;
 
+    setLoading(true);
     try {
       const response = await messageTemplateService.updateTemplate(
         editItem.id,
@@ -174,6 +203,8 @@ function TemplateList() {
       }
     } catch {
       setTemplateError("Failed to update template");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -348,58 +379,93 @@ function TemplateList() {
                 Manage SMS, WhatsApp & Email templates
               </Typography>
             </Box>
-
-            <Box display="flex" alignItems="center" gap={2}>
+          </Box>
+        </Paper>
+        <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            {/* SEARCH */}
+            <Grid item xs={12} md={5}>
               <TextField
+                fullWidth
                 size="small"
                 label="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                sx={{ width: 260 }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <SearchIcon fontSize="small" />
+                      <IconButton>
+                        <SearchIcon />
+                      </IconButton>
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
+            </Grid>
+            <Grid item xs={12} md={2}>
               <TextField
                 select
+                fullWidth
                 label="Type"
                 size="small"
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                sx={{ width: 200 }}
               >
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="sms">SMS</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
                 <MenuItem value="email">Email</MenuItem>
               </TextField>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Stack direction="row" spacing={2}>
 
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => handleOpen()}
-              >
-                Create Template
-              </Button>
-            </Box>
-          </Box>
+                <Button
+                  variant="outlined"
+                  onClick={handleSyncWhatsAppTemplates}
+                  disabled={syncing}
+                >
+                  {syncing ? "Syncing..." : "Sync WhatsApp"}
+                </Button>
+
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => handleOpen()}
+                >
+                  Create Template
+                </Button>
+
+              </Stack>
+            </Grid>
+          </Grid>
         </Paper>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
+        <Snackbar
+          open={Boolean(success || error)}
+          autoHideDuration={4000}
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        >
+          <Alert
+            severity={error ? "error" : "success"}
+            onClose={() => {
+              setError("");
+              setSuccess("");
+            }}
+            sx={{
+              borderRadius: "14px",
+              boxShadow: (theme) =>
+                `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+                }20`,
+            }}
+          >
+            {error || success}
           </Alert>
-        )}
-
-        {loading && (
-          <Box mb={3}>
-            <LinearProgress sx={{ borderRadius: 1.2 }} />
-          </Box>
-        )}
+        </Snackbar>
 
         {/* TABLE */}
         <TableContainer component={Paper}>
@@ -496,12 +562,17 @@ function TemplateList() {
         </TableContainer>
 
         {/* CREATE / EDIT MODAL */}
-        <Dialog open={open} fullWidth maxWidth="sm">
+        <Dialog open={open} fullWidth maxWidth="md">
           <DialogTitle>
             {editItem ? "Edit Template" : "Create Template"}
           </DialogTitle>
 
           <DialogContent>
+            {templateError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {templateError}
+              </Alert>
+            )}
             <Stack spacing={2} mt={1}>
               <TextField
                 label="Template Name"
@@ -583,7 +654,7 @@ function TemplateList() {
               <TextField
                 label="Message Content"
                 multiline
-                rows={4}
+                rows={12}
                 fullWidth
                 InputLabelProps={{ shrink: true }}
                 placeholder={
@@ -618,6 +689,7 @@ function TemplateList() {
             <Button
               variant="contained"
               onClick={editItem ? handleUpdate : handleCreate}
+              disabled={loading}
             >
               {editItem ? "Update" : "Create"}
             </Button>

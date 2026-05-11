@@ -1,6 +1,6 @@
-from pydantic import BaseModel, field_validator
-from typing import List, Optional
-from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Literal, Optional
+from datetime import date, datetime
 
 from app.enums.campaign_reply_modes import CampaignInstantReplyMode
 
@@ -133,3 +133,16 @@ class ContactByIdsRequest(BaseModel):
 class CampaignLookupParameters(BaseModel):
     search: Optional[str] = None
     agent_id: Optional[int] = None
+
+
+class CampaignListParams(BaseModel):
+    search: Optional[str] = None
+    skip: int = Field(default=0, ge=0)
+    limit: int = Field(default=10, ge=1, le=100)
+
+    from_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+    status: Optional[str] = None  # Active | Paused | Draft | Cancelled
+
+    sort_by: Literal["newest", "oldest"] = "newest"

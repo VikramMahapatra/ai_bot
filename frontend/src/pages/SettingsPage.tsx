@@ -125,6 +125,7 @@ const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [whatsappData, setWhatsappData] = useState<any>(null);
 
   useEffect(() => {
     const loadOrgSettings = async () => {
@@ -171,7 +172,28 @@ const SettingsPage: React.FC = () => {
     };
 
     loadTwilioConfig();
+    loadWhatsAppConfig();
   }, []);
+
+
+  const loadWhatsAppConfig = async () => {
+    try {
+      const config = await whatsappService.getGlobalConfig();
+
+      if (config.configured) {
+        setWhatsappData({
+          phone_number_id: config.phone_number_id || '',
+          waba_id: config.waba_id || '',
+          business_phone_number: config.business_phone_number || '',
+          is_active: config.is_active ?? true,
+        });
+      }
+    } catch {
+      // Keep wizard moving even if config preload fails
+    }
+  };
+
+
 
   const handleTwilioFieldChange = <K extends keyof TwilioFormState>(
     key: K,
@@ -231,11 +253,124 @@ const SettingsPage: React.FC = () => {
   };
 
   // START WHATSAPP
+  useEffect(() => {
+
+    const onMetaMessage = async (
+      event: MessageEvent
+    ) => {
+
+      if (
+        event.origin !==
+        "https://www.facebook.com" &&
+        event.origin !==
+        "https://web.facebook.com"
+      ) {
+        return;
+      }
+
+      let payload: any;
+
+      try {
+
+        payload =
+          typeof event.data === "string"
+            ? JSON.parse(event.data)
+            : event.data;
+
+      } catch {
+        return;
+      }
+
+      if (
+        payload?.type !==
+        "WA_EMBEDDED_SIGNUP"
+      ) {
+        return;
+      }
+
+      if (
+        payload?.event !== "FINISH"
+      ) {
+        return;
+      }
+
+      const data = payload?.data;
+
+      if (!data?.phone_number_id || !data?.waba_id) {
+        return;
+      }
+
+      try {
+
+        setLoading(true);
+
+        await whatsappService.saveEmbeddedSignup({
+          phone_number_id: data.phone_number_id,
+          waba_id: data.waba_id
+        });
+
+        setSuccess(
+          "WhatsApp configuration saved successfully"
+        );
+
+      } catch (err: any) {
+        setError(
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Failed to save WhatsApp config"
+        );
+
+      } finally {
+
+        setLoading(false);
+
+      }
+    };
+
+    window.addEventListener(
+      "message",
+      onMetaMessage
+    );
+
+    return () =>
+      window.removeEventListener(
+        "message",
+        onMetaMessage
+      );
+
+  }, []);
+
+  const handleMetaAuthCode = async (code: string) => {
+    setLoading(true);
+    try {
+      const exchange = await whatsappService.exchangeEmbeddedSignupCode({
+        code,
+        auto_save: true,
+      });
+
+      await loadWhatsAppConfig();
+
+      setSuccess(
+        exchange.saved
+          ? 'WhatsApp connected and configuration saved via Meta wizard.'
+          : 'Meta wizard completed. Review the imported values before saving.'
+      );
+    }
+    catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to exchange Meta signup code"
+      );
+    } finally {
+      setLoading(false);
+    }
+
+  };
 
   const handleConnectWhatsApp = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
       const appId = import.meta.env.VITE_META_APP_ID;
       const configId = import.meta.env.VITE_META_EMBEDDED_SIGNUP_CONFIG_ID;
 
@@ -248,18 +383,28 @@ const SettingsPage: React.FC = () => {
       const code = await launchWhatsAppEmbeddedSignup(configId);
 
       // Send to backend
-      const exchange = await whatsappService.exchangeEmbeddedSignupCode({
-        code,
-        auto_save: true,
-      });
-
-      console.log(exchange)
-
-      setSuccess("WhatsApp Connected Successfully");
+      handleMetaAuthCode(code);
 
     } catch (error: any) {
       console.error(error);
       setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    try {
+      setLoading(true);
+      await whatsappService.disconnectWhatsApp();
+      setWhatsappData(null);
+      setSuccess("WhatsApp disconnected successfully");
+
+    } catch (error: any) {
+      setError(
+        error?.response?.data?.detail ||
+        error.message
+      );
     } finally {
       setLoading(false);
     }
@@ -1226,27 +1371,64 @@ const SettingsPage: React.FC = () => {
                           <Typography fontWeight={600}>WhatsApp</Typography>
                           <Typography
                             variant="caption"
-                            color="text.secondary"
+                            color={whatsappData ? "success.main" : "text.secondary"}
                           >
-                            Not Connected
+                            {whatsappData
+                              ? `Connected • ${whatsappData.business_phone_number || ""}`
+                              : "Not Connected"}
                           </Typography>
                         </Box>
                       </Box>
+                      {whatsappData ? (
+                        <Stack direction="row" spacing={1}>
 
-                      <Button
-                        variant="contained"
-                        onClick={handleConnectWhatsApp}
-                        disabled={loading}
-                        sx={{
-                          background: "#25D366",
-                          "&:hover": { background: "#1ebe5d" }
-                        }}
-                      >
-                        {loading ? "Connecting..." : "Connect WhatsApp"}
-                      </Button>
+                          <Button
+                            variant="contained"
+                            disabled
+                            sx={{
+                              background: "#4caf50",
+                              "&:hover": {
+                                background: "#43a047"
+                              }
+                            }}
+                          >
+                            Connected
+                          </Button>
+
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            onClick={handleDisconnectWhatsApp}
+                            disabled={loading}
+                          >
+                            Disconnect
+                          </Button>
+
+                        </Stack>
+                      ) : (
+                        <Button
+                          variant="contained"
+                          onClick={handleConnectWhatsApp}
+                          disabled={loading}
+                          sx={{
+                            background: "#25D366",
+                            "&:hover": {
+                              background: "#1ebe5d"
+                            }
+                          }}
+                        >
+                          {loading ? "Connecting..." : "Connect WhatsApp"}
+                        </Button>
+                      )}
                     </Box>
                   </Card>
-
+                  {whatsappData && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      WhatsApp Business connected successfully
+                      {whatsappData.business_name &&
+                        ` • ${whatsappData.business_name}`}
+                    </Alert>
+                  )}
                   <Typography
                     variant="subtitle2"
                     sx={{ fontWeight: 600, mb: 2 }}

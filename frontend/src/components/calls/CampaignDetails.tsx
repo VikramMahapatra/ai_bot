@@ -224,7 +224,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     status: "All",
     sentiment: "All",
     evaluation: "All",
-    is_lead_qualified: "All"
+    is_lead_qualified: "All",
+    sort_by: "oldest"
   });
 
   const loadData = async () => {
@@ -284,6 +285,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         updatedFilters.evaluation !== "All"
           ? updatedFilters.evaluation
           : undefined,
+      is_lead_qualified:
+        updatedFilters.is_lead_qualified !== "All"
+          ? updatedFilters.is_lead_qualified
+          : undefined,
+      sort_by:
+        updatedFilters.sort_by
+          ? updatedFilters.sort_by
+          : "oldest",
     });
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);

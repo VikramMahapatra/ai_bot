@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, time
 import json
 import logging
 import re
@@ -14,6 +14,7 @@ from app.models.campaign_schedules import CampaignSchedule
 from app.models.call_campaigns import CallCampaign
 from app.schemas.call_campaign import (
     CampaignCreate,
+    CampaignListParams,
     CampaignLookupParameters,
     CampaignStatusUpdate,
     CampaignUpdate,
@@ -67,6 +68,8 @@ def get_campaign_stats(db: Session, organization_id: int):
         .group_by(CallCampaign.status)
         .all()
     )
+
+    print(stats)
 
     result = {
         "totalCampaigns": 0,
@@ -122,12 +125,12 @@ def list_campaigns(
     background_tasks: BackgroundTasks,
     db: Session,
     organization_id: int,
-    search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 10,
+    params: CampaignListParams,
 ):
     ###SYNC FROM ECHOLEAD
-    background_tasks.add_task(sync_campaigns, db, organization_id, search, skip, limit)
+    background_tasks.add_task(
+        sync_campaigns, db, organization_id, params.search, params.skip, params.limit
+    )
 
     contact_count_subq = (
         db.query(
@@ -163,20 +166,34 @@ def list_campaigns(
         )
     )
 
+    if params.status:
+        base_query = base_query.filter(CallCampaign.status == params.status)
+
     # SEARCH FILTER
-    if search:
-        base_query = base_query.filter(CallCampaign.name.ilike(f"%{search}%"))
+    if params.search:
+        base_query = base_query.filter(CallCampaign.name.ilike(f"%{params.search}%"))
+
+    # FROM DATE → start of day
+    if params.from_date:
+        from_datetime = datetime.combine(params.from_date, time.min)
+        base_query = base_query.filter(CallCampaign.created_at >= from_datetime)
+
+    # END DATE → end of day
+    if params.end_date:
+        end_datetime = datetime.combine(params.end_date, time.max)
+        base_query = base_query.filter(CallCampaign.created_at <= end_datetime)
 
     # TOTAL COUNT (before pagination)
     total = base_query.count()
 
+    # SORT
+    if params.sort_by == "oldest":
+        base_query = base_query.order_by(CallCampaign.created_at.asc())
+    else:
+        base_query = base_query.order_by(CallCampaign.created_at.desc())
+
     # PAGINATION
-    campaigns = (
-        base_query.order_by(CallCampaign.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    campaigns = base_query.offset(params.skip).limit(params.limit).all()
 
     rows = []
     for campaign in campaigns:
@@ -201,7 +218,10 @@ def list_campaigns(
             }
         )
 
-    return {"items": rows, "pagination": {"total": total, "skip": skip, "limit": limit}}
+    return {
+        "items": rows,
+        "pagination": {"total": total, "skip": params.skip, "limit": params.limit},
+    }
 
 
 def get_campaign(db: Session, campaign_id: int):
@@ -1387,7 +1407,7 @@ def campaign_lookup(
     if params.agent_id:
         query = query.filter(CallCampaign.agent_id == params.agent_id)
 
-    campaigns = query.order_by(CallCampaign.name.asc()).all()
+    campaigns = query.order_by(CallCampaign.created_at.desc()).all()
 
     return [{"id": campaign.id, "name": campaign.name} for campaign in campaigns]
 

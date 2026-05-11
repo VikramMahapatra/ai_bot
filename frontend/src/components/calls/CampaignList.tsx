@@ -21,7 +21,9 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions
+    DialogActions,
+    MenuItem,
+    Collapse
 } from "@mui/material";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -40,7 +42,7 @@ import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import CancelIcon from "@mui/icons-material/Cancel";
-
+import FilterListIcon from "@mui/icons-material/FilterList";
 import { callCampaignService, Campaign, CampaignStats } from "../../services/callCampaignService";
 import { useEffect, useState } from "react";
 
@@ -49,6 +51,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import CloseIcon from "@mui/icons-material/Close";
 import { titleCase } from "../Common/StatusChips";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 
 interface Props {
     onAddCampaign: (showError: (message: string) => void) => void;
@@ -95,7 +98,8 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [search, setSearch] = useState("");
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-
+    const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
+    const [showFilters, setShowFilters] = useState(false);
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState<
@@ -103,6 +107,9 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     >(null);
     const formatDisplayDate = useDateFormatter();
 
+    const [fromDate, setFromDate] = useState<string | null>(null);
+    const [endDate, setEndDate] = useState<string | null>(null);
+    const [status, setStatus] = useState<string>("All");
 
     const openDrawer = (campaign: Campaign) => {
         scrollToTop();
@@ -129,8 +136,12 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
         setLoading(true);
         const data = await callCampaignService.allCampaigns({
             search: search || undefined,
+            status: status !== "All" ? status : undefined,
+            from_date: fromDate,
+            end_date: endDate,
             skip: campaignPage * campaignRowsPerPage,
             limit: campaignRowsPerPage,
+            sort_by: sortBy
         });
         setCampaigns(data.items || []);
         setCampaignTotal(data.pagination?.total || 0);
@@ -155,7 +166,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
             }
         };
         run();
-    }, [search, campaignPage, campaignRowsPerPage]);
+    }, [search, sortBy, status, fromDate, endDate, campaignPage, campaignRowsPerPage]);
 
 
     const handlePause = async (campaign: Campaign) => {
@@ -326,7 +337,6 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     )}
                 </Stack>
             )}
-
             <Grid container spacing={3} mb={3}>
 
                 {/* TOTAL CAMPAIGNS */}
@@ -407,51 +417,146 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
             </Grid>
 
-            {/* CAMPAIGN LIST */}
-            <Grid container spacing={2} mb={2} alignItems="center">
+            <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
 
-                {/* SEARCH */}
-                <Grid item xs={12} md={6}>
-                    <TextField
-                        fullWidth
-                        size="small"
-                        label="Search"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        InputProps={{
-                            endAdornment: (
-                                <InputAdornment position="end">
-                                    <IconButton>
-                                        <SearchIcon />
-                                    </IconButton>
-                                </InputAdornment>
-                            )
-                        }}
-                    />
-                </Grid>
+                {/* CAMPAIGN LIST */}
+                <Grid container spacing={2} alignItems="center">
 
-                {/* BUTTON */}
-                <Grid
-                    item
-                    xs={12}
-                    md={6}
-                    display="flex"
-                    justifyContent={{ xs: "flex-start", md: "flex-end" }}
-                >
-                    <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<AddIcon />}
-                        onClick={() => {
-                            scrollToTop();
-                            onAddCampaign(setError);
-                        }}
+                    {/* SEARCH */}
+                    <Grid item xs={12} md={5}>
+                        <TextField
+                            fullWidth
+                            size="small"
+                            label="Search"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            InputProps={{
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton>
+                                            <SearchIcon />
+                                        </IconButton>
+                                    </InputAdornment>
+                                )
+                            }}
+                        />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                        <TextField
+                            size="small"
+                            select
+                            fullWidth
+                            label="Sort By"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                        >
+                            <MenuItem value="newest">Newest</MenuItem>
+                            <MenuItem value="oldest">Oldest</MenuItem>
+                        </TextField>
+                    </Grid>
+                    <Grid item xs={6} md={2}>
+                        <Button
+                            fullWidth
+                            variant={showFilters ? "contained" : "outlined"}
+                            startIcon={<FilterListIcon />}
+                            onClick={() => setShowFilters((prev) => !prev)}
+                        >
+                            Filters
+                        </Button>
+                    </Grid>
+
+                    {/* BUTTON */}
+                    <Grid
+                        item
+                        xs={12}
+                        md={3}
+                        display="flex"
                     >
-                        Create Campaign
-                    </Button>
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<AddIcon />}
+                            onClick={() => {
+                                scrollToTop();
+                                onAddCampaign(setError);
+                            }}
+                        >
+                            Create Campaign
+                        </Button>
+                    </Grid>
+
+
                 </Grid>
 
-            </Grid>
+                <Collapse in={showFilters}>
+                    <Grid container spacing={2} mt={1}>
+                        <Grid item xs={12} sm={6} md={3}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Status"
+                                value={status}
+                                onChange={(e) =>
+                                    setStatus(e.target.value)
+                                }
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="draft">Draft</MenuItem>
+                                <MenuItem value="pending">Pending</MenuItem>
+                                <MenuItem value="paused">Paused</MenuItem>
+                                <MenuItem value="completed">Completed</MenuItem>
+                                <MenuItem value="failed">Failed</MenuItem>
+                                <MenuItem value="scheduled">Scheduled</MenuItem>
+                                <MenuItem value="cancelled">Cancelled</MenuItem>
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Start Date"
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => setFromDate(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                                InputProps={{
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <CalendarTodayIcon fontSize="small" />
+                                        </InputAdornment>
+                                    )
+                                }}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} md={1} textAlign="center">
+                            <Box mt={1}>To</Box>
+                        </Grid>
+
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="End Date"
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                                InputProps={{
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <CalendarTodayIcon fontSize="small" />
+                                        </InputAdornment>
+                                    )
+                                }}
+                            />
+                        </Grid>
+
+                    </Grid>
+                </Collapse>
+            </Paper>
+
 
             <Paper>
 
