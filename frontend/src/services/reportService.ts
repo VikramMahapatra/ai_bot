@@ -106,6 +106,7 @@ export interface VoiceCampaignReportItem {
   funnel_stage: string | null;
   lead_outcome: string | null;
   created_at: string | null;
+  campaign_start_date: string | null;
   product_name: string | null;
 }
 
@@ -199,8 +200,28 @@ export const reportService = {
     has_lead?: number;
     sort_by?: string;
     sort_order?: 'asc' | 'desc';
+    search?: string;
+    sentiments?: string[];
+    outcome?: string;
   }): Promise<DetailedReport> {
-    const response = await api.get('/api/reports/conversations', { params });
+    const queryParams = new URLSearchParams();
+
+    if (params.skip !== undefined) queryParams.append('skip', String(params.skip));
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit));
+    if (params.widget_id) queryParams.append('widget_id', params.widget_id);
+    if (params.min_tokens) queryParams.append('min_tokens', String(params.min_tokens));
+    if (params.max_tokens) queryParams.append('max_tokens', String(params.max_tokens));
+    if (params.has_lead) queryParams.append('has_lead', String(params.has_lead));
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order);
+    if (params.start_date) queryParams.append('start_date', params.start_date);
+    if (params.end_date) queryParams.append('end_date', params.end_date);
+    if (params.outcome) queryParams.append('outcome', params.outcome);
+    if (params.search) queryParams.append('search', params.search);
+    (params.sentiments || []).forEach((item) => {
+      if (item) queryParams.append('sentiments', item);
+    });
+    const response = await api.get('/api/reports/conversations', { params: queryParams });
     return response.data;
   },
 
@@ -646,11 +667,12 @@ export const reportService = {
 
   async exportVoiceCampaignToPDF(
     items: VoiceCampaignReportItem[],
+    formatDate: (date: string | Date | null) => string,
     summary?: VoiceCampaignReportSummary | null,
-    title: string = 'Voice Campaign Report'
+    title: string = 'Voice Campaign Report',
   ): Promise<void> {
     const doc = new jsPDF({ orientation: 'landscape' });
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDate(new Date());
     const totalCall = summary?.total_calls ?? items.length;
     const successfulAttempt = summary?.successful_attempts ?? 0;
     const successRate = totalCall > 0 ? ((successfulAttempt / totalCall) * 100).toFixed(1) : '0.0';
@@ -681,7 +703,7 @@ export const reportService = {
         item.funnel_stage || '-',
         normalizeLeadOutcome(item.lead_outcome),
         item.product_name || '-',
-        toDisplayDateTime(item.created_at),
+        formatDate(item.created_at),
       ]),
       styles: {
         fontSize: 7,
@@ -715,13 +737,14 @@ export const reportService = {
 
   async exportVoiceCampaignToExcel(
     items: VoiceCampaignReportItem[],
+    formatDate: (date: string | Date | null) => string,
     summary?: VoiceCampaignReportSummary | null,
     fileName: string = 'voice_campaign_report'
   ): Promise<void> {
     const totalCall = summary?.total_calls ?? items.length;
     const successfulAttempt = summary?.successful_attempts ?? 0;
     const successRate = totalCall > 0 ? Number(((successfulAttempt / totalCall) * 100).toFixed(2)) : 0;
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDate(new Date());
 
     const headerRows: (string | number)[][] = [
       ['Voice Campaign Report'],
@@ -733,7 +756,7 @@ export const reportService = {
       ['Success Rate (%)', successRate, 'Sum of Call Duration', summary?.sum_call_duration_label || '0s'],
       ['Campaign Duration', summary?.campaign_duration_label || '0s', '', ''],
       [],
-      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name', 'Campaign Source', 'Funnel Stage', 'Lead Outcome', 'Product', 'Created At'],
+      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name','Campaign Start Date', 'Campaign Source','Lead Sentiment', 'Funnel Stage', 'Lead Outcome', 'Product', 'Lead Created Date'],
     ];
 
     const detailRows = items.map((item) => ([
@@ -743,11 +766,13 @@ export const reportService = {
       item.company || '-',
       item.organization_name || '-',
       item.campaign_name || '-',
+      formatDate(item.campaign_start_date),
       item.campaign_source || '-',
+      item.lead_outcome || '-',
       item.funnel_stage || '-',
       normalizeLeadOutcome(item.lead_outcome),
       item.product_name || '-',
-      toDisplayDateTime(item.created_at),
+      formatDate(item.created_at),
     ]));
     const footerRows: (string | number)[][] = [[], ['Powered by: Zentrixel']];
 

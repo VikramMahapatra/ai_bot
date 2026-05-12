@@ -113,6 +113,18 @@ export const workflowService = {
         return response.data;
     },
 
+    async updateWorkflowStatus(
+        templateId: number,
+        is_active: boolean
+    ): Promise<WorkflowUpdateResponse> {
+        const response = await api.patch<WorkflowUpdateResponse>(
+            `/api/workflows/${templateId}/status`,
+            { is_active }
+        );
+
+        return response.data;
+    },
+
     async getWorkflow(workflow_id: number): Promise<WorkflowBuilderResponse> {
         const response = await api.get(`/api/workflows/${workflow_id}`);
         return response.data;

@@ -24,6 +24,12 @@ import {
   Paper,
   Drawer,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  TableContainer,
+  CircularProgress,
+  DialogActions,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -37,21 +43,26 @@ import {
   CallLog,
   CallLogFilterState,
   callLogService,
+  ContactType,
   SentimentType,
   StatusType,
 } from "../../services/callLogService";
 import CallInsightsDrawer from "./CallInsightsDrawer";
 import InsightsIcon from "@mui/icons-material/Insights";
-import { formatDateTime } from "../../utils/dateUtils";
 import CallLogFilterSection from "./CallLogFilterSection";
 import EllipsisCell from "../EllipsisCell";
-import { ExportToExcel } from "../../utils/callLogExport";
-import PeopleIcon from '@mui/icons-material/People';
+import { ExportContactToExcel, ExportToExcel } from "../../utils/callLogExport";
+import PeopleIcon from "@mui/icons-material/People";
 import CallIcon from "@mui/icons-material/Call";
-import ReplayIcon from '@mui/icons-material/Replay';
-import ScheduleIcon from '@mui/icons-material/Schedule';
+import ReplayIcon from "@mui/icons-material/Replay";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import CloseIcon from "@mui/icons-material/Close";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
+import { useAuth } from "../../context/AuthContext";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
-import PersonIcon from "@mui/icons-material/Person";
+import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import { formatDate } from "../../utils/dateUtils";
 
 interface Props {
   campaignId: number;
@@ -78,6 +89,9 @@ const getStatusBg = (status: string) => {
     case "running":
       return "#dcfce7";
 
+    case "scheduled":
+      return "#fef3c7";
+
     case "paused":
       return "#fef3c7";
 
@@ -86,6 +100,9 @@ const getStatusBg = (status: string) => {
 
     case "cancelled":
       return "#fee2e2"; // light red
+
+    case "failed":
+      return "#fee2e2";
 
     default:
       return "#f3f4f6";
@@ -101,11 +118,17 @@ const getStatusText = (status: string) => {
     case "paused":
       return "#b45309";
 
+    case "scheduled":
+      return "#b45309";
+
     case "completed":
       return "#1d4ed8";
 
     case "cancelled":
       return "#b91c1c"; // dark red
+
+    case "failed":
+      return "#b91c1c";
 
     default:
       return "#374151";
@@ -183,6 +206,15 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [callLogRowsPerPage, setCallLogRowsPerPage] = useState(10);
   const [openInsights, setOpenInsights] = useState(false);
   const [openDetail, setOpenDetail] = useState(false);
+  const formatDisplayDate = useDateFormatter()
+  const { user } = useAuth()
+
+  const [openContactsDialog, setOpenContactsDialog] = useState(false);
+  const [contactType, setContactType] = useState<ContactType>("all");
+
+  const [openWorkflowDrawer, setOpenWorkflowDrawer] = useState(false);
+  const [workflowHistory, setWorkflowHistory] = useState<any[]>([]);
+
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -192,7 +224,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     status: "All",
     sentiment: "All",
     evaluation: "All",
-    is_lead_qualified: "All"
+    is_lead_qualified: "All",
+    sort_by: "oldest"
   });
 
   const loadData = async () => {
@@ -256,7 +289,10 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         updatedFilters.is_lead_qualified !== "All"
           ? updatedFilters.is_lead_qualified
           : undefined,
-
+      sort_by:
+        updatedFilters.sort_by
+          ? updatedFilters.sort_by
+          : "oldest",
     });
     setCallLogs(data.items || []);
     setCallLogTotal(data.pagination?.total || 0);
@@ -281,14 +317,29 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         sentiment: filters.sentiment !== "All" ? filters.sentiment : undefined,
         evaluation:
           filters.evaluation !== "All" ? filters.evaluation : undefined,
-        is_lead_qualified:
-          filters.is_lead_qualified !== "All" ? filters.is_lead_qualified : undefined,
       });
 
-      ExportToExcel(data, "Campaign_Call_Logs");
+      ExportToExcel(data, "Campaign_Call_Logs", user?.timezone);
     } catch (error) {
       console.error("Export failed", error);
     }
+  };
+
+  const handleOpen = (type: ContactType) => {
+    setContactType(type);
+    setOpenContactsDialog(true);
+  };
+
+  const openWorkflowHistory = async (contactId?: number) => {
+    if (!contactId) return;
+
+    const data = await callCampaignService.getWorkflowHistory(
+      campaignId,
+      contactId
+    );
+
+    setWorkflowHistory(data);
+    setOpenWorkflowDrawer(true);
   };
 
   const titleCase = (value: string) =>
@@ -335,7 +386,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
 
             <Box display="flex" gap={2} mt={1}>
               <Typography variant="body2">
-                Created {formatDateTime(campaign?.created_at)}
+                Created {formatDisplayDate(campaign?.created_at)}
               </Typography>
 
               <Chip
@@ -345,14 +396,24 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   borderRadius: "999px",
                   fontWeight: 600,
                   backgroundColor: getStatusBg(campaign?.status),
-                  color: getStatusText(campaign?.status)
+                  color: getStatusText(campaign?.status),
                 }}
                 variant="outlined"
               />
             </Box>
+
+            {/* ✅ NEW: Status Note */}
+            {campaign?.stop_reason && (
+              <Typography
+                variant="body2"
+                sx={{ mt: 0.5, color: "text.secondary" }}
+              >
+                Status Note - {campaign.stop_reason}
+              </Typography>
+            )}
           </Box>
         </Box>
-        {["pending", "scheduled"].includes(campaign?.status) && (
+        {["draft"].includes(campaign?.status) && (
           <Button variant="outlined" onClick={() => onEdit(campaignId)}>
             Edit
           </Button>
@@ -361,21 +422,43 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       {/* STATS */}
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("all")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Total Contacts</Typography>
                 <PeopleIcon color="primary" />
               </Box>
+
               <Typography variant="h5" mt={1}>
                 {campaign?.total_contacts || 0}
+              </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+                Click to view all contacts
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("initiated")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Initiated Calls</Typography>
@@ -384,32 +467,59 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <Typography variant="h5" mt={1}>
                 {campaign?.attempted_calls || 0}
               </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+                Click to view initiated calls
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("rescheduled")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Rescheduled Calls</Typography>
-                <ReplayIcon color="primary" />
+                <Typography variant="subtitle2">Follow-up Calls</Typography>
+                <EventRepeatIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {campaign?.rescheduled_calls || 0}
+              </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+                Click to view follow-up calls
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={3}>
-          <Card>
+          <Card
+            onClick={() => handleOpen("pending")}
+            sx={{
+              cursor: "pointer",
+              transition: "0.2s",
+              "&:hover": {
+                boxShadow: 6,
+              },
+            }}
+          >
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Pending Scheduled</Typography>
+                <Typography variant="subtitle2">Pending Calls</Typography>
                 <ScheduleIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
                 {campaign?.pending_scheduled_calls || 0}
+              </Typography>
+              <Typography variant="caption" mt={1} color="text.secondary">
+                Click to view pending calls
               </Typography>
             </CardContent>
           </Card>
@@ -421,7 +531,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         <CardContent>
           <Typography fontWeight="bold">Campaign Progress</Typography>
           <Typography variant="body2" mb={1}>
-            {campaign?.attempted_calls || 0} of {campaign?.total_calls || 0}{" "}
+            {campaign?.attempted_calls || 0} of {campaign?.total_contacts || 0}{" "}
             contacts reached
           </Typography>
           <LinearProgress variant="determinate" value={progress} />
@@ -512,7 +622,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </Typography>
                   <Typography fontWeight={600}>
                     {campaign?.scheduled_at
-                      ? formatDateTime(campaign?.scheduled_at)
+                      ? formatDate(campaign?.scheduled_at)
                       : "-"}
                   </Typography>
                 </Grid>
@@ -559,75 +669,131 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             </Box>
           )}
 
-          {/* INSTANT REPLY */}
+
+
+          {/* Workflow & INSTANT REPLY */}
           {(() => {
             const irRows = getInstantReplyDetailRows(
               campaign?.instant_reply_templates,
             );
+
+            const validRows = irRows.filter(
+              (r) => r.name && r.name !== "—"
+            );
+
             const modes: string[] = Array.isArray(campaign?.instant_reply_modes)
               ? campaign.instant_reply_modes
               : [];
-            const showInstantReply =
-              campaign?.instant_reply || modes.length > 0 || irRows.length > 0;
-            if (!showInstantReply) return null;
+
             return (
               <Box
                 sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  bgcolor: "grey.50",
+                  display: "flex",
+                  gap: 2,
                   mt: 2,
+                  flexWrap: { xs: "wrap", md: "nowrap" },
                 }}
               >
+                {/* WORKFLOW */}
                 <Box
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  flexWrap="wrap"
-                  gap={1}
-                  mb={1.5}
+                  sx={{
+                    flex: 1,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: "grey.50",
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                  }}
                 >
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Instant reply
+                  <Typography variant="subtitle2" color="text.secondary" mb={1.5}>
+                    Workflow
                   </Typography>
-                  {modes.length ? (
-                    <Box display="flex" gap={0.75} flexWrap="wrap">
-                      {modes.map((m) => (
-                        <Chip
-                          key={m}
-                          size="small"
-                          label={instantReplyChannelLabel(m)}
-                        />
+
+                  <Typography variant="caption" color="text.secondary">
+                    Follow Workflow Template
+                  </Typography>
+
+                  <Typography
+                    fontWeight={600}
+                    color={campaign?.workflow_template_name ? "text.primary" : "text.secondary"}
+                  >
+                    {campaign?.workflow_template_name || "No workflow selected"}
+                  </Typography>
+                </Box>
+
+                {/* INSTANT REPLY */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: "grey.50",
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 2,
+                  }}
+                >
+                  {/* LEFT */}
+                  <Box sx={{ minWidth: 160, flexShrink: 0 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Instant reply
+                    </Typography>
+
+                    {modes.length > 0 ? (
+                      <Box display="flex" gap={0.75} flexWrap="wrap" mt={1}>
+                        {modes.map((m) => (
+                          <Chip
+                            key={m}
+                            size="small"
+                            label={instantReplyChannelLabel(m)}
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" mt={1}>
+                        No channels selected
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {/* RIGHT */}
+                  {validRows.length > 0 ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 2,
+                        flex: 1,
+                      }}
+                    >
+                      {validRows.map((row) => (
+                        <Box
+                          key={row.channelKey}
+                          sx={{
+                            flex: "1 1 120px",
+                            maxWidth: 200,
+                            minWidth: 120,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            {row.channelLabel}
+                          </Typography>
+
+                          <Typography fontWeight={600} noWrap>
+                            {row.name}
+                          </Typography>
+                        </Box>
                       ))}
                     </Box>
-                  ) : null}
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                      No instant reply templates selected
+                    </Typography>
+                  )}
                 </Box>
-                {irRows.length ? (
-                  <Box
-                    display="flex"
-                    gap={2}
-                    sx={{
-                      flexWrap: { xs: "wrap", md: "nowrap" },
-                      "& > *": {
-                        flex: "1 1 0",
-                        minWidth: { xs: "100%", sm: 260 },
-                      },
-                    }}
-                  >
-                    {irRows.map((row) => (
-                      <Box key={row.channelKey}>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.channelLabel}
-                        </Typography>
-                        <Typography fontWeight={600}>{row.name}</Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No instant reply templates configured.
-                  </Typography>
-                )}
               </Box>
             );
           })()}
@@ -773,6 +939,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                           label={titleCase(log.status)}
                           color={getStatusColor(log.status) as any}
                           size="small"
+                          variant="outlined"
                         />
                       </TableCell>
                       <TableCell>
@@ -787,6 +954,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                           {formatEndedReason(log.ended_reason)}
                         </Box>
                       </TableCell>
+
                       <TableCell>
                         <OutcomeChip value={log.sentiment} />
                       </TableCell>
@@ -797,9 +965,16 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         {log.duration ? `${log.duration} sec` : "N/A"}
                       </TableCell>
                       <TableCell>
-                        {log.date ? formatDateTime(log.date) : "-"}
+                        {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
                       <TableCell>
+                        {log.follow_up_count > 0 && (
+                          <Tooltip title="View Follow Up">
+                            <IconButton onClick={() => openWorkflowHistory(log.contact_id)}>
+                              <EventRepeatIcon color="primary" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="View Insights">
                           <IconButton
                             onClick={() => {
@@ -851,6 +1026,194 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         onClose={() => setOpenInsights(false)}
         data={selectedCall}
       />
+
+      <ContactsDialog
+        campaign_id={campaignId}
+        open={openContactsDialog}
+        onClose={() => setOpenContactsDialog(false)}
+        type={contactType}
+      />
+
+      <WorkflowHistoryDrawer
+        open={openWorkflowDrawer}
+        onClose={() => setOpenWorkflowDrawer(false)}
+        data={workflowHistory}
+      />
     </Box>
+  );
+}
+
+interface ContactsDialogProps {
+  campaign_id: number;
+  open: boolean;
+  onClose: () => void;
+  type: ContactType;
+}
+
+function ContactsDialog({
+  campaign_id,
+  open,
+  onClose,
+  type,
+}: ContactsDialogProps) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const formatDisplayDate = useDateFormatter()
+
+  useEffect(() => {
+    if (open) {
+      setData([]);
+      setError(null);
+      fetchData();
+    }
+  }, [open, type]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const data = await callLogService.getCampaignContacts(campaign_id, type);
+      setData(data || []);
+    } catch (e) {
+      console.error(e);
+      setData([]);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDialogTitle = (type: ContactType): string => {
+    switch (type) {
+      case "all":
+        return "Total Contacts";
+      case "initiated":
+        return "Initiated Calls";
+      case "rescheduled":
+        return "Follow-up Calls";
+      case "pending":
+        return "Pending Calls";
+      default:
+        return "Data";
+    }
+  };
+
+  const tableConfig: Record<
+    ContactType,
+    { columns: { label: string; key: string }[] }
+  > = {
+    all: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "EMAIL", key: "email" },
+      ],
+    },
+    pending: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "EMAIL", key: "email" },
+      ],
+    },
+    initiated: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "STATUS", key: "status" },
+        { label: "ENDED REASON", key: "ended_reason" },
+        { label: "DATE", key: "date" },
+      ],
+    },
+    rescheduled: {
+      columns: [
+        { label: "NAME", key: "name" },
+        { label: "PHONE", key: "phone" },
+        { label: "STATUS", key: "status" },
+        { label: "ENDED REASON", key: "ended_reason" },
+        { label: "DATE", key: "date" },
+      ],
+    },
+  };
+
+  const handleExport = async () => {
+    try {
+      ExportContactToExcel(data, type, getDialogTitle(type));
+    } catch (error) {
+      console.error("Export failed", error);
+    }
+  };
+
+  const columns = tableConfig[type].columns;
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+      <DialogTitle>{getDialogTitle(type)}</DialogTitle>
+
+      <DialogContent dividers sx={{ p: 0 }}>
+        {loading ? (
+          <Box textAlign="center">
+            <CircularProgress size={20} />
+            <Typography sx={{ mr: 1 }}>Loading data...</Typography>
+          </Box>
+        ) : error ? (
+          <Box textAlign="center" mt={5}>
+            <Typography color="error">{error}</Typography>
+            <Button onClick={fetchData}>Retry</Button>
+          </Box>
+        ) : (
+          <Table stickyHeader>
+            <TableHead>
+              <TableRow>
+                {columns.map((col) => (
+                  <TableCell key={col.key}>{col.label}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {data.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} align="center">
+                    No data available
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.map((row, i) => (
+                  <TableRow key={i}>
+                    {columns.map((col) => (
+                      <TableCell key={col.key}>
+                        {col.key.includes("date")
+                          ? formatDisplayDate(row[col.key])
+                          : (row[col.key] ?? "-")}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={handleExport}
+          disabled={loading || !!error || data.length === 0}
+        >
+          Export to Excel
+        </Button>
+
+        <Button variant="contained" onClick={onClose}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+
   );
 }

@@ -182,16 +182,8 @@ export default function StepEditMode({ data, id, outcomeId, agents, templates }:
                                     <MenuItem value="negative">
                                         Negative
                                     </MenuItem>
-
-                                    <MenuItem value="neutral">
-                                        Neutral
-                                    </MenuItem>
-
                                     <MenuItem value="positive">
                                         Positive
-                                    </MenuItem>
-                                    <MenuItem value="satisfactory">
-                                        Satisfactory
                                     </MenuItem>
                                 </Select>
                             </FormControl>

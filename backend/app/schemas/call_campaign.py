@@ -1,17 +1,20 @@
-from pydantic import BaseModel, field_validator
-from typing import List, Optional
-from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Literal, Optional
+from datetime import date, datetime
 
 from app.enums.campaign_reply_modes import CampaignInstantReplyMode
+
 
 class EmailTemplate(BaseModel):
     subject: Optional[str] = None
     body: Optional[str] = None
-    
+
+
 class InstantReplyTemplates(BaseModel):
     whatsapp: Optional[int] = None
     sms: Optional[int] = None
     email: Optional[int] = None
+
 
 class CampaignCreate(BaseModel):
     name: str
@@ -40,20 +43,20 @@ class CampaignCreate(BaseModel):
     retry_on_no_answer: bool = False
     retry_on_busy: bool = False
     retry_on_voicemail: bool = False
-    
+
     instant_reply: Optional[bool] = False
     instant_reply_modes: Optional[List[CampaignInstantReplyMode]] = []
     instant_reply_templates: Optional[InstantReplyTemplates] = None
-    
+
     workflow_id: Optional[int] = None
-    
+
     @field_validator("max_retry_attempts", "retry_interval", mode="before")
     def empty_string_to_none(cls, v):
         if v == "":
             return None
         return v
-    
-    
+
+
 class CampaignUpdate(BaseModel):
 
     name: Optional[str] = None
@@ -83,34 +86,63 @@ class CampaignUpdate(BaseModel):
     retry_on_no_answer: Optional[bool] = None
     retry_on_busy: Optional[bool] = None
     retry_on_voicemail: Optional[bool] = None
-    
+
     instant_reply: Optional[bool] = None
     instant_reply_modes: Optional[List[CampaignInstantReplyMode]] = []
     instant_reply_templates: Optional[InstantReplyTemplates] = None
-    
+
     @field_validator("max_retry_attempts", "retry_interval", mode="before")
     def empty_string_to_none(cls, v):
         if v == "":
             return None
         return v
-    
+
+
 class CampaignStatusUpdate(BaseModel):
     status: str  # Active | Paused | Draft | Cancelled
-    
-    
+
+
 class ContactCreate(BaseModel):
     name: str | None
     email: str | None
     phone: str | None
     company: str | None
     contact_list_id: int
-    
-    
+    whatsapp_number: str | None
+    gender: str | None
+    designation: str | None
+    item_name: str | None
+    item_type: str | None
+    interest_stage: str | None
+    item_category: str | None
+    amount: float | None
+    offer_value: str | None
+    city: str | None
+    state: str | None
+    country: str | None
+    source: str | None
+    lifecycle_stage: str | None
+    tags: str | None
+
+
 class ContactByIdsRequest(BaseModel):
 
     ids: list[int]
-    
-    
+
+
 class CampaignLookupParameters(BaseModel):
     search: Optional[str] = None
     agent_id: Optional[int] = None
+
+
+class CampaignListParams(BaseModel):
+    search: Optional[str] = None
+    skip: int = Field(default=0, ge=0)
+    limit: int = Field(default=10, ge=1, le=100)
+
+    from_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+    status: Optional[str] = None  # Active | Paused | Draft | Cancelled
+
+    sort_by: Literal["newest", "oldest"] = "newest"

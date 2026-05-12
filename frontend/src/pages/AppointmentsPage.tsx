@@ -54,6 +54,7 @@ import {
 import { organizationService } from "../services/organizationService";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
+import { useDateFormatter, useTimeFormatter } from "../hooks/useDateFormatter";
 
 const DEFAULT_MEET_LINK = "https://meet.google.com/new";
 
@@ -73,12 +74,6 @@ const statusLabel = (status: AppointmentItem["status"]) => {
   return "No Show";
 };
 
-const formatDateTime = (value?: string) => {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString();
-};
 
 const toIsoDateKey = (value?: string | Date) => {
   if (!value) return "";
@@ -110,25 +105,6 @@ const startOfWeek = (value: Date) => {
 };
 
 const isSameDay = (a: Date, b: Date) => toIsoDateKey(a) === toIsoDateKey(b);
-
-const formatTime = (value?: string) => {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-const toDateTimeLocalValue = (value?: string | Date) => {
-  if (!value) return "";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return "";
-  const year = dt.getFullYear();
-  const month = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  const hours = String(dt.getHours()).padStart(2, "0");
-  const minutes = String(dt.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
 
 const combineDateWithSourceTime = (
   targetDate: Date,
@@ -198,6 +174,8 @@ const AppointmentsPage: React.FC = () => {
   const [appointmentTotal, setAppointmentTotal] = useState(0);
   const [appointmentPage, setAppointmentPage] = useState(0);
   const [appointmentRowsPerPage, setAppointmentRowsPerPage] = useState(10);
+  const formatDisplayDate = useDateFormatter();
+  const formatDisplayTime = useTimeFormatter();
 
   const loadWidgets = async () => {
     try {
@@ -288,7 +266,7 @@ const AppointmentsPage: React.FC = () => {
     const targetDate = presetDate || new Date(item.appointment_at);
     setSelectedAppointment(null);
     setRescheduleTarget(item);
-    setRescheduleDateTime(toDateTimeLocalValue(targetDate));
+    setRescheduleDateTime(formatDisplayDate(targetDate));
     setRescheduleTimezone(
       item.timezone ||
       Intl.DateTimeFormat().resolvedOptions().timeZone ||
@@ -612,9 +590,9 @@ const AppointmentsPage: React.FC = () => {
                   value={status}
                   label="Status"
                   onChange={(e) => {
-                    if (e.target.value === "overdue") 
-                      setUpcomingOnly(false) 
-                    else 
+                    if (e.target.value === "overdue")
+                      setUpcomingOnly(false)
+                    else
                       setUpcomingOnly(true)
                     setStatus(e.target.value)
                   }}
@@ -707,165 +685,15 @@ const AppointmentsPage: React.FC = () => {
 
         <Paper sx={{ p: 2.5, borderRadius: 3 }}>
           <Tabs value={tab} onChange={(_, value) => setTab(value)}>
-            <Tab icon={<EventIcon />} iconPosition="start" label="List View" />
+
             <Tab
               icon={<CalendarMonthIcon />}
               iconPosition="start"
               label="Calendar View"
             />
+            <Tab icon={<EventIcon />} iconPosition="start" label="List View" />
           </Tabs>
-
           {tab === 0 && (
-            <>
-              {/* Search Box */}
-              <Box
-                sx={{ display: "flex", justifyContent: "flex-start", mt: 2 }}
-              >
-                <TextField
-                  size="small"
-                  label="Search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  sx={{ width: 260 }}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Box>
-
-              {/* Table */}
-              <TableContainer sx={{ mt: 2 }}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Agent</TableCell>
-                      <TableCell>Date/Time</TableCell>
-                      <TableCell>Timezone</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-
-                  <TableBody>
-                    {sortedAppointments.length ? (
-                      sortedAppointments.map((item) => (
-                        <TableRow key={item.id} hover>
-                          <TableCell>
-                            <Typography sx={{ fontWeight: 600 }}>
-                              {item.name}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {item.email || item.phone || "-"}
-                            </Typography>
-                          </TableCell>
-
-                          <TableCell>{item.widget_name}</TableCell>
-                          <TableCell>
-                            {formatDateTime(item.appointment_at)}
-                          </TableCell>
-                          <TableCell>{item.timezone || "-"}</TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={statusLabel(item.status)}
-                              color={statusColor(item.status)}
-                              variant="outlined"
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            <Stack
-                              direction="row"
-                              spacing={0.8}
-                              flexWrap="nowrap"
-                              sx={{ whiteSpace: "nowrap" }}
-                            >
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={
-                                  <VisibilityOutlinedIcon fontSize="small" />
-                                }
-                                onClick={() => setSelectedAppointment(item)}
-                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
-                              >
-                                View
-                              </Button>
-
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={
-                                  <EditCalendarOutlinedIcon fontSize="small" />
-                                }
-                                onClick={() => openRescheduleDialog(item)}
-                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
-                              >
-                                Reschedule
-                              </Button>
-
-                              <Button
-                                size="small"
-                                onClick={() =>
-                                  updateStatus(item.id, "completed")
-                                }
-                                disabled={item.status === "completed"}
-                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
-                              >
-                                Complete
-                              </Button>
-
-                              <Button
-                                size="small"
-                                color="inherit"
-                                onClick={() =>
-                                  updateStatus(item.id, "cancelled")
-                                }
-                                disabled={item.status === "cancelled"}
-                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
-                              >
-                                Cancel
-                              </Button>
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={6} align="center">
-                          No appointments found.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                <TablePagination
-                  component="div"
-                  count={appointmentTotal}
-                  page={appointmentPage}
-                  onPageChange={(_, value) => setAppointmentPage(value)}
-                  rowsPerPage={appointmentRowsPerPage}
-                  onRowsPerPageChange={(event) => {
-                    setAppointmentRowsPerPage(parseInt(event.target.value, 10));
-                    setAppointmentPage(0);
-                  }}
-                  rowsPerPageOptions={[10, 25, 50]}
-                />
-              </TableContainer>
-            </>
-          )}
-
-          {tab === 1 && (
             <Stack spacing={2} sx={{ mt: 2 }}>
               <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
                 <Stack
@@ -965,7 +793,7 @@ const AppointmentsPage: React.FC = () => {
                         >
                           <Box>
                             <Typography sx={{ fontWeight: 700 }}>
-                              {formatTime(item.appointment_at)} - {item.name}
+                              {formatDisplayTime(item.appointment_at)} - {item.name}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                               {item.widget_name}{" "}
@@ -1101,7 +929,7 @@ const AppointmentsPage: React.FC = () => {
                                   sx={{ fontSize: 12, fontWeight: 600 }}
                                   noWrap
                                 >
-                                  {formatTime(item.appointment_at)} {item.name}
+                                  {formatDisplayTime(item.appointment_at)} {item.name}
                                 </Typography>
                                 <Typography
                                   sx={{ fontSize: 11, color: "text.secondary" }}
@@ -1294,7 +1122,7 @@ const AppointmentsPage: React.FC = () => {
                                     sx={{ fontSize: 11, fontWeight: 600 }}
                                     noWrap
                                   >
-                                    {formatTime(item.appointment_at)}{" "}
+                                    {formatDisplayTime(item.appointment_at)}{" "}
                                     {item.name}
                                   </Typography>
 
@@ -1340,6 +1168,157 @@ const AppointmentsPage: React.FC = () => {
               )}
             </Stack>
           )}
+          {tab === 1 && (
+            <>
+              {/* Search Box */}
+              <Box
+                sx={{ display: "flex", justifyContent: "flex-start", mt: 2 }}
+              >
+                <TextField
+                  size="small"
+                  label="Search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  sx={{ width: 260 }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+
+              {/* Table */}
+              <TableContainer sx={{ mt: 2 }}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Agent</TableCell>
+                      <TableCell>Date/Time</TableCell>
+                      <TableCell>Timezone</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+
+                  <TableBody>
+                    {sortedAppointments.length ? (
+                      sortedAppointments.map((item) => (
+                        <TableRow key={item.id} hover>
+                          <TableCell>
+                            <Typography sx={{ fontWeight: 600 }}>
+                              {item.name}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {item.email || item.phone || "-"}
+                            </Typography>
+                          </TableCell>
+
+                          <TableCell>{item.widget_name}</TableCell>
+                          <TableCell>
+                            {formatDisplayDate(item.appointment_at)}
+                          </TableCell>
+                          <TableCell>{item.timezone || "-"}</TableCell>
+
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={statusLabel(item.status)}
+                              color={statusColor(item.status)}
+                              variant="outlined"
+                            />
+                          </TableCell>
+
+                          <TableCell>
+                            <Stack
+                              direction="row"
+                              spacing={0.8}
+                              flexWrap="nowrap"
+                              sx={{ whiteSpace: "nowrap" }}
+                            >
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={
+                                  <VisibilityOutlinedIcon fontSize="small" />
+                                }
+                                onClick={() => setSelectedAppointment(item)}
+                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
+                              >
+                                View
+                              </Button>
+
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={
+                                  <EditCalendarOutlinedIcon fontSize="small" />
+                                }
+                                onClick={() => openRescheduleDialog(item)}
+                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
+                              >
+                                Reschedule
+                              </Button>
+
+                              <Button
+                                size="small"
+                                onClick={() =>
+                                  updateStatus(item.id, "completed")
+                                }
+                                disabled={item.status === "completed"}
+                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
+                              >
+                                Complete
+                              </Button>
+
+                              <Button
+                                size="small"
+                                color="inherit"
+                                onClick={() =>
+                                  updateStatus(item.id, "cancelled")
+                                }
+                                disabled={item.status === "cancelled"}
+                                sx={{ whiteSpace: "nowrap", minWidth: 0 }}
+                              >
+                                Cancel
+                              </Button>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          No appointments found.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+
+                <TablePagination
+                  component="div"
+                  count={appointmentTotal}
+                  page={appointmentPage}
+                  onPageChange={(_, value) => setAppointmentPage(value)}
+                  rowsPerPage={appointmentRowsPerPage}
+                  onRowsPerPageChange={(event) => {
+                    setAppointmentRowsPerPage(parseInt(event.target.value, 10));
+                    setAppointmentPage(0);
+                  }}
+                  rowsPerPageOptions={[10, 25, 50]}
+                />
+              </TableContainer>
+            </>
+          )}
+
+
         </Paper>
 
         <Dialog
@@ -1371,7 +1350,7 @@ const AppointmentsPage: React.FC = () => {
                     Date & Time
                   </Typography>
                   <Typography>
-                    {formatDateTime(selectedAppointment.appointment_at)}
+                    {formatDisplayDate(selectedAppointment.appointment_at)}
                   </Typography>
                 </Box>
                 <Box>

@@ -138,7 +138,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
             }
         }
         catch (err: any) {
-            setCallError("Failed to initiate the call. Please try again")
+            setCallError(err.response?.data?.detail || "Failed to initiate the call. Please try again")
         }
         finally {
             setTimeout(() => {

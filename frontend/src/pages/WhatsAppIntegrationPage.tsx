@@ -190,7 +190,7 @@ const WhatsAppIntegrationPage: React.FC = () => {
 
       const [widgetsRes, config] = await Promise.all([
         api.get('/api/admin/widgets'),
-        whatsappService.getConfig(),
+        whatsappService.getConfig(form.widget_id),
       ]);
 
       const widgetList: WidgetConfig[] = widgetsRes.data || [];
@@ -251,6 +251,7 @@ const WhatsAppIntegrationPage: React.FC = () => {
     window.addEventListener('message', onMetaMessage);
     return () => window.removeEventListener('message', onMetaMessage);
   }, [form.business_phone_number, form.is_active, form.verify_token, form.widget_id]);
+
 
   const handleChange = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));

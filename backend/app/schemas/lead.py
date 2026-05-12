@@ -34,10 +34,10 @@ class LeadResponse(BaseModel):
     source: str
     funnel_stage: Optional[str]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
-        
+
     @field_validator("product_id", mode="before")
     def convert_to_string(cls, v):
         return str(v) if v is not None else v
@@ -45,6 +45,7 @@ class LeadResponse(BaseModel):
 
 class LeadFunnelStageUpdate(BaseModel):
     funnel_stage: Optional[str] = None
+    close_date: Optional[str] = None
 
 
 class WidgetConfigBase(BaseModel):
@@ -70,6 +71,6 @@ class WidgetConfigResponse(WidgetConfigBase):
     id: int
     widget_id: str
     created_at: datetime
-    
+
     class Config:
         from_attributes = True

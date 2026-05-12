@@ -20,6 +20,7 @@ import AdminLayout from '../components/Layout/AdminLayout';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { analyticsService } from '../services/analyticsService';
 import type { AnalyticsMetrics, RetrievalTrace } from '../services/analyticsService';
+import { useDateFormatter } from '../hooks/useDateFormatter';
 
 interface SessionMessageData {
   date: string;
@@ -51,6 +52,7 @@ const AnalyticsPage: React.FC = () => {
   const [tracesLoading, setTracesLoading] = useState(false);
   const [tracesError, setTracesError] = useState<string | null>(null);
   const [retrievalTraces, setRetrievalTraces] = useState<RetrievalTrace[]>([]);
+  const formatDisplayDate = useDateFormatter()
 
   const panelSx = {
     borderRadius: '18px',
@@ -262,12 +264,12 @@ const AnalyticsPage: React.FC = () => {
                     <LineChart data={analyticsData}>
                       <XAxis dataKey="date" stroke="#64748b" />
                       <YAxis stroke="#64748b" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#ffffff', 
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#ffffff',
                           border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
                           borderRadius: '8px'
-                        }} 
+                        }}
                       />
                       <Line type="monotone" dataKey="sessions" stroke={theme.palette.primary.main} strokeWidth={2.2} />
                       <Line type="monotone" dataKey="messages" stroke={theme.palette.secondary.main} strokeWidth={2.2} />
@@ -294,12 +296,12 @@ const AnalyticsPage: React.FC = () => {
                     <BarChart data={userEngagementData}>
                       <XAxis dataKey="hour" stroke="#64748b" />
                       <YAxis stroke="#64748b" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#ffffff', 
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#ffffff',
                           border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
                           borderRadius: '8px'
-                        }} 
+                        }}
                       />
                       <Bar dataKey="users" fill={theme.palette.primary.main} radius={[8, 8, 0, 0]} />
                     </BarChart>
@@ -398,7 +400,7 @@ const AnalyticsPage: React.FC = () => {
                             {trace.escalation_triggered && <Chip size="small" color="error" label="Escalation" />}
                           </Stack>
                           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {trace.created_at ? new Date(trace.created_at).toLocaleString() : 'Unknown time'}
+                            {trace.created_at ? formatDisplayDate(trace.created_at) : 'Unknown time'}
                           </Typography>
                         </Stack>
 

@@ -57,16 +57,22 @@ import {
   ContactListItem,
 } from "../services/campaignService";
 import { productService, Product } from "../services/productService";
-import { formatDateTime } from "../utils/dateUtils";
-import { ConversionOutcomeChip, OutcomeChip, SourceChip, StageChip } from "../components/Common/StatusChips";
 import {
-  Menu,
-  ListItemIcon,
-  ListItemText,
-} from "@mui/material";
+  ConversionOutcomeChip,
+  OutcomeChip,
+  SourceChip,
+  StageChip,
+  titleCase,
+} from "../components/Common/StatusChips";
+import { Menu, ListItemIcon, ListItemText } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { FunnelCategory } from "../types";
 import { funnelCategoryService } from "../services/funnelCategoryService";
+import { useDateFormatter } from "../hooks/useDateFormatter";
+import EmailIcon from "@mui/icons-material/Email";
+import EllipsisCell from "../components/EllipsisCell";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import { formatDate } from "../utils/dateUtils";
 
 export const ActionMenu = ({
   handleExportCSV,
@@ -235,6 +241,7 @@ const ReportsPage: React.FC = () => {
   // Voice campaign report data
   const [voiceAgentName, setVoiceAgentName] = useState("");
   const [voiceCampaignName, setVoiceCampaignName] = useState("");
+  const [voiceSource, setVoiceSource] = useState("");
   const [voiceLeadOutcomes, setVoiceLeadOutcomes] = useState<string[]>([]);
   const [voiceCreatedFrom, setVoiceCreatedFrom] = useState("");
   const [voiceCreatedTo, setVoiceCreatedTo] = useState("");
@@ -258,8 +265,12 @@ const ReportsPage: React.FC = () => {
   const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
     [],
   );
-
-
+  const [conversationOutcome, setConversationOutcome] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+  const [conversationSentiments, setConversationSentiments] = useState<
+    string[]
+  >([]);
+  const formatDisplayDate = useDateFormatter();
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -311,18 +322,22 @@ const ReportsPage: React.FC = () => {
   };
 
   // Fetch conversations
-  const fetchConversations = async () => {
+  const fetchConversations = async (pageValue?: number) => {
     try {
       setLoading(true);
       setError(null);
+      const currentPage = pageValue ?? page;
       const data = await reportService.getConversationsReport({
-        skip: page * rowsPerPage,
+        skip: currentPage * rowsPerPage,
         limit: rowsPerPage,
         start_date: startDate,
         end_date: endDate,
         widget_id: widgetId,
         sort_by: sortBy,
         sort_order: sortOrder,
+        search: contactSearch,
+        sentiments: conversationSentiments,
+        outcome: conversationOutcome,
       });
       setConversations(data.metrics);
       setTotalConversations(data.pagination.total);
@@ -452,6 +467,7 @@ const ReportsPage: React.FC = () => {
     overrides?: {
       agent_name?: string;
       campaign_name?: string;
+      source?: string;
       lead_outcomes?: string[];
       start_date?: string;
       end_date?: string;
@@ -489,6 +505,7 @@ const ReportsPage: React.FC = () => {
   const buildVoiceReportParams = () => ({
     agent_name: voiceAgentName || undefined,
     campaign_name: voiceCampaignName || undefined,
+    source: voiceSource || undefined,
     lead_outcomes: voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined,
     start_date: toIsoStartOfDay(voiceCreatedFrom),
     end_date: toIsoEndOfDay(voiceCreatedTo),
@@ -563,6 +580,16 @@ const ReportsPage: React.FC = () => {
     await fetchCampaignReport(0);
   };
 
+  const handleResetCoversationReportFilters = async () => {
+    setContactSearch("");
+    setConversationSentiments([]);
+    setConversationOutcome("");
+    setStartDate("");
+    setEndDate("");
+    setPage(0);
+    await fetchConversations(0);
+  };
+
   const handleApplyVoiceCampaignFilters = async () => {
     if (voicePage !== 0) setVoicePage(0);
     await fetchVoiceCampaignReport(0);
@@ -572,6 +599,7 @@ const ReportsPage: React.FC = () => {
     const resetCampaign = voiceDefaultCampaignName || "";
     setVoiceAgentName("");
     setVoiceCampaignName(resetCampaign);
+    setVoiceSource("");
     setVoiceLeadOutcomes([]);
     setVoiceCreatedFrom("");
     setVoiceCreatedTo("");
@@ -579,6 +607,7 @@ const ReportsPage: React.FC = () => {
     await fetchVoiceCampaignReport(0, {
       agent_name: undefined,
       campaign_name: resetCampaign || undefined,
+      source: undefined,
       lead_outcomes: undefined,
       start_date: undefined,
       end_date: undefined,
@@ -686,6 +715,7 @@ const ReportsPage: React.FC = () => {
         }
         await reportService.exportVoiceCampaignToExcel(
           items,
+          formatDisplayDate,
           summary,
           "voice_campaign_report",
         );
@@ -774,6 +804,7 @@ const ReportsPage: React.FC = () => {
             if (items.length > 0) {
               await reportService.exportVoiceCampaignToPDF(
                 items,
+                formatDisplayDate,
                 summary,
                 "Voice Campaign Report",
               );
@@ -873,12 +904,6 @@ const ReportsPage: React.FC = () => {
     minWidth: 150,
   };
 
-  const titleCase = (value: string) =>
-    value
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-
   const sourceLabel = (source?: string) =>
     titleCase((source || "chat").toLowerCase());
 
@@ -947,7 +972,6 @@ const ReportsPage: React.FC = () => {
               </Typography>
             </Box>
 
-
             <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
               <ActionMenu
                 handleExportCSV={handleExportCSV}
@@ -966,8 +990,6 @@ const ReportsPage: React.FC = () => {
         )}
 
         {/* Filters */}
-
-
 
         {loading && <LinearProgress />}
 
@@ -1158,6 +1180,60 @@ const ReportsPage: React.FC = () => {
                 Filter Reports
               </Typography>
               <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Search Contact"
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Sentiment</InputLabel>
+                    <Select
+                      multiple
+                      value={conversationSentiments}
+                      onChange={(e) =>
+                        setConversationSentiments(
+                          typeof e.target.value === "string"
+                            ? e.target.value.split(",")
+                            : e.target.value,
+                        )
+                      }
+                      input={<OutlinedInput label="Sentiment" />}
+                      renderValue={(selected) =>
+                        (selected as string[]).join(", ")
+                      }
+                    >
+                      {voiceLeadOutcomeOptions.map((sentiment) => (
+                        <MenuItem key={sentiment} value={sentiment}>
+                          <Checkbox
+                            checked={
+                              conversationSentiments.indexOf(sentiment) > -1
+                            }
+                          />
+                          {sentiment}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select
+                      value={conversationOutcome}
+                      label="Type"
+                      onChange={(e) => setConversationOutcome(e.target.value)}
+                    >
+                      <MenuItem value="">All</MenuItem>
+                      <MenuItem value="positive">Positive</MenuItem>
+                      <MenuItem value="negative">Negative</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
                 <Grid item xs={12} sm={6} md={2.5}>
                   <TextField
                     label="Start Date"
@@ -1190,15 +1266,24 @@ const ReportsPage: React.FC = () => {
                 size="small"
               />
             </Grid> */}
-                <Grid item xs={12} sm={6} md={2.5}>
-                  <Button
-                    variant="contained"
-                    onClick={fetchConversations}
-                    fullWidth
-                    sx={{ height: 40 }}
-                  >
-                    Apply Filters
-                  </Button>
+                <Grid item xs={12} sm={3}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button
+                      variant="contained"
+                      onClick={() => fetchConversations()}
+                      fullWidth
+                      sx={{ height: 40 }}
+                    >
+                      Apply Filters
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleResetCoversationReportFilters}
+                    >
+                      Reset
+                    </Button>
+                  </Stack>
                 </Grid>
               </Grid>
             </Paper>
@@ -1254,13 +1339,13 @@ const ReportsPage: React.FC = () => {
                         )}
                       </TableCell> */}
                       <TableCell>
-                        <OutcomeChip value={(conv.outcome || "Pending")} />
+                        <OutcomeChip value={conv.outcome || "Pending"} />
                       </TableCell>
                       <TableCell>
                         <ConversionOutcomeChip value={conv.lead_conversion} />
                       </TableCell>
                       <TableCell>
-                        {formatDateTime(conv.conversation_start)}
+                        {formatDisplayDate(conv.conversation_start)}
                       </TableCell>
                       <TableCell align="center">
                         <Button
@@ -1765,7 +1850,7 @@ const ReportsPage: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               {item.scheduled_time
-                                ? new Date(item.scheduled_time).toLocaleString()
+                                ? formatDisplayDate(item.scheduled_time)
                                 : "-"}
                             </TableCell>
                             <TableCell align="right">
@@ -1776,7 +1861,7 @@ const ReportsPage: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString()
+                                ? formatDisplayDate(item.created_at)
                                 : "-"}
                             </TableCell>
                           </TableRow>
@@ -1848,6 +1933,22 @@ const ReportsPage: React.FC = () => {
                         </Select>
                       </FormControl>
                     </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Source</InputLabel>
+                        <Select
+                          value={voiceSource}
+                          label="Source"
+                          onChange={(e) => setVoiceSource(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          <MenuItem value="chat">Chat</MenuItem>
+                          <MenuItem value="voice">Voice</MenuItem>
+                          <MenuItem value="email">Email</MenuItem>
+                          <MenuItem value="sms">SMS</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth size="small">
                         <InputLabel>Sentiment</InputLabel>
@@ -1884,7 +1985,7 @@ const ReportsPage: React.FC = () => {
                         fullWidth
                         size="small"
                         type="date"
-                        label="Created From"
+                        label="Lead Created From"
                         value={voiceCreatedFrom}
                         onChange={(e) => setVoiceCreatedFrom(e.target.value)}
                         InputLabelProps={{ shrink: true }}
@@ -1895,7 +1996,7 @@ const ReportsPage: React.FC = () => {
                         fullWidth
                         size="small"
                         type="date"
-                        label="Created To"
+                        label="Lead Created To"
                         value={voiceCreatedTo}
                         onChange={(e) => setVoiceCreatedTo(e.target.value)}
                         InputLabelProps={{ shrink: true }}
@@ -2018,13 +2119,11 @@ const ReportsPage: React.FC = () => {
                   >
                     <TableHead>
                       <TableRow>
-                        <TableCell>Agent Name</TableCell>
                         <TableCell>Customer Name</TableCell>
-                        <TableCell>Email</TableCell>
                         <TableCell>Campaign Name</TableCell>
+                        <TableCell>Campaign Start Date</TableCell>
                         <TableCell>Lead Sentiment</TableCell>
-                        <TableCell>Product</TableCell>
-                        <TableCell>Created At</TableCell>
+                        <TableCell>Lead Created Date</TableCell>
                         <TableCell align="center">Action</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2033,26 +2132,107 @@ const ReportsPage: React.FC = () => {
                         voiceItems.map((item, idx) => (
                           <TableRow key={`${item.email || "voice"}-${idx}`}>
                             <TableCell sx={voiceWrapCellSx}>
-                              {item.agent_name || "-"}
+                              <Box
+                                display="flex"
+                                flexDirection="column"
+                                gap={0.5}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  sx={{ fontWeight: 600, lineHeight: 1.35 }}
+                                >
+                                  {item.customer_name || "-"}
+                                </Typography>
+                                {item.email?.trim() ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 0.5,
+                                      lineHeight: 1.35,
+                                      fontSize: "0.7rem",
+                                    }}
+                                  >
+                                    <EmailIcon
+                                      sx={{
+                                        fontSize: 13,
+                                        flexShrink: 0,
+                                        opacity: 0.85,
+                                      }}
+                                    />
+                                    <Box
+                                      component="span"
+                                      sx={{ wordBreak: "break-word" }}
+                                    >
+                                      {item.email}
+                                    </Box>
+                                  </Typography>
+                                ) : null}
+                              </Box>
                             </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.customer_name || "-"}
+                            {/* CAMPAIGN NAME */}
+                            <TableCell>
+                              <Box
+                                display="flex"
+                                flexDirection="column"
+                                gap={0.5}
+                              >
+                                <Typography fontWeight={600}>
+                                  {item.campaign_name}
+                                </Typography>
+
+                                {/* Agent */}
+                                <Box
+                                  display="flex"
+                                  alignItems="center"
+                                  gap={0.5}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Agent:
+                                  </Typography>
+                                  <EllipsisCell value={item.agent_name} />
+                                </Box>
+
+                                <Box display="flex" alignItems="center" gap={2}>
+                                  {/* Product */}
+                                  {item.product_name && (
+                                    <Box
+                                      display="flex"
+                                      alignItems="center"
+                                      gap={0.5}
+                                    >
+                                      <Inventory2Icon
+                                        fontSize="small"
+                                        sx={{ fontSize: 16 }}
+                                        color="action"
+                                      />
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        {item.product_name}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                              </Box>
                             </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.email || "-"}
-                            </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.campaign_name || "-"}
+                            <TableCell sx={voiceNoWrapCellSx}>
+                              {item.campaign_start_date
+                                ? formatDisplayDate(item.campaign_start_date)
+                                : "-"}
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
                               <OutcomeChip value={item.lead_outcome} />
                             </TableCell>
-                            <TableCell sx={voiceWrapCellSx}>
-                              {item.product_name || "-"}
-                            </TableCell>
                             <TableCell sx={voiceNoWrapCellSx}>
                               {item.created_at
-                                ? new Date(item.created_at).toLocaleString()
+                                ? formatDisplayDate(item.created_at)
                                 : "-"}
                             </TableCell>
                             <TableCell align="center">
@@ -2158,6 +2338,16 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="caption" color="text.secondary">
+                    Campaign Start Date
+                  </Typography>
+                  <Typography variant="body1">
+                    {voiceDetailsItem.campaign_start_date
+                      ? formatDisplayDate(voiceDetailsItem.campaign_start_date)
+                      : "-"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">
                     Campaign Source
                   </Typography>
                   <Typography variant="body1">
@@ -2173,7 +2363,7 @@ const ReportsPage: React.FC = () => {
                       value={voiceDetailsItem.funnel_stage}
                       funnelCategories={funnelCategories}
                       stageNameByKey={stageNameByKey}
-                      stageLabel={stageLabel}
+                      stageLabel={stageLabel!}
                     />
                   </Typography>
                 </Grid>
@@ -2195,11 +2385,11 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="caption" color="text.secondary">
-                    Created At
+                    Lead Created Date
                   </Typography>
                   <Typography variant="body1">
                     {voiceDetailsItem.created_at
-                      ? new Date(voiceDetailsItem.created_at).toLocaleString()
+                      ? formatDisplayDate(voiceDetailsItem.created_at)
                       : "-"}
                   </Typography>
                 </Grid>
@@ -2228,9 +2418,12 @@ const ReportsPage: React.FC = () => {
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {sessionMessages.map((item, idx) => (
                   <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                      {new Date(item.created_at).toLocaleString()}
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 1 }}
+                    >
+                      {formatDisplayDate(item.created_at)}
                     </Typography>
 
                     {/* ---------------- VOICE ---------------- */}
@@ -2251,13 +2444,13 @@ const ReportsPage: React.FC = () => {
                             <Typography fontWeight={600} mb={0.5}>
                               Assistant
                             </Typography>
-                            <Typography sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}>
+                            <Typography
+                              sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}
+                            >
                               {item.response}
                             </Typography>
                           </>
                         )}
-
-
                       </Box>
                     ) : (
                       /* ---------------- CHAT ---------------- */
@@ -2282,9 +2475,9 @@ const ReportsPage: React.FC = () => {
               </Box>
             )}
           </DialogContent>
-        </Dialog >
-      </Box >
-    </AdminLayout >
+        </Dialog>
+      </Box>
+    </AdminLayout>
   );
 };
 

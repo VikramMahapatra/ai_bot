@@ -33,6 +33,7 @@ import secrets
 from app.models.organization_settings import OrganizationSettings
 from app.api.organization_setting import get_settings
 from app.services.organization_setting_service import get_org_settings
+from app.context.org_context import set_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+    
+    set_org_id(user.organization_id)
 
     # Generate token with user_id
     access_token = create_access_token(data={"sub": user.id})

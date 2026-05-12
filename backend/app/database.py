@@ -6,6 +6,13 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.migrations import apply_db_migrations
 import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
 # Create database engine
 # Use absolute path for SQLite to avoid working-directory issues
@@ -39,7 +46,9 @@ else:
     )
 
 # Create SessionLocal class
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
+)
 
 # Create Base class for models
 Base = declarative_base()
@@ -68,14 +77,12 @@ def get_db():
 
 def column_exists(conn, table, column):
     result = conn.execute(
-        text(
-            """
+        text("""
         SELECT 1 
         FROM information_schema.columns 
         WHERE table_name=:table 
         AND column_name=:column
-    """
-        ),
+    """),
         {"table": table, "column": column},
     ).fetchone()
     return result is not None
@@ -148,18 +155,12 @@ def init_db():
             )
 
             conn.execute(
-                text(
-                    """CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_username 
-                ON users(organization_id, username)"""
-                )
+                text("""CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_username 
+                ON users(organization_id, username)""")
             )
 
-            conn.execute(
-                text(
-                    """CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_email 
-                ON users(organization_id, email)"""
-                )
-            )
+            conn.execute(text("""CREATE UNIQUE INDEX IF NOT EXISTS uq_users_org_email 
+                ON users(organization_id, email)"""))
 
         except Exception:
             pass
@@ -228,6 +229,7 @@ def init_db():
                 "default_meet_link": "TEXT",
                 "joining_date": "DATE",
                 "effective_joining_date": "DATE",
+                "echoleads_api_key": "TEXT",
             }
 
             for col, col_type in columns.items():
@@ -235,7 +237,8 @@ def init_db():
                     conn.execute(
                         text(f"ALTER TABLE organizations ADD COLUMN {col} {col_type}")
                     )
-        except Exception:
+        except Exception as e:
+            print(str(e))
             pass
 
         # ----------------------------
@@ -312,10 +315,6 @@ def init_db():
                 if not column_exists(conn, "leads", col):
                     conn.execute(text(f"ALTER TABLE leads ADD COLUMN {col} {col_type}"))
 
-            conn.execute(
-                text("ALTER TABLE leads DROP COLUMN IF EXISTS campaign_id")
-            )
-
         except Exception as e:
             print(str(e))
             pass
@@ -390,29 +389,21 @@ def init_db():
                     )
 
             if not column_exists(conn, "call_campaigns", "calling_no"):
-                conn.execute(
-                    text(
-                        """
+                conn.execute(text("""
                         UPDATE call_campaigns 
                         SET calling_no = '+918046733457' 
                         WHERE calling_no IS NULL
-                    """
-                    )
-                )
+                    """))
 
         except Exception as e:
             print(str(e))
 
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE call_campaigns
                 DROP COLUMN IF EXISTS reply_mode,
                 DROP COLUMN IF EXISTS reply_template;
-            """
-                )
-            )
+            """))
         except Exception:
             pass
 
@@ -433,27 +424,19 @@ def init_db():
                         )
                     )
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 UPDATE credit_estimator_shares 
                 SET company_name = 'Untitled Company'
                 WHERE company_name IS NULL 
                 OR TRIM(company_name) = ''
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 UPDATE credit_estimator_shares 
                 SET input_json = '{}'
                 WHERE input_json IS NULL 
                 OR TRIM(input_json) = ''
-            """
-                )
-            )
+            """))
 
         except Exception:
             pass
@@ -462,16 +445,12 @@ def init_db():
         # organization_settings
         # --------------------------------------------------
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE organization_settings
                 ADD COLUMN IF NOT EXISTS default_escalation_level_1 TEXT,
                 ADD COLUMN IF NOT EXISTS default_escalation_level_2 TEXT,
                 ADD COLUMN IF NOT EXISTS expected_close_days INTEGER DEFAULT 0
-            """
-                )
-            )
+            """))
         except Exception:
             pass
 
@@ -479,14 +458,10 @@ def init_db():
         # organization_credit_usages
         # --------------------------------------------------
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE organization_credit_usages
                 ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'reserved'
-            """
-                )
-            )
+            """))
         except Exception:
             pass
 
@@ -494,24 +469,16 @@ def init_db():
         # price_matrix_items
         # --------------------------------------------------
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE price_matrix_items
                 ADD COLUMN IF NOT EXISTS feature_code TEXT,
                 ADD COLUMN IF NOT EXISTS min_reserved_credits FLOAT
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_price_matrix_feature_code
                 ON price_matrix_items(feature_code)
-            """
-                )
-            )
+            """))
 
         except Exception as e:
             pass
@@ -520,9 +487,7 @@ def init_db():
         # contacts (Add Missing Fields)
         # --------------------------------------------------
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE contacts
                 ADD COLUMN IF NOT EXISTS whatsapp_number TEXT,
                 ADD COLUMN IF NOT EXISTS gender TEXT,
@@ -543,45 +508,27 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS lifecycle_stage TEXT,
 
                 ADD COLUMN IF NOT EXISTS tags TEXT
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_contacts_phone
                 ON contacts(phone)
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_contacts_email
                 ON contacts(email)
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_contacts_source
                 ON contacts(source)
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_contacts_interest_stage
                 ON contacts(interest_stage)
-            """
-                )
-            )
+            """))
 
         except Exception as e:
             pass
@@ -590,33 +537,23 @@ def init_db():
         # camapaign_schedules
         # --------------------------------------------------
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE campaign_schedules
                 ALTER COLUMN retry_no_answer TYPE BOOLEAN USING retry_no_answer != 0,
                 ALTER COLUMN retry_busy TYPE BOOLEAN USING retry_busy != 0,
                 ALTER COLUMN retry_voicemail TYPE BOOLEAN USING retry_voicemail != 0;
-            """
-                )
-            )
+            """))
 
         except Exception as e:
             pass
 
         try:
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE call_campaign_instant_replies
                 ADD COLUMN IF NOT EXISTS template_id INTEGER;
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 DO $$
                 BEGIN
                     IF NOT EXISTS (
@@ -631,47 +568,31 @@ def init_db():
                         ON DELETE RESTRICT;
                     END IF;
                 END $$;
-            """
-                )
-            )
+            """))
 
             # 3. Drop old columns if they exist
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE call_campaign_instant_replies
                 DROP COLUMN IF EXISTS subject;
-            """
-                )
-            )
+            """))
 
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE call_campaign_instant_replies
                 DROP COLUMN IF EXISTS template;
-            """
-                )
-            )
+            """))
 
         except Exception as e:
             pass
 
         try:
             # 1. Add column first
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 ALTER TABLE message_templates
                 ADD COLUMN IF NOT EXISTS organization_id INTEGER
-            """
-                )
-            )
+            """))
 
             # 2. Add FK constraint safely
-            conn.execute(
-                text(
-                    """
+            conn.execute(text("""
                 DO $$
                 BEGIN
                     IF NOT EXISTS (
@@ -686,13 +607,11 @@ def init_db():
                         ON DELETE CASCADE;
                     END IF;
                 END $$;
-            """
-                )
-            )
+            """))
 
         except Exception as e:
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE conversations 
@@ -712,7 +631,7 @@ def init_db():
             """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                     ALTER TABLE lead_activities 
@@ -720,7 +639,7 @@ def init_db():
                 """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                     ALTER TABLE call_campaigns 
@@ -728,7 +647,7 @@ def init_db():
                 """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE call_campaigns
@@ -738,17 +657,18 @@ def init_db():
             """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                     ALTER TABLE call_logs 
                     ADD COLUMN IF NOT EXISTS workflow_execution_id INTEGER, 
-                    ADD COLUMN IF NOT EXISTS instant_reply_sent BOOLEAN DEFAULT FALSE
+                    ADD COLUMN IF NOT EXISTS instant_reply_sent BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS source VARCHAR(50)
                 """))
         except Exception as e:
             print(str(e))
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE call_logs
@@ -758,7 +678,7 @@ def init_db():
             """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                     ALTER TABLE contacts 
@@ -766,7 +686,7 @@ def init_db():
                 """))
         except:
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE conversation_metrics
@@ -781,7 +701,7 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
-        
+
         try:
             conn.execute(text("""
                 ALTER TABLE message_templates
@@ -796,6 +716,115 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
-     
-        
-        
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE leads 
+                ADD COLUMN IF NOT EXISTS close_date DATE DEFAULT CURRENT_DATE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE channels
+                ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE workflow_steps
+                ADD COLUMN IF NOT EXISTS position JSONB,
+                ADD COLUMN IF NOT EXISTS step_number INTEGER;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE call_campaigns
+                ADD COLUMN IF NOT EXISTS stop_reason VARCHAR(255);
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ALTER COLUMN widget_id DROP NOT NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS parent_template_id INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ADD COLUMN IF NOT EXISTS token_type VARCHAR NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_in INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS token_created_at TIMESTAMPTZ NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ NULL;
+            """))
+
+            # ---------------------------------------------------
+            # 1. DROP OLD WRONG UNIQUE CONSTRAINT (IMPORTANT)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                DROP INDEX IF EXISTS ix_whatsapp_channels_organization_id;
+            """))
+
+            # ---------------------------------------------------
+            # 2. CREATE PROPER GLOBAL UNIQUE CONSTRAINT
+            #    (ONLY ONE GLOBAL CONFIG PER ORG)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_global_org
+                ON whatsapp_channels (organization_id)
+                WHERE widget_id IS NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE leads 
+                ALTER COLUMN close_date DROP DEFAULT;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS variable_mappings JSONB NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

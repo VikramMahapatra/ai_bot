@@ -125,14 +125,14 @@ export default function SuperAdminOrgCallAnalyticsReport() {
                             <Typography variant="body1" color="text.secondary">
                                 Manage and organize your contacts for campaigns, calling, and engagement.
                             </Typography>
-                            <Stack direction="row" spacing={1} sx={{ mt: 1.4 }} flexWrap="wrap" useFlexGap>
+                            {/* <Stack direction="row" spacing={1} sx={{ mt: 1.4 }} flexWrap="wrap" useFlexGap>
                                 <Chip size="small" icon={<ListAltIcon />} label="Build Audience" variant="outlined" />
                                 <Chip size="small" icon={<UploadFileIcon />} label="Upload Contacts" variant="outlined" />
-                            </Stack>
+                            </Stack> */}
                         </Box>
 
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                            <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setTab(1)}>
+                            <Button size="small" sx={compactButtonSx} variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setTab(2)}>
                                 Upload Contacts
                             </Button>
                         </Stack>

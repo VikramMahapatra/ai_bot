@@ -39,7 +39,6 @@ from app.services import email_service
 from app.services.organization_setting_service import get_org_settings
 from app.models.organization_limits import OrganizationLimits
 
-
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
 ROUTE_MODULE_MAP = {
@@ -52,6 +51,7 @@ ROUTE_MODULE_MAP = {
     "/products": "module_products_enabled",
     "/users": "module_users_enabled",
 }
+
 
 class OrganizationMeetingSettingsResponse(BaseModel):
     default_meet_link: str
@@ -370,7 +370,7 @@ def create_user(
     Create a new user in the current user's organization (admin only).
     """
     org_id = admin_user.organization_id
-    
+
     valid = organization_credit_service.validate_feature_usage(
         db, org_id, FeatureCodes.PLATFORM_USER, 1
     )
@@ -440,16 +440,16 @@ def create_user(
     )
     db.add(new_user)
     db.flush()
-    
+
     organization_credit_service.deduct_credits(
         db=db,
         organization_id=org_id,
         feature_code=FeatureCodes.PLATFORM_USER,
         quantity=1,
         reference_type="user",
-        reference_id=str(new_user.id)
+        reference_id=str(new_user.id),
     )
-    
+
     if selected_role == UserRole.USER_HANDOFF:
         _replace_user_widget_assignments(db, new_user.id, assigned_widget_ids)
 
@@ -994,12 +994,12 @@ def deduct_credits(
     db: Session = Depends(get_db),
 ):
     return organization_credit_service.deduct_credits(
-        db, 
-        current_user.organization_id, 
+        db,
+        current_user.organization_id,
         params.feature_code,
         params.quantity,
         params.reference_type,
-        params.reference_id
+        params.reference_id,
     )
 
 
@@ -1026,10 +1026,7 @@ def consume_credits(
     db: Session = Depends(get_db),
 ):
     return organization_credit_service.consume_reserved_credits(
-        db,
-        params.reference_type,
-        params.reference_id,
-        params.quantity
+        db, params.reference_type, params.reference_id, params.quantity
     )
 
 
@@ -1037,7 +1034,7 @@ def consume_credits(
 def send_test_email(
     payload: SMTPTestRequest,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     org_name = (
         db.query(Organization.name)
@@ -1055,10 +1052,10 @@ def send_test_email(
         smtp_use_tls=payload.smtp_use_tls,
     )
 
+    db.commit()
+
     success, error = email_service.send_smtp_test_email(
-        payload.test_email,
-        org_name,
-        settings
+        payload.test_email, org_name, settings
     )
 
     if not success:
@@ -1071,11 +1068,13 @@ def send_test_email(
 def check_feature_access(
     path: str = Query(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    limits = db.query(OrganizationLimits).filter(
-        OrganizationLimits.organization_id == current_user.organization_id
-    ).first()
+    limits = (
+        db.query(OrganizationLimits)
+        .filter(OrganizationLimits.organization_id == current_user.organization_id)
+        .first()
+    )
 
     module = ROUTE_MODULE_MAP.get(path)
 
@@ -1084,7 +1083,4 @@ def check_feature_access(
 
     allowed = getattr(limits, module, False)
 
-    return {
-        "allowed": allowed,
-        "module": module
-    }
+    return {"allowed": allowed, "module": module}

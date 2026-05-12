@@ -42,3 +42,6 @@ class WorkflowCreate(BaseModel):
     description: Optional[str] 
     nodes: List[NodeIn]
     edges: List[EdgeIn]
+    
+class StatusUpdateRequest(BaseModel):
+    is_active: bool

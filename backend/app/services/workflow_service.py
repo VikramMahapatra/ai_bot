@@ -125,7 +125,7 @@ def get_workflow_by_id(db: Session, workflow_id: int, organization_id: int):
 
     edges_data = [
         {
-            "id": f"e-{edge.source_step_id}-{edge.target_step_id}",
+            "id": f"e-{edge.source_step_id}-{edge.target_step_id}-{edge.branch}",
             "source": str(edge.source_step_id),
             "target": str(edge.target_step_id),
             "sourceHandle": edge.branch,
@@ -314,7 +314,46 @@ def update_workflow(
         "id" : workflow.id,
         "message": f"{workflow.name} updated successfully" 
     }
+    
+def update_workflow_status(
+    db: Session,
+    workflow_id: int,
+    organization_id: int,
+    is_active: bool
+):
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.organization_id == organization_id
+    ).first()
 
+    if not workflow:
+        return {
+            "success": False,
+            "message": "Workflow not found"
+        }
+
+    # Prevent deactivation if execution is running
+    active_execution = db.query(WorkflowExecution).filter(
+        WorkflowExecution.workflow_id == workflow.id,
+        WorkflowExecution.status.in_(["pending", "running"])
+    ).first()
+
+    if active_execution and not is_active:
+        return {
+            "success": False,
+            "message": "Cannot deactivate workflow while execution is in progress"
+        }
+
+    workflow.is_active = is_active
+
+    db.commit()
+    db.refresh(workflow)
+
+    return {
+        "success": True,
+        "message": f"Workflow {'activated' if is_active else 'deactivated'} successfully",
+        "data": workflow
+    }
 
 def workflow_lookup(
     db: Session, 
@@ -322,7 +361,8 @@ def workflow_lookup(
     search: Optional[str] = None):
 
     query = db.query(Workflow).filter(
-        Workflow.organization_id == organization_id
+        Workflow.organization_id == organization_id,
+        Workflow.is_active == True
     )
 
     if search:

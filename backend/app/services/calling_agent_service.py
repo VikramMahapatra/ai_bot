@@ -20,9 +20,10 @@ from app.models.voices import Voice
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
-from app.services.call_log_service import process_call, sync_call_logs
+from app.services.call_log_service import process_call, sync_test_call_log
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_channel_service
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
@@ -150,7 +151,7 @@ def create_agent(
     db.flush()
     
     #CREATE REQUEST TO ECHO LEADS
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(organization_id)
     echo_payload ={
         "name": db_agent.external_agent_name,
         "agent_call_type":  "outgoing" if agent.type.lower() == "outbound" else "incoming",        
@@ -297,7 +298,7 @@ def update_agent(
         db_agent.external_agent_name = unique_agent_code
 
     # 🔹 Update Echoleads
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(db_agent.organization_id)
     
     echo_payload = {
         "name": db_agent.external_agent_name,
@@ -406,7 +407,7 @@ def sync_agents(
         raise ValueError("Organization not found")
     
     total_org_agents = db.query(CallingAgent).filter(CallingAgent.organization_id == organization_id).count()
-    echo_leads = EcholeadsClient()
+    echo_leads = EcholeadsClient(organization_id)
     try:
         echo_response = echo_leads.fetch_agents(total_org_agents, f"ORG{org.id}")
         if echo_response and echo_response.get("data"):
@@ -498,7 +499,7 @@ def read_agents(
             CallingAgent,
             func.count(
                 case(
-                    (CallCampaign.status == "active", 1)
+                    (CallCampaign.status == "running", 1)
                 )
             ).label("active_campaigns"),
             func.count(
@@ -614,6 +615,10 @@ def test_call(
     if not agent.external_agent_id:
         raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
     
+    
+    # CHANNEL VALIDATION
+    organization_channel_service.validate_channel_available(db, agent.organization_id, "test")
+    
     feature_code = FeatureCodes.CORE_CALL_OUT_ATTEMPT if agent.type == "outbound" else FeatureCodes.CORE_CALL_IN_ATTEMPT
     
     valid = organization_credit_service.validate_feature_usage(
@@ -631,7 +636,7 @@ def test_call(
 
     
     # Prepare API request
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
     
     dynamic_values = []
     if data.variables:
@@ -657,10 +662,10 @@ def test_call(
         api_response = echoleads.create_call(payload)
         
         if api_response and "data" in api_response:
-            sync_call_logs(db = db, organization_id=agent.organization_id, agent_id=agent.id)
-            
             external_call_id = api_response["data"].get("id")
             call_status = api_response["data"].get("status")
+            
+            sync_test_call_log(db = db, organization_id=agent.organization_id, agent_id=agent.id, external_call_id=external_call_id)
         else:
             echo_success = False
     except Exception as e:
@@ -687,6 +692,13 @@ def test_call(
             reference_type="calling_agent_test_call",
             reference_id=str(test_call.id)
         )
+        
+        organization_channel_service.reserve_channel(
+            db,
+            organization_id=agent.organization_id,
+            call_type="test",
+            reference_id=test_call.id
+        )
     
     db.commit()
     db.refresh(test_call)
@@ -709,7 +721,7 @@ def publish_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
 
     # Prepare minimal payload for Echoleads
     echo_payload ={
@@ -846,7 +858,7 @@ def delete_agent(db: Session, agent_id: int):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    echoleads = EcholeadsClient()
+    echoleads = EcholeadsClient(agent.organization_id)
     response = echoleads.delete_agent(agent.external_agent_id)
 
     # ✅ Treat both success & not_found as success
@@ -933,7 +945,7 @@ def all_agent_lookup(
         for agent in agents
     ]
     
-def get_voices(db: Session):
+def get_voices(db: Session, organization_id: int):
 
     voices = db.query(Voice).all()
 
@@ -942,7 +954,7 @@ def get_voices(db: Session):
         return voices
 
     # If empty → call Echoleads API
-    client = EcholeadsClient()
+    client = EcholeadsClient(organization_id)
     response = client.fetch_voices()
 
     voice_list = response.get("data", [])
