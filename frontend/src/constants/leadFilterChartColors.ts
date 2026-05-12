@@ -46,3 +46,6 @@ export const leadSourceChartFill = (source: string, index: number): string => {
 /** Admin dashboard — Conversations vs Leads grouped bars (contrast on light blue card). */
 export const TREND_CONVERSATIONS_BAR = LEAD_SOURCE_FILTER_TINTS.chat;
 export const TREND_LEADS_BAR = "#166534";
+
+export const TREND_PIPELINE_BAR = LEAD_SOURCE_FILTER_TINTS.sms;
+export const TREND_CLOSED_BAR = "#22c55e";

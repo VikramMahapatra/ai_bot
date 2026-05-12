@@ -407,7 +407,7 @@ async def get_leads_funnel(
                 counts[normalized] = int(count)
             else:
                 unassigned += int(count)
-                
+
         if unassigned:
             counts["unassigned"] = counts.get("unassigned", 0) + unassigned
 
@@ -500,65 +500,221 @@ async def get_top_sessions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# @router.get("/conversation-trend")
+# async def get_conversation_trend(
+#     days: int = 30,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(require_admin),
+# ):
+#     """Get conversation vs leads trend"""
+#     try:
+#         org_id = current_user.organization_id
+#         start_date = datetime.utcnow() - timedelta(days=days)
+
+#         # Query conversations with date string extraction
+#         conversations = (
+#             db.query(Conversation)
+#             .filter(
+#                 and_(
+#                     Conversation.organization_id == org_id,
+#                     Conversation.created_at >= start_date,
+#                 )
+#             )
+#             .all()
+#         )
+
+#         # Query leads with date string extraction
+#         leads = (
+#             db.query(Lead)
+#             .filter(and_(Lead.organization_id == org_id, Lead.created_at >= start_date))
+#             .all()
+#         )
+
+#         # Build date dictionaries manually in Python
+#         conv_dict = {}
+#         for conv in conversations:
+#             if conv.created_at:
+#                 date_str = conv.created_at.strftime("%Y-%m-%d")
+#                 conv_dict[date_str] = conv_dict.get(date_str, 0) + 1
+
+#         lead_dict = {}
+#         for lead in leads:
+#             if lead.created_at:
+#                 date_str = lead.created_at.strftime("%Y-%m-%d")
+#                 lead_dict[date_str] = lead_dict.get(date_str, 0) + 1
+
+#         # Get all dates and build response
+#         all_dates = sorted(set(list(conv_dict.keys()) + list(lead_dict.keys())))
+
+#         data = []
+#         for date_str in all_dates:
+#             data.append(
+#                 {
+#                     "date": str(date_str),  # Ensure it's a string
+#                     "conversations": int(
+#                         conv_dict.get(date_str, 0)
+#                     ),  # Ensure it's an int
+#                     "leads": int(lead_dict.get(date_str, 0)),  # Ensure it's an int
+#                 }
+#             )
+
+#         return {"data": data}
+#     except Exception as e:
+#         logger.error(f"Error getting conversation trend: {str(e)}", exc_info=True)
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/conversation-trend")
 async def get_conversation_trend(
     days: int = 30,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Get conversation vs leads trend"""
+    """Get conversation vs leads trend with fixed date range"""
     try:
         org_id = current_user.organization_id
-        start_date = datetime.utcnow() - timedelta(days=days)
 
-        # Query conversations with date string extraction
+        # today (end date)
+        end_date = datetime.utcnow().date()
+
+        # fixed start date for exact 7 / 10 / 30 days
+        start_date = end_date - timedelta(days=days - 1)
+
+        # conversations
         conversations = (
             db.query(Conversation)
             .filter(
                 and_(
                     Conversation.organization_id == org_id,
-                    Conversation.created_at >= start_date,
+                    func.date(Conversation.created_at) >= start_date,
+                    func.date(Conversation.created_at) <= end_date,
                 )
             )
             .all()
         )
 
-        # Query leads with date string extraction
+        # leads
         leads = (
             db.query(Lead)
-            .filter(and_(Lead.organization_id == org_id, Lead.created_at >= start_date))
+            .filter(
+                and_(
+                    Lead.organization_id == org_id,
+                    func.date(Lead.created_at) >= start_date,
+                    func.date(Lead.created_at) <= end_date,
+                )
+            )
             .all()
         )
 
-        # Build date dictionaries manually in Python
+        # build conversation dictionary
         conv_dict = {}
         for conv in conversations:
             if conv.created_at:
-                date_str = conv.created_at.strftime("%Y-%m-%d")
+                date_str = conv.created_at.date().strftime("%Y-%m-%d")
                 conv_dict[date_str] = conv_dict.get(date_str, 0) + 1
 
+        # build lead dictionary
         lead_dict = {}
         for lead in leads:
             if lead.created_at:
-                date_str = lead.created_at.strftime("%Y-%m-%d")
+                date_str = lead.created_at.date().strftime("%Y-%m-%d")
                 lead_dict[date_str] = lead_dict.get(date_str, 0) + 1
 
-        # Get all dates and build response
-        all_dates = sorted(set(list(conv_dict.keys()) + list(lead_dict.keys())))
-
+        # FIX: always generate all dates for selected range
         data = []
-        for date_str in all_dates:
+        current_date = start_date
+
+        while current_date <= end_date:
+            date_str = current_date.strftime("%Y-%m-%d")
+
             data.append(
                 {
-                    "date": str(date_str),  # Ensure it's a string
-                    "conversations": int(
-                        conv_dict.get(date_str, 0)
-                    ),  # Ensure it's an int
-                    "leads": int(lead_dict.get(date_str, 0)),  # Ensure it's an int
+                    "date": date_str,
+                    "conversations": int(conv_dict.get(date_str, 0)),
+                    "leads": int(lead_dict.get(date_str, 0)),
                 }
             )
 
+            current_date += timedelta(days=1)
+
         return {"data": data}
+
     except Exception as e:
         logger.error(f"Error getting conversation trend: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/leads-trend")
+async def get_leads_trend(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get pipeline vs closed_won trend with fixed date range
+
+    pipeline = funnel_stage != 'closed_won'
+    closed_won = funnel_stage == 'closed_won'
+    """
+    try:
+        org_id = current_user.organization_id
+
+        # today (end date)
+        end_date = datetime.utcnow().date()
+
+        # fixed exact date range like 7 / 10 / 30 days
+        start_date = end_date - timedelta(days=days - 1)
+
+        # fetch leads only once
+        leads = (
+            db.query(Lead)
+            .filter(
+                and_(
+                    Lead.organization_id == org_id,
+                    func.date(Lead.created_at) >= start_date,
+                    func.date(Lead.created_at) <= end_date,
+                )
+            )
+            .all()
+        )
+
+        # dictionaries
+        pipeline_dict = {}
+        closed_dict = {}
+
+        for lead in leads:
+            if not lead.created_at:
+                continue
+
+            date_str = lead.created_at.date().strftime("%Y-%m-%d")
+
+            # closed won
+            if lead.funnel_stage and lead.funnel_stage.strip().lower() == "closed_won":
+                closed_dict[date_str] = closed_dict.get(date_str, 0) + 1
+
+            # pipeline
+            else:
+                pipeline_dict[date_str] = pipeline_dict.get(date_str, 0) + 1
+
+        # always return fixed date range
+        data = []
+        current_date = start_date
+
+        while current_date <= end_date:
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            data.append(
+                {
+                    "date": date_str,
+                    "pipeline": int(pipeline_dict.get(date_str, 0)),
+                    "closed_won": int(closed_dict.get(date_str, 0)),
+                }
+            )
+
+            current_date += timedelta(days=1)
+
+        return {"data": data}
+
+    except Exception as e:
+        logger.error(f"Error getting leads trend: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
