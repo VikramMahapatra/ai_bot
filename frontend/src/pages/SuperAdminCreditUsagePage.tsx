@@ -297,7 +297,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} md={2}>
+          {/* <Grid item xs={12} md={2}>
             <TextField
               size="small"
               fullWidth
@@ -306,11 +306,11 @@ const SuperAdminCreditUsagePage: React.FC = () => {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search organization"
             />
-          </Grid>
+          </Grid> */}
           <Grid item xs={12} md={2.5}>
             <TextField
               size="small"
-              label="Billing period (optional)"
+              label="Billing Month (YYYY-MM)"
               placeholder="YYYY-MM"
               value={billingPeriodLabel}
               onChange={(e) => setBillingPeriod(e.target.value)}
@@ -322,7 +322,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
               sx={{ minWidth: { sm: 200 } }}
             />
           </Grid>
-          <Grid item xs={8} md={1.5}>
+          <Grid item xs={8} md={3}>
             <Button
               variant="contained"
               onClick={loadData}
@@ -331,7 +331,7 @@ const SuperAdminCreditUsagePage: React.FC = () => {
               {loading ? "Loading..." : "Refresh"}
             </Button>
           </Grid>
-          <Grid item xs={4} md={1.5}>
+          <Grid item xs={4} md={1}>
             <ToggleButtonGroup
               exclusive
               size="small"

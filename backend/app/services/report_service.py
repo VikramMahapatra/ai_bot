@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import String, case, cast, func
 from app.models import ConversationMetrics, Conversation, Lead
@@ -27,6 +28,53 @@ VOICE_LEAD_OUTCOME_OPTIONS = [
     "negative",
     "unresolved",
 ]
+
+ALLOWED_SOURCES = {"all", "chat", "voice", "email", "sms", "whatsapp"}
+
+ALLOWED_OUTCOMES = {
+    "all",
+    "positive",
+    "negative",
+}
+
+ALLOWED_SENTIMENTS = {
+    "positive",
+    "satisfactory",
+    "negative",
+    "neutral",
+    "unresolved",
+}
+
+
+def _normalize_outcomes(sentiments: Optional[List[str]]) -> List[str]:
+    if not sentiments:
+        return []
+
+    normalized = [item.strip().lower() for item in sentiments if item]
+
+    invalid = [item for item in normalized if item not in ALLOWED_SENTIMENTS]
+    if invalid:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid sentiments: {', '.join(invalid)}"
+        )
+
+    return normalized
+
+
+def _normalize_outcome(outcome: Optional[str]) -> str:
+    normalized = (outcome or "all").strip().lower()
+    if normalized not in ALLOWED_OUTCOMES:
+        raise HTTPException(status_code=422, detail=f"Invalid outcome: {outcome}")
+    return normalized
+
+
+def _normalize_source(source: Optional[str]) -> str:
+    normalized = (source or "chat").strip().lower()
+    if normalized not in ALLOWED_SOURCES:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid conversation source: {source}"
+        )
+    return normalized
 
 
 def get_conversation_metrics_query(
@@ -79,8 +127,9 @@ def get_session_conversations_report(
     sort_by: str = "conversation_start",
     sort_order: str = "desc",
     search: Optional[str] = None,  # added
-    outcome: Optional[str] = None,  # added
+    lead_conversion_outcome: Optional[str] = None,  # added
     sentiments: Optional[List[str]] = None,  # added
+    source: Optional[str] = None,  # added
 ):
     """Get paginated conversation report aggregated by session_id."""
     conversation_filters = [
@@ -233,6 +282,34 @@ def get_session_conversations_report(
                 f"%{search.lower()}%"
             )
         )
+
+    if sentiments:
+        normalized_outcomes = _normalize_outcomes(sentiments)
+
+        if normalized_outcomes:
+            query = query.filter(
+                func.lower(func.coalesce(sessions_subquery.c.outcome, "")).in_(
+                    normalized_outcomes
+                )
+            )
+
+    if lead_conversion_outcome:
+        normalized_lead_conversion = _normalize_outcome(lead_conversion_outcome)
+
+        if normalized_lead_conversion != "all":
+            query = query.filter(
+                case(
+                    (sessions_subquery.c.is_lead == True, "positive"),
+                    (sessions_subquery.c.is_lead == False, "negative"),
+                    else_="pending",
+                )
+                == normalized_lead_conversion
+            )
+
+    if source:
+        normalized_source = _normalize_source(source)
+        if normalized_source != "all":
+            query = query.filter(sessions_subquery.c.source == normalized_source)
 
     total = query.count()
 
@@ -632,7 +709,9 @@ def get_voice_campaign_report(
 
     if normalized_outcomes:
         query = query.filter(
-            func.lower(func.coalesce(Lead.lead_outcome, "")).in_(normalized_outcomes)
+            func.lower(func.trim(func.coalesce(Lead.lead_outcome, ""))).in_(
+                normalized_outcomes
+            )
         )
 
     if start_date:

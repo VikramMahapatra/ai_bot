@@ -203,6 +203,7 @@ export const reportService = {
     search?: string;
     sentiments?: string[];
     outcome?: string;
+    source?: string;
   }): Promise<DetailedReport> {
     const queryParams = new URLSearchParams();
 
@@ -218,6 +219,7 @@ export const reportService = {
     if (params.end_date) queryParams.append('end_date', params.end_date);
     if (params.outcome) queryParams.append('outcome', params.outcome);
     if (params.search) queryParams.append('search', params.search);
+    if (params.source) queryParams.append('source', params.source);
     (params.sentiments || []).forEach((item) => {
       if (item) queryParams.append('sentiments', item);
     });

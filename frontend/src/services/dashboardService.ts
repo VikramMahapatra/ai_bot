@@ -55,4 +55,11 @@ export const dashboardService = {
     );
     return response.data;
   },
+
+   async getLeadsTrend(days: number = 30) {
+    const response = await api.get(
+      `/api/admin/dashboard/leads-trend?days=${days}`,
+    );
+    return response.data;
+  },
 };

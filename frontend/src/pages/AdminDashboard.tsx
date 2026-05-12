@@ -52,8 +52,10 @@ import {
   FUNNEL_STAGE_BAR_BLUES,
   LEAD_SOURCE_FILTER_TINTS,
   leadSourceChartFill,
+  TREND_CLOSED_BAR,
   TREND_CONVERSATIONS_BAR,
   TREND_LEADS_BAR,
+  TREND_PIPELINE_BAR,
 } from "../constants/leadFilterChartColors";
 import type {
   AnalyticsSummary,
@@ -97,6 +99,12 @@ interface TrendPoint {
   date: string;
   conversations: number;
   leads: number;
+}
+
+interface LeadTrendPoint {
+  date: string;
+  pipeline: number;
+  closed: number;
 }
 
 interface LeadSourcePoint {
@@ -199,6 +207,7 @@ const AdminDashboard: React.FC = () => {
     DailyConversationPoint[]
   >([]);
   const [conversationTrend, setConversationTrend] = useState<TrendPoint[]>([]);
+  const [leadsTrend, setLeadTrend] = useState<LeadTrendPoint[]>([]);
   const [leadsBySource, setLeadsBySource] = useState<LeadSourcePoint[]>([]);
   const [leadsFunnel, setLeadsFunnel] = useState<FunnelStagePoint[]>([]);
   const [recentLeads, setRecentLeads] = useState<LeadItem[]>([]);
@@ -232,20 +241,22 @@ const AdminDashboard: React.FC = () => {
         topSessionsRes,
         trendRes,
         callAnalyticsRes,
+        leadsTrendRes
       ] = await Promise.allSettled([
         dashboardService.getStats(),
-        dashboardService.getDailyConversations(7),
+        dashboardService.getDailyConversations(15),
         dashboardService.getRecentLeads(10),
         dashboardService.getWidgets(),
         dashboardService.getKnowledgeSources(),
         dashboardService.getLeadsBySource(),
         dashboardService.getLeadsFunnel(),
         dashboardService.getTopSessions(10),
-        dashboardService.getConversationTrend(30),
+        dashboardService.getConversationTrend(7),
         callService.callAnalytics({
           start_date: callStart,
           end_date: callEnd,
         }),
+        dashboardService.getLeadsTrend(7),
       ]);
 
       if (statsRes.status === "fulfilled") {
@@ -347,6 +358,23 @@ const AdminDashboard: React.FC = () => {
       } else {
         setError("Some chart sections could not be loaded right now.");
       }
+
+       if (leadsTrendRes.status === "fulfilled") {
+        const data = Array.isArray((leadsTrendRes.value as any)?.data)
+          ? (leadsTrendRes.value as any).data
+          : [];
+        setLeadTrend(
+          data.map((row: any) => ({
+            date: String(row?.date || ""),
+            pipeline: numberOrZero(row?.pipeline),
+            closed: numberOrZero(row?.closed),
+          })),
+        );
+      } else {
+        setError("Some chart sections could not be loaded right now.");
+      }
+
+      
 
       if (callAnalyticsRes.status === "fulfilled") {
         const payload = callAnalyticsRes.value as CallAnalytics | undefined;
@@ -765,6 +793,54 @@ const AdminDashboard: React.FC = () => {
           ))}
         </Grid>
 
+        {/* Row 0: Pipeline vs Closed Trend — full width */}
+        <Grid container spacing={2.5} sx={{ mb: 3 }}>
+          <Grid item xs={12}>
+            <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Pipeline vs Closed Trend (7 days)
+              </Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={leadsTrend}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={theme.palette.text.secondary}
+                    tick={{ fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: `1px solid ${alpha(theme.palette.common.white, 0.55)}`,
+                      background: alpha(theme.palette.background.paper, 0.92),
+                      boxShadow: `0 10px 24px ${alpha(theme.palette.primary.dark, 0.16)}`,
+                    }}
+                  />
+                  <Legend />
+                  <Bar
+                    dataKey="pipeline"
+                    fill={TREND_PIPELINE_BAR}
+                    radius={[7, 7, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="closed"
+                    fill={TREND_CLOSED_BAR}
+                    radius={[7, 7, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </Paper>
+          </Grid>
+        </Grid>
+
         {/* Row 1: Funnel Dashboard & Leads by Source — 50% / 50% on md+ */}
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
           <Grid item xs={12} md={7}>
@@ -965,7 +1041,7 @@ const AdminDashboard: React.FC = () => {
           <Grid item xs={12}>
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Conversations vs Leads Trend
+                Conversations vs Leads Trend (7 days)
               </Typography>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={conversationTrend}>
