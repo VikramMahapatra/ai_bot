@@ -112,6 +112,40 @@ const isSatisfiedResponse = (value: string): boolean => {
   return affirmative.some((item) => normalized.includes(item));
 };
 
+const isDirectLiveAgentIntent = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+
+  if (/(live|human|real)\s+(agent|support)|support\s+agent|representative/.test(normalized)) {
+    return true;
+  }
+
+  if (/(connect|transfer|handoff|talk|chat|speak)\s+(me\s+)?(to\s+)?(a\s+)?(live|human|support|agent)/.test(normalized)) {
+    return true;
+  }
+
+  return false;
+};
+
+const assistantMessageOffersHandoff = (value: string): boolean => {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) return false;
+
+  const markers = [
+    'escalation contacts',
+    'would you like me to connect you',
+    "if you're interested, i can connect you",
+    "if you're interested i can connect you",
+    'i can connect you',
+    'human expert',
+    'live agent',
+    'reach them',
+    'let me know',
+  ];
+
+  return markers.some((marker) => normalized.includes(marker));
+};
+
 const ChatWidget: React.FC<WidgetConfig> = ({
   widgetId,
   apiUrl,
@@ -514,6 +548,35 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
 
+    const shouldForceLeadBeforeDirectHandoff =
+      !opts.skipLeadCaptureCheck &&
+      !opts.silentUserMessage &&
+      !leadSubmitted &&
+      !showLeadForm &&
+      !handoffActive &&
+      isDirectLiveAgentIntent(text);
+
+    if (shouldForceLeadBeforeDirectHandoff) {
+      if (!overrideText) {
+        setInput('');
+      }
+      setShowLeadForm(true);
+      setPendingHandoffAfterLead(true);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text },
+        {
+          role: 'assistant',
+          content:
+            'Before I transfer this handoff request to a live agent, please fill the quick contact form in chat so we can reach you if needed.',
+        },
+      ]);
+      setSessionEngaged(true);
+      setSessionClosedByInactivity(false);
+      setLastActivityAtMs(Date.now());
+      return;
+    }
+
     if (!overrideText) {
       setInput('');
     }
@@ -687,23 +750,27 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
 
         window.clearTimeout(timeoutId);
-      } catch {
-        const response = await chatAPI.current.sendMessage(
-          text,
-          activeSessionId,
-          widgetId,
-          shopDomain,
-          customerId ? String(customerId) : undefined
-        );
+      } catch (streamError) {
+        if (!receivedToken) {
+          const response = await chatAPI.current.sendMessage(
+            text,
+            activeSessionId,
+            widgetId,
+            shopDomain,
+            customerId ? String(customerId) : undefined
+          );
 
-        const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
-        const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
-        if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
-          removeAssistantPlaceholder();
-        } else {
-          replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+          const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
+          const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
+          if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
+            removeAssistantPlaceholder();
+          } else {
+            replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+          }
+          applyUiAction(response);
+        } else if (streamError instanceof Error && streamError.message.trim()) {
+          console.warn('Streaming ended after partial response:', streamError.message);
         }
-        applyUiAction(response);
       }
 
       applyUiAction(streamDonePayload);
@@ -721,14 +788,21 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         try {
           const shouldCapture = await chatAPI.current.shouldCaptureLead(activeSessionId, widgetId);
           if (shouldCapture && !leadSubmitted && !pendingHandoffAfterLead && !handoffActive) {
+            const latestAssistant = [...messages]
+              .reverse()
+              .find((item) => item.role === 'assistant')?.content || '';
+            setPendingHandoffAfterLead(assistantMessageOffersHandoff(latestAssistant));
             setShowLeadForm(true);
           }
         } catch {
           // Ignore lead-capture check failures.
         }
       }
-    } catch {
-      replaceAssistantMessage('Sorry, something went wrong. Please try again.');
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Sorry, something went wrong. Please try again.';
+      replaceAssistantMessage(detail);
       setLastActivityAtMs(Date.now());
     } finally {
       setLoading(false);
@@ -742,16 +816,30 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const handleLeadSubmit = async () => {
     if (leadSubmitting) return;
-    if (!leadForm.name.trim() && !leadForm.email.trim() && !leadForm.phone.trim()) {
+    const hasName = Boolean(leadForm.name.trim());
+    const hasContact = Boolean(leadForm.email.trim() || leadForm.phone.trim());
+    if (!hasName) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Please add at least one contact field so we can follow up.' },
+        { role: 'assistant', content: 'Please share your name so we can proceed with human handoff.' },
+      ]);
+      return;
+    }
+    if (!hasContact) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Please add an email or phone number so we can follow up.' },
       ]);
       return;
     }
 
     setLeadSubmitting(true);
     try {
+      const latestAssistant = [...messages]
+        .reverse()
+        .find((item) => item.role === 'assistant')?.content || '';
+      const shouldAutoStartHandoff = pendingHandoffAfterLead || assistantMessageOffersHandoff(latestAssistant);
+
       await chatAPI.current.submitLead({
         session_id: sessionId,
         widget_id: widgetId,
@@ -765,8 +853,13 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setShowLeadForm(false);
       setLeadForm({ name: '', email: '', phone: '', company: '' });
 
-      if (pendingHandoffAfterLead) {
+      if (shouldAutoStartHandoff) {
         setPendingHandoffAfterLead(false);
+        setHandoffActive(true);
+        setHandoffStatus('waiting_for_agent');
+        setHandoffWaitCycle(1);
+        setHandoffWaitingExpiresAt(new Date(Date.now() + (handoffWaitTimeoutSeconds * 1000)).toISOString());
+        setHandoffNowMs(Date.now());
         setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: 'Thanks, your details are captured. I am now transferring your handoff request to a live agent.' },
@@ -865,7 +958,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         appointment_at: selectedDate.toISOString(),
         name: appointmentForm.name.trim(),
         email: appointmentForm.email.trim(),
-        timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace('Asia/Calcutta', 'Asia/Kolkata'),
+        timezone: 'Asia/Kolkata',
       });
 
       setShowAppointmentForm(false);
@@ -1083,7 +1176,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   </span>
                 </div>
                 <div className="chatbot-handoff-subtitle">
-                  Keep chatting. Your messages are routed to live support.
+                  Keep chatting here. Your messages are routed to live support while handoff is active.
                 </div>
                 {handoffCountdownText ? (
                   <div className="chatbot-handoff-countdown">{handoffCountdownText}</div>
@@ -1212,53 +1305,100 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               </div>
             )}
 
-            {loading && (
+            {showLeadForm && (
               <div className="chatbot-message assistant chatbot-fade-in">
                 <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
-                <div className="chatbot-message-bubble">
-                  <div className="chatbot-typing">
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
-                    <div className="chatbot-typing-dot"></div>
+                <div className="chatbot-message-bubble chatbot-lead-bubble">
+                  <div className="chatbot-inline-title chatbot-lead-title">Quick contact form</div>
+                  <div className="chatbot-lead-subtitle">Small details now help us connect you faster with live support.</div>
+                  <input
+                    type="text"
+                    className="chatbot-inline-input chatbot-lead-input"
+                    placeholder="Name"
+                    value={leadForm.name}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                  <input
+                    type="email"
+                    className="chatbot-inline-input chatbot-lead-input"
+                    placeholder="Email"
+                    value={leadForm.email}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                  <input
+                    type="tel"
+                    className="chatbot-inline-input chatbot-lead-input"
+                    placeholder="Phone"
+                    value={leadForm.phone}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  />
+                  <input
+                    type="text"
+                    className="chatbot-inline-input chatbot-lead-input"
+                    placeholder="Company"
+                    value={leadForm.company}
+                    onChange={(e) => setLeadForm((prev) => ({ ...prev, company: e.target.value }))}
+                  />
+                  <div className="chatbot-inline-actions">
+                    <button
+                      className="chatbot-inline-button"
+                      onClick={handleLeadSubmit}
+                      disabled={leadSubmitting}
+                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                    >
+                      {leadSubmitting ? 'Submitting...' : 'Submit'}
+                    </button>
+                    <button
+                      className="chatbot-inline-button secondary"
+                      onClick={() => setShowLeadForm(false)}
+                      disabled={leadSubmitting}
+                    >
+                      Later
+                    </button>
                   </div>
                 </div>
               </div>
             )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="chatbot-widget-input-container">
-            <input
-              type="text"
-              className="chatbot-widget-input"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setLastActivityAtMs(Date.now());
-              }}
-              onKeyDown={handleKeyPress}
-              placeholder={
-                sessionClosedByInactivity
-                  ? 'Session closed due to inactivity. Type a message to start a new session...'
-                  : 'Type your message...'
-              }
-              disabled={loading}
-              ref={inputRef}
-            />
-            <button
-              className="chatbot-widget-send"
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-            >
-              Send
-            </button>
-          </div>
-          {typeof inactivityRemainingSeconds === 'number' ? (
-            <div className={`chatbot-inactivity-countdown${inactivityRemainingSeconds <= 15 ? ' warning' : ''}`}>
-              Session auto-closes in {formatCountdownSeconds(inactivityRemainingSeconds)} if no activity.
-            </div>
-          ) : null}
+          {!showLeadForm && (
+            <>
+              <div className="chatbot-widget-input-container">
+                <input
+                  type="text"
+                  className="chatbot-widget-input"
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    setLastActivityAtMs(Date.now());
+                  }}
+                  onKeyDown={handleKeyPress}
+                  placeholder={
+                    sessionClosedByInactivity
+                      ? 'Session closed due to inactivity. Type a message to start a new session...'
+                      : 'Type your message...'
+                  }
+                  disabled={loading}
+                  ref={inputRef}
+                />
+                <button
+                  className="chatbot-widget-send"
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                >
+                  Send
+                </button>
+              </div>
+              {typeof inactivityRemainingSeconds === 'number' ? (
+                <div className={`chatbot-inactivity-countdown${inactivityRemainingSeconds <= 15 ? ' warning' : ''}`}>
+                  Session auto-closes in {formatCountdownSeconds(inactivityRemainingSeconds)} if no activity.
+                </div>
+              ) : null}
+            </>
+          )}
 
           {showEmailForm && (
             <div className="chatbot-inline-card chatbot-fade-in">
@@ -1285,58 +1425,6 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   disabled={emailSending}
                 >
                   Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {showLeadForm && (
-            <div className="chatbot-inline-card chatbot-lead-card chatbot-fade-in">
-              <div className="chatbot-inline-title chatbot-lead-title">Quick contact form</div>
-              <div className="chatbot-lead-subtitle">Small details now help us connect you faster with live support.</div>
-              <input
-                type="text"
-                className="chatbot-inline-input chatbot-lead-input"
-                placeholder="Name"
-                value={leadForm.name}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-              <input
-                type="email"
-                className="chatbot-inline-input chatbot-lead-input"
-                placeholder="Email"
-                value={leadForm.email}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
-              />
-              <input
-                type="tel"
-                className="chatbot-inline-input chatbot-lead-input"
-                placeholder="Phone"
-                value={leadForm.phone}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
-              />
-              <input
-                type="text"
-                className="chatbot-inline-input chatbot-lead-input"
-                placeholder="Company"
-                value={leadForm.company}
-                onChange={(e) => setLeadForm((prev) => ({ ...prev, company: e.target.value }))}
-              />
-              <div className="chatbot-inline-actions">
-                <button
-                  className="chatbot-inline-button"
-                  onClick={handleLeadSubmit}
-                  disabled={leadSubmitting}
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-                >
-                  {leadSubmitting ? 'Submitting...' : 'Submit'}
-                </button>
-                <button
-                  className="chatbot-inline-button secondary"
-                  onClick={() => setShowLeadForm(false)}
-                  disabled={leadSubmitting}
-                >
-                  Later
                 </button>
               </div>
             </div>

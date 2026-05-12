@@ -1,3 +1,4 @@
+from datetime import date
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -6,6 +7,7 @@ from app.database import get_db
 from sqlalchemy.orm import Session
 from app.schemas.call_campaign import (
     CampaignCreate,
+    CampaignListParams,
     CampaignLookupParameters,
     CampaignStatusUpdate,
     CampaignUpdate,
@@ -35,14 +37,12 @@ def get_campaign_stats(
 @router.get("/all")
 def list_campaigns(
     background_tasks: BackgroundTasks,
-    search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 10,
+    params: CampaignListParams = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return service.list_campaigns(
-        background_tasks, db, current_user.organization_id, search, skip, limit
+        background_tasks, db, current_user.organization_id, params
     )
 
 

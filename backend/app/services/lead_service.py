@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models import Lead, Conversation
 from app.services.limits_service import get_effective_limits
 import logging
@@ -18,7 +19,12 @@ def should_capture_lead(session_id: str, organization_id: int, widget_id: str, d
         # Check if lead already captured for this session in this org
         lead_query = db.query(Lead).filter(
             Lead.session_id == session_id,
-            Lead.organization_id == organization_id
+            Lead.organization_id == organization_id,
+            func.length(func.trim(func.coalesce(Lead.name, ""))) > 0,
+            (
+                (func.length(func.trim(func.coalesce(Lead.email, ""))) > 0)
+                | (func.length(func.trim(func.coalesce(Lead.phone, ""))) > 0)
+            ),
         )
         if widget_id:
             lead_query = lead_query.filter(Lead.widget_id == widget_id)

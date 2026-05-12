@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 from app.models import KnowledgeSource, SourceType, User
 from app.services.web_crawler import WebCrawler
 from app.services.rag import chroma_client
@@ -192,6 +193,10 @@ def ingest_web_content(
     try:
         organization_id = _get_org_id(user_id, db)
 
+        def _is_ssl_disconnect_error(exc: Exception) -> bool:
+            message = str(exc).lower()
+            return "ssl connection has been closed unexpectedly" in message
+
         def _report_progress(stage: str, progress_pct: int, message: str, **kwargs) -> None:
             if not progress_callback:
                 return
@@ -210,6 +215,7 @@ def ingest_web_content(
             KnowledgeSource.url == url,
             KnowledgeSource.status == "active"
         ).first()
+        existing_source_id = existing_source.id if existing_source else None
 
         page_cache: Dict[str, Dict] = {}
         if existing_source and existing_source.source_metadata:
@@ -219,6 +225,11 @@ def ingest_web_content(
                 page_cache = {_normalize_url(k): v for k, v in raw_cache.items()}
             except Exception:
                 page_cache = {}
+
+        # End the read transaction before the potentially long crawling phase.
+        # This prevents idle-in-transaction timeouts from invalidating the SSL
+        # connection before we reach write/commit operations.
+        db.rollback()
 
         # Crawl website (incremental)
         if max_pages >= 100:
@@ -333,8 +344,12 @@ def ingest_web_content(
         if pages is None:
             pages = []
         
-        if existing_source:
-            source = existing_source
+        if existing_source_id:
+            source = db.query(KnowledgeSource).filter(
+                KnowledgeSource.id == existing_source_id
+            ).first()
+            if not source:
+                raise Exception("Knowledge source disappeared during crawl")
         else:
             source = KnowledgeSource(
                 user_id=user_id,
@@ -349,6 +364,8 @@ def ingest_web_content(
             db.add(source)
             db.commit()
             db.refresh(source)
+
+        source_id = source.id
         
         # Process and store changed pages with bounded batched writes for higher throughput.
         pages_total = len(pages)
@@ -428,12 +445,36 @@ def ingest_web_content(
             chunks_embedded=chunks_embedded,
         )
         
-        source.source_metadata = json.dumps({
+        metadata_payload = json.dumps({
             "pages_crawled": len(pages),
             "pages_scanned": pages_scanned,
             "page_cache": updated_cache
         })
-        db.commit()
+        source.source_metadata = metadata_payload
+        try:
+            db.commit()
+        except OperationalError as exc:
+            if not _is_ssl_disconnect_error(exc):
+                raise
+
+            # The failed flush leaves the session in a pending-rollback state.
+            # Roll back before touching ORM attributes or issuing new queries.
+            db.rollback()
+
+            logger.warning(
+                "Retrying metadata commit after transient SSL disconnect for source %s",
+                source_id,
+            )
+
+            refreshed_source = db.query(KnowledgeSource).filter(
+                KnowledgeSource.id == source_id
+            ).first()
+            if not refreshed_source:
+                raise
+
+            refreshed_source.source_metadata = metadata_payload
+            db.commit()
+            source = refreshed_source
         db.refresh(source)
 
         logger.info(f"Ingested {chunks_embedded} chunks from {len(pages)} pages for user {user_id} (org {organization_id})")

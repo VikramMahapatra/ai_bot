@@ -83,6 +83,7 @@ export interface CallLogFilterState {
     sentiment?: SentimentType | "All";
     evaluation: boolean | "All";
     is_lead_qualified?: boolean | "All";
+    sort_by?: 'newest' | 'oldest';
 }
 
 export interface CallLogFilters {
@@ -108,6 +109,7 @@ export interface CallLogFilters {
 
     lead_quality?: string;
     is_lead_qualified?: boolean;
+    sort_by?: 'newest' | 'oldest';
 }
 
 export interface CallLogListResponse {

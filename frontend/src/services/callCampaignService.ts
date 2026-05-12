@@ -19,9 +19,12 @@ export interface ContactList {
 
 export interface CampaignContactFilters {
     search?: string;
-    sort_by?: String,
     skip?: number;
     limit?: number;
+    status?: string | "All";
+    from_date?: string | null;
+    end_date?: string | null;
+    sort_by?: string;
 }
 
 

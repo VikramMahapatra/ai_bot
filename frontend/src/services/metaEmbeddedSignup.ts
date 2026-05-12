@@ -1,3 +1,5 @@
+import { whatsappService } from "./whatsappService";
+
 let fbSdkLoadPromise: Promise<void> | null = null;
 
 const FB_SDK_SCRIPT_ID = 'facebook-jssdk';
@@ -129,19 +131,17 @@ export const launchWhatsAppEmbeddedSignup = async (configId: string): Promise<st
       }
     };
 
-    const timer = window.setTimeout(() => {
-      finishReject('Meta popup did not complete. Check popup blocker and try again.');
-    }, 20000);
 
     fb.login(
       (response: any) => {
-        window.clearTimeout(timer);
-        const code = response?.authResponse?.code;
-        if (code) {
-          finishResolve(code);
-          return;
+        console.log('FB.login response:', response);
+        if (response.authResponse) {
+          const code = response?.authResponse?.code;
+          if (code) {
+            finishResolve(code);
+            return;
+          }
         }
-
         finishReject('Meta signup cancelled or no authorization code returned.');
       },
       {
@@ -156,3 +156,4 @@ export const launchWhatsAppEmbeddedSignup = async (configId: string): Promise<st
     );
   });
 };
+

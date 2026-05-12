@@ -456,7 +456,9 @@ const CampaignAnalytics = () => {
         <Grid item xs={12} md={6}>
           <Card sx={{ height: 350, display: "flex", flexDirection: "column" }}>
             <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <Typography fontWeight={600}>Recent Calls</Typography>
+              <Typography fontWeight={600}>
+                Recent Calls (Last 30 Minutes)
+              </Typography>
 
               <Box sx={{ mt: 2, flex: 1, minHeight: 0 }}>
                 <LiveCalls recentCalls={summary.recent_calls || []} />

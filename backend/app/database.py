@@ -31,14 +31,24 @@ else:
     # Postgres
     engine = create_engine(
         database_url,
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
         pool_pre_ping=True,
-        pool_recycle=1800,
-        pool_size=10,  # optional
-        max_overflow=20,  # optional
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_recycle=settings.DB_POOL_RECYCLE,
     )
 
 # Create SessionLocal class
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
+)
 
 # Create Base class for models
 Base = declarative_base()
@@ -48,9 +58,18 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except:
-        db.rollback()
+        # Only commit when there are pending ORM changes. This avoids turning
+        # read-only requests into commit-time failures on stale connections.
+        has_pending_writes = bool(db.new or db.dirty or db.deleted)
+        if has_pending_writes:
+            db.commit()
+        elif db.in_transaction():
+            db.rollback()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
     finally:
         db.close()
@@ -742,10 +761,70 @@ def init_db():
 
         try:
             conn.execute(text("""
-                 ALTER TABLE leads 
-                 ALTER COLUMN close_date DROP DEFAULT;
+                ALTER TABLE whatsapp_channels
+                ALTER COLUMN widget_id DROP NOT NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS parent_template_id INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS is_latest BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
             """))
 
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ADD COLUMN IF NOT EXISTS token_type VARCHAR NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_in INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS token_created_at TIMESTAMPTZ NULL,
+                ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ NULL;
+            """))
+
+            # ---------------------------------------------------
+            # 1. DROP OLD WRONG UNIQUE CONSTRAINT (IMPORTANT)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                DROP INDEX IF EXISTS ix_whatsapp_channels_organization_id;
+            """))
+
+            # ---------------------------------------------------
+            # 2. CREATE PROPER GLOBAL UNIQUE CONSTRAINT
+            #    (ONLY ONE GLOBAL CONFIG PER ORG)
+            # ---------------------------------------------------
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_global_org
+                ON whatsapp_channels (organization_id)
+                WHERE widget_id IS NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE leads 
+                ALTER COLUMN close_date DROP DEFAULT;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE message_templates
+                ADD COLUMN IF NOT EXISTS variable_mappings JSONB NULL;
+            """))
         except Exception as e:
             print(f"Migration failed: {e}")
             pass

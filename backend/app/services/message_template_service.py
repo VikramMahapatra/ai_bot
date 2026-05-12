@@ -2,37 +2,80 @@ import re
 from typing import Optional
 
 import requests
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
 from app.models.message_templates import MessageTemplate, TemplateStatus
 from app.schemas.message_template import TemplateCreate, TemplateUpdate
 from app.models.whatsapp_channel import WhatsAppChannel
 from app.config import settings
 
+
 def format_whatsapp_name(name: str) -> str:
-    return re.sub(r'[^a-z0-9_]', '', name.lower().replace(" ", "_"))
+    return re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_"))
+
+
+def build_template_components(
+    content: str,
+    variable_mappings: dict | None = None,
+):
+
+    matches = re.findall(r"{{(\d+)}}", content)
+
+    component = {
+        "type": "BODY",
+        "text": content,
+    }
+
+    if matches:
+
+        sample_values = []
+
+        for variable in matches:
+
+            sample = (
+                variable_mappings.get(variable, {}).get("sample")
+                if variable_mappings
+                else None
+            )
+
+            sample_values.append(sample or f"Sample{variable}")
+
+        component["example"] = {"body_text": [sample_values]}
+
+    return [component]
+
 
 def sync_whatsapp_templates(db: Session, organization_id):
-    
-    channel = db.query(WhatsAppChannel).filter(
-        WhatsAppChannel.organization_id == organization_id,
-        WhatsAppChannel.is_active == True,
-    ).first()
-    
+
+    channel = (
+        db.query(WhatsAppChannel)
+        .filter(
+            WhatsAppChannel.organization_id == organization_id,
+            WhatsAppChannel.is_active == True,
+            WhatsAppChannel.widget_id.is_(None),
+        )
+        .first()
+    )
+
     if not channel:
-        return
-     
+        return {
+            "success": False,
+            "message": "No active WhatsApp channel found for this organization",
+        }
+
     res = requests.get(
-        f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{channel.phone_number_id}/message_templates",
-        headers={"Authorization": f"Bearer {channel.access_token}"}
+        f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{channel.waba_id}/message_templates",
+        headers={"Authorization": f"Bearer {channel.access_token}"},
     )
 
     data = res.json().get("data", [])
 
     for item in data:
-        template = db.query(MessageTemplate).filter(
-            MessageTemplate.whatsapp_template_name == item["name"]
-        ).first()
+        template = (
+            db.query(MessageTemplate)
+            .filter(MessageTemplate.whatsapp_template_name == item["name"])
+            .first()
+        )
 
         if template:
             template.meta_status = item.get("status")
@@ -40,37 +83,42 @@ def sync_whatsapp_templates(db: Session, organization_id):
 
     db.commit()
 
+    return {"success": True, "message": "WhatsApp templates synced successfully"}
+
+
 def create_meta_template(db, data, organization_id):
-    channel = db.query(WhatsAppChannel).filter(
-                WhatsAppChannel.organization_id == organization_id,
-                WhatsAppChannel.is_active == True,
-            ).first()
+    channel = (
+        db.query(WhatsAppChannel)
+        .filter(
+            WhatsAppChannel.organization_id == organization_id,
+            WhatsAppChannel.is_active == True,
+            WhatsAppChannel.widget_id.is_(None),
+        )
+        .first()
+    )
     if not channel:
         return {
             "success": False,
             "meta_status": "FAILED",
-            "error": "No active WhatsApp channel found"
+            "error": "No active WhatsApp channel found",
         }
-    
-    url = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{channel.phone_number_id}/message_templates"
+
+    url = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}/{channel.waba_id}/message_templates"
 
     headers = {
         "Authorization": f"Bearer {channel.access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     payload = {
         "name": data["whatsapp_template_name"],
         "language": data["language"],
         "category": data["category"],
-        "components": [
-            {
-                "type": "BODY",
-                "text": data["content"]
-            }
-        ]
+        "components": build_template_components(
+            data["content"], data.get("variable_mappings")
+        ),
     }
-   
+
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
         data = res.json()
@@ -78,28 +126,27 @@ def create_meta_template(db, data, organization_id):
         if data.get("error"):
             error = data["error"]
 
-            if error.get("code") == 190:
-                return {
-                    "success": False,
-                    "meta_status": "FAILED",
-                    "error": "WhatsApp token expired. Please reconnect channel."
-                }
+            return {
+                "success": False,
+                "meta_status": "FAILED",
+                "error": error.get("error_user_msg") or error.get("message"),
+                "meta_error": error,
+            }
 
         return data
 
     except Exception as e:
-        return {
-            "success": False,
-            "meta_status": "FAILED",
-            "error": str(e)
-        }
+        return {"success": False, "meta_status": "FAILED", "error": str(e)}
+
 
 def create_template(db: Session, organization_id: int, data: TemplateCreate):
 
     template_data = data.dict()
 
     if template_data.get("type") == "whatsapp":
-        template_data["whatsapp_template_name"] = format_whatsapp_name(template_data["name"])
+        template_data["whatsapp_template_name"] = format_whatsapp_name(
+            template_data["name"]
+        )
 
         meta_res = create_meta_template(db, template_data, organization_id)
 
@@ -115,10 +162,7 @@ def create_template(db: Session, organization_id: int, data: TemplateCreate):
             template_data["meta_status"] = "FAILED"
             template_data["rejection_reason"] = str(meta_res)
 
-    template = MessageTemplate(
-        organization_id=organization_id,
-        **template_data
-    )
+    template = MessageTemplate(organization_id=organization_id, **template_data)
 
     db.add(template)
     db.commit()
@@ -127,7 +171,7 @@ def create_template(db: Session, organization_id: int, data: TemplateCreate):
     return {
         "success": True,
         "message": "Template created successfully",
-        "data": template
+        "data": template,
     }
 
 
@@ -139,13 +183,33 @@ def get_templates(
     search: str | None = None,
     template_type: str | None = None,
 ):
+
     query = db.query(MessageTemplate).filter(
         MessageTemplate.organization_id == organization_id
     )
 
-    # Search filter
+    # -----------------------------------
+    # VERSIONING FILTER
+    # -----------------------------------
+
+    query = query.filter(
+        or_(
+            MessageTemplate.type != "whatsapp",
+            and_(
+                MessageTemplate.type == "whatsapp",
+                MessageTemplate.is_latest == True,
+                MessageTemplate.is_archived == False,
+            ),
+        )
+    )
+
+    # -----------------------------------
+    # SEARCH
+    # -----------------------------------
+
     if search:
         search_term = f"%{search}%"
+
         query = query.filter(
             or_(
                 MessageTemplate.name.ilike(search_term),
@@ -154,7 +218,12 @@ def get_templates(
             )
         )
 
+    # -----------------------------------
+    # TYPE FILTER
+    # -----------------------------------
+
     if template_type and template_type != "all":
+
         query = query.filter(MessageTemplate.type == template_type)
 
     total = query.count()
@@ -168,7 +237,11 @@ def get_templates(
 
     return {
         "items": templates,
-        "pagination": {"total": total, "skip": skip, "limit": limit},
+        "pagination": {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        },
     }
 
 
@@ -177,75 +250,151 @@ def get_template(db: Session, template_id: int):
 
 
 def update_template(db: Session, template_id: int, data: TemplateUpdate):
+
     template = get_template(db, template_id)
+
     if not template:
         return None
 
+    is_locked_template = template.meta_status in ["PENDING", "APPROVED"]
+
     update_data = data.dict(exclude_unset=True)
 
-    if template.type == "whatsapp":
+    # -----------------------------------
+    # NON-WHATSAPP NORMAL UPDATE
+    # -----------------------------------
+    if template.type != "whatsapp":
 
-        if template.meta_status in ["PENDING", "APPROVED"]:
-            return {
-                "success": False,
-                "message": "WhatsApp templates cannot be edited after submission. Please create a new template."
-            }
+        for k, v in update_data.items():
+            setattr(template, k, v)
 
-        if template.meta_status in ["FAILED", "REJECTED"]:
-            if "name" in update_data:
-                update_data["whatsapp_template_name"] = format_whatsapp_name(update_data["name"])
+        db.commit()
+        db.refresh(template)
 
-            # recreate in Meta
-            meta_res = create_meta_template(db, {**template.__dict__, **update_data}, template.organization_id)
+        return {
+            "success": True,
+            "message": "Template updated successfully",
+            "data": template,
+        }
 
-            if meta_res.get("success") is False:
-                template.meta_status = "FAILED"
-                template.rejection_reason = meta_res.get("error")
+    if template.type == "whatsapp" and is_locked_template:
+        allowed_fields = {"variable_mappings"}
 
-            elif "id" in meta_res:
-                template.meta_template_id = meta_res["id"]
-                template.meta_status = meta_res.get("status", "PENDING")
-                template.rejection_reason = None
+        filtered_update = {k: v for k, v in update_data.items() if k in allowed_fields}
 
-            else:
-                template.meta_status = "FAILED"
-                template.rejection_reason = str(meta_res)
+        # prevent accidental overwrite
+        for k, v in filtered_update.items():
+            setattr(template, k, v)
 
-    # Normal update (for all types)
-    for k, v in update_data.items():
-        setattr(template, k, v)
+        db.commit()
+        db.refresh(template)
+
+        return {
+            "success": True,
+            "message": "Variable mapping updated successfully",
+            "data": template,
+        }
+
+    # -----------------------------------
+    # WHATSAPP VERSIONING FLOW
+    # -----------------------------------
+
+    # archive old latest
+    template.is_latest = False
+
+    parent_id = template.parent_template_id or template.id
+
+    new_version = (template.version or 1) + 1
+
+    template_name = update_data.get("name", template.name)
+
+    whatsapp_template_name = f"{format_whatsapp_name(template_name)}_v{new_version}"
+
+    # clone existing template data
+    new_template_data = {
+        c.name: getattr(template, c.name)
+        for c in template.__table__.columns
+        if c.name
+        not in [
+            "id",
+            "created_at",
+            "updated_at",
+        ]
+    }
+
+    # apply updates
+    new_template_data.update(update_data)
+
+    # versioning fields
+    new_template_data["version"] = new_version
+    new_template_data["parent_template_id"] = parent_id
+    new_template_data["is_latest"] = True
+    new_template_data["is_archived"] = False
+
+    # meta fields
+    new_template_data["whatsapp_template_name"] = whatsapp_template_name
+
+    new_template_data["meta_status"] = "PENDING"
+
+    # create in Meta
+    meta_res = create_meta_template(
+        db,
+        new_template_data,
+        template.organization_id,
+    )
+
+    if meta_res.get("success") is False:
+
+        new_template_data["meta_status"] = "FAILED"
+
+        new_template_data["rejection_reason"] = meta_res.get("error")
+
+    elif "id" in meta_res:
+
+        new_template_data["meta_template_id"] = meta_res["id"]
+
+        new_template_data["meta_status"] = meta_res.get("status", "PENDING")
+
+        new_template_data["rejection_reason"] = None
+
+    else:
+
+        new_template_data["meta_status"] = "FAILED"
+
+        new_template_data["rejection_reason"] = str(meta_res)
+
+    # create NEW template row
+    new_template = MessageTemplate(**new_template_data)
+
+    db.add(new_template)
 
     db.commit()
-    db.refresh(template)
+
+    db.refresh(new_template)
 
     return {
         "success": True,
-        "message": "Template updated successfully",
-        "data": template
+        "message": "WhatsApp template version created",
+        "data": new_template,
     }
-    
+
+
 def update_template_status(db: Session, template_id: int, status: str):
     template = get_template(db, template_id)
     if not template:
-        return {
-            "success": False,
-            "message": "Template not found"
-        }
+        return {"success": False, "message": "Template not found"}
 
     try:
         # convert string → enum (case-insensitive)
         status_enum = TemplateStatus[status.lower()]
     except KeyError:
-        return {
-            "success": False,
-            "message": "Invalid status value"
-        }
+        return {"success": False, "message": "Invalid status value"}
 
     # Optional business rule
     if template.type == "whatsapp" and template.meta_status == "APPROVED":
         return {
             "success": False,
-            "message": "Approved WhatsApp templates cannot be deactivated"
+            "message": "Approved WhatsApp templates cannot be deactivated",
         }
 
     template.status = status_enum
@@ -256,8 +405,9 @@ def update_template_status(db: Session, template_id: int, status: str):
     return {
         "success": True,
         "message": f"Template {status_enum.value} successfully",
-        "data": template
+        "data": template,
     }
+
 
 def delete_template(db: Session, template_id: int):
     template = get_template(db, template_id)
@@ -270,7 +420,7 @@ def delete_template(db: Session, template_id: int):
         if template.meta_status == "APPROVED":
             return {
                 "success": False,
-                "message": "Approved WhatsApp templates cannot be deleted. You can deactivate them."
+                "message": "Approved WhatsApp templates cannot be deleted. You can deactivate them.",
             }
 
     # Soft delete
@@ -278,17 +428,16 @@ def delete_template(db: Session, template_id: int):
 
     db.commit()
 
-    return {
-        "success": True,
-        "message": "Template deactivated successfully"
-    }
+    return {"success": True, "message": "Template deactivated successfully"}
 
 
 def get_template_lookup(db: Session, organization_id: int, type: Optional[str] = None):
 
     query = db.query(MessageTemplate).filter(
         MessageTemplate.organization_id == organization_id,
-        MessageTemplate.status == TemplateStatus.active
+        MessageTemplate.status == TemplateStatus.active,
+        MessageTemplate.is_latest == True,
+        MessageTemplate.meta_status == "APPROVED",
     )
 
     if type:
@@ -296,4 +445,12 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
 
     templates = query.order_by(MessageTemplate.name.asc()).all()
 
-    return [{"id": t.id, "name": t.name, "type": t.type} for t in templates]
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "type": t.type,
+            "category": t.category,  # optional but useful for UI filtering
+        }
+        for t in templates
+    ]
