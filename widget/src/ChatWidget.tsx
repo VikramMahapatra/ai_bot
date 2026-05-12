@@ -7,6 +7,12 @@ interface Message {
   content: string;
 }
 
+type RichTextBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'unordered-list'; items: string[] }
+  | { type: 'ordered-list'; items: string[] }
+  | { type: 'table'; headers: string[]; rows: string[][] };
+
 interface WidgetConfig {
   widgetId: string;
   apiUrl: string;
@@ -144,6 +150,183 @@ const assistantMessageOffersHandoff = (value: string): boolean => {
   ];
 
   return markers.some((marker) => normalized.includes(marker));
+};
+
+const renderInlineRichText = (text: string, keyPrefix: string): React.ReactNode[] => {
+  const parts: React.ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*)/g;
+  const tokens = text.split(pattern);
+
+  tokens.forEach((token, index) => {
+    if (!token) return;
+    if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
+      parts.push(
+        <strong key={`${keyPrefix}-b-${index}`}>{token.slice(2, -2)}</strong>
+      );
+      return;
+    }
+    parts.push(<React.Fragment key={`${keyPrefix}-t-${index}`}>{token}</React.Fragment>);
+  });
+
+  return parts;
+};
+
+const parseTableRow = (line: string): string[] => {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return [];
+  const normalized = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  return normalized.split('|').map((cell) => cell.trim());
+};
+
+const isTableSeparator = (line: string): boolean => {
+  const cells = parseTableRow(line);
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+};
+
+const parseRichTextBlocks = (content: string): RichTextBlock[] => {
+  const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
+  const blocks: RichTextBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const current = lines[index].trim();
+    if (!current) {
+      index += 1;
+      continue;
+    }
+
+    if (
+      index + 1 < lines.length &&
+      lines[index].includes('|') &&
+      isTableSeparator(lines[index + 1])
+    ) {
+      const headers = parseTableRow(lines[index]);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length) {
+        const candidate = lines[index].trim();
+        if (!candidate || !candidate.includes('|')) break;
+        const row = parseTableRow(lines[index]);
+        if (row.length) rows.push(row);
+        index += 1;
+      }
+      blocks.push({ type: 'table', headers, rows });
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(current)) {
+      const items: string[] = [];
+      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^[-*]\s+/, ''));
+        index += 1;
+      }
+      blocks.push({ type: 'unordered-list', items });
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(current)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^\d+\.\s+/, ''));
+        index += 1;
+      }
+      blocks.push({ type: 'ordered-list', items });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const candidate = lines[index].trim();
+      if (!candidate) break;
+      if (/^[-*]\s+/.test(candidate) || /^\d+\.\s+/.test(candidate)) break;
+      if (
+        index + 1 < lines.length &&
+        lines[index].includes('|') &&
+        isTableSeparator(lines[index + 1])
+      ) {
+        break;
+      }
+      paragraphLines.push(candidate);
+      index += 1;
+    }
+    if (paragraphLines.length) {
+      blocks.push({ type: 'paragraph', text: paragraphLines.join(' ') });
+    }
+  }
+
+  return blocks;
+};
+
+const renderMessageContent = (content: string, keyPrefix: string): React.ReactNode => {
+  const blocks = parseRichTextBlocks(content);
+  if (blocks.length === 0) {
+    return <p>{content}</p>;
+  }
+
+  return (
+    <div className="chatbot-rich-text">
+      {blocks.map((block, blockIndex) => {
+        const blockKey = `${keyPrefix}-block-${blockIndex}`;
+        if (block.type === 'paragraph') {
+          return (
+            <p key={blockKey}>{renderInlineRichText(block.text, blockKey)}</p>
+          );
+        }
+
+        if (block.type === 'unordered-list') {
+          return (
+            <ul key={blockKey}>
+              {block.items.map((item, itemIndex) => (
+                <li key={`${blockKey}-item-${itemIndex}`}>
+                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.type === 'ordered-list') {
+          return (
+            <ol key={blockKey}>
+              {block.items.map((item, itemIndex) => (
+                <li key={`${blockKey}-item-${itemIndex}`}>
+                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                </li>
+              ))}
+            </ol>
+          );
+        }
+
+        return (
+          <div key={blockKey} className="chatbot-rich-table-wrap">
+            <table className="chatbot-rich-table">
+              <thead>
+                <tr>
+                  {block.headers.map((header, headerIndex) => (
+                    <th key={`${blockKey}-h-${headerIndex}`}>
+                      {renderInlineRichText(header, `${blockKey}-h-${headerIndex}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, rowIndex) => (
+                  <tr key={`${blockKey}-r-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td key={`${blockKey}-c-${rowIndex}-${cellIndex}`}>
+                        {renderInlineRichText(cell, `${blockKey}-c-${rowIndex}-${cellIndex}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 const ChatWidget: React.FC<WidgetConfig> = ({
@@ -1234,7 +1417,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             {messages.map((message, index) => (
               <div key={index} className={`chatbot-message ${message.role} chatbot-fade-in`}>
                 {message.role === 'assistant' && <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>}
-                <div className="chatbot-message-bubble">{message.content}</div>
+                <div className="chatbot-message-bubble">{renderMessageContent(message.content, `msg-${index}`)}</div>
                 {message.role === 'user' && <div className="chatbot-message-avatar user">{userIconGlyph}</div>}
               </div>
             ))}
