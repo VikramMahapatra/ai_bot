@@ -1,4 +1,12 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Body, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    status,
+    Body,
+    Query,
+)
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -34,6 +42,7 @@ from app.models.organization_settings import OrganizationSettings
 from app.api.organization_setting import get_settings
 from app.services.organization_setting_service import get_org_settings
 from app.context.org_context import set_org_id
+from app.models.channels import Channel, OrganizationChannel
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +254,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    
+
     set_org_id(user.organization_id)
 
     # Generate token with user_id
@@ -266,7 +275,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 async def get_organizations_by_username(username: str, db: Session = Depends(get_db)):
     """Get all organizations where a user exists (for login organization dropdown)"""
     users = db.query(User).filter(User.username == username).all()
-    
+
     print(f"DEBUG: Found {len(users)} users with username '{username}'")  # Debug log
 
     if not users:
@@ -374,7 +383,9 @@ async def get_feature_flags(
     }
 
 
-@router.get("/org-credit/current-month", response_model=OrgCreditAdminMonthSummaryResponse)
+@router.get(
+    "/org-credit/current-month", response_model=OrgCreditAdminMonthSummaryResponse
+)
 async def get_admin_org_credit_current_month_summary(
     billing_period: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
@@ -389,17 +400,14 @@ async def get_admin_org_credit_current_month_summary(
 
 
 @router.get("/widget/config/{widget_id}")
-async def get_widget_config(
-    widget_id: str,
-    db: Session = Depends(get_db)
-):
+async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
     """Get widget configuration (public endpoint)"""
     from app.models import WidgetConfig
 
     config = db.query(WidgetConfig).filter(WidgetConfig.widget_id == widget_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Widget config not found")
-    
+
     settings = get_org_settings(db, config.organization_id)
 
     if _ensure_widget_escalation_contacts(config, settings):
@@ -539,13 +547,11 @@ async def create_widget_config(
     widget_id = config_data.get("widget_id", str(uuid.uuid4()))
 
     escalation_contact_level_1 = (
-        (config_data.get("escalation_contact_level_1") or "").strip()
-        or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
-    )
+        config_data.get("escalation_contact_level_1") or ""
+    ).strip() or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
     escalation_contact_level_2 = (
-        (config_data.get("escalation_contact_level_2") or "").strip()
-        or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
-    )
+        config_data.get("escalation_contact_level_2") or ""
+    ).strip() or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
 
     config = WidgetConfig(
         user_id=current_user.id,
@@ -1000,3 +1006,18 @@ async def delete_widget_config(
     db.commit()
 
     return {"message": "Widget deleted successfully"}
+
+
+@router.get("/validate-channel-available")
+async def validate_channel_available(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    available_channel = (
+        db.query(Channel.id)
+        .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
+        .filter(OrganizationChannel.organization_id == current_user.organization_id)
+        .first()
+    )
+
+    return True if available_channel else False

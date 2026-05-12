@@ -3377,3 +3377,19 @@ async def get_admin_org_credit_current_month_summary(
         org_list.append(OrgCreditAdminMonthSummaryResponse(**payload))
 
     return {"items": org_list, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/validate-channel-available")
+async def validate_channel_available(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    available_channel = (
+        db.query(Channel.id)
+        .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
+        .filter(OrganizationChannel.organization_id == organization_id)
+        .first()
+    )
+
+    return True if available_channel else False

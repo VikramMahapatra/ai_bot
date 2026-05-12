@@ -45,6 +45,8 @@ import api from "../services/api";
 import { buildPublicUrl } from "../config/env";
 import SearchIcon from "@mui/icons-material/Search";
 import { useDateFormatter } from "../hooks/useDateFormatter";
+import { superadminService } from "../services/superadminService";
+import { chatService } from "../services/chatService";
 
 interface WidgetConfig {
   id?: number;
@@ -198,7 +200,12 @@ const WidgetManagementPage: React.FC = () => {
   const [widgetTotal, setWidgetTotal] = useState(0);
   const [widgetPage, setWidgetPage] = useState(0);
   const [widgetRowsPerPage, setWidgetRowsPerPage] = useState(10);
+  const [isChannelAvailable, setIsChannelAvailable] = useState(false);
   const formatDisplayDate = useDateFormatter();
+
+  useEffect(() => {
+    validateChannel();
+  },[])
 
   // Fetch widgets on mount
   useEffect(() => {
@@ -240,7 +247,20 @@ const WidgetManagementPage: React.FC = () => {
     }
   };
 
+  const validateChannel = async () => {
+      try {
+        const res = await chatService.isChannelAvailable();
+        setIsChannelAvailable(res);
+      } catch (error) {
+        console.error("Failed to channel validation service", error);
+      }
+  };
+
   const handleOpenCreate = () => {
+    if (!isChannelAvailable) {
+      setError("Channel is not available for your organization. Please contact support for assistance.");
+      return;
+    }
     navigate("/create-chat-agent");
   };
 
@@ -616,6 +636,10 @@ const WidgetManagementPage: React.FC = () => {
       Math.min(dialogLastStep, Math.max(0, prev + delta)),
     );
   };
+
+  useEffect(() => {
+    
+  },[])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
