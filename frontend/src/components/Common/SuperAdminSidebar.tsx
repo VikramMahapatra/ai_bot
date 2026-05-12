@@ -43,26 +43,6 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { text: "Overview", icon: <DashboardIcon />, path: "/superadmin" },
   {
-    text: "Price Matrix",
-    icon: <TableChartIcon />,
-    path: "/superadmin/price-matrix",
-  },
-  {
-    text: "Credit Estimator",
-    icon: <CalculateIcon />,
-    path: "/superadmin/credit-estimator",
-  },
-  {
-    text: "Credit Billing",
-    icon: <AccountBalanceWalletIcon />,
-    path: "/superadmin/org-credit-billing",
-  },
-  {
-    text: "Credit Usage",
-    icon: <CalendarMonthIcon />,
-    path: "/superadmin/credit-usage",
-  },
-  {
     text: "Organizations",
     icon: <BusinessIcon />,
     path: "/superadmin/organizations",
@@ -77,6 +57,26 @@ const menuItems: MenuItem[] = [
     text: "Call Analytics",
     icon: <SupportAgentIcon />,
     path: "/superadmin/call-analytics",
+  },
+  {
+    text: "Price Matrix",
+    icon: <TableChartIcon />,
+    path: "/superadmin/price-matrix",
+  },
+  {
+    text: "Credit Estimator",
+    icon: <CalculateIcon />,
+    path: "/superadmin/credit-estimator",
+  },
+  {
+    text: "Credit Usage",
+    icon: <CalendarMonthIcon />,
+    path: "/superadmin/credit-usage",
+  },
+  {
+    text: "Credit Billing",
+    icon: <AccountBalanceWalletIcon />,
+    path: "/superadmin/org-credit-billing",
   },
 ];
 
