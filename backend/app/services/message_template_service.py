@@ -448,9 +448,14 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
     return [
         {
             "id": t.id,
-            "name": t.name,
             "type": t.type,
-            "category": t.category,  # optional but useful for UI filtering
+            "name": t.name,
+            "content": t.content,
+            "category": t.category,
+            "language": t.language,
+            "meta_template_id": t.meta_template_id,
+            "whatsapp_template_name": t.whatsapp_template_name,
+            "variable_mappings": t.variable_mappings,
         }
         for t in templates
     ]

@@ -1598,35 +1598,112 @@ const SettingsPage: React.FC = () => {
                   </TextField>
                 </Grid>
               </Grid>
-              {selectedTemplate && (
+              {selectedTemplate ? (
                 <Box
                   sx={{
-                    mt: 2,
-                    p: 2,
                     borderRadius: 2,
-                    bgcolor: "#efeae2",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    overflow: "hidden",
+                    height: "100%",
+                    mt: 2,
                   }}
                 >
-                  <Typography
-                    variant="subtitle2"
-                    mb={1}
-                  >
-                    Template Preview
-                  </Typography>
-
+                  {/* Header */}
                   <Box
                     sx={{
-                      bgcolor: "#d9fdd3",
-                      p: 1.5,
-                      borderRadius: 2,
-                      whiteSpace: "pre-wrap",
+                      px: 1.5,
+                      py: 1,
+                      bgcolor: "grey.100",
+                      display: "flex",
+                      justifyContent: "space-between",
                     }}
                   >
-                    {generatePreview(
-                      selectedTemplate.content,
-                      selectedTemplate.variable_mappings || {}
-                    )}
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      Preview
+                    </Typography>
+
+                    <Typography variant="caption" color="text.secondary">
+                      {selectedTemplate.name}
+                    </Typography>
                   </Box>
+
+                  {/* Body */}
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: "#ece5dd", // WhatsApp chat background
+                      minHeight: 140,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                    }}
+                  >
+                    {/* incoming message bubble */}
+                    <Box
+                      sx={{
+                        alignSelf: "flex-start",
+                        maxWidth: "85%",
+                        bgcolor: "#ffffff",
+                        p: 1.2,
+                        borderRadius: "12px",
+                        borderTopLeftRadius: 4,
+                        boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+                        whiteSpace: "pre-wrap",
+                        fontSize: "0.85rem",
+                        lineHeight: 1.4,
+                        position: "relative",
+                      }}
+                    >
+                      {/* sender label */}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          display: "block",
+                          mb: 0.5,
+                          color: "text.secondary",
+                        }}
+                      >
+                        Test Message
+                      </Typography>
+
+                      {generatePreview(
+                        selectedTemplate.content,
+                        selectedTemplate.variable_mappings || {}
+                      )}
+
+                      {/* optional timestamp */}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "block",
+                          mt: 0.5,
+                          textAlign: "right",
+                          color: "text.disabled",
+                          fontSize: "0.7rem",
+                        }}
+                      >
+                        just now
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    height: "100%",
+                    minHeight: 80,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px dashed",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    color: "text.secondary",
+                  }}
+                >
+                  Select a template to preview
                 </Box>
               )}
             </Stack>

@@ -89,6 +89,9 @@ class Campaign(Base):
     )
     campaign_name = Column(String, nullable=False, index=True)
     campaign_type = Column(String, nullable=False, index=True)  # email | whatsapp | sms
+    message_template_id = Column(
+        Integer, ForeignKey("message_templates.id"), nullable=True, index=True
+    )
     message_template = Column(Text, nullable=False)
     contact_list_id = Column(
         Integer, ForeignKey("contact_lists.id"), nullable=False, index=True

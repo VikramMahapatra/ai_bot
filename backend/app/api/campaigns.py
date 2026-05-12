@@ -165,6 +165,7 @@ class ContactManualUploadRequest(BaseModel):
 class CampaignCreateRequest(BaseModel):
     campaign_name: str
     campaign_type: str
+    message_template_id: Optional[int] = None
     message_template: str
     contact_list_id: int
     product_id: Optional[int] = None

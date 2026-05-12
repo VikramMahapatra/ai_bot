@@ -44,16 +44,16 @@ export interface CampaignLogItem {
   email?: string;
   phone?: string;
   status:
-    | "pending"
-    | "sent"
-    | "delivered"
-    | "opened"
-    | "read"
-    | "clicked"
-    | "bounced"
-    | "complained"
-    | "unsubscribed"
-    | "failed";
+  | "pending"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "read"
+  | "clicked"
+  | "bounced"
+  | "complained"
+  | "unsubscribed"
+  | "failed";
   sent_at?: string;
   delivered_at?: string;
   opened_at?: string;
@@ -290,6 +290,7 @@ export interface DashboardStats {
 export interface CreateCampaignPayload {
   campaign_name: string;
   campaign_type: CampaignType;
+  message_template_id?: number;
   message_template: string;
   scheduled_time?: string;
   contact_list_id: number;
