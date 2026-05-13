@@ -102,7 +102,7 @@ interface TrendPoint {
 }
 
 interface LeadTrendPoint {
-  date: string;
+  month: string;
   pipeline: number;
   closed: number;
 }
@@ -256,7 +256,7 @@ const AdminDashboard: React.FC = () => {
           start_date: callStart,
           end_date: callEnd,
         }),
-        dashboardService.getLeadsTrend(7),
+        dashboardService.getLeadsTrend(6),
       ]);
 
       if (statsRes.status === "fulfilled") {
@@ -365,7 +365,7 @@ const AdminDashboard: React.FC = () => {
           : [];
         setLeadTrend(
           data.map((row: any) => ({
-            date: String(row?.date || ""),
+            month: String(row?.month || ""),
             pipeline: numberOrZero(row?.pipeline),
             closed: numberOrZero(row?.closed),
           })),
@@ -798,7 +798,7 @@ const AdminDashboard: React.FC = () => {
           <Grid item xs={12}>
             <Paper sx={{ ...glassPanelSx, p: 2.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-                Pipeline vs Closed Trend (7 days)
+                Pipeline vs Closed Trend (last 6 months)
               </Typography>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={leadsTrend}>
@@ -807,7 +807,7 @@ const AdminDashboard: React.FC = () => {
                     stroke={alpha(theme.palette.text.secondary, 0.2)}
                   />
                   <XAxis
-                    dataKey="date"
+                    dataKey="month"
                     stroke={theme.palette.text.secondary}
                     tick={{ fontSize: 12 }}
                   />
