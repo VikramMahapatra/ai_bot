@@ -685,7 +685,9 @@ def get_voice_campaign_report(
             Lead.lead_outcome.label("lead_outcome"),
             Lead.created_at.label("created_at"),
             Product.name.label("product_name"),
-            CampaignSchedule.start_datetime.label("campaign_start_date"),
+            func.coalesce(
+                CampaignSchedule.start_datetime, CallCampaign.created_at
+            ).label("campaign_start_date"),
             latest_conversation.c.conversation_outcome.label("outcome"),
             latest_conversation.c.conversation_is_lead.label("is_lead"),
         )

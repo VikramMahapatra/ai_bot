@@ -1673,7 +1673,17 @@ const ReportsPage: React.FC = () => {
                                 >
                                   Agent:
                                 </Typography>
-                                <EllipsisCell value={item.agent_name} />
+                                <Typography
+                                  variant="caption"
+                                  noWrap
+                                  sx={{
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
+                                  }}
+                                >
+                                  {item.agent_name}
+                                </Typography>
                               </Box>
 
                               <Box display="flex" alignItems="center" gap={2}>
