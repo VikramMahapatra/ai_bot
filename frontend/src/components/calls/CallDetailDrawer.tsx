@@ -41,7 +41,7 @@ import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import InfoIcon from "@mui/icons-material/Info";
 import { useDateFormatter } from '../../hooks/useDateFormatter';
-
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
 
 const sentimentConfig: Record<
@@ -356,9 +356,9 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                         </Typography>
 
                                         {ch.error && (
-                                            <Typography variant="caption" color="error">
-                                                ({ch.error})
-                                            </Typography>
+                                            <Tooltip title={ch.error}>
+                                                <ErrorOutlineIcon color="error" fontSize="small" />
+                                            </Tooltip>
                                         )}
                                     </Box>
                                 ))}

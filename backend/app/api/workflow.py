@@ -9,51 +9,47 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.workflow import StatusUpdateRequest, WorkflowCreate, WorkflowRequest
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/api/workflows", 
+    prefix="/api/workflows",
     tags=["workflows"],
-    dependencies=[Depends(get_current_user)]
+    dependencies=[Depends(get_current_user)],
 )
 
-    
-@router.get("/all") 
+
+@router.get("/all")
 def get_all(
     params: WorkflowRequest = Depends(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    return service.get_all(db, current_user.organization_id, params.skip, params.limit, params.search)
+    return service.get_all(
+        db, current_user.organization_id, params.skip, params.limit, params.search
+    )
+
 
 @router.get("/{workflow_id:int}")
 def get_workflow(
-    workflow_id: int,
-    db: Session = Depends(get_db),
-    user = Depends(get_current_user)
+    workflow_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)
 ):
-    return service.get_workflow_by_id(
-        db,
-        workflow_id,
-        user.organization_id
-    )
+    return service.get_workflow_by_id(db, workflow_id, user.organization_id)
+
 
 @router.get("/lookup")
 def get_workflow_lookup(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     return service.workflow_lookup(db, current_user.organization_id, search)
 
 
-
 @router.post("/create", response_model=None)
 def create(
-    data : WorkflowCreate,
+    data: WorkflowCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     return service.save_workflow(db, current_user.organization_id, data)
 
@@ -63,20 +59,27 @@ def update(
     workflow_id: int,
     payload: WorkflowCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
 ):
-    return service.update_workflow(
-        db,
-        workflow_id,
-        user.organization_id,
-        payload
-    )
-    
+    return service.update_workflow(db, workflow_id, user.organization_id, payload)
+
+
 @router.patch("/{workflow_id:int}/status")
 def update_status(
     workflow_id: int,
     payload: StatusUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    return service.update_workflow_status(db, workflow_id, current_user.organization_id, payload.is_active)
+    return service.update_workflow_status(
+        db, workflow_id, current_user.organization_id, payload.is_active
+    )
+
+
+@router.delete("/delete/{workflow_id:int}", response_model=None)
+def delete(
+    workflow_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.delete_workflow(db, workflow_id)
