@@ -126,6 +126,12 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = 1800
 
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = "my_whatsapp_verify_token_123"
+    ZENTRIXEL_WHATSAPP_ACCESS_TOKEN: str = (
+        "EAAPjpsiVwiYBRQGjlWsHEWng1igeAvjNuZBLWT0DK6musCpX9YjlbX2ufLpcPcEFumSBLlNZB3nAx6oKFsVNZCQB8zXk6Xj41pkBe88ENWih05RjscfAvgelNzsEFZBzpDzwZB7CrYeOGIgjLLHLOLBsZBURqli7DK6dlZAQZCcGFhRD8lLhGB4XZBLrczN4jc0wAqcZAcDBLvIqdW"
+    )
+    ZENTRIXEL_WABA_ID: str = "2357584807996416"
+    ZENTRIXEL_PHONE_NUMBER_ID: str = "1009878228875130"
+    ZENTRIXEL_BUSINESS_PHONE: str = "+1 555-181-6029"
 
     @property
     def cors_origins_list(self) -> List[str]:

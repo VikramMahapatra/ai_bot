@@ -331,8 +331,6 @@ const SettingsPage: React.FC = () => {
 
       try {
 
-        setLoading(true);
-
         await whatsappService.saveEmbeddedSignup({
           phone_number_id: data.phone_number_id,
           waba_id: data.waba_id
@@ -348,10 +346,6 @@ const SettingsPage: React.FC = () => {
           err?.message ||
           "Failed to save WhatsApp config"
         );
-
-      } finally {
-
-        setLoading(false);
 
       }
     };
@@ -388,7 +382,7 @@ const SettingsPage: React.FC = () => {
     catch (err: any) {
       setError(
         err?.response?.data?.detail ||
-        err?.message ||
+        err?.detail ||
         "Failed to exchange Meta signup code"
       );
     } finally {
@@ -412,11 +406,15 @@ const SettingsPage: React.FC = () => {
       const code = await launchWhatsAppEmbeddedSignup(configId);
 
       // Send to backend
-      handleMetaAuthCode(code);
+      await handleMetaAuthCode(code);
 
-    } catch (error: any) {
-      console.error(error);
-      setError(error.message);
+    } catch (err: any) {
+      console.error(err);
+      setError(
+        err?.response?.data?.detail ||
+        err?.detail ||
+        "Failed to exchange Meta signup code"
+      );
     } finally {
       setLoading(false);
     }
@@ -429,10 +427,11 @@ const SettingsPage: React.FC = () => {
       setWhatsappData(null);
       setSuccess("WhatsApp disconnected successfully");
 
-    } catch (error: any) {
+    } catch (err: any) {
       setError(
-        error?.response?.data?.detail ||
-        error.message
+        err?.response?.data?.detail ||
+        err?.detail ||
+        "Failed to exchange Meta signup code"
       );
     } finally {
       setLoading(false);
@@ -1598,35 +1597,112 @@ const SettingsPage: React.FC = () => {
                   </TextField>
                 </Grid>
               </Grid>
-              {selectedTemplate && (
+              {selectedTemplate ? (
                 <Box
                   sx={{
-                    mt: 2,
-                    p: 2,
                     borderRadius: 2,
-                    bgcolor: "#efeae2",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    overflow: "hidden",
+                    height: "100%",
+                    mt: 2,
                   }}
                 >
-                  <Typography
-                    variant="subtitle2"
-                    mb={1}
-                  >
-                    Template Preview
-                  </Typography>
-
+                  {/* Header */}
                   <Box
                     sx={{
-                      bgcolor: "#d9fdd3",
-                      p: 1.5,
-                      borderRadius: 2,
-                      whiteSpace: "pre-wrap",
+                      px: 1.5,
+                      py: 1,
+                      bgcolor: "grey.100",
+                      display: "flex",
+                      justifyContent: "space-between",
                     }}
                   >
-                    {generatePreview(
-                      selectedTemplate.content,
-                      selectedTemplate.variable_mappings || {}
-                    )}
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      Preview
+                    </Typography>
+
+                    <Typography variant="caption" color="text.secondary">
+                      {selectedTemplate.name}
+                    </Typography>
                   </Box>
+
+                  {/* Body */}
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: "#ece5dd", // WhatsApp chat background
+                      minHeight: 140,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                    }}
+                  >
+                    {/* incoming message bubble */}
+                    <Box
+                      sx={{
+                        alignSelf: "flex-start",
+                        maxWidth: "85%",
+                        bgcolor: "#ffffff",
+                        p: 1.2,
+                        borderRadius: "12px",
+                        borderTopLeftRadius: 4,
+                        boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+                        whiteSpace: "pre-wrap",
+                        fontSize: "0.85rem",
+                        lineHeight: 1.4,
+                        position: "relative",
+                      }}
+                    >
+                      {/* sender label */}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          display: "block",
+                          mb: 0.5,
+                          color: "text.secondary",
+                        }}
+                      >
+                        Test Message
+                      </Typography>
+
+                      {generatePreview(
+                        selectedTemplate.content,
+                        selectedTemplate.variable_mappings || {}
+                      )}
+
+                      {/* optional timestamp */}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "block",
+                          mt: 0.5,
+                          textAlign: "right",
+                          color: "text.disabled",
+                          fontSize: "0.7rem",
+                        }}
+                      >
+                        just now
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    height: "100%",
+                    minHeight: 80,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px dashed",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    color: "text.secondary",
+                  }}
+                >
+                  Select a template to preview
                 </Box>
               )}
             </Stack>

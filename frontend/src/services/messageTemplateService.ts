@@ -10,6 +10,9 @@ export interface VariableMapping {
 
 export type WhatsAppCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 
+
+export type MetaStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED" | "FAILED"
+
 export interface Template {
   id: number;
   name: string;
@@ -23,11 +26,12 @@ export interface Template {
   // WhatsApp fields
   category?: WhatsAppCategory;
   language?: string;
-  meta_status?: "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+  meta_status?: MetaStatus;
   meta_template_id?: string;
   rejection_reason?: string;
   variable_mappings?: Record<string, VariableMapping>;
 }
+
 
 export interface TemplateForm {
   name: string;
@@ -36,7 +40,7 @@ export interface TemplateForm {
   content: string;
   category?: WhatsAppCategory;
   language?: string;
-  meta_status?: "PENDING" | "APPROVED" | "REJECTED" | "FAILED";
+  meta_status?: MetaStatus;
   variable_mappings?: Record<string, VariableMapping>;
 }
 

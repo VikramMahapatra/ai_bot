@@ -7,8 +7,8 @@ import re
 import threading
 from typing import Optional, Tuple, Union
 from zoneinfo import ZoneInfo
-
-from fastapi import BackgroundTasks
+from dateutil import parser
+from fastapi import BackgroundTasks, HTTPException
 from psycopg2 import IntegrityError
 from sqlalchemy import (
     Integer,
@@ -73,6 +73,8 @@ from app.services import organization_channel_service
 from app.database import SessionLocal
 from app.models.instant_reply_logs import InstantReplyChannelLog, InstantReplyLog
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
+from app.models.appointment import Appointment
+from app.models.user import Organization
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -2298,3 +2300,176 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
     db.commit()
 
     return processed, failed, new_last_id
+
+
+def process_call_bookings(db, batch_size, organization_id=None, last_id=None):
+
+    processed = 0
+    failed = 0
+    skipped = 0
+
+    query = db.query(Organization).filter(
+        Organization.echoleads_api_key.is_not(None),
+        Organization.echoleads_api_key != "",
+    )
+
+    if organization_id is not None:
+        query = query.filter(Organization.id == organization_id)
+
+    # IMPORTANT
+    if last_id is not None:
+        query = query.filter(Organization.id > last_id)
+
+    organizations = query.order_by(Organization.id.asc()).limit(batch_size).all()
+
+    new_last_id = last_id
+
+    for org in organizations:
+
+        try:
+
+            sync_echoleads_bookings(
+                db=db,
+                organization_id=org.id,
+            )
+
+            processed += 1
+            new_last_id = org.id
+
+        except Exception as e:
+
+            new_last_id = org.id
+
+            error_message = str(e)
+
+            if "Insufficient credits" in error_message:
+                logger.warning(f"Skipping org {org.id} due to insufficient credits")
+
+                skipped += 1
+                continue
+
+            logger.error(f"Booking sync failed for org {org.id}: {error_message}")
+
+            failed += 1
+
+            db.rollback()
+
+    return processed, failed, new_last_id
+
+
+def sync_echoleads_bookings(
+    db: Session,
+    organization_id: int,
+):
+    client = EcholeadsClient(organization_id)
+
+    response = client.fetch_bookings()
+
+    bookings = response.get("bookings", [])
+
+    inserted_records = []
+
+    for booking in bookings:
+
+        # Validate credits
+        valid = organization_credit_service.validate_feature_usage(
+            db,
+            organization_id,
+            FeatureCodes.AI_BOOKING,
+            1,
+        )
+
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient credits. Please add more credits to continue.",
+            )
+
+        call_id = booking.get("call_id")
+
+        if not call_id:
+            continue
+
+        # Fetch call log
+        call_log = (
+            db.query(CallLog).filter(CallLog.external_call_a_id == call_id).first()
+        )
+
+        if not call_log or not call_log.call_session_id:
+            continue
+
+        # Prevent duplicate appointments
+        existing = (
+            db.query(Appointment)
+            .filter(Appointment.session_id == call_log.call_session_id)
+            .first()
+        )
+
+        if existing:
+            continue
+
+        # Contact
+        contact = None
+        if call_log.contact_id:
+            contact = (
+                db.query(Contact).filter(Contact.id == call_log.contact_id).first()
+            )
+
+        # Agent
+        agent = None
+        if call_log.agent_id:
+            agent = (
+                db.query(CallingAgent)
+                .filter(CallingAgent.id == call_log.agent_id)
+                .first()
+            )
+
+        # Campaign
+        campaign = None
+        if call_log.campaign_id:
+            campaign = (
+                db.query(CallCampaign)
+                .filter(CallCampaign.id == call_log.campaign_id)
+                .first()
+            )
+
+        # Normalize phone
+        phone = booking.get("customer_number")
+
+        if phone:
+            phone = phone if phone.startswith("+") else f"+{phone}"
+
+        # Create appointment
+        appointment = Appointment(
+            organization_id=call_log.organization_id,
+            session_id=call_log.call_session_id,
+            widget_id=agent.widget_id if agent else None,
+            name=contact.name if contact else "Unknown",
+            phone=phone,
+            appointment_at=parser.parse(booking.get("start_date")),
+            status="booked",
+            email=None,
+            notes=None,
+            timezone=(
+                campaign.schedule.timezone if campaign and campaign.schedule else "UTC"
+            ),
+        )
+
+        db.add(appointment)
+        db.flush()
+
+        # Deduct credits
+        organization_credit_service.deduct_credits(
+            db=db,
+            organization_id=organization_id,
+            feature_code=FeatureCodes.AI_BOOKING,
+            quantity=1,
+            reference_type="call_log_bookings",
+            reference_id=str(appointment.id),
+        )
+
+        inserted_records.append(appointment)
+
+    db.commit()
+
+    return inserted_records

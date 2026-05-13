@@ -18,19 +18,21 @@ def build_template_components(
     content: str,
     variable_mappings: dict | None = None,
 ):
-
     matches = re.findall(r"{{(\d+)}}", content)
+
+    # unique + sorted variables
+    unique_variables = sorted(set(matches), key=int)
 
     component = {
         "type": "BODY",
         "text": content,
     }
 
-    if matches:
+    if unique_variables:
 
         sample_values = []
 
-        for variable in matches:
+        for variable in unique_variables:
 
             sample = (
                 variable_mappings.get(variable, {}).get("sample")
@@ -69,6 +71,8 @@ def sync_whatsapp_templates(db: Session, organization_id):
     )
 
     data = res.json().get("data", [])
+
+    print("Fetched WhatsApp templates from Meta:", data)
 
     for item in data:
         template = (
@@ -448,9 +452,14 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
     return [
         {
             "id": t.id,
-            "name": t.name,
             "type": t.type,
-            "category": t.category,  # optional but useful for UI filtering
+            "name": t.name,
+            "content": t.content,
+            "category": t.category,
+            "language": t.language,
+            "meta_template_id": t.meta_template_id,
+            "whatsapp_template_name": t.whatsapp_template_name,
+            "variable_mappings": t.variable_mappings,
         }
         for t in templates
     ]

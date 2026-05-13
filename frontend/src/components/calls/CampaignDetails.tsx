@@ -968,7 +968,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                         {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
                       <TableCell>
-                        {log.follow_up_count > 0 && (
+                        {campaign?.workflow_template_name && log.follow_up_count > 0 && (
                           <Tooltip title="View Follow Up">
                             <IconButton onClick={() => openWorkflowHistory(log.contact_id)}>
                               <EventRepeatIcon color="primary" />
