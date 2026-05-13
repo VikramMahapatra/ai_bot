@@ -359,7 +359,7 @@ const AdminDashboard: React.FC = () => {
         setError("Some chart sections could not be loaded right now.");
       }
 
-       if (leadsTrendRes.status === "fulfilled") {
+      if (leadsTrendRes.status === "fulfilled") {
         const data = Array.isArray((leadsTrendRes.value as any)?.data)
           ? (leadsTrendRes.value as any).data
           : [];
@@ -374,7 +374,7 @@ const AdminDashboard: React.FC = () => {
         setError("Some chart sections could not be loaded right now.");
       }
 
-      
+
 
       if (callAnalyticsRes.status === "fulfilled") {
         const payload = callAnalyticsRes.value as CallAnalytics | undefined;
@@ -473,7 +473,7 @@ const AdminDashboard: React.FC = () => {
         wave: theme.palette.primary.main,
       },
       {
-        label: "Successful Calls",
+        label: "Connected Calls",
         value: numberOrZero(callSummary?.successful_calls),
         hint: "Last 30 days",
         icon: <CheckCircleIcon sx={{ color: theme.palette.primary.dark }} />,
