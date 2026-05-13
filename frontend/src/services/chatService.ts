@@ -155,4 +155,9 @@ export const chatService = {
     });
     return response.data;
   },
+
+   async isChannelAvailable(): Promise<boolean> {
+    const response = await api.get(`/api/admin/validate-channel-available`);
+    return response.data;
+  },
 };

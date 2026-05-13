@@ -1157,17 +1157,13 @@ async def list_price_matrix_items(
 
 def _sync_price_matrix_id_sequence(db: Session) -> None:
     """Ensure Postgres sequence for price_matrix_items.id is aligned with table data."""
-    db.execute(
-        text(
-            """
+    db.execute(text("""
             SELECT setval(
                 pg_get_serial_sequence('price_matrix_items', 'id'),
                 COALESCE((SELECT MAX(id) FROM price_matrix_items), 0) + 1,
                 false
             )
-            """
-        )
-    )
+            """))
 
 
 @router.post(
@@ -3051,8 +3047,22 @@ def create_calling_number(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
+    is_default = False
+
+    # Only outbound numbers can be default
+    if payload.type == "outbound" and payload.is_default:
+        db.query(OrganizationCallingNumber).filter(
+            OrganizationCallingNumber.organization_id == org_id,
+            OrganizationCallingNumber.type == "outbound",
+        ).update({"is_default": False})
+
+        is_default = True
+
     obj = OrganizationCallingNumber(
-        organization_id=org_id, calling_number=payload.calling_number, type=payload.type
+        organization_id=org_id,
+        calling_number=payload.calling_number,
+        type=payload.type,
+        is_default=is_default,
     )
 
     db.add(obj)
@@ -3070,6 +3080,18 @@ def update_calling_number(
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
     obj = db.query(OrganizationCallingNumber).get(id)
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="Calling number not found")
+
+    # Remove old default only for outbound + default=True
+    if payload.type == "outbound" and payload.is_default:
+        db.query(OrganizationCallingNumber).filter(
+            OrganizationCallingNumber.organization_id == obj.organization_id,
+            OrganizationCallingNumber.type == "outbound",
+        ).update({"is_default": False})
+
+        obj.is_default = payload.is_default
 
     obj.calling_number = payload.calling_number
     obj.type = payload.type
@@ -3355,3 +3377,4 @@ async def get_admin_org_credit_current_month_summary(
         org_list.append(OrgCreditAdminMonthSummaryResponse(**payload))
 
     return {"items": org_list, "total": total, "skip": skip, "limit": limit}
+
