@@ -35,6 +35,9 @@ import {
   TextField,
   Typography,
   LinearProgress,
+  InputAdornment,
+  Drawer,
+  IconButton,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -70,8 +73,17 @@ import { Product, productService } from "../services/productService";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
 import { useDateFormatter } from "../hooks/useDateFormatter";
-import { messageTemplateService, Template } from "../services/messageTemplateService";
+import {
+  messageTemplateService,
+  Template,
+} from "../services/messageTemplateService";
 import { generatePreview } from "./TemplatePage";
+import EmailIcon from "@mui/icons-material/Email";
+import CallIcon from "@mui/icons-material/Call";
+import SearchIcon from "@mui/icons-material/Search";
+import { formatDate } from "../utils/dateUtils";
+import Field from "../components/Common/Field";
+import CloseIcon from "@mui/icons-material/Close";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -93,8 +105,6 @@ const parseApiDate = (value?: string): Date | null => {
   const fallback = new Date(raw);
   return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
-
-
 
 const convertIstLocalInputToUtcIso = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -120,6 +130,20 @@ const statusColor = (status: string) => {
   if (status === "failed") return "error";
   if (status === "paused") return "default";
   return "default";
+};
+
+const isPlayDisabled = (status: string) => {
+  return status === "completed" || status === "running";
+};
+
+const isPauseDisabled = (status: string) => {
+  return (
+    status === "draft" ||
+    status === "completed" ||
+    status === "paused" ||
+    status === "scheduled" ||
+    status === "failed"
+  );
 };
 
 const logStatusColor = (
@@ -283,7 +307,9 @@ const CampaignManagementPage: React.FC = () => {
   } | null>(null);
   const [createMessageTemplate, setCreateMessageTemplate] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
+    null,
+  );
 
   const [emailEditorMode, setEmailEditorMode] = useState<"plain" | "html">(
     "plain",
@@ -301,6 +327,12 @@ const CampaignManagementPage: React.FC = () => {
 
   const [previewContacts, setPreviewContacts] = useState<ContactItem[]>([]);
   const [previewSearch, setPreviewSearch] = useState("");
+  const [previewContactTotal, setPreviewContactTotal] = useState(0);
+  const [previewContactPage, setPreviewContactPage] = useState(0);
+  const [previewContactRowsPerPage, setPreviewContactRowsPerPage] = useState(10);
+  const secondSectionRef = useRef<HTMLDivElement | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactItem | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | "">("");
   const [runConfirmCampaign, setRunConfirmCampaign] = useState<{
@@ -328,10 +360,8 @@ const CampaignManagementPage: React.FC = () => {
   const [c2lRunResult, setC2lRunResult] =
     useState<CampaignToLeadRunResult | null>(null);
   const [c2lConversions, setC2lConversions] = useState<any[]>([]);
-
   const [messageTemplates, setMessageTemplates] = useState<any[]>([]);
-
-  const formatDisplayDate = useDateFormatter()
+  const formatDisplayDate = useDateFormatter();
 
   const statusSummary = useMemo(() => {
     const ordered = [
@@ -347,7 +377,6 @@ const CampaignManagementPage: React.FC = () => {
       value: dashboard.status_counts?.[key] || 0,
     }));
   }, [dashboard.status_counts]);
-
 
   const totalStatusCount = useMemo(
     () => statusSummary.reduce((acc, item) => acc + Number(item.value || 0), 0),
@@ -514,10 +543,11 @@ const CampaignManagementPage: React.FC = () => {
   const loadPreviewContacts = async (contactListId: number) => {
     const data = await campaignService.listContacts(contactListId, {
       search: previewSearch || undefined,
-      skip: 0,
-      limit: 8,
+      skip:  previewContactPage * previewContactRowsPerPage,
+      limit: previewContactRowsPerPage,
     });
     setPreviewContacts(data.items || []);
+    setPreviewContactTotal(data.pagination?.total || 0);
   };
 
   const loadLogs = async (campaignId: number) => {
@@ -628,6 +658,20 @@ const CampaignManagementPage: React.FC = () => {
   }, [selectedCampaignId, logPage, logRowsPerPage]);
 
   useEffect(() => {
+    if (!selectedCampaignId) return;
+    const run = async () => {
+      try {
+        await loadLogs(Number(selectedCampaignId));
+      } catch (err: any) {
+        showError(
+          err?.response?.data?.detail || "Failed to load campaign logs",
+        );
+      }
+    };
+    run();
+  }, [selectedCampaignId, logPage, logRowsPerPage]);
+
+  useEffect(() => {
     if (tab !== 6) return;
     const run = async () => {
       try {
@@ -649,7 +693,7 @@ const CampaignManagementPage: React.FC = () => {
       } catch (err: any) {
         showError(
           err?.response?.data?.detail ||
-          "Failed to load Campaign to Lead module",
+            "Failed to load Campaign to Lead module",
         );
       }
     };
@@ -670,7 +714,7 @@ const CampaignManagementPage: React.FC = () => {
       }
     };
     run();
-  }, [createContactListId]);
+  }, [previewSearch, previewContactPage,previewContactRowsPerPage]);
 
   const handleApplyCampaignFilters = async () => {
     setCampaignPage(0);
@@ -841,7 +885,7 @@ const CampaignManagementPage: React.FC = () => {
     } catch (err: any) {
       showError(
         err?.response?.data?.detail ||
-        "Failed to generate prompt-based email content",
+          "Failed to generate prompt-based email content",
       );
     } finally {
       setGeneratingEmailVariants(false);
@@ -1014,13 +1058,15 @@ const CampaignManagementPage: React.FC = () => {
       await campaignService.createCampaign({
         campaign_name: createCampaignName,
         campaign_type: createCampaignType,
-        message_template_id: selectedTemplate ? Number(selectedTemplate.id) : undefined,
+        message_template_id: selectedTemplate
+          ? Number(selectedTemplate.id)
+          : undefined,
         message_template:
           createCampaignType === "email"
             ? emailContentMode === "prompt"
               ? generatedBodies[0] ||
-              createMessageTemplate ||
-              "Generated campaign body"
+                createMessageTemplate ||
+                "Generated campaign body"
               : createMessageTemplate
             : createMessageTemplate,
         scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
@@ -1119,6 +1165,28 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
+  const handlePreviewContacts = async () => {
+    setCreateContactListId(createContactListId);
+    setPreviewContactPage(0);
+    setPreviewSearch("");
+    setLoading(true);
+    try {
+        await loadPreviewContacts(Number(createContactListId));
+
+      // scroll to below section
+      setTimeout(() => {
+        secondSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || "Failed to load contacts");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleViewLogs = async (campaignId: number) => {
     setSelectedCampaignId(campaignId);
     setLogPage(0);
@@ -1172,6 +1240,17 @@ const CampaignManagementPage: React.FC = () => {
       setSpamVisibleStart(0);
     }
   }, [createCampaignType]);
+
+   const handleView = (contact: any) => {
+     setSelectedContact(contact);
+     setDrawerOpen(true);
+  };
+
+
+  const handleCloseDrawer = () => {
+    setDrawerOpen(false);
+    setSelectedContact(null);
+  };
 
   return (
     <AdminLayout>
@@ -1692,7 +1771,8 @@ const CampaignManagementPage: React.FC = () => {
           )}
 
           {tab === 1 && (
-            <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+            <Stack spacing={2.5}>
+              <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
               <Stack
                 direction="row"
                 spacing={1}
@@ -1747,14 +1827,17 @@ const CampaignManagementPage: React.FC = () => {
                     }
                   />
                 </Grid>
-                <Grid item xs={12} md={3}>
-                  <FormControl required fullWidth size="small" sx={compactInputSx}>
+                <Grid item xs={12} md={2.5}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Campaign Type</InputLabel>
                     <Select
                       value={createCampaignType}
                       label="Campaign Type"
                       onChange={(e) => {
-                        const type = e.target.value as "email" | "whatsapp" | "sms";
+                        const type = e.target.value as
+                          | "email"
+                          | "whatsapp"
+                          | "sms";
 
                         setCreateCampaignType(type);
 
@@ -1770,14 +1853,9 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
-                  <FormControl
-                    required
-                    fullWidth
-                    size="small"
-                    sx={compactInputSx}
-                    error={createCampaignErrors.contactList}
-                  >
+                {/* Contact List Dropdown */}
+                <Grid item xs={12} md={2.5}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Contact List</InputLabel>
                     <Select
                       value={createContactListId}
@@ -1806,12 +1884,36 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
-                  <FormControl
+
+                {/* Preview Contacts Button */}
+                <Grid item xs={12} md={2}>
+                  <Button
                     fullWidth
-                    size="small"
-                    sx={compactInputSx}
+                    variant="outlined"
+                    startIcon={<VisibilityIcon />}
+                    onClick={handlePreviewContacts}
+                    sx={{
+                      height: "40px",
+                      borderRadius: "12px",
+                      textTransform: "none",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      borderColor: "#7BAAF7",
+                      color: "#3B82F6",
+                      whiteSpace: "nowrap",
+                      "&:hover": {
+                        borderColor: "#3B82F6",
+                        backgroundColor: "#F5F9FF",
+                      },
+                    }}
                   >
+                    View Contacts
+                  </Button>
+                </Grid>
+
+                {/* Product Dropdown */}
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Product</InputLabel>
                     <Select
                       value={createProductId}
@@ -2209,7 +2311,7 @@ const CampaignManagementPage: React.FC = () => {
                                               .slice(
                                                 spamVisibleStart,
                                                 spamVisibleStart +
-                                                spamRowsPerView,
+                                                  spamRowsPerView,
                                               )
                                               .map((row) => (
                                                 <TableRow
@@ -2233,10 +2335,10 @@ const CampaignManagementPage: React.FC = () => {
                                                       label={row.risk_level}
                                                       color={
                                                         row.risk_level ===
-                                                          "high"
+                                                        "high"
                                                           ? "error"
                                                           : row.risk_level ===
-                                                            "medium"
+                                                              "medium"
                                                             ? "warning"
                                                             : "success"
                                                       }
@@ -2261,145 +2363,145 @@ const CampaignManagementPage: React.FC = () => {
 
                             {(generatedSubjects.length > 0 ||
                               generatedBodies.length > 0) && (
-                                <Paper
-                                  variant="outlined"
-                                  sx={{
-                                    p: 1.2,
-                                    borderRadius: "10px",
-                                    borderColor: alpha(
-                                      theme.palette.primary.main,
-                                      0.2,
-                                    ),
-                                  }}
-                                >
-                                  <Grid container spacing={1.5}>
-                                    <Grid item xs={12} md={6}>
-                                      <Accordion
-                                        disableGutters
-                                        sx={{
-                                          borderRadius: "8px",
-                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                          boxShadow: "none",
-                                          "&:before": { display: "none" },
-                                        }}
+                              <Paper
+                                variant="outlined"
+                                sx={{
+                                  p: 1.2,
+                                  borderRadius: "10px",
+                                  borderColor: alpha(
+                                    theme.palette.primary.main,
+                                    0.2,
+                                  ),
+                                }}
+                              >
+                                <Grid container spacing={1.5}>
+                                  <Grid item xs={12} md={6}>
+                                    <Accordion
+                                      disableGutters
+                                      sx={{
+                                        borderRadius: "8px",
+                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                        boxShadow: "none",
+                                        "&:before": { display: "none" },
+                                      }}
+                                    >
+                                      <AccordionSummary
+                                        expandIcon={<ExpandMoreIcon />}
                                       >
-                                        <AccordionSummary
-                                          expandIcon={<ExpandMoreIcon />}
+                                        <Typography
+                                          variant="body2"
+                                          sx={{ fontWeight: 600 }}
                                         >
-                                          <Typography
-                                            variant="body2"
-                                            sx={{ fontWeight: 600 }}
-                                          >
-                                            Generated Subjects (Editable)
-                                          </Typography>
-                                        </AccordionSummary>
-                                        <AccordionDetails sx={{ pt: 0.4 }}>
-                                          <Stack spacing={0.9}>
-                                            {ensureFive(generatedSubjects).map(
-                                              (subject, idx) => (
-                                                <TextField
-                                                  key={`subject-edit-${idx}`}
-                                                  size="small"
-                                                  label={`Subject ${idx + 1}`}
-                                                  value={subject}
-                                                  onChange={(event) =>
-                                                    handleEditGeneratedSubject(
-                                                      idx,
-                                                      event.target.value,
-                                                    )
-                                                  }
-                                                />
-                                              ),
-                                            )}
-                                          </Stack>
-                                        </AccordionDetails>
-                                      </Accordion>
-                                    </Grid>
-                                    <Grid item xs={12} md={6}>
-                                      <Accordion
-                                        disableGutters
-                                        sx={{
-                                          borderRadius: "8px",
-                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                          boxShadow: "none",
-                                          "&:before": { display: "none" },
-                                        }}
-                                      >
-                                        <AccordionSummary
-                                          expandIcon={<ExpandMoreIcon />}
-                                        >
-                                          <Typography
-                                            variant="body2"
-                                            sx={{ fontWeight: 600 }}
-                                          >
-                                            Generated Bodies (Editable)
-                                          </Typography>
-                                        </AccordionSummary>
-                                        <AccordionDetails sx={{ pt: 0.4 }}>
-                                          <Stack spacing={0.9}>
-                                            {ensureFive(generatedBodies).map(
-                                              (body, idx) => (
-                                                <Accordion
-                                                  key={`body-edit-${idx}`}
-                                                  disableGutters
-                                                  sx={{
-                                                    borderRadius: "8px",
-                                                    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                                    boxShadow: "none",
-                                                    "&:before": {
-                                                      display: "none",
-                                                    },
-                                                  }}
-                                                >
-                                                  <AccordionSummary
-                                                    expandIcon={
-                                                      <ExpandMoreIcon />
-                                                    }
-                                                  >
-                                                    <Typography
-                                                      variant="body2"
-                                                      sx={{ fontWeight: 600 }}
-                                                    >
-                                                      {`Body ${idx + 1}`}
-                                                    </Typography>
-                                                    <Typography
-                                                      variant="caption"
-                                                      color="text.secondary"
-                                                      sx={{ ml: 1 }}
-                                                    >
-                                                      {(body || "").slice(0, 70)}
-                                                      {(body || "").length > 70
-                                                        ? "..."
-                                                        : ""}
-                                                    </Typography>
-                                                  </AccordionSummary>
-                                                  <AccordionDetails
-                                                    sx={{ pt: 0.5 }}
-                                                  >
-                                                    <TextField
-                                                      fullWidth
-                                                      size="small"
-                                                      multiline
-                                                      minRows={4}
-                                                      value={body}
-                                                      onChange={(event) =>
-                                                        handleEditGeneratedBody(
-                                                          idx,
-                                                          event.target.value,
-                                                        )
-                                                      }
-                                                    />
-                                                  </AccordionDetails>
-                                                </Accordion>
-                                              ),
-                                            )}
-                                          </Stack>
-                                        </AccordionDetails>
-                                      </Accordion>
-                                    </Grid>
+                                          Generated Subjects (Editable)
+                                        </Typography>
+                                      </AccordionSummary>
+                                      <AccordionDetails sx={{ pt: 0.4 }}>
+                                        <Stack spacing={0.9}>
+                                          {ensureFive(generatedSubjects).map(
+                                            (subject, idx) => (
+                                              <TextField
+                                                key={`subject-edit-${idx}`}
+                                                size="small"
+                                                label={`Subject ${idx + 1}`}
+                                                value={subject}
+                                                onChange={(event) =>
+                                                  handleEditGeneratedSubject(
+                                                    idx,
+                                                    event.target.value,
+                                                  )
+                                                }
+                                              />
+                                            ),
+                                          )}
+                                        </Stack>
+                                      </AccordionDetails>
+                                    </Accordion>
                                   </Grid>
-                                </Paper>
-                              )}
+                                  <Grid item xs={12} md={6}>
+                                    <Accordion
+                                      disableGutters
+                                      sx={{
+                                        borderRadius: "8px",
+                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                        boxShadow: "none",
+                                        "&:before": { display: "none" },
+                                      }}
+                                    >
+                                      <AccordionSummary
+                                        expandIcon={<ExpandMoreIcon />}
+                                      >
+                                        <Typography
+                                          variant="body2"
+                                          sx={{ fontWeight: 600 }}
+                                        >
+                                          Generated Bodies (Editable)
+                                        </Typography>
+                                      </AccordionSummary>
+                                      <AccordionDetails sx={{ pt: 0.4 }}>
+                                        <Stack spacing={0.9}>
+                                          {ensureFive(generatedBodies).map(
+                                            (body, idx) => (
+                                              <Accordion
+                                                key={`body-edit-${idx}`}
+                                                disableGutters
+                                                sx={{
+                                                  borderRadius: "8px",
+                                                  border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                                  boxShadow: "none",
+                                                  "&:before": {
+                                                    display: "none",
+                                                  },
+                                                }}
+                                              >
+                                                <AccordionSummary
+                                                  expandIcon={
+                                                    <ExpandMoreIcon />
+                                                  }
+                                                >
+                                                  <Typography
+                                                    variant="body2"
+                                                    sx={{ fontWeight: 600 }}
+                                                  >
+                                                    {`Body ${idx + 1}`}
+                                                  </Typography>
+                                                  <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                    sx={{ ml: 1 }}
+                                                  >
+                                                    {(body || "").slice(0, 70)}
+                                                    {(body || "").length > 70
+                                                      ? "..."
+                                                      : ""}
+                                                  </Typography>
+                                                </AccordionSummary>
+                                                <AccordionDetails
+                                                  sx={{ pt: 0.5 }}
+                                                >
+                                                  <TextField
+                                                    fullWidth
+                                                    size="small"
+                                                    multiline
+                                                    minRows={4}
+                                                    value={body}
+                                                    onChange={(event) =>
+                                                      handleEditGeneratedBody(
+                                                        idx,
+                                                        event.target.value,
+                                                      )
+                                                    }
+                                                  />
+                                                </AccordionDetails>
+                                              </Accordion>
+                                            ),
+                                          )}
+                                        </Stack>
+                                      </AccordionDetails>
+                                    </Accordion>
+                                  </Grid>
+                                </Grid>
+                              </Paper>
+                            )}
                           </>
                         )}
                       </Stack>
@@ -2415,10 +2517,10 @@ const CampaignManagementPage: React.FC = () => {
                           ...compactInputSx,
                           ...(emailEditorMode === "html"
                             ? {
-                              "& .MuiInputBase-input": {
-                                fontFamily: "Consolas, Menlo, monospace",
-                              },
-                            }
+                                "& .MuiInputBase-input": {
+                                  fontFamily: "Consolas, Menlo, monospace",
+                                },
+                              }
                             : {}),
                         }}
                         fullWidth
@@ -2426,14 +2528,15 @@ const CampaignManagementPage: React.FC = () => {
                         minRows={emailEditorMode === "html" ? 9 : 6}
                         label={`Email Template (${emailEditorMode.toUpperCase()})`}
                         value={createMessageTemplate}
-                        onChange={(e) => setCreateMessageTemplate(e.target.value)}
+                        onChange={(e) =>
+                          setCreateMessageTemplate(e.target.value)
+                        }
                       />
                     )
                   ) : (
                     <Grid container spacing={1.5} alignItems="flex-start">
                       {/* LEFT: Template Selector */}
                       <Grid item xs={12} md={5}>
-
                         <FormControl fullWidth size="small" sx={compactInputSx}>
                           <InputLabel>Message Template</InputLabel>
 
@@ -2446,7 +2549,8 @@ const CampaignManagementPage: React.FC = () => {
                               setSelectedTemplateId(id);
 
                               const template =
-                                messageTemplates.find((t) => t.id === id) || null;
+                                messageTemplates.find((t) => t.id === id) ||
+                                null;
 
                               setSelectedTemplate(template);
                               setCreateMessageTemplate(template?.content || "");
@@ -2476,7 +2580,8 @@ const CampaignManagementPage: React.FC = () => {
                         </FormControl>
                         {createCampaignType === "whatsapp" && (
                           <Alert severity="warning" sx={{ mb: 2 }}>
-                            Only <b>MARKETING</b> WhatsApp templates can be used for sending test messages.
+                            Only <b>MARKETING</b> WhatsApp templates can be used
+                            for sending test messages.
                           </Alert>
                         )}
                       </Grid>
@@ -2507,7 +2612,10 @@ const CampaignManagementPage: React.FC = () => {
                                 Preview
                               </Typography>
 
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 {selectedTemplate.name}
                               </Typography>
                             </Box>
@@ -2554,7 +2662,7 @@ const CampaignManagementPage: React.FC = () => {
 
                                 {generatePreview(
                                   selectedTemplate.content,
-                                  selectedTemplate.variable_mappings || {}
+                                  selectedTemplate.variable_mappings || {},
                                 )}
 
                                 {/* optional timestamp */}
@@ -2645,7 +2753,7 @@ const CampaignManagementPage: React.FC = () => {
                         }}
                       >
                         {emailEditorMode === "html" ||
-                          looksLikeHtml(createMessageTemplate) ? (
+                        looksLikeHtml(createMessageTemplate) ? (
                           <Box
                             sx={{ "& h1, & h2, & h3": { mt: 0 } }}
                             dangerouslySetInnerHTML={{
@@ -2720,7 +2828,7 @@ const CampaignManagementPage: React.FC = () => {
                   </Stack>
                 </Grid>
 
-                <Grid item xs={12}>
+                {/* <Grid item xs={12}>
                   <Paper
                     variant="outlined"
                     sx={{
@@ -2775,9 +2883,195 @@ const CampaignManagementPage: React.FC = () => {
                       </Typography>
                     )}
                   </Paper>
-                </Grid>
+                </Grid> */}
               </Grid>
             </Paper>
+
+            {createContactListId && (
+                    <div ref={secondSectionRef}>
+                          <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                              Recipient Preview List
+                            </Typography>
+                            <Stack
+                              direction={{ xs: "column", sm: "row" }}
+                              spacing={1}
+                              sx={{ mb: 2 }}
+                            >
+                              <Grid item xs={12} md={6}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  label="Search Contacts"
+                                  value={previewSearch}
+                                  onChange={(e) => setPreviewSearch(e.target.value)}
+                                  InputProps={{
+                                    endAdornment: (
+                                      <InputAdornment position="end">
+                                        <SearchIcon />
+                                      </InputAdornment>
+                                    ),
+                                  }}
+                                />
+                              </Grid>
+                            </Stack>
+                            <TableContainer
+                              sx={{
+                                borderRadius: "12px",
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                              }}
+                            >
+                              <Table>
+                                <TableHead>
+                                  <TableRow
+                                    sx={{
+                                      background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
+                                    }}
+                                  >
+                                    <TableCell>Contact</TableCell>
+                                    <TableCell>Company</TableCell>
+                                    <TableCell>Created</TableCell>
+                                    <TableCell>Actions</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {previewContacts.length ? (
+                                    previewContacts.map((contact) => (
+                                      <TableRow
+                                        key={contact.id}
+                                        hover
+                                        sx={{
+                                          "&:hover": {
+                                            backgroundColor: alpha(
+                                              theme.palette.primary.main,
+                                              0.05,
+                                            ),
+                                          },
+                                        }}
+                                      >
+                                        <TableCell
+                                          sx={{
+                                            minWidth: 200,
+                                            maxWidth: 300,
+                                            verticalAlign: "top",
+                                          }}
+                                        >
+                                          <Typography
+                                            variant="body2"
+                                            sx={{ fontWeight: 600, lineHeight: 1.35 }}
+                                          >
+                                            {contact.name?.trim() || "—"}
+                                          </Typography>
+                                          <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                            {contact.email?.trim() ? (
+                                              <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: 0.5,
+                                                  lineHeight: 1.35,
+                                                  fontSize: "0.7rem",
+                                                }}
+                                              >
+                                                <EmailIcon
+                                                  sx={{
+                                                    fontSize: 13,
+                                                    flexShrink: 0,
+                                                    opacity: 0.85,
+                                                  }}
+                                                />
+                                                <Box
+                                                  component="span"
+                                                  sx={{ wordBreak: "break-word" }}
+                                                >
+                                                  {contact.email}
+                                                </Box>
+                                              </Typography>
+                                            ) : null}
+                                            {contact.phone?.trim() ? (
+                                              <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: 0.5,
+                                                  lineHeight: 1.35,
+                                                  fontSize: "0.7rem",
+                                                }}
+                                              >
+                                                <CallIcon
+                                                  sx={{
+                                                    fontSize: 13,
+                                                    flexShrink: 0,
+                                                    opacity: 0.85,
+                                                  }}
+                                                />
+                                                <Box
+                                                  component="span"
+                                                  sx={{ wordBreak: "break-word" }}
+                                                >
+                                                  {contact.phone}
+                                                </Box>
+                                              </Typography>
+                                            ) : null}
+                                            {!contact.email?.trim() &&
+                                            !contact.phone?.trim() ? (
+                                              <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{ fontSize: "0.7rem" }}
+                                              >
+                                                No email or phone on file
+                                              </Typography>
+                                            ) : null}
+                                          </Stack>
+                                        </TableCell>
+                                        <TableCell>{contact.company || "-"}</TableCell>
+                                        <TableCell>
+                                          {formatDate(contact.created_at)}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Button
+                                            size="small"
+                                            color="info"
+                                            startIcon={<VisibilityIcon />}
+                                            onClick={() => handleView(contact)}
+                                          >
+                                            View
+                                          </Button>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))
+                                  ) : (
+                                    <TableRow>
+                                      <TableCell colSpan={4} align="center">
+                                        No contacts found.
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                            <TablePagination
+                              component="div"
+                              count={previewContactTotal}
+                              page={previewContactPage}
+                              onPageChange={(_, value) => setPreviewContactPage(value)}
+                              rowsPerPage={previewContactRowsPerPage}
+                              onRowsPerPageChange={(event) => {
+                                setPreviewContactRowsPerPage(parseInt(event.target.value, 10));
+                                setPreviewContactPage(0);
+                              }}
+                              rowsPerPageOptions={[10, 25, 50]}
+                            />
+                          </Paper>
+                        </div>
+                      )}
+            </Stack>
+            
           )}
 
           {tab === 2 && (
@@ -2902,6 +3196,7 @@ const CampaignManagementPage: React.FC = () => {
                       <TableCell>Campaign Name</TableCell>
                       <TableCell>Type</TableCell>
                       <TableCell>Product</TableCell>
+                      <TableCell>Scheduled Date</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Created</TableCell>
                       <TableCell>Actions</TableCell>
@@ -2936,6 +3231,7 @@ const CampaignManagementPage: React.FC = () => {
                           </TableCell>
                           <TableCell>{item.campaign_type}</TableCell>
                           <TableCell>{item.product_name || "-"}</TableCell>
+                          <TableCell> {formatDisplayDate(item.scheduled_time)}</TableCell>
                           <TableCell>
                             <Chip
                               size="small"
@@ -2944,7 +3240,9 @@ const CampaignManagementPage: React.FC = () => {
                               variant="outlined"
                             />
                           </TableCell>
-                          <TableCell>{formatDisplayDate(item.created_at)}</TableCell>
+                          <TableCell>
+                            {formatDisplayDate(item.created_at)}
+                          </TableCell>
                           <TableCell>
                             <Stack direction="row" spacing={1}>
                               <Button
@@ -2956,6 +3254,7 @@ const CampaignManagementPage: React.FC = () => {
                                     name: item.campaign_name,
                                   })
                                 }
+                                disabled={isPlayDisabled(item.status)}
                               >
                                 Run
                               </Button>
@@ -2964,7 +3263,7 @@ const CampaignManagementPage: React.FC = () => {
                                 color="inherit"
                                 startIcon={<PauseIcon />}
                                 onClick={() => handlePauseCampaign(item.id)}
-                                disabled={item.status === "completed"}
+                                disabled={isPauseDisabled(item.status)}
                               >
                                 Pause
                               </Button>
@@ -3157,8 +3456,8 @@ const CampaignManagementPage: React.FC = () => {
                           <TableCell>
                             {formatDisplayDate(
                               item.delivered_at ||
-                              item.sent_at ||
-                              item.created_at,
+                                item.sent_at ||
+                                item.created_at,
                             )}
                           </TableCell>
                           <TableCell>
@@ -3281,7 +3580,7 @@ const CampaignManagementPage: React.FC = () => {
                         } catch (err: any) {
                           showError(
                             err?.response?.data?.detail ||
-                            "Failed to refresh reports",
+                              "Failed to refresh reports",
                           );
                         } finally {
                           setLoading(false);
@@ -3878,12 +4177,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                ...prev,
-                                min_score_threshold: Math.max(
-                                  1,
-                                  Number(e.target.value) || 1,
-                                ),
-                              }
+                                  ...prev,
+                                  min_score_threshold: Math.max(
+                                    1,
+                                    Number(e.target.value) || 1,
+                                  ),
+                                }
                               : prev,
                           )
                         }
@@ -3900,12 +4199,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                ...prev,
-                                dedupe_window_days: Math.max(
-                                  1,
-                                  Number(e.target.value) || 1,
-                                ),
-                              }
+                                  ...prev,
+                                  dedupe_window_days: Math.max(
+                                    1,
+                                    Number(e.target.value) || 1,
+                                  ),
+                                }
                               : prev,
                           )
                         }
@@ -4030,9 +4329,9 @@ const CampaignManagementPage: React.FC = () => {
                                 setC2lRule((prev) =>
                                   prev
                                     ? {
-                                      ...prev,
-                                      auto_convert_enabled: e.target.checked,
-                                    }
+                                        ...prev,
+                                        auto_convert_enabled: e.target.checked,
+                                      }
                                     : prev,
                                 )
                               }
@@ -4066,7 +4365,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                "Failed to update C2L rule",
+                                  "Failed to update C2L rule",
                               );
                             } finally {
                               setC2lSaving(false);
@@ -4162,7 +4461,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                "Failed to run C2L engine",
+                                  "Failed to run C2L engine",
                               );
                             } finally {
                               setLoading(false);
@@ -4420,6 +4719,156 @@ const CampaignManagementPage: React.FC = () => {
               </Button>
             </DialogActions>
           </Dialog>
+           <Drawer
+                  anchor="right"
+                  open={drawerOpen}
+                  onClose={handleCloseDrawer}
+                  PaperProps={{
+                    sx: {
+                      width: { xs: "90%", sm: 550 },
+                      height: "100vh",
+                      maxHeight: "100vh",
+                      display: "flex",
+                      flexDirection: "column",
+                      bgcolor: "#f9faff",
+                    },
+                  }}
+                >
+                  {/* --- Sticky Header --- */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      p: 3,
+                      borderBottom: "1px solid #e0e0e0",
+                      flexShrink: 0,
+                      bgcolor: "#f9faff",
+                    }}
+                  >
+                    <Typography variant="h6" fontWeight={700}>
+                      Contact Details
+                    </Typography>
+                    <IconButton onClick={handleCloseDrawer}>
+                      <CloseIcon />
+                    </IconButton>
+                  </Box>
+          
+                  {/* --- Scrollable Content --- */}
+                  <Box sx={{ flex: 1, overflowY: "auto", p: 3 }}>
+                    {selectedContact ? (
+                      <Stack spacing={3}>
+                        {/* --- Basic Info --- */}
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                        >
+                          Basic Info
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <Field label="Name" value={selectedContact.name} />
+                            <Field label="Phone" value={selectedContact.phone} />
+                            <Field label="Company" value={selectedContact.company} />
+                            <Field label="Gender" value={selectedContact.gender} />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Field label="Email" value={selectedContact.email} />
+                            <Field
+                              label="WhatsApp"
+                              value={selectedContact.whatsapp_number}
+                            />
+                            <Field
+                              label="Designation"
+                              value={selectedContact.designation}
+                            />
+                            <Field
+                              label="Created At"
+                              value={formatDate(selectedContact.created_at)}
+                            />
+                          </Grid>
+                        </Grid>
+          
+                        {/* --- Product Info --- */}
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                        >
+                          Product Info
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <Field label="Item Name" value={selectedContact.item_name} />
+                            <Field label="Item Type" value={selectedContact.item_type} />
+                            <Field
+                              label="Interest Stage"
+                              value={selectedContact.interest_stage}
+                              badge
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Field
+                              label="Item Category"
+                              value={selectedContact.item_category}
+                            />
+                            <Field label="Amount" value={selectedContact.amount} />
+                            <Field
+                              label="Offer Value"
+                              value={selectedContact.offer_value}
+                            />
+                          </Grid>
+                        </Grid>
+          
+                        {/* --- Location --- */}
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                        >
+                          Location
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12}>
+                            <Field
+                              label="City / State / Country"
+                              value={[
+                                selectedContact.city,
+                                selectedContact.state,
+                                selectedContact.country,
+                              ]
+                                .filter(Boolean)
+                                .join(", ")}
+                            />
+                          </Grid>
+                        </Grid>
+          
+                        {/* --- Tracking --- */}
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                        >
+                          Tracking
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12}>
+                            <Field label="Source" value={selectedContact.source} />
+                            <Field
+                              label="Lifecycle Stage"
+                              value={selectedContact.lifecycle_stage}
+                              badge
+                            />
+                            <Field label="Tags" value={selectedContact.tags} badges />
+                          </Grid>
+                        </Grid>
+                      </Stack>
+                    ) : (
+                      <Typography>No contact selected</Typography>
+                    )}
+                  </Box>
+                </Drawer>
         </Stack>
       </Box>
     </AdminLayout>
