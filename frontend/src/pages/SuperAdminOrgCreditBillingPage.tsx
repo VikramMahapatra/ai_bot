@@ -864,6 +864,8 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     }
   };
 
+  const currentMonthString = new Date().toISOString().slice(0, 7);
+
   return (
     <SuperAdminLayout>
       <Paper
@@ -1185,7 +1187,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                             size="small"
                             variant="outlined"
                             onClick={() => openTopupDialog(row)}
-                            disabled={busyAction}
+                            disabled={busyAction || row.billing_month !== currentMonthString}
                           >
                             Add Top-up
                           </Button>
@@ -1195,7 +1197,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                             size="small"
                             variant="text"
                             onClick={() => handleGenerateInvoice(row.id)}
-                            disabled={busyAction}
+                            disabled={busyAction || row.billing_month !== currentMonthString}
                           >
                             Generate Invoice
                           </Button>
@@ -1265,32 +1267,34 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       </TableCell>
                       <TableCell>{row.payment_status}</TableCell>
                       <TableCell align="right">
-                        {row.payment_status === "unpaid" && (
+                        {row.payment_status === "paid" && (
                           <Button
                             size="small"
                             onClick={() => openTopupDialog(row)}
-                            disabled={busyAction}
+                            disabled={busyAction || row.billing_month !== currentMonthString}
                           >
                             Top-up
                           </Button>
                         )}
-                        {row.payment_status === "paid" && (
+                        {row.payment_status === "unpaid" && (
                           <Button
                             size="small"
                             onClick={() => handleGenerateInvoice(row.id)}
-                            disabled={busyAction}
+                            disabled={busyAction || row.billing_month !== currentMonthString}
                           >
                             Invoice
                           </Button>
                         )}
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => openEditDialog(row)}
-                          disabled={busyAction}
-                        >
-                          Edit
-                        </Button>
+                        {row.payment_status === "unpaid" && (
+                          <Button
+                            size="small"
+                            startIcon={<EditIcon />}
+                            onClick={() => openEditDialog(row)}
+                            disabled={busyAction}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           size="small"
                           color="error"
@@ -2545,7 +2549,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           Math.max(
                             0,
                             receiptDocument.invoice.invoice_amount -
-                              receiptDocument.invoice.paid_amount,
+                            receiptDocument.invoice.paid_amount,
                           ),
                         )}
                       </TableCell>
