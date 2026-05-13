@@ -161,15 +161,14 @@ async def upsert_global_whatsapp_config(
             detail="This WhatsApp phone number is already in use",
         )
 
+    if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
+        payload.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
+        payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
+        payload.waba_id = settings.ZENTRIXEL_WABA_ID
+        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_I
+
     if not config:
-
-        if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
-            payload.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
-            payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
-            payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
-            payload.waba_id = settings.ZENTRIXEL_WABA_ID
-            payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_ID
-
         config = WhatsAppChannel(
             organization_id=current_user.organization_id,
             widget_id=None,  # IMPORTANT
@@ -181,7 +180,7 @@ async def upsert_global_whatsapp_config(
         db.add(config)
     else:
 
-        if config.access_token:
+        if config.access_token and current_user.organization_id != 1:
             phone_details = fetch_phone_number_details(
                 payload.phone_number_id,
                 config.access_token,
@@ -240,6 +239,28 @@ async def upsert_whatsapp_config(
         )
         .first()
     )
+
+    duplicate_query = db.query(WhatsAppChannel).filter(
+        WhatsAppChannel.phone_number_id == payload.phone_number_id
+    )
+
+    if config:
+        duplicate_query = duplicate_query.filter(WhatsAppChannel.id != config.id)
+
+    duplicate_phone = duplicate_query.first()
+
+    if duplicate_phone:
+        raise HTTPException(
+            status_code=400,
+            detail="This WhatsApp phone number is already in use",
+        )
+
+    if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
+        payload.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
+        payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
+        payload.waba_id = settings.ZENTRIXEL_WABA_ID
+        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_ID
 
     if not config:
         config = WhatsAppChannel(
