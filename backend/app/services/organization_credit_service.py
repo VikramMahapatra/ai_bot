@@ -8,18 +8,19 @@ from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.models.price_matrix_item import PriceMatrixItem
 from app.models.org_credit_balance import OrgCreditBalance
 
-def get_price_item(
-    db,
-    category,
-    module,
-    sub_module=None
-):
-    return db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.category == category,
-        PriceMatrixItem.module == module,
-        PriceMatrixItem.sub_module == sub_module,
-        PriceMatrixItem.is_active == True
-    ).first()
+
+def get_price_item(db, category, module, sub_module=None):
+    return (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.category == category,
+            PriceMatrixItem.module == module,
+            PriceMatrixItem.sub_module == sub_module,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
+
 
 def get_credit_summary(
     db: Session,
@@ -32,15 +33,18 @@ def get_credit_summary(
     # Get Balance (Monthly)
     # -------------------------
 
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == billing_period
-    ).first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .first()
+    )
 
     total_allocated = balance.total_credit if balance else 0
     total_used = balance.used_credit if balance else 0
     total_remaining = balance.remaining_credit if balance else 0
-
 
     # -------------------------
     # Reserved (From Usage Table)
@@ -48,136 +52,139 @@ def get_credit_summary(
 
     current_month = func.date_trunc("month", func.now())
 
-    reserved = db.query(
-        func.coalesce(
-            func.sum(OrganizationCreditUsage.credits_used),
-            0
+    reserved = (
+        db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
+        .filter(
+            OrganizationCreditUsage.organization_id == organization_id,
+            OrganizationCreditUsage.status == "reserved",
+            func.date_trunc("month", OrganizationCreditUsage.created_at)
+            == current_month,
         )
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.status == "reserved",
-        func.date_trunc(
-            "month",
-            OrganizationCreditUsage.created_at
-        ) == current_month
-    ).scalar()
-
+        .scalar()
+    )
 
     # -------------------------
     # Feature Summary
     # -------------------------
 
-    feature_summary = db.query(
-        PriceMatrixItem.module,
-        PriceMatrixItem.sub_module,
-        PriceMatrixItem.feature_code,
-        
-        func.coalesce(
-            func.sum(
-                case(
-                    (
-                        OrganizationCreditUsage.status == "consumed",
-                        OrganizationCreditUsage.used_quantity
-                    ),
-                    else_=0
-                )
-            ),
-            0
-        ).label("items_used"),
-
-        # -------------------------
-        # Reserved
-        # -------------------------
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status == "reserved",
-                    OrganizationCreditUsage.credits_used),
-                    else_=0
-                )
-            ),
-            0
-        ).label("reserved"),
-
-        # -------------------------
-        # Consumed (positive only)
-        # -------------------------
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status == "consumed",
-                    OrganizationCreditUsage.credits_used),
-                    else_=0
-                )
-            ),
-            0
-        ).label("consumed"),
-
-        # -------------------------
-        # Refunded (convert to positive for UI)
-        # -------------------------
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status == "refunded",
-                    -OrganizationCreditUsage.credits_used),  
-                    else_=0
-                )
-            ),
-            0
-        ).label("refunded"),
-
-        # -------------------------
-        # Net Used (ledger sum)
-        # -------------------------
-        func.coalesce(
-            func.sum(
-                case(
-                    (OrganizationCreditUsage.status != "reserved",
-                    OrganizationCreditUsage.credits_used),
-                    else_=0
-                )
-            ),
-            0
-        ).label("used")
-
-    ).outerjoin(
-        OrganizationCreditUsage,
-        and_(
-            OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
-            OrganizationCreditUsage.organization_id == organization_id ,
-            func.date_trunc("month", OrganizationCreditUsage.created_at) == current_month 
+    feature_summary = (
+        db.query(
+            PriceMatrixItem.module,
+            PriceMatrixItem.sub_module,
+            PriceMatrixItem.feature_code,
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            OrganizationCreditUsage.status == "consumed",
+                            OrganizationCreditUsage.used_quantity,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("items_used"),
+            # -------------------------
+            # Reserved
+            # -------------------------
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            OrganizationCreditUsage.status == "reserved",
+                            OrganizationCreditUsage.credits_used,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("reserved"),
+            # -------------------------
+            # Consumed (positive only)
+            # -------------------------
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            OrganizationCreditUsage.status == "consumed",
+                            OrganizationCreditUsage.credits_used,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("consumed"),
+            # -------------------------
+            # Refunded (convert to positive for UI)
+            # -------------------------
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            OrganizationCreditUsage.status == "refunded",
+                            -OrganizationCreditUsage.credits_used,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("refunded"),
+            # -------------------------
+            # Net Used (ledger sum)
+            # -------------------------
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            OrganizationCreditUsage.status != "reserved",
+                            OrganizationCreditUsage.credits_used,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("used"),
         )
-    ).group_by(
-        PriceMatrixItem.module,
-        PriceMatrixItem.sub_module,
-        PriceMatrixItem.feature_code
-    ).all()
-
+        .outerjoin(
+            OrganizationCreditUsage,
+            and_(
+                OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
+                OrganizationCreditUsage.organization_id == organization_id,
+                func.date_trunc("month", OrganizationCreditUsage.created_at)
+                == current_month,
+            ),
+        )
+        .group_by(
+            PriceMatrixItem.module,
+            PriceMatrixItem.sub_module,
+            PriceMatrixItem.feature_code,
+        )
+        .all()
+    )
 
     # -------------------------
     # Price Matrix
     # -------------------------
 
-    price_matrix = db.query(
-        PriceMatrixItem.id,
-        PriceMatrixItem.category,
-        PriceMatrixItem.module,
-        PriceMatrixItem.sub_module,
-        PriceMatrixItem.feature_code,
-        PriceMatrixItem.min_reserved_credits,
-        PriceMatrixItem.billing_unit,
-        PriceMatrixItem.credits_per_unit,
-        PriceMatrixItem.credit_formula,
-        PriceMatrixItem.definition,
-        PriceMatrixItem.overage_handling,
-        PriceMatrixItem.sort_order
-    ).filter(
-        PriceMatrixItem.is_active == True
-    ).order_by(
-        PriceMatrixItem.sort_order.asc()
-    ).all()
-
+    price_matrix = (
+        db.query(
+            PriceMatrixItem.id,
+            PriceMatrixItem.category,
+            PriceMatrixItem.module,
+            PriceMatrixItem.sub_module,
+            PriceMatrixItem.feature_code,
+            PriceMatrixItem.min_reserved_credits,
+            PriceMatrixItem.billing_unit,
+            PriceMatrixItem.credits_per_unit,
+            PriceMatrixItem.credit_formula,
+            PriceMatrixItem.definition,
+            PriceMatrixItem.overage_handling,
+            PriceMatrixItem.sort_order,
+        )
+        .filter(PriceMatrixItem.is_active == True)
+        .order_by(PriceMatrixItem.sort_order.asc())
+        .all()
+    )
 
     return {
         "credits": [
@@ -189,7 +196,7 @@ def get_credit_summary(
                 "consumed": row.consumed,
                 "refunded": row.refunded,
                 "used": row.used,
-                "items_used": row.items_used
+                "items_used": row.items_used,
             }
             for row in feature_summary
         ],
@@ -198,9 +205,8 @@ def get_credit_summary(
             "allocated": total_allocated,
             "reserved": reserved,
             "used": total_used,
-            "remaining": total_remaining
+            "remaining": total_remaining,
         },
-
         "price_matrix": [
             {
                 "id": row.id,
@@ -214,38 +220,41 @@ def get_credit_summary(
                 "credit_formula": row.credit_formula,
                 "definition": row.definition,
                 "overage_handling": row.overage_handling,
-                "sort_order": row.sort_order
+                "sort_order": row.sort_order,
             }
             for row in price_matrix
         ],
     }
-    
-def get_required_credits(
-    db,
-    feature_code: str,
-    quantity: float
-):
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+
+
+def get_required_credits(db, feature_code: str, quantity: float):
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     if not item:
         raise Exception("Invalid feature")
 
     return quantity * item.credits_per_unit
 
+
 def validate_feature_usage(
-    db,
-    organization_id: int,
-    feature_code: str,
-    quantity: float
+    db, organization_id: int, feature_code: str, quantity: float
 ):
     # Resolve PriceMatrixItem
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     if not item:
         return False, "Invalid feature", 0
@@ -255,25 +264,57 @@ def validate_feature_usage(
 
     # Validate credits
     valid, remaining = validate_credits(
-        db,
-        organization_id,
-        feature_code,
-        credits_required
+        db, organization_id, feature_code, credits_required
     )
 
     return valid
 
 
-def validate_credits(
+def has_credit_usage(
     db,
-    organization_id: int,
-    feature_code: str,
-    required_credits: float
+    organization_id,
+    feature_code,
+    reference_type,
+    reference_id,
 ):
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
+
+    if not item:
+        return False
+
+    existing = (
+        db.query(OrganizationCreditUsage.id)
+        .filter(
+            OrganizationCreditUsage.organization_id == organization_id,
+            OrganizationCreditUsage.price_matrix_item_id == item.id,
+            OrganizationCreditUsage.reference_type == reference_type,
+            OrganizationCreditUsage.reference_id == str(reference_id),
+            OrganizationCreditUsage.status == "consumed",
+        )
+        .first()
+    )
+
+    return existing is not None
+
+
+def validate_credits(
+    db, organization_id: int, feature_code: str, required_credits: float
+):
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     if not item:
         return False, "Invalid feature"
@@ -282,10 +323,14 @@ def validate_credits(
     billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
 
     # Fetch balance
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == billing_period
-    ).first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .first()
+    )
 
     if not balance:
         return False, "No credit balance found"
@@ -296,19 +341,24 @@ def validate_credits(
 
     return True, balance.remaining_credit
 
+
 def deduct_credits(
     db,
     organization_id: int,
     feature_code: str,
     quantity: float,
     reference_type: str | None = None,
-    reference_id: str | None = None
+    reference_id: str | None = None,
 ):
 
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     if not item:
         raise Exception("Invalid feature")
@@ -316,10 +366,7 @@ def deduct_credits(
     credits_required = quantity * item.credits_per_unit
 
     valid, remaining = validate_credits(
-        db,
-        organization_id,
-        feature_code,
-        credits_required
+        db, organization_id, feature_code, credits_required
     )
 
     if not valid:
@@ -332,17 +379,22 @@ def deduct_credits(
         credits_used=credits_required,
         reference_type=reference_type,
         reference_id=str(reference_id) if reference_id else None,
-        status="consumed"
+        status="consumed",
     )
 
     db.add(usage)
 
     billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
 
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == billing_period
-    ).with_for_update().first()   # prevents race conditions
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )  # prevents race conditions
 
     if not balance:
         raise Exception("Credit balance not found")
@@ -353,18 +405,23 @@ def deduct_credits(
     db.flush()
     return True
 
+
 def refund_credits(
     db,
     organization_id: int,
     feature_code: str,
     quantity: float,
     reference_type: str | None = None,
-    reference_id: str | None = None
+    reference_id: str | None = None,
 ):
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     if not item:
         raise Exception("Invalid feature")
@@ -374,23 +431,27 @@ def refund_credits(
     # -------------------------
     # Prevent over-refund
     # -------------------------
-    consumed = db.query(
-        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.price_matrix_item_id == item.id,
-        OrganizationCreditUsage.reference_id == str(reference_id),
-        OrganizationCreditUsage.status == "consumed"
-    ).scalar()
+    consumed = (
+        db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
+        .filter(
+            OrganizationCreditUsage.organization_id == organization_id,
+            OrganizationCreditUsage.price_matrix_item_id == item.id,
+            OrganizationCreditUsage.reference_id == str(reference_id),
+            OrganizationCreditUsage.status == "consumed",
+        )
+        .scalar()
+    )
 
-    refunded = db.query(
-        func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0)
-    ).filter(
-        OrganizationCreditUsage.organization_id == organization_id,
-        OrganizationCreditUsage.price_matrix_item_id == item.id,
-        OrganizationCreditUsage.reference_id == str(reference_id),
-        OrganizationCreditUsage.status == "refunded"
-    ).scalar()
+    refunded = (
+        db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
+        .filter(
+            OrganizationCreditUsage.organization_id == organization_id,
+            OrganizationCreditUsage.price_matrix_item_id == item.id,
+            OrganizationCreditUsage.reference_id == str(reference_id),
+            OrganizationCreditUsage.status == "refunded",
+        )
+        .scalar()
+    )
 
     # refunded will be negative if you follow ledger style
     net_consumed = consumed + refunded
@@ -405,10 +466,10 @@ def refund_credits(
         organization_id=organization_id,
         price_matrix_item_id=item.id,
         used_quantity=quantity,
-        credits_used=-credits_to_refund,  
+        credits_used=-credits_to_refund,
         reference_type=reference_type,
         reference_id=str(reference_id) if reference_id else None,
-        status="refunded"
+        status="refunded",
     )
 
     db.add(usage)
@@ -418,10 +479,15 @@ def refund_credits(
     # -------------------------
     billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
 
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == organization_id,
-        OrgCreditBalance.billing_period == billing_period
-    ).with_for_update().first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )
 
     if not balance:
         raise Exception("Credit balance not found")
@@ -431,30 +497,25 @@ def refund_credits(
 
     db.flush()
     return True
-    
+
+
 def reserve_credits(
-    db,
-    organization_id,
-    feature_code,
-    quantity,
-    reference_type=None,
-    reference_id=None
+    db, organization_id, feature_code, quantity, reference_type=None, reference_id=None
 ):
 
     # Resolve item
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.feature_code == feature_code,
-        PriceMatrixItem.is_active == True
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
 
     credits_required = quantity * item.credits_per_unit
 
-    valid, _ = validate_credits(
-        db,
-        organization_id,
-        feature_code,
-        credits_required
-    )
+    valid, _ = validate_credits(db, organization_id, feature_code, credits_required)
 
     if not valid:
         raise Exception("Insufficient credits")
@@ -466,7 +527,7 @@ def reserve_credits(
         credits_used=credits_required,
         status="reserved",
         reference_type=reference_type,
-        reference_id=str(reference_id) if reference_id else None
+        reference_id=str(reference_id) if reference_id else None,
     )
 
     db.add(usage)
@@ -474,18 +535,22 @@ def reserve_credits(
 
     return usage.id
 
-def consume_reserved_credits(
-    db,
-    reference_type,
-    reference_id,
-    actual_quantity
-):
 
-    usage = db.query(OrganizationCreditUsage).filter(
-        OrganizationCreditUsage.reference_type == reference_type,
-        OrganizationCreditUsage.reference_id == str(reference_id) if reference_id else None,
-        OrganizationCreditUsage.status == "reserved"
-    ).first()
+def consume_reserved_credits(db, reference_type, reference_id, actual_quantity):
+
+    usage = (
+        db.query(OrganizationCreditUsage)
+        .filter(
+            OrganizationCreditUsage.reference_type == reference_type,
+            (
+                OrganizationCreditUsage.reference_id == str(reference_id)
+                if reference_id
+                else None
+            ),
+            OrganizationCreditUsage.status == "reserved",
+        )
+        .first()
+    )
 
     if not usage:
         raise Exception("Reserved credits not found")
@@ -494,23 +559,30 @@ def consume_reserved_credits(
     usage.used_quantity = actual_quantity
 
     # get price item
-    item = db.query(PriceMatrixItem).filter(
-        PriceMatrixItem.id == usage.price_matrix_item_id
-    ).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(PriceMatrixItem.id == usage.price_matrix_item_id)
+        .first()
+    )
 
     # recompute credits
     credits_required = actual_quantity * item.credits_per_unit
 
     usage.credits_used = credits_required
     usage.status = "consumed"
-    
+
     # Update OrgCreditBalance
     billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
 
-    balance = db.query(OrgCreditBalance).filter(
-        OrgCreditBalance.organization_id == usage.organization_id,
-        OrgCreditBalance.billing_period == billing_period
-    ).with_for_update().first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == usage.organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )
 
     if not balance:
         raise Exception("Credit balance not found")
@@ -519,19 +591,23 @@ def consume_reserved_credits(
     balance.remaining_credit = balance.total_credit - balance.used_credit
 
     db.commit()
-    
-    
-def release_reserved_credits(
-    db,
-    reference_type,
-    reference_id
-):
 
-    usages = db.query(OrganizationCreditUsage).filter(
-        OrganizationCreditUsage.reference_type == reference_type,
-        OrganizationCreditUsage.reference_id == str(reference_id) if reference_id else None,
-        OrganizationCreditUsage.status == "reserved"
-    ).all()
+
+def release_reserved_credits(db, reference_type, reference_id):
+
+    usages = (
+        db.query(OrganizationCreditUsage)
+        .filter(
+            OrganizationCreditUsage.reference_type == reference_type,
+            (
+                OrganizationCreditUsage.reference_id == str(reference_id)
+                if reference_id
+                else None
+            ),
+            OrganizationCreditUsage.status == "reserved",
+        )
+        .all()
+    )
 
     if not usages:
         return False

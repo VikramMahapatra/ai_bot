@@ -1,6 +1,6 @@
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import String, case, cast, func
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import String, and_, case, cast, func
 from app.models import ConversationMetrics, Conversation, Lead
 from app.models.call_campaigns import CallCampaign
 from app.models.calling_agents import CallingAgent
@@ -18,6 +18,7 @@ from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.campaign import Contact
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
+from app.models.lead_activities import LeadActivity
 
 logger = logging.getLogger(__name__)
 
@@ -657,6 +658,20 @@ def get_voice_campaign_report(
             if outcome and outcome.strip()
         ]
 
+    latest_conversation_subquery = db.query(
+        Conversation.session_id.label("session_id"),
+        Conversation.outcome.label("conversation_outcome"),
+        Conversation.is_lead.label("conversation_is_lead"),
+        func.row_number()
+        .over(
+            partition_by=Conversation.session_id,
+            order_by=Conversation.created_at.desc(),
+        )
+        .label("rn"),
+    ).subquery()
+
+    latest_conversation = aliased(latest_conversation_subquery)
+
     query = (
         db.query(
             CallingAgent.name.label("agent_name"),
@@ -671,10 +686,20 @@ def get_voice_campaign_report(
             Lead.created_at.label("created_at"),
             Product.name.label("product_name"),
             CampaignSchedule.start_datetime.label("campaign_start_date"),
+            latest_conversation.c.conversation_outcome.label("outcome"),
+            latest_conversation.c.conversation_is_lead.label("is_lead"),
         )
         .join(LeadContactMapping, Lead.id == LeadContactMapping.lead_id)
         .join(
             CampaignContact, LeadContactMapping.contact_id == CampaignContact.contact_id
+        )
+        .join(
+            LeadActivity,
+            and_(
+                LeadActivity.lead_id == Lead.id,
+                LeadActivity.campaign_id == CampaignContact.campaign_id,
+                LeadActivity.source == "voice",
+            ),
         )
         .join(
             CallCampaign,
@@ -695,6 +720,13 @@ def get_voice_campaign_report(
         .outerjoin(
             CampaignSchedule,
             CallCampaign.id == CampaignSchedule.campaign_id,
+        )
+        .outerjoin(
+            latest_conversation,
+            and_(
+                latest_conversation.c.session_id == LeadActivity.session_id,
+                latest_conversation.c.rn == 1,
+            ),
         )
         .filter(
             Lead.organization_id == organization_id,
@@ -794,6 +826,8 @@ def get_voice_campaign_report(
                 "created_at": row.created_at,
                 "product_name": row.product_name,
                 "campaign_start_date": row.campaign_start_date,
+                "sentiment": row.outcome,
+                "outcome": "positive" if row.is_lead else "negative",
             }
             for row in rows
         ],

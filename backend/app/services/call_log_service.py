@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import re
+from statistics import mode
 import threading
 from typing import Optional, Tuple, Union
 from zoneinfo import ZoneInfo
@@ -85,6 +86,12 @@ LEAD_QUALITY_RANGES = {
 
 NORMALIZED_SOURCES = {
     "reschedule_call": "rescheduled_call",
+}
+
+FEATURE_MAP = {
+    "sms": FeatureCodes.CMP_SMS_SEGMENT,
+    "email": FeatureCodes.CMP_EMAIL_SEND,
+    "whatsapp": FeatureCodes.CMP_WA_CONVERSATION,
 }
 
 logger = logging.getLogger(__name__)
@@ -822,13 +829,15 @@ def process_call(call, agent):
         )
 
         call_status = call.get("status")
+        source = (call.get("source") or "").strip().lower()        
         is_call_ended = call_status and call_status.lower() == "ended"
         is_call_completed_or_failed = call_status and call_status.lower() in [
             "ended",
             "executing",
             "calling fail",
         ]
-
+        
+        # For test calls, we only update the status and release the reserved channel if call is ended. We don't create leads or conversations for test calls.
         if test_call:
             test_call.status = (
                 call.get("status").lower()
@@ -857,6 +866,7 @@ def process_call(call, agent):
             # Create conversation
             create_conversation_from_transcripts(db=db, call_log=call_log, agent=agent)
 
+        # For campaign calls, once call is completed or failed, we can release the reserved channel and update the scheduled call status if exists
         if campaign and is_call_completed_or_failed:
             # update the status of scheduled call
             job = (
@@ -865,6 +875,17 @@ def process_call(call, agent):
                     WorkflowScheduledCall.external_call_id
                     == call_log.external_call_a_id,
                     WorkflowScheduledCall.status == "processing",
+                )
+                .first()
+            )
+            
+            mapped_job = (
+                db.query(WorkflowScheduledCall.id)
+                .filter(
+                    or_(
+                        WorkflowScheduledCall.external_call_id == call_log.external_call_a_id,
+                        WorkflowScheduledCall.external_call_id == str(call_log.external_call_id),
+                    )
                 )
                 .first()
             )
@@ -885,6 +906,26 @@ def process_call(call, agent):
                         step_id=None,
                         event_type="workflow_failed",
                         metadata={"reason": "Provider failure"},
+                    )
+                    
+            if source == "rescheduled_call" and not mapped_job:
+                already_deducted = organization_credit_service.has_credit_usage(
+                    db=db,
+                    organization_id=call_log.organization_id,
+                    feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                    reference_type="auto_rescheduled_call",
+                    reference_id=str(call_log.id),
+                )
+
+                if not already_deducted:
+
+                    organization_credit_service.deduct_credits(
+                        db=db,
+                        organization_id=call_log.organization_id,
+                        feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                        quantity=1,
+                        reference_type="auto_rescheduled_call",
+                        reference_id=str(call_log.id),
                     )
 
         db.commit()
@@ -1059,6 +1100,29 @@ def handle_instant_replies(
             db=db, organization_id=campaign.organization_id
         )
 
+        eligible_replies = []
+        for reply in replies_data:
+            mode = reply["mode"]
+            feature_code = FEATURE_MAP.get(mode)
+
+            if not feature_code:
+                continue
+
+            valid = organization_credit_service.validate_feature_usage(
+                db=db,
+                organization_id=campaign.organization_id,
+                feature_code=feature_code,
+                quantity=1,
+            )
+
+            if not valid:
+                logger.warning(
+                    f"Insufficient credits for {mode} " f"campaign={campaign.id}"
+                )
+                continue
+
+            eligible_replies.append(reply)
+
         logger.info(
             f"Instant Reply initiated for Call: {call_log.id}, Contact: {contact.name}"
         )
@@ -1066,7 +1130,7 @@ def handle_instant_replies(
         db.commit()
 
         results = dispatch_instant_replies_safe(
-            replies=replies_data,
+            replies=eligible_replies,
             contact=contact,
             campaign=campaign,
             org_settings=org_settings,
@@ -1082,16 +1146,31 @@ def handle_instant_replies(
         all_success = True
 
         for channel, result in results.items():
+            success = result.get("success")
+
             db.add(
                 InstantReplyChannelLog(
                     instant_reply_log_id=log_entry.id,
                     channel=channel,
-                    status="success" if result.get("success") else "failed",
+                    status="success" if success else "failed",
                     error=result.get("error"),
                 )
             )
 
-            if not result.get("success"):
+            if success:
+                try:
+                    organization_credit_service.deduct_credits(
+                        db=db,
+                        organization_id=campaign.organization_id,
+                        feature_code=FEATURE_MAP[channel],
+                        quantity=1,
+                        reference_type=f"instant_reply_{channel}",
+                        reference_id=str(call_log.id),
+                    )
+                except Exception as e:
+                    logger.error(f"Credit deduction failed: {e}")
+
+            if not success:
                 all_success = False
 
         log_entry.status = "success" if all_success else "failed"
@@ -1927,6 +2006,42 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             .scalar()
         )
 
+        config = (
+            db.query(WhatsAppChannel)
+            .filter(
+                WhatsAppChannel.organization_id == call_log.organization_id,
+                WhatsAppChannel.widget_id.is_(None),  # only org-level config
+                WhatsAppChannel.is_active == True,
+            )
+            .first()
+        )
+
+        feature_code = FEATURE_MAP.get(step_outcome.step_type)
+
+        if feature_code:
+            valid = organization_credit_service.validate_feature_usage(
+                db=db,
+                organization_id=call_log.organization_id,
+                feature_code=feature_code,
+                quantity=1,
+            )
+
+            if not valid:
+                execution.status = "failed"
+
+                log_event(
+                    db=db,
+                    execution_id=execution.id,
+                    step_id=next_step_id,
+                    event_type="workflow_execution_failed",
+                    metadata={
+                        "step_type": step_outcome.step_type,
+                        "reason": "Insufficient credits",
+                    },
+                )
+
+                return
+
         db.flush()
 
         message = render_template(template.content, contact)
@@ -1965,6 +2080,25 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                 if success:
                     execution_completed = True
 
+            elif step_outcome.step_type == "whatsapp":
+                if not config:
+                    execution_completed = False
+                    error_message = "WhatsApp config missing"
+                else:
+                    try:
+                        send_whatsapp_template_message(
+                            phone_number_id=config.phone_number_id,
+                            access_token=config.access_token,
+                            to_number=contact.phone,
+                            template=template,
+                            contact=contact,
+                        )
+                        execution_completed = True
+
+                    except Exception as e:
+                        execution_completed = False
+                        error_message = str(e)
+
         except Exception as e:
             execution_completed = False
             error_message = str(e)
@@ -1986,6 +2120,18 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                     "message_id": message_id,
                 },
             )
+
+            try:
+                organization_credit_service.deduct_credits(
+                    db=db,
+                    organization_id=call_log.organization_id,
+                    feature_code=FEATURE_MAP[step_outcome.step_type],
+                    quantity=1,
+                    reference_type=f"workflow_{step_outcome.step_type}",
+                    reference_id=str(execution.id),
+                )
+            except Exception as e:
+                logger.error(f"Credit deduction failed: {e}")
         else:
             execution.status = "failed"
             log_event(
@@ -1998,7 +2144,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                     "email": contact.email,
                     "phone": contact.phone,
                     "reason": "Provider returned failure",
-                    "error": str(e),
+                    "error": str(error_message),
                 },
             )
 
@@ -2201,6 +2347,10 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 .filter(
                     ChannelReservation.organization_id == job.organization_id,
                     ChannelReservation.is_active == True,
+                    ~and_(
+                        ChannelReservation.call_type == "campaign",
+                        ChannelReservation.reference_id == job.campaign_id,
+                    ),
                 )
                 .scalar()
             )
@@ -2210,7 +2360,12 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 continue
 
             active_res_subq = db.query(ChannelReservation.channel_id).filter(
-                ChannelReservation.is_active == True
+                ChannelReservation.is_active == True,
+                ChannelReservation.organization_id == job.organization_id,
+                ~and_(
+                    ChannelReservation.call_type == "campaign",
+                    ChannelReservation.reference_id == job.campaign_id,
+                ),
             )
 
             channel = (

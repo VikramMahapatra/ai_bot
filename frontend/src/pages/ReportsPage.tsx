@@ -897,7 +897,7 @@ const ReportsPage: React.FC = () => {
     whiteSpace: "normal",
     wordBreak: "break-word",
     overflowWrap: "anywhere",
-    verticalAlign: "top",
+    verticalAlign: "middle",
     maxWidth: 220,
     lineHeight: 1.4,
   };
@@ -910,6 +910,10 @@ const ReportsPage: React.FC = () => {
 
   const sourceLabel = (source?: string) =>
     titleCase((source || "chat").toLowerCase());
+
+  const tableCellSx = {
+    verticalAlign: "middle",
+  };
 
   return (
     <AdminLayout>
@@ -1240,24 +1244,24 @@ const ReportsPage: React.FC = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth size="small">
-                              <InputLabel id="lead-filter-source-label">Source</InputLabel>
-                              <Select
-                                labelId="lead-filter-source-label"
-                                label="Source"
-                                value={conversationSource}
-                                onChange={(e) =>
-                                  setConversationSource(e.target.value)
-                                }
-                              >
-                                <MenuItem value="all">All</MenuItem>
-                                {CONVERSATION_SOURCES.map((source) => (
-                                  <MenuItem key={source} value={source}>
-                                    {sourceLabel(source)}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="lead-filter-source-label">Source</InputLabel>
+                    <Select
+                      labelId="lead-filter-source-label"
+                      label="Source"
+                      value={conversationSource}
+                      onChange={(e) =>
+                        setConversationSource(e.target.value)
+                      }
+                    >
+                      <MenuItem value="all">All</MenuItem>
+                      {CONVERSATION_SOURCES.map((source) => (
+                        <MenuItem key={source} value={source}>
+                          {sourceLabel(source)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={2.5}>
                   <TextField
@@ -2182,7 +2186,7 @@ const ReportsPage: React.FC = () => {
                               </Box>
                             </TableCell>
                             {/* CAMPAIGN NAME */}
-                            <TableCell>
+                            <TableCell sx={voiceWrapCellSx}>
                               <Box
                                 display="flex"
                                 flexDirection="column"
@@ -2204,7 +2208,17 @@ const ReportsPage: React.FC = () => {
                                   >
                                     Agent:
                                   </Typography>
-                                  <EllipsisCell value={item.agent_name} />
+                                  <Typography
+                                    variant="caption"
+                                    noWrap
+                                    sx={{
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    {item.agent_name || "-"}
+                                  </Typography>
                                 </Box>
 
                                 <Box display="flex" alignItems="center" gap={2}>
@@ -2231,15 +2245,15 @@ const ReportsPage: React.FC = () => {
                                 </Box>
                               </Box>
                             </TableCell>
-                            <TableCell sx={voiceNoWrapCellSx}>
+                            <TableCell sx={voiceWrapCellSx}>
                               {item.campaign_start_date
                                 ? formatDisplayDate(item.campaign_start_date)
                                 : "-"}
                             </TableCell>
                             <TableCell sx={voiceWrapCellSx}>
-                              <OutcomeChip value={item.lead_outcome} />
+                              <OutcomeChip value={item.sentiment} />
                             </TableCell>
-                            <TableCell sx={voiceNoWrapCellSx}>
+                            <TableCell sx={voiceWrapCellSx}>
                               {item.created_at
                                 ? formatDisplayDate(item.created_at)
                                 : "-"}
@@ -2378,10 +2392,18 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="caption" color="text.secondary">
-                    Lead Outcome
+                    Sentiment
                   </Typography>
                   <Typography variant="body1">
-                    <OutcomeChip value={voiceDetailsItem.lead_outcome} />
+                    <OutcomeChip value={voiceDetailsItem.sentiment} />
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">
+                    Outcome
+                  </Typography>
+                  <Typography variant="body1">
+                    <OutcomeChip value={voiceDetailsItem.outcome} />
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>

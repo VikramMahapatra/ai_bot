@@ -39,6 +39,7 @@ import { Workflow, workflowService } from "../../../services/workflowService";
 import { useDateFormatter } from "../../../hooks/useDateFormatter";
 import { StatusChip } from "../../Common/StatusChips";
 import { ConfirmDialog } from "../../Common/ConfirmDialog";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 interface WorkflowListProps {
     onCreate: () => void;
@@ -56,6 +57,8 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
     const [workflowTotal, setWorkflowTotal] = useState(0);
     const [workflowPage, setWorkflowPage] = useState(0);
     const [workflowRowsPerPage, setWorkflowRowsPerPage] = useState(10);
+    const [workflowToDelete, setWorkflowToDelete] = useState<Workflow | null>(null);
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
     const formatDisplayDate = useDateFormatter();
 
     useEffect(() => {
@@ -105,11 +108,31 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
 
             setWorkflowStatusToUpdate(null);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to update status", err);
-            setError("Failed to update status");
+            setError(err?.response?.data?.detail || err?.detail || "Failed to update status");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleConfirmDeleteWorkflow = async () => {
+        if (!workflowToDelete?.id) return;
+
+        setDeleteSubmitting(true);
+        setError(null);
+
+        try {
+            await workflowService.deleteWorkflow(workflowToDelete.id);
+            setWorkflowToDelete(null);
+            await fetchProducts();
+        }
+        catch (err: any) {
+            console.error("Failed to delete workflow", err);
+            setError(err?.response?.data?.detail || err?.detail || "Failed to delete workflow");
+        }
+        finally {
+            setDeleteSubmitting(false);
         }
     };
 
@@ -344,6 +367,14 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
                                     >
                                         <EditIcon />
                                     </IconButton>
+                                    <Tooltip title="Delete">
+                                        <IconButton
+                                            color="error"
+                                            onClick={() => setWorkflowToDelete(workflow)}
+                                        >
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </Tooltip>
                                 </TableCell>
 
                             </TableRow>
@@ -366,6 +397,21 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
                 loading={loading}
                 onCancel={() => !loading && setWorkflowStatusToUpdate(null)}
                 onConfirm={handleToggleStatus}
+            />
+            <ConfirmDialog
+                open={Boolean(workflowToDelete)}
+                title="Delete workflow?"
+                description={
+                    workflowToDelete
+                        ? `This will permanently remove "${workflowToDelete.name}". This action cannot be undone.`
+                        : undefined
+                }
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                confirmColor="error"
+                loading={deleteSubmitting}
+                onCancel={() => !deleteSubmitting && setWorkflowToDelete(null)}
+                onConfirm={handleConfirmDeleteWorkflow}
             />
         </Box>
     );

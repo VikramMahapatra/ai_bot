@@ -869,3 +869,18 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE workflows
+                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_workflows_is_deleted
+                ON workflows (is_deleted);
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

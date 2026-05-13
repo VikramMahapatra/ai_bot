@@ -100,6 +100,8 @@ class VoiceCampaignReportRow(BaseModel):
     campaign_source: str
     funnel_stage: Optional[str]
     lead_outcome: Optional[str]
+    sentiment: Optional[str]
+    outcome: Optional[str]
     created_at: Optional[datetime]
     product_name: Optional[str]
     campaign_start_date: Optional[datetime]

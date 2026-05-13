@@ -130,4 +130,7 @@ export const workflowService = {
         return response.data;
     },
 
+    async deleteWorkflow(workflowId: number): Promise<void> {
+        await api.delete(`/api/workflows/delete/${workflowId}`);
+    },
 };
