@@ -772,7 +772,6 @@ export const reportService = {
       item.campaign_name || '-',
       formatDate(item.campaign_start_date),
       item.campaign_source || '-',
-      item.lead_outcome || '-',
       item.funnel_stage || '-',
       normalizeLeadOutcome(item.lead_outcome),
       item.product_name || '-',
