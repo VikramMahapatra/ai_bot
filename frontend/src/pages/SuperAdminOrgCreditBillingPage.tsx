@@ -1267,7 +1267,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       </TableCell>
                       <TableCell>{row.payment_status}</TableCell>
                       <TableCell align="right">
-                        {row.payment_status === "paid" && (
+                        {row.payment_status === "paid" && !row.is_topup && (
                           <Button
                             size="small"
                             onClick={() => openTopupDialog(row)}
