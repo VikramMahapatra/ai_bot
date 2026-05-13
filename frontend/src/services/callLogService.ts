@@ -55,6 +55,7 @@ export interface CallLog {
     cost?: string;
     lead_qualified_status?: string;
     transcript: CallTranscript[];
+    workflow_id?: number;
     follow_up_count: number;
     source?: "campaign_call" | "rescheduled_call" | "reschedule_call" | "test_call";
     instant_reply?: InstantReply;

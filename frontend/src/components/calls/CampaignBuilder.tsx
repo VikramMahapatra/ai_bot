@@ -25,6 +25,7 @@ import moment from "moment-timezone";
 import CampaignContacts from "./CampaignContacts";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../../types/creditModules";
 import { useCredits } from "../../context/CreditsContext";
+import { chatService } from "../../services/chatService";
 
 
 const steps = [
@@ -130,7 +131,29 @@ const CampaignBuilder = () => {
         return true;
     };
 
+    const validateChannel = async () => {
+        try {
+          const res = await chatService.isChannelAvailable();
+          return res;
+        } catch (error) {
+          console.error("Failed to channel validation service", error);
+        }
+      };
+
+    const isChannelAvailable = async (setError: any) => {
+        const isChannelAvailable = await validateChannel();
+        if (!isChannelAvailable) {
+            setError("Channel is not available for your organization. Please contact support for assistance.");
+            return false;
+        }
+        return true;
+      };
+
     const handleAddCampaign = (setListError: any) => {
+        if (!isChannelAvailable(setListError)) {
+            return;
+        }
+
         if (!validateAddCampaignCredits(setListError))
             return;
 

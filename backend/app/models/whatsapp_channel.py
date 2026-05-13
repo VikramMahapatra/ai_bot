@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Identity, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import (
+    Column,
+    Identity,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -11,7 +20,7 @@ class WhatsAppChannel(Base):
         Integer, ForeignKey("organizations.id"), nullable=False, index=True
     )
     widget_id = Column(String, nullable=True, index=True)
-    phone_number_id = Column(String, nullable=False, unique=True, index=True)
+    phone_number_id = Column(String, nullable=True, index=True)
     waba_id = Column(String, nullable=True)
     access_token = Column(String, nullable=True)
     verify_token = Column(String, nullable=True)
@@ -31,3 +40,11 @@ class WhatsAppChannel(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "widget_id",
+            "phone_number_id",
+            name="uq_widget_phone_number",
+        ),
+    )

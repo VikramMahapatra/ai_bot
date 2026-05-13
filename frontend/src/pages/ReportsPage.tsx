@@ -176,6 +176,8 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+const CONVERSATION_SOURCES = ["chat", "voice", "email", "sms", "whatsapp"] as const;
+
 const ReportsPage: React.FC = () => {
   const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
@@ -241,7 +243,6 @@ const ReportsPage: React.FC = () => {
   // Voice campaign report data
   const [voiceAgentName, setVoiceAgentName] = useState("");
   const [voiceCampaignName, setVoiceCampaignName] = useState("");
-  const [voiceSource, setVoiceSource] = useState("");
   const [voiceLeadOutcomes, setVoiceLeadOutcomes] = useState<string[]>([]);
   const [voiceCreatedFrom, setVoiceCreatedFrom] = useState("");
   const [voiceCreatedTo, setVoiceCreatedTo] = useState("");
@@ -265,11 +266,12 @@ const ReportsPage: React.FC = () => {
   const [funnelCategories, setFunnelCategories] = useState<FunnelCategory[]>(
     [],
   );
-  const [conversationOutcome, setConversationOutcome] = useState("");
+  const [conversationOutcome, setConversationOutcome] = useState("all");
   const [contactSearch, setContactSearch] = useState("");
   const [conversationSentiments, setConversationSentiments] = useState<
     string[]
   >([]);
+  const [conversationSource, setConversationSource] = useState("all");
   const formatDisplayDate = useDateFormatter();
 
   // Print dialog
@@ -338,6 +340,7 @@ const ReportsPage: React.FC = () => {
         search: contactSearch,
         sentiments: conversationSentiments,
         outcome: conversationOutcome,
+        source: conversationSource
       });
       setConversations(data.metrics);
       setTotalConversations(data.pagination.total);
@@ -505,7 +508,7 @@ const ReportsPage: React.FC = () => {
   const buildVoiceReportParams = () => ({
     agent_name: voiceAgentName || undefined,
     campaign_name: voiceCampaignName || undefined,
-    source: voiceSource || undefined,
+    source: conversationSource || undefined,
     lead_outcomes: voiceLeadOutcomes.length > 0 ? voiceLeadOutcomes : undefined,
     start_date: toIsoStartOfDay(voiceCreatedFrom),
     end_date: toIsoEndOfDay(voiceCreatedTo),
@@ -583,9 +586,10 @@ const ReportsPage: React.FC = () => {
   const handleResetCoversationReportFilters = async () => {
     setContactSearch("");
     setConversationSentiments([]);
-    setConversationOutcome("");
+    setConversationOutcome("all");
     setStartDate("");
     setEndDate("");
+    setConversationSource("all");
     setPage(0);
     await fetchConversations(0);
   };
@@ -599,7 +603,7 @@ const ReportsPage: React.FC = () => {
     const resetCampaign = voiceDefaultCampaignName || "";
     setVoiceAgentName("");
     setVoiceCampaignName(resetCampaign);
-    setVoiceSource("");
+    setConversationSource("");
     setVoiceLeadOutcomes([]);
     setVoiceCreatedFrom("");
     setVoiceCreatedTo("");
@@ -1189,7 +1193,7 @@ const ReportsPage: React.FC = () => {
                     onChange={(e) => setContactSearch(e.target.value)}
                   />
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Sentiment</InputLabel>
                     <Select
@@ -1222,17 +1226,38 @@ const ReportsPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel>Type</InputLabel>
+                    <InputLabel>Outcome</InputLabel>
                     <Select
+                      labelId="lead-filter-outcome-label"
                       value={conversationOutcome}
                       label="Type"
                       onChange={(e) => setConversationOutcome(e.target.value)}
                     >
-                      <MenuItem value="">All</MenuItem>
+                      <MenuItem value="all">All</MenuItem>
                       <MenuItem value="positive">Positive</MenuItem>
                       <MenuItem value="negative">Negative</MenuItem>
                     </Select>
                   </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth size="small">
+                              <InputLabel id="lead-filter-source-label">Source</InputLabel>
+                              <Select
+                                labelId="lead-filter-source-label"
+                                label="Source"
+                                value={conversationSource}
+                                onChange={(e) =>
+                                  setConversationSource(e.target.value)
+                                }
+                              >
+                                <MenuItem value="all">All</MenuItem>
+                                {CONVERSATION_SOURCES.map((source) => (
+                                  <MenuItem key={source} value={source}>
+                                    {sourceLabel(source)}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={2.5}>
                   <TextField
@@ -1930,22 +1955,6 @@ const ReportsPage: React.FC = () => {
                               {name}
                             </MenuItem>
                           ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Source</InputLabel>
-                        <Select
-                          value={voiceSource}
-                          label="Source"
-                          onChange={(e) => setVoiceSource(e.target.value)}
-                        >
-                          <MenuItem value="">All</MenuItem>
-                          <MenuItem value="chat">Chat</MenuItem>
-                          <MenuItem value="voice">Voice</MenuItem>
-                          <MenuItem value="email">Email</MenuItem>
-                          <MenuItem value="sms">SMS</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>

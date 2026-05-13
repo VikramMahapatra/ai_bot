@@ -70,6 +70,8 @@ import { Product, productService } from "../services/productService";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
 import { useDateFormatter } from "../hooks/useDateFormatter";
+import { messageTemplateService, Template } from "../services/messageTemplateService";
+import { generatePreview } from "./TemplatePage";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -282,6 +284,9 @@ const CampaignManagementPage: React.FC = () => {
     fallback_used?: boolean;
   } | null>(null);
   const [createMessageTemplate, setCreateMessageTemplate] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+
   const [emailEditorMode, setEmailEditorMode] = useState<"plain" | "html">(
     "plain",
   );
@@ -325,6 +330,8 @@ const CampaignManagementPage: React.FC = () => {
   const [c2lRunResult, setC2lRunResult] =
     useState<CampaignToLeadRunResult | null>(null);
   const [c2lConversions, setC2lConversions] = useState<any[]>([]);
+
+  const [messageTemplates, setMessageTemplates] = useState<any[]>([]);
 
   const formatDisplayDate = useDateFormatter()
 
@@ -491,6 +498,11 @@ const CampaignManagementPage: React.FC = () => {
     setProducts(data || []);
   };
 
+  const loadTemplateLookup = async () => {
+    const data = await messageTemplateService.templateLookup();
+    setMessageTemplates(data || []);
+  };
+
   const loadContacts = async (contactListId: number) => {
     const data = await campaignService.listContacts(contactListId, {
       search: contactSearch || undefined,
@@ -552,6 +564,7 @@ const CampaignManagementPage: React.FC = () => {
         loadCampaigns(),
         loadContactLists(),
         loadProducts(),
+        loadTemplateLookup(),
       ]);
     } catch (err: any) {
       showError(
@@ -1005,6 +1018,7 @@ const CampaignManagementPage: React.FC = () => {
       await campaignService.createCampaign({
         campaign_name: createCampaignName,
         campaign_type: createCampaignType,
+        message_template_id: selectedTemplate ? Number(selectedTemplate.id) : undefined,
         message_template:
           createCampaignType === "email"
             ? emailContentMode === "prompt"
@@ -1743,11 +1757,16 @@ const CampaignManagementPage: React.FC = () => {
                     <Select
                       value={createCampaignType}
                       label="Campaign Type"
-                      onChange={(e) =>
-                        setCreateCampaignType(
-                          e.target.value as "email" | "whatsapp" | "sms",
-                        )
-                      }
+                      onChange={(e) => {
+                        const type = e.target.value as "email" | "whatsapp" | "sms";
+
+                        setCreateCampaignType(type);
+
+                        // reset template state when switching type
+                        setSelectedTemplateId("");
+                        setSelectedTemplate(null);
+                        setCreateMessageTemplate("");
+                      }}
                     >
                       <MenuItem value="email">Email</MenuItem>
                       <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -2411,8 +2430,8 @@ const CampaignManagementPage: React.FC = () => {
                     </Paper>
                   )}
 
-                  {(createCampaignType !== "email" ||
-                    emailContentMode === "manual") && (
+                  {createCampaignType === "email" ? (
+                    emailContentMode === "manual" && (
                       <TextField
                         required
                         size="small"
@@ -2429,37 +2448,175 @@ const CampaignManagementPage: React.FC = () => {
                         fullWidth
                         multiline
                         minRows={emailEditorMode === "html" ? 9 : 6}
-                        label={
-                          createCampaignType === "email"
-                            ? `Email Template (${emailEditorMode.toUpperCase()})`
-                            : "Message Template"
-                        }
+                        label={`Email Template (${emailEditorMode.toUpperCase()})`}
                         value={createMessageTemplate}
-                        onChange={(e) => {
-                          setCreateMessageTemplate(e.target.value);
-                          if (createCampaignErrors.emailBody) {
-                            setCreateCampaignErrors((prev) => ({
-                              ...prev,
-                              emailBody: false,
-                            }));
-                          }
-                        }}
-                        error={createCampaignErrors.emailBody}
-                        helperText={
-                          createCampaignErrors.emailBody
-                            ? createCampaignType === "email"
-                              ? "Email body is required"
-                              : "Message template is required"
-                            : " "
-                        }
-                        placeholder={
-                          createCampaignType === "email" &&
-                            emailEditorMode === "html"
-                            ? "<h2>Hello {{first_name}}</h2><p>Write your HTML campaign body here...</p>"
-                            : "Write your campaign message here..."
-                        }
+                        onChange={(e) => setCreateMessageTemplate(e.target.value)}
                       />
-                    )}
+                    )
+                  ) : (
+                    <Grid container spacing={1.5} alignItems="flex-start">
+                      {/* LEFT: Template Selector */}
+                      <Grid item xs={12} md={5}>
+
+                        <FormControl fullWidth size="small" sx={compactInputSx}>
+                          <InputLabel>Message Template</InputLabel>
+
+                          <Select
+                            value={selectedTemplateId}
+                            label="Message Template"
+                            onChange={(e) => {
+                              const id = e.target.value as string;
+
+                              setSelectedTemplateId(id);
+
+                              const template =
+                                messageTemplates.find((t) => t.id === id) || null;
+
+                              setSelectedTemplate(template);
+                              setCreateMessageTemplate(template?.content || "");
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Select Template</em>
+                            </MenuItem>
+
+                            {messageTemplates
+                              ?.filter((t) => t.type === createCampaignType)
+                              .filter((t) => {
+                                if (createCampaignType !== "whatsapp") {
+                                  return t.type === createCampaignType;
+                                }
+                                return (
+                                  t.type === "whatsapp" &&
+                                  t.category === "MARKETING"
+                                );
+                              })
+                              .map((template) => (
+                                <MenuItem key={template.id} value={template.id}>
+                                  {template.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
+                        {createCampaignType === "whatsapp" && (
+                          <Alert severity="warning" sx={{ mb: 2 }}>
+                            Only <b>MARKETING</b> WhatsApp templates can be used for sending test messages.
+                          </Alert>
+                        )}
+                      </Grid>
+
+                      {/* RIGHT: Preview */}
+                      <Grid item xs={12} md={7}>
+                        {selectedTemplate ? (
+                          <Box
+                            sx={{
+                              borderRadius: 2,
+                              border: "1px solid",
+                              borderColor: "divider",
+                              overflow: "hidden",
+                              height: "100%",
+                            }}
+                          >
+                            {/* Header */}
+                            <Box
+                              sx={{
+                                px: 1.5,
+                                py: 1,
+                                bgcolor: "grey.100",
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <Typography variant="subtitle2" fontWeight={600}>
+                                Preview
+                              </Typography>
+
+                              <Typography variant="caption" color="text.secondary">
+                                {selectedTemplate.name}
+                              </Typography>
+                            </Box>
+
+                            {/* Body */}
+                            <Box
+                              sx={{
+                                p: 1.5,
+                                bgcolor: "#ece5dd", // WhatsApp chat background
+                                minHeight: 140,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 1,
+                              }}
+                            >
+                              {/* incoming message bubble */}
+                              <Box
+                                sx={{
+                                  alignSelf: "flex-start",
+                                  maxWidth: "85%",
+                                  bgcolor: "#ffffff",
+                                  p: 1.2,
+                                  borderRadius: "12px",
+                                  borderTopLeftRadius: 4,
+                                  boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+                                  whiteSpace: "pre-wrap",
+                                  fontSize: "0.85rem",
+                                  lineHeight: 1.4,
+                                  position: "relative",
+                                }}
+                              >
+                                {/* sender label */}
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontWeight: 600,
+                                    display: "block",
+                                    mb: 0.5,
+                                    color: "text.secondary",
+                                  }}
+                                >
+                                  Campaign Message
+                                </Typography>
+
+                                {generatePreview(
+                                  selectedTemplate.content,
+                                  selectedTemplate.variable_mappings || {}
+                                )}
+
+                                {/* optional timestamp */}
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    display: "block",
+                                    mt: 0.5,
+                                    textAlign: "right",
+                                    color: "text.disabled",
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  just now
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Box>
+                        ) : (
+                          <Box
+                            sx={{
+                              height: "100%",
+                              minHeight: 80,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              border: "1px dashed",
+                              borderColor: "divider",
+                              borderRadius: 2,
+                              color: "text.secondary",
+                            }}
+                          >
+                            Select a template to preview
+                          </Box>
+                        )}
+                      </Grid>
+                    </Grid>
+                  )}
 
                   {(createCampaignErrors.contactList ||
                     createCampaignErrors.product) && (

@@ -55,6 +55,9 @@ from app.services.organization_setting_service import get_org_settings
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.lead_contact_mapping import LeadContactMapping
+from app.models.message_templates import MessageTemplate
+from app.models.whatsapp_channel import WhatsAppChannel
+from app.services.whatsapp_service import send_whatsapp_template_message
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
@@ -165,6 +168,7 @@ class ContactManualUploadRequest(BaseModel):
 class CampaignCreateRequest(BaseModel):
     campaign_name: str
     campaign_type: str
+    message_template_id: Optional[int] = None
     message_template: str
     contact_list_id: int
     product_id: Optional[int] = None
@@ -549,7 +553,46 @@ def _send_campaign_message(
         digits = "".join(ch for ch in (contact.phone or "") if ch.isdigit())
         if len(digits) < 8:
             return False, "Missing or invalid phone", None
-        # Placeholder for real WhatsApp API integration.
+
+        config = (
+            db.query(WhatsAppChannel)
+            .filter(
+                WhatsAppChannel.organization_id == campaign.organization_id,
+                WhatsAppChannel.widget_id.is_(None),  # only org-level config
+                WhatsAppChannel.is_active == True,
+            )
+            .first()
+        )
+
+        if not config:
+            return False, "WhatsApp channel not found or inactive", None
+
+        template = (
+            db.query(MessageTemplate)
+            .filter(
+                MessageTemplate.id == campaign.message_template_id,
+                MessageTemplate.organization_id == campaign.organization_id,
+                MessageTemplate.type == "whatsapp",
+                MessageTemplate.meta_status == "APPROVED",
+                MessageTemplate.is_latest == True,
+            )
+            .first()
+        )
+
+        if not template:
+            return False, "WhatsApp message template not found or not approved", None
+
+        try:
+            send_whatsapp_template_message(
+                phone_number_id=config.phone_number_id,
+                access_token=config.access_token,
+                to_number=contact.phone,
+                template=template,
+                contact=contact,
+            )
+        except Exception as e:
+            return False, str(e), None
+
         return True, None, None
 
     if campaign.campaign_type == "sms":
@@ -2004,6 +2047,11 @@ async def create_campaign(
         organization_id=current_user.organization_id,
         campaign_name=campaign_name,
         campaign_type=campaign_type,
+        message_template_id=(
+            payload.message_template_id
+            if campaign_type in ["whatsapp", "sms"]
+            else None
+        ),
         message_template=message_template,
         contact_list_id=payload.contact_list_id,
         product_id=payload.product_id,

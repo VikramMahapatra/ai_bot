@@ -623,7 +623,7 @@ const CreateChatAgentPage: React.FC = () => {
       const code = await launchWhatsAppEmbeddedSignup(configId);
       await handleMetaAuthCode(code, 'sdk');
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Meta signup failed.');
+      setError(err?.response?.data?.detail || err?.detail || 'Meta signup failed.');
     } finally {
       setMetaConnecting(false);
     }
@@ -677,9 +677,6 @@ const CreateChatAgentPage: React.FC = () => {
       }
 
       try {
-
-        setMetaConnecting(true);
-
         await whatsappService.saveConfig({
           widget_id: createdWidgetId,
           phone_number_id: data.phone_number_id,
@@ -696,8 +693,6 @@ const CreateChatAgentPage: React.FC = () => {
           err?.message ||
           "Failed to save WhatsApp config"
         );
-      } finally {
-        setMetaConnecting(false);
       }
     };
 

@@ -203,6 +203,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [channelDeleteSubmitting, setChannelDeleteSubmitting] = useState(false);
 
   const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState("");
+  const [callingNumberDefault, setCallingNumberDefault] = useState(false);
 
   const orgStats = useMemo(() => {
     const total = organizations.length;
@@ -1853,10 +1854,19 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                     </TableCell>
 
                     <TableCell>
-                      <Switch
-                        checked={row.is_default}
-                        onChange={() => handleDefault(row)}
-                      />
+                      {row.is_default && row.type == "outbound" ? (
+                        <Chip
+                          label="Default"
+                          color="primary"
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            borderRadius: "20px",
+                          }}
+                        />
+                      ) : (
+                        "--"
+                      )}
                     </TableCell>
 
                     <TableCell>
@@ -1937,6 +1947,25 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               <MenuItem value="outbound">Outbound</MenuItem>
             </Select>
           </FormControl>
+
+          {callingform.type == "outbound" ? <Grid item xs={12}>
+            <FormControlLabel
+              sx={{ mt: 2 }}
+              control={
+                <Switch
+                  checked={callingform.is_default}
+                  onChange={(e) =>
+                    setCallingForm({
+                      ...callingform,
+                      is_default: e.target.checked,
+                    })
+                  }
+                />
+              }
+              label="Set as Default"
+            />
+          </Grid> : <></>}
+          
         </DialogContent>
 
         <DialogActions>

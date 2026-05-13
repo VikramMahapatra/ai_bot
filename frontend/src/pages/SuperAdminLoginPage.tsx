@@ -127,15 +127,6 @@ const SuperAdminLoginPage: React.FC = () => {
               >
                 Login
               </Button>
-              <Button
-                type="button"
-                variant="text"
-                fullWidth
-                sx={{ mt: 1.1, textTransform: 'none', fontWeight: 700 }}
-                onClick={() => navigate('/superadmin/bootstrap')}
-              >
-                First time setup
-              </Button>
             </Box>
           </CardContent>
         </Card>

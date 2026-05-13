@@ -37,6 +37,7 @@ import { Add, Edit, Visibility } from "@mui/icons-material";
 import AdminLayout from "../components/Layout/AdminLayout";
 import {
   messageTemplateService,
+  MetaStatus,
   Template,
   TemplateForm,
   TemplateType,
@@ -107,7 +108,7 @@ const emptyTemplateForm: TemplateForm = {
   subject: "",
   content: "",
   variable_mappings: {},
-  meta_status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED" | "FAILED",
+  meta_status: "DRAFT" as MetaStatus
 }
 
 interface TemplateErrors {
