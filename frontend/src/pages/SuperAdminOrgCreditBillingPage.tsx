@@ -13,6 +13,9 @@ import {
   FormControl,
   Grid,
   InputLabel,
+  ListItemIcon,
+  ListItemText,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -41,6 +44,10 @@ import LocalAtmIcon from "@mui/icons-material/LocalAtm";
 //import ViewModuleIcon from "@mui/icons-material/ViewModule";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import SettingsIcon from "@mui/icons-material/Settings";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import UndoIcon from "@mui/icons-material/Undo";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import SuperAdminLayout from "../components/Layout/SuperAdminLayout";
@@ -67,6 +74,25 @@ import {
 type PageTab = "credits" | "invoices" | "payments" | "availability" | "lapse";
 type ViewMode = "table" | "cards";
 type OrgFilter = "all" | number;
+type CreditRowActionsVariant = "card" | "table";
+
+type RowActionsMenuState =
+  | {
+      kind: "credit";
+      variant: CreditRowActionsVariant;
+      anchor: HTMLElement;
+      row: OrgCredit;
+    }
+  | {
+      kind: "invoice";
+      anchor: HTMLElement;
+      row: OrgCreditInvoice;
+    }
+  | {
+      kind: "payment";
+      anchor: HTMLElement;
+      row: OrgCreditPayment;
+    };
 
 const toCurrency = (value: number): string =>
   value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -106,6 +132,8 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [orgFilter, setOrgFilter] = useState<OrgFilter>("all");
   const [searchText, setSearchText] = useState("");
+  const [rowActionsMenu, setRowActionsMenu] =
+    useState<RowActionsMenuState | null>(null);
 
   const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>(
     [],
@@ -145,6 +173,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     useState<OrgCreditPaymentStatus>("unpaid");
   const [createStartDate, setCreateStartDate] = useState<string>("");
   const [createNotes, setCreateNotes] = useState("");
+  const [createCustomCredits, setCreateCustomCredits] = useState("");
 
   const [topupOpen, setTopupOpen] = useState(false);
   const [topupTarget, setTopupTarget] = useState<OrgCredit | null>(null);
@@ -322,6 +351,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     setCreatePaymentStatus("unpaid");
     setCreateStartDate("");
     setCreateNotes("");
+    setCreateCustomCredits("");
   };
 
   const showCommitPopup = (message: string) => {
@@ -339,6 +369,22 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       setError("Please choose organization and estimator");
       return;
     }
+    if (createPaymentStatus === "paid" && !createNotes.trim()) {
+      setError("Notes are required when payment status is Paid.");
+      return;
+    }
+    const customTrim = createCustomCredits.trim();
+    if (customTrim !== "") {
+      const customNum = Number(customTrim);
+      if (!Number.isFinite(customNum) || customNum <= 0) {
+        setError("Customize credits must be a positive number.");
+        return;
+      }
+    }
+    const savedEditId = editTarget?.id;
+    let createdCreditId: number | undefined;
+    const customCreditsSnapshot = createCustomCredits.trim();
+
     setBusyAction(true);
     setError("");
     setSuccess("");
@@ -357,6 +403,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         markCommitSuccess(`Org credit #${editTarget.id} updated`);
       } else {
         const result = await orgCreditBillingService.createOrgCredit(payload);
+        createdCreditId = result.org_credit.id;
         markCommitSuccess(
           `Org credit #${result.org_credit.id} created with invoice #${result.invoice.id}`,
         );
@@ -364,6 +411,23 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       setCreateOpen(false);
       resetCreate();
       await loadData();
+
+      const targetId = savedEditId ?? createdCreditId;
+      if (targetId != null && customCreditsSnapshot !== "") {
+        const n = Number(customCreditsSnapshot);
+        if (Number.isFinite(n) && n > 0) {
+          setOrgCredits((prev) =>
+            prev.map((c) =>
+              c.id === targetId ? { ...c, total_credit: n } : c,
+            ),
+          );
+          setSuccess((prev) =>
+            prev
+              ? `${prev} Customize credits applied in this view only (refresh restores server values).`
+              : "Customize credits applied in this view only (refresh restores server values).",
+          );
+        }
+      }
     } catch (createError) {
       setError(parseError(createError));
     } finally {
@@ -378,6 +442,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     setCreatePaymentStatus(credit.payment_status as OrgCreditPaymentStatus);
     setCreateStartDate(credit.billing_start_date);
     setCreateNotes(credit.notes || "");
+    setCreateCustomCredits(String(credit.total_credit ?? ""));
     setCreateOpen(true);
   };
 
@@ -391,6 +456,10 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
 
   const handleAddTopup = async () => {
     if (!topupTarget) return;
+    if (topupPaymentStatus === "paid" && !topupNotes.trim()) {
+      setError("Notes are required when payment status is Paid.");
+      return;
+    }
     const parsed = Number(topupAmount);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       setError("Top-up amount must be greater than zero");
@@ -864,6 +933,10 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     }
   };
 
+  const currentMonthString = new Date().toISOString().slice(0, 7);
+
+  const closeRowActionsMenu = () => setRowActionsMenu(null);
+
   return (
     <SuperAdminLayout>
       <Paper
@@ -915,7 +988,10 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
             <Button
               variant="contained"
               startIcon={<AddCircleOutlineIcon />}
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {
+                resetCreate();
+                setCreateOpen(true);
+              }}
               disabled={busyAction}
             >
               Create Org Credit
@@ -1179,47 +1255,32 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       <Typography variant="body2">
                         <strong>Payment:</strong> {row.payment_status}
                       </Typography>
-                      <Stack direction="row" spacing={1} sx={{ mt: 1.4 }}>
-                        {row.payment_status === "unpaid" && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => openTopupDialog(row)}
-                            disabled={busyAction}
-                          >
-                            Add Top-up
-                          </Button>
-                        )}
-                        {row.payment_status === "paid" && (
-                          <Button
-                            size="small"
-                            variant="text"
-                            onClick={() => handleGenerateInvoice(row.id)}
-                            disabled={busyAction}
-                          >
-                            Generate Invoice
-                          </Button>
-                        )}
+                      <Box
+                        sx={{
+                          mt: 1.4,
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 0.75,
+                        }}
+                      >
                         <Button
                           size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => openEditDialog(row)}
-                          disabled={busyAction}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="small"
-                          color="error"
-                          variant="text"
-                          onClick={() =>
-                            setDeleteTarget({ type: "credit", row })
+                          variant="outlined"
+                          startIcon={<SettingsIcon fontSize="small" />}
+                          onClick={(event) =>
+                            setRowActionsMenu({
+                              kind: "credit",
+                              variant: "card",
+                              anchor: event.currentTarget,
+                              row,
+                            })
                           }
                           disabled={busyAction}
+                          sx={{ textTransform: "none", fontWeight: 600 }}
                         >
-                          Delete
+                          Actions
                         </Button>
-                      </Stack>
+                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -1265,42 +1326,32 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       </TableCell>
                       <TableCell>{row.payment_status}</TableCell>
                       <TableCell align="right">
-                        {row.payment_status === "unpaid" && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            py: 0.25,
+                          }}
+                        >
                           <Button
                             size="small"
-                            onClick={() => openTopupDialog(row)}
+                            variant="outlined"
+                            startIcon={<SettingsIcon fontSize="small" />}
+                            onClick={(event) =>
+                              setRowActionsMenu({
+                                kind: "credit",
+                                variant: "table",
+                                anchor: event.currentTarget,
+                                row,
+                              })
+                            }
                             disabled={busyAction}
+                            sx={{ textTransform: "none", fontWeight: 600 }}
                           >
-                            Top-up
+                            Actions
                           </Button>
-                        )}
-                        {row.payment_status === "paid" && (
-                          <Button
-                            size="small"
-                            onClick={() => handleGenerateInvoice(row.id)}
-                            disabled={busyAction}
-                          >
-                            Invoice
-                          </Button>
-                        )}
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => openEditDialog(row)}
-                          disabled={busyAction}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="small"
-                          color="error"
-                          onClick={() =>
-                            setDeleteTarget({ type: "credit", row })
-                          }
-                          disabled={busyAction}
-                        >
-                          Delete
-                        </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1364,52 +1415,31 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Button
-                            size="small"
-                            onClick={() => handleInvoiceStatusToggle(row)}
-                            disabled={busyAction}
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              alignItems: "center",
+                              py: 0.25,
+                            }}
                           >
-                            {row.payment_done_flag
-                              ? "Mark Unpaid"
-                              : "Mark Paid"}
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => openPaymentDialog(row)}
-                            disabled={busyAction}
-                          >
-                            Add Payment
-                          </Button>
-                          <Button
-                            size="small"
-                            startIcon={<VisibilityIcon />}
-                            onClick={() => openInvoiceDocument(row.id)}
-                            disabled={busyAction}
-                          >
-                            View
-                          </Button>
-                          <Button
-                            size="small"
-                            startIcon={<EmailOutlinedIcon />}
-                            onClick={() =>
-                              openEmailDialog({ type: "invoice", id: row.id })
-                            }
-                            disabled={busyAction}
-                          >
-                            Email
-                          </Button>
-                          <Button
-                            size="small"
-                            color="error"
-                            startIcon={<DeleteIcon />}
-                            onClick={() =>
-                              setDeleteTarget({ type: "invoice", row })
-                            }
-                            disabled={busyAction}
-                          >
-                            Delete
-                          </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<SettingsIcon fontSize="small" />}
+                              onClick={(event) =>
+                                setRowActionsMenu({
+                                  kind: "invoice",
+                                  anchor: event.currentTarget,
+                                  row,
+                                })
+                              }
+                              disabled={busyAction}
+                              sx={{ textTransform: "none", fontWeight: 600 }}
+                            >
+                              Actions
+                            </Button>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     );
@@ -1467,35 +1497,31 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           "-"}
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          size="small"
-                          startIcon={<VisibilityIcon />}
-                          onClick={() => openPaymentReceipt(row.id)}
-                          disabled={busyAction}
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            py: 0.25,
+                          }}
                         >
-                          View
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<EmailOutlinedIcon />}
-                          onClick={() =>
-                            openEmailDialog({ type: "receipt", id: row.id })
-                          }
-                          disabled={busyAction}
-                        >
-                          Email
-                        </Button>
-                        <Button
-                          size="small"
-                          color="error"
-                          startIcon={<DeleteIcon />}
-                          onClick={() =>
-                            setDeleteTarget({ type: "payment", row })
-                          }
-                          disabled={busyAction}
-                        >
-                          Delete
-                        </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<SettingsIcon fontSize="small" />}
+                            onClick={(event) =>
+                              setRowActionsMenu({
+                                kind: "payment",
+                                anchor: event.currentTarget,
+                                row,
+                              })
+                            }
+                            disabled={busyAction}
+                            sx={{ textTransform: "none", fontWeight: 600 }}
+                          >
+                            Actions
+                          </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1829,6 +1855,31 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12}>
+              <Typography
+                variant="body2"
+                align="center"
+                sx={{
+                  color: "text.secondary",
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  py: 0.35,
+                }}
+              >
+                OR
+              </Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                size="small"
+                fullWidth
+                type="number"
+                label="Customize credits (optional)"
+                value={createCustomCredits}
+                onChange={(event) => setCreateCustomCredits(event.target.value)}
+                inputProps={{ min: 0, step: "any" }}
+              />
+            </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 size="small"
@@ -1862,8 +1913,15 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 size="small"
                 fullWidth
                 label="Notes"
+                required={createPaymentStatus === "paid"}
                 value={createNotes}
                 onChange={(event) => setCreateNotes(event.target.value)}
+                error={createPaymentStatus === "paid" && !createNotes.trim()}
+                helperText={
+                  createPaymentStatus === "paid"
+                    ? "Notes are required."
+                    : undefined
+                }
               />
             </Grid>
           </Grid>
@@ -1920,8 +1978,13 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
             size="small"
             fullWidth
             label="Notes"
+            required={topupPaymentStatus === "paid"}
             value={topupNotes}
             onChange={(event) => setTopupNotes(event.target.value)}
+            error={topupPaymentStatus === "paid" && !topupNotes.trim()}
+            helperText={
+              topupPaymentStatus === "paid" ? "Notes are required." : undefined
+            }
           />
         </DialogContent>
         <DialogActions>
@@ -2657,6 +2720,274 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={rowActionsMenu?.anchor ?? null}
+        open={Boolean(rowActionsMenu)}
+        onClose={closeRowActionsMenu}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        {rowActionsMenu?.kind === "credit" &&
+        rowActionsMenu.variant === "card" ? (
+          <>
+            {rowActionsMenu.row.payment_status === "unpaid" ? (
+              <MenuItem
+                onClick={() => {
+                  openTopupDialog(rowActionsMenu.row);
+                  closeRowActionsMenu();
+                }}
+                disabled={
+                  busyAction ||
+                  rowActionsMenu.row.billing_month !== currentMonthString
+                }
+              >
+                <ListItemIcon>
+                  <TrendingUpIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Add Top-up</ListItemText>
+              </MenuItem>
+            ) : null}
+            {rowActionsMenu.row.payment_status === "paid" ? (
+              <MenuItem
+                onClick={() => {
+                  handleGenerateInvoice(rowActionsMenu.row.id);
+                  closeRowActionsMenu();
+                }}
+                disabled={
+                  busyAction ||
+                  rowActionsMenu.row.billing_month !== currentMonthString
+                }
+              >
+                <ListItemIcon>
+                  <ReceiptLongIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Generate Invoice</ListItemText>
+              </MenuItem>
+            ) : null}
+            <MenuItem
+              onClick={() => {
+                openEditDialog(rowActionsMenu.row);
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <EditIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Edit</ListItemText>
+            </MenuItem>
+
+            {rowActionsMenu.row.payment_status !== "paid" ? (
+              <MenuItem
+                onClick={() => {
+                  setDeleteTarget({ type: "credit", row: rowActionsMenu.row });
+                  closeRowActionsMenu();
+                }}
+                disabled={busyAction}
+                sx={{ color: "error.main" }}
+              >
+                <ListItemIcon>
+                  <DeleteIcon fontSize="small" color="error" />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            ) : null}
+          </>
+        ) : null}
+
+        {rowActionsMenu?.kind === "credit" &&
+        rowActionsMenu.variant === "table" ? (
+          <>
+            {rowActionsMenu.row.payment_status === "paid" &&
+            !rowActionsMenu.row.is_topup ? (
+              <MenuItem
+                onClick={() => {
+                  openTopupDialog(rowActionsMenu.row);
+                  closeRowActionsMenu();
+                }}
+                disabled={
+                  busyAction ||
+                  rowActionsMenu.row.billing_month !== currentMonthString
+                }
+              >
+                <ListItemIcon>
+                  <TrendingUpIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Top-up</ListItemText>
+              </MenuItem>
+            ) : null}
+            {rowActionsMenu.row.payment_status === "unpaid" ? (
+              <MenuItem
+                onClick={() => {
+                  handleGenerateInvoice(rowActionsMenu.row.id);
+                  closeRowActionsMenu();
+                }}
+                disabled={
+                  busyAction ||
+                  rowActionsMenu.row.billing_month !== currentMonthString
+                }
+              >
+                <ListItemIcon>
+                  <ReceiptLongIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Invoice</ListItemText>
+              </MenuItem>
+            ) : null}
+            {rowActionsMenu.row.payment_status === "unpaid" ? (
+              <MenuItem
+                onClick={() => {
+                  openEditDialog(rowActionsMenu.row);
+                  closeRowActionsMenu();
+                }}
+                disabled={busyAction}
+              >
+                <ListItemIcon>
+                  <EditIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Edit</ListItemText>
+              </MenuItem>
+            ) : null}
+            {rowActionsMenu.row.payment_status !== "paid" ? (
+              <MenuItem
+                onClick={() => {
+                  setDeleteTarget({ type: "credit", row: rowActionsMenu.row });
+                  closeRowActionsMenu();
+                }}
+                disabled={busyAction}
+                sx={{ color: "error.main" }}
+              >
+                <ListItemIcon>
+                  <DeleteIcon fontSize="small" color="error" />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            ) : null}
+          </>
+        ) : null}
+
+        {rowActionsMenu?.kind === "invoice" ? (
+          <>
+            <MenuItem
+              onClick={() => {
+                handleInvoiceStatusToggle(rowActionsMenu.row);
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                {rowActionsMenu.row.payment_done_flag ? (
+                  <UndoIcon fontSize="small" />
+                ) : (
+                  <CheckCircleOutlineIcon fontSize="small" />
+                )}
+              </ListItemIcon>
+              <ListItemText>
+                {rowActionsMenu.row.payment_done_flag
+                  ? "Mark Unpaid"
+                  : "Mark Paid"}
+              </ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                openPaymentDialog(rowActionsMenu.row);
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <PaymentsIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Add Payment</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                openInvoiceDocument(rowActionsMenu.row.id);
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <VisibilityIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>View</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                openEmailDialog({ type: "invoice", id: rowActionsMenu.row.id });
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <EmailOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Email</ListItemText>
+            </MenuItem>
+
+            {!rowActionsMenu.row.payment_done_flag ? (
+              <MenuItem
+                onClick={() => {
+                  setDeleteTarget({ type: "invoice", row: rowActionsMenu.row });
+                  closeRowActionsMenu();
+                }}
+                disabled={busyAction}
+                sx={{ color: "error.main" }}
+              >
+                <ListItemIcon>
+                  <DeleteIcon fontSize="small" color="error" />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            ) : null}
+          </>
+        ) : null}
+
+        {rowActionsMenu?.kind === "payment" ? (
+          <>
+            <MenuItem
+              onClick={() => {
+                openPaymentReceipt(rowActionsMenu.row.id);
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <VisibilityIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>View</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                openEmailDialog({
+                  type: "receipt",
+                  id: rowActionsMenu.row.id,
+                });
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+            >
+              <ListItemIcon>
+                <EmailOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Email</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setDeleteTarget({ type: "payment", row: rowActionsMenu.row });
+                closeRowActionsMenu();
+              }}
+              disabled={busyAction}
+              sx={{ color: "error.main" }}
+            >
+              <ListItemIcon>
+                <DeleteIcon fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </>
+        ) : null}
+      </Menu>
 
       <ConfirmDialog
         open={deleteTarget !== null}

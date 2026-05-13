@@ -41,7 +41,7 @@ from app.services import organization_channel_service
 from app.models.workflows import Workflow, WorkflowExecution, WorkflowExecutionLog
 
 STALE_MINUTES = 1
-SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
+SYNC_STATUSES = ["draft", "active", "running", "pending", "scheduled"]
 
 logger = logging.getLogger(__name__)
 
@@ -833,14 +833,24 @@ def update_campaign(
     print(payload)
 
     echo_failed = False
+    echoleads_campaign_id = None
+    echoleads_campaign_status = "draft"
     try:
-        response = client.update_campaign(campaign.external_campaign_id, payload)
+        if campaign.external_campaign_id:
+            response = client.update_campaign(campaign.external_campaign_id, payload)
+        else:
+            response = client.create_campaign(payload)
 
         if response and "campaign" in response:
             campaign.status = response["campaign"].get("status", campaign.status)
+            campaign.external_campaign_id = response["campaign"].get(
+                "id", campaign.external_campaign_id
+            )
+        else:
+            echo_failed = True
     except Exception as e:
         print(f"EchoLeads API failed: {str(e)}")
-        echo_failed = False
+        echo_failed = True
 
     # update basic fields
     for field in [

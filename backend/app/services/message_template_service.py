@@ -440,8 +440,14 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
     query = db.query(MessageTemplate).filter(
         MessageTemplate.organization_id == organization_id,
         MessageTemplate.status == TemplateStatus.active,
-        MessageTemplate.is_latest == True,
-        MessageTemplate.meta_status == "APPROVED",
+        or_(
+            MessageTemplate.type != "whatsapp",
+            and_(
+                MessageTemplate.type == "whatsapp",
+                MessageTemplate.is_latest == True,
+                MessageTemplate.meta_status == "APPROVED",
+            ),
+        ),
     )
 
     if type:

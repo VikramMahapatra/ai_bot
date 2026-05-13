@@ -2078,6 +2078,19 @@ def log_event(
     outcome: str = None,
     metadata: dict = None,
 ):
+    existing = (
+        db.query(WorkflowExecutionLog)
+        .filter(
+            WorkflowExecutionLog.execution_id == execution_id,
+            WorkflowExecutionLog.event_type == event_type,
+            WorkflowExecutionLog.step_id == step_id,
+        )
+        .first()
+    )
+
+    if existing:
+        return existing
+
     log = WorkflowExecutionLog(
         execution_id=execution_id,
         step_id=step_id,
