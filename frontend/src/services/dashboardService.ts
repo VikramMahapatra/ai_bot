@@ -56,9 +56,9 @@ export const dashboardService = {
     return response.data;
   },
 
-   async getLeadsTrend(days: number = 30) {
+   async getLeadsTrend(months: number = 6) {
     const response = await api.get(
-      `/api/admin/dashboard/leads-trend?days=${days}`,
+      `/api/admin/dashboard/leads-trend?months=${months}`,
     );
     return response.data;
   },

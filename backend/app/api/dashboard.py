@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
 from app.database import get_db
 from app.auth import require_admin
@@ -16,6 +16,7 @@ from app.services.funnel_category_service import get_funnel_categories
 import logging
 from app.models.calling_agents import CallingAgent
 from app.models.funnel_category import FunnelCategory
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -646,75 +647,96 @@ async def get_conversation_trend(
 
 @router.get("/leads-trend")
 async def get_leads_trend(
-    days: int = 30,
+    months: int = 6,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Get pipeline vs closed_won trend with fixed date range
+    Month-wise Pipeline vs Closed Won Trend
 
-    pipeline = funnel_stage != 'closed_won'
-    closed_won = funnel_stage == 'closed_won'
+    PIPELINE RULE:
+    - Exclude stages: unassigned, closed_won, closed_lost
+    - BUT include closed_won and closed_lost if close_date is not null
+
+    CLOSED_WON RULE:
+    - funnel_stage == closed_won
     """
+
     try:
         org_id = current_user.organization_id
 
-        # today (end date)
-        end_date = datetime.utcnow().date()
+        EXCLUDED_STAGES = ["unassigned", "closed_won", "closed_lost"]
 
-        # fixed exact date range like 7 / 10 / 30 days
-        start_date = end_date - timedelta(days=days - 1)
+        # current month reference
+        end_date = datetime.utcnow().date().replace(day=1)
 
-        # fetch leads only once
+        # fixed month range (example: last 6 months)
+        start_date = (end_date - relativedelta(months=months - 1)).replace(day=1)
+
+        # fetch leads once
         leads = (
             db.query(Lead)
             .filter(
                 and_(
                     Lead.organization_id == org_id,
-                    func.date(Lead.created_at) >= start_date,
-                    func.date(Lead.created_at) <= end_date,
+                    or_(
+                        func.date(Lead.created_at) >= start_date,
+                        Lead.close_date >= start_date,
+                    ),
                 )
             )
             .all()
         )
 
-        # dictionaries
         pipeline_dict = {}
-        closed_dict = {}
+        closed_won_dict = {}
 
         for lead in leads:
             if not lead.created_at:
                 continue
 
-            date_str = lead.created_at.date().strftime("%Y-%m-%d")
+            stage = lead.funnel_stage.strip().lower() if lead.funnel_stage else None
+            # CLOSED WON should use close_date
+            if stage == "closed_won":
+                month_str = lead.close_date.strftime("%b %Y")
 
-            # closed won
-            if lead.funnel_stage and lead.funnel_stage.strip().lower() == "closed_won":
-                closed_dict[date_str] = closed_dict.get(date_str, 0) + 1
+                closed_won_dict[month_str] = closed_won_dict.get(month_str, 0) + 1
 
-            # pipeline
-            else:
-                pipeline_dict[date_str] = pipeline_dict.get(date_str, 0) + 1
+            # -------------------------
+            # PIPELINE COUNT
+            # -------------------------
+            pipeline_month = lead.created_at.strftime("%b %Y")
+            is_pipeline = False
 
-        # always return fixed date range
+            # Normal pipeline stages
+            if stage and stage not in EXCLUDED_STAGES:
+                is_pipeline = True
+
+            # Include closed_won / closed_lost if close_date exists
+            elif stage in ["closed_won", "closed_lost"] and lead.close_date is not None:
+                is_pipeline = True
+
+            if is_pipeline:
+                pipeline_dict[pipeline_month] = pipeline_dict.get(pipeline_month, 0) + 1
+
+        # fixed month response
         data = []
-        current_date = start_date
+        current_month = start_date
 
-        while current_date <= end_date:
-            date_str = current_date.strftime("%Y-%m-%d")
-
+        while current_month <= end_date:
+            month_str = current_month.strftime("%b %Y")
+            # month_str = lead.created_at.strftime("%B")
             data.append(
                 {
-                    "date": date_str,
-                    "pipeline": int(pipeline_dict.get(date_str, 0)),
-                    "closed_won": int(closed_dict.get(date_str, 0)),
+                    "month": month_str,
+                    "pipeline": int(pipeline_dict.get(month_str, 0)),
+                    "closed": int(closed_won_dict.get(month_str, 0)),
                 }
             )
 
-            current_date += timedelta(days=1)
+            current_month += relativedelta(months=1)
 
         return {"data": data}
 
     except Exception as e:
-        logger.error(f"Error getting leads trend: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
