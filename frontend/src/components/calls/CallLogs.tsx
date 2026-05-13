@@ -712,7 +712,7 @@ export const CallLogsTab = () => {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Successful Calls</Typography>
+                <Typography variant="subtitle2">Connected Calls</Typography>
                 <CheckCircleIcon color="success" />
               </Box>
               <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">

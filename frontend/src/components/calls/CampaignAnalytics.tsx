@@ -324,7 +324,7 @@ const CampaignAnalytics = () => {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Successful Calls</Typography>
+                <Typography variant="subtitle2">Connected Calls</Typography>
                 <CheckCircleIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
@@ -352,7 +352,7 @@ const CampaignAnalytics = () => {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
-                <Typography variant="subtitle2">Success Rate</Typography>
+                <Typography variant="subtitle2">Qualification Rate</Typography>
                 <TrendingUpIcon color="primary" />
               </Box>
               <Typography variant="h5" mt={1}>
