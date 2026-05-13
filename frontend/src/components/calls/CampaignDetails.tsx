@@ -59,7 +59,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import CloseIcon from "@mui/icons-material/Close";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import { useAuth } from "../../context/AuthContext";
-import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
+import { ConversionOutcomeChip, OutcomeChip, titleCase } from "../Common/StatusChips";
 import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import { formatDate } from "../../utils/dateUtils";
@@ -342,11 +342,6 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     setOpenWorkflowDrawer(true);
   };
 
-  const titleCase = (value: string) =>
-    value
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
 
   return (
     <Box sx={{ p: 3, bgcolor: "#f5f7fa", minHeight: "100vh" }}>

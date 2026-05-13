@@ -4,12 +4,16 @@ import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors"
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import BlockIcon from "@mui/icons-material/Block";
 
-export const titleCase = (value?: string | null): string => {
-    if (!value) return "";
+export const titleCase = (value?: unknown): string => {
+    if (typeof value !== "string") return "";
 
     return value
         .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .map(
+            (part) =>
+                part.charAt(0).toUpperCase() +
+                part.slice(1).toLowerCase()
+        )
         .join(" ");
 };
 
