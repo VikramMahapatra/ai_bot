@@ -828,3 +828,44 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE campaigns
+                ADD COLUMN IF NOT EXISTS message_template_id INTEGER NULL;
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_campaigns_message_template_id
+                ON campaigns (message_template_id);
+            """))
+
+            # safe FK check
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fk_message_template_id'
+                    ) THEN
+                        ALTER TABLE campaigns
+                        ADD CONSTRAINT fk_message_template_id
+                        FOREIGN KEY (message_template_id)
+                        REFERENCES message_templates (id);
+                    END IF;
+                END
+                $$;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE whatsapp_channels
+                ALTER COLUMN phone_number_id DROP NOT NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

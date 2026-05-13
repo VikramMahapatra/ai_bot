@@ -331,8 +331,6 @@ const SettingsPage: React.FC = () => {
 
       try {
 
-        setLoading(true);
-
         await whatsappService.saveEmbeddedSignup({
           phone_number_id: data.phone_number_id,
           waba_id: data.waba_id
@@ -348,10 +346,6 @@ const SettingsPage: React.FC = () => {
           err?.message ||
           "Failed to save WhatsApp config"
         );
-
-      } finally {
-
-        setLoading(false);
 
       }
     };
@@ -388,7 +382,7 @@ const SettingsPage: React.FC = () => {
     catch (err: any) {
       setError(
         err?.response?.data?.detail ||
-        err?.message ||
+        err?.detail ||
         "Failed to exchange Meta signup code"
       );
     } finally {
@@ -412,11 +406,15 @@ const SettingsPage: React.FC = () => {
       const code = await launchWhatsAppEmbeddedSignup(configId);
 
       // Send to backend
-      handleMetaAuthCode(code);
+      await handleMetaAuthCode(code);
 
-    } catch (error: any) {
-      console.error(error);
-      setError(error.message);
+    } catch (err: any) {
+      console.error(err);
+      setError(
+        err?.response?.data?.detail ||
+        err?.detail ||
+        "Failed to exchange Meta signup code"
+      );
     } finally {
       setLoading(false);
     }
@@ -429,10 +427,11 @@ const SettingsPage: React.FC = () => {
       setWhatsappData(null);
       setSuccess("WhatsApp disconnected successfully");
 
-    } catch (error: any) {
+    } catch (err: any) {
       setError(
-        error?.response?.data?.detail ||
-        error.message
+        err?.response?.data?.detail ||
+        err?.detail ||
+        "Failed to exchange Meta signup code"
       );
     } finally {
       setLoading(false);

@@ -18,19 +18,21 @@ def build_template_components(
     content: str,
     variable_mappings: dict | None = None,
 ):
-
     matches = re.findall(r"{{(\d+)}}", content)
+
+    # unique + sorted variables
+    unique_variables = sorted(set(matches), key=int)
 
     component = {
         "type": "BODY",
         "text": content,
     }
 
-    if matches:
+    if unique_variables:
 
         sample_values = []
 
-        for variable in matches:
+        for variable in unique_variables:
 
             sample = (
                 variable_mappings.get(variable, {}).get("sample")
@@ -69,6 +71,8 @@ def sync_whatsapp_templates(db: Session, organization_id):
     )
 
     data = res.json().get("data", [])
+
+    print("Fetched WhatsApp templates from Meta:", data)
 
     for item in data:
         template = (

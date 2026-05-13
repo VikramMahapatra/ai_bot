@@ -2457,6 +2457,7 @@ const CampaignManagementPage: React.FC = () => {
                     <Grid container spacing={1.5} alignItems="flex-start">
                       {/* LEFT: Template Selector */}
                       <Grid item xs={12} md={5}>
+
                         <FormControl fullWidth size="small" sx={compactInputSx}>
                           <InputLabel>Message Template</InputLabel>
 
@@ -2481,6 +2482,15 @@ const CampaignManagementPage: React.FC = () => {
 
                             {messageTemplates
                               ?.filter((t) => t.type === createCampaignType)
+                              .filter((t) => {
+                                if (createCampaignType !== "whatsapp") {
+                                  return t.type === createCampaignType;
+                                }
+                                return (
+                                  t.type === "whatsapp" &&
+                                  t.category === "MARKETING"
+                                );
+                              })
                               .map((template) => (
                                 <MenuItem key={template.id} value={template.id}>
                                   {template.name}
@@ -2488,6 +2498,11 @@ const CampaignManagementPage: React.FC = () => {
                               ))}
                           </Select>
                         </FormControl>
+                        {createCampaignType === "whatsapp" && (
+                          <Alert severity="warning" sx={{ mb: 2 }}>
+                            Only <b>MARKETING</b> WhatsApp templates can be used for sending test messages.
+                          </Alert>
+                        )}
                       </Grid>
 
                       {/* RIGHT: Preview */}

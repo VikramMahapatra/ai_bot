@@ -25,6 +25,7 @@ from app.services import organization_credit_service
 from app.models.workflows import WorkflowExecution
 from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from app.services.call_log_service import (
+    process_call_bookings,
     sync_test_call_log,
     process_workflow_scheduled_calls,
 )
@@ -855,6 +856,7 @@ def run_call_campaign_processing_batches(
         last_id = None
         test_last_id = None
         last_scheduled_id = None
+        last_org_id = None
         for _ in range(max_batches):
             synced, sync_failed, last_id = process_call_campaigns_data(
                 db,
@@ -862,6 +864,7 @@ def run_call_campaign_processing_batches(
                 organization_id=organization_id,
                 last_id=last_id,
             )
+
             processed, failed, test_last_id = process_test_call_data(
                 db,
                 batch_size=batch_size,
@@ -874,10 +877,18 @@ def run_call_campaign_processing_batches(
                     db, batch_size=batch_size, last_id=last_scheduled_id
                 )
             )
-            total_processed += synced
-            total_failed += sync_failed + failed + scheduled_failed
 
-            if synced == 0 and processed == 0 and scheduled:
+            booked, booking_failed, last_org_id = process_call_bookings(
+                db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+                last_id=last_org_id,
+            )
+
+            total_processed += synced + processed + scheduled + booked
+            total_failed += sync_failed + failed + scheduled_failed + booking_failed
+
+            if synced == 0 and processed == 0 and scheduled == 0 and booked == 0:
                 break
 
     except Exception:
@@ -905,7 +916,7 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
         )
 
         logger.info(
-            "Initial call campaign processing completed: %s %s",
+            "Initial call campaign, scheduled calls & appointments processing completed: %s %s",
             processed,
             failed,
         )
@@ -939,7 +950,7 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
             )
 
             logger.info(
-                "Scheduled call campaign processing completed: %s %s",
+                "Scheduled call campaign, scheduled calls & appointments processing completed: %s %s",
                 processed,
                 failed,
             )
