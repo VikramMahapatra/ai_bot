@@ -1981,8 +1981,8 @@ async def create_campaign(
     if not contact_list:
         raise HTTPException(status_code=404, detail="contact_list_id not found")
 
-    if not payload.product_id:
-        raise HTTPException(status_code=400, detail="product_id is required")
+    # if not payload.product_id:
+    #     raise HTTPException(status_code=400, detail="product_id is required")
 
     if campaign_type == "email" and not (payload.email_subject or "").strip():
         raise HTTPException(

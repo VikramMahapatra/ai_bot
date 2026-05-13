@@ -191,7 +191,6 @@ type CreateCampaignFieldErrors = {
   emailBody: boolean;
   promptContext: boolean;
   contactList: boolean;
-  product: boolean;
 };
 
 const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
@@ -200,7 +199,6 @@ const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
   emailBody: false,
   promptContext: false,
   contactList: false,
-  product: false,
 };
 
 const CampaignManagementPage: React.FC = () => {
@@ -967,7 +965,6 @@ const CampaignManagementPage: React.FC = () => {
           ? !emailPromptContext.trim()
           : false,
       contactList: !createContactListId,
-      product: !createProductId,
     };
 
     setCreateCampaignErrors(nextErrors);
@@ -976,7 +973,6 @@ const CampaignManagementPage: React.FC = () => {
     if (nextErrors.campaignName) missing.push("Campaign Name");
     if (nextErrors.emailSubject) missing.push("Email Subject");
     if (nextErrors.contactList) missing.push("Contact List");
-    if (nextErrors.product) missing.push("Product");
     if (nextErrors.emailBody)
       missing.push(
         createCampaignType === "email" ? "Email Body" : "Message Template",
@@ -1726,7 +1722,7 @@ const CampaignManagementPage: React.FC = () => {
                 />
               </Stack>
               <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <TextField
                     required
                     size="small"
@@ -1751,7 +1747,7 @@ const CampaignManagementPage: React.FC = () => {
                     }
                   />
                 </Grid>
-                <Grid item xs={12} md={2}>
+                <Grid item xs={12} md={3}>
                   <FormControl required fullWidth size="small" sx={compactInputSx}>
                     <InputLabel>Campaign Type</InputLabel>
                     <Select
@@ -1774,7 +1770,7 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={2.5}>
+                <Grid item xs={12} md={3}>
                   <FormControl
                     required
                     fullWidth
@@ -1810,13 +1806,11 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={2}>
+                <Grid item xs={12} md={3}>
                   <FormControl
-                    required
                     fullWidth
                     size="small"
                     sx={compactInputSx}
-                    error={createCampaignErrors.product}
                   >
                     <InputLabel>Product</InputLabel>
                     <Select
@@ -1826,12 +1820,6 @@ const CampaignManagementPage: React.FC = () => {
                         setCreateProductId(
                           e.target.value === "" ? "" : Number(e.target.value),
                         );
-                        if (createCampaignErrors.product) {
-                          setCreateCampaignErrors((prev) => ({
-                            ...prev,
-                            product: false,
-                          }));
-                        }
                       }}
                     >
                       <MenuItem value="">
@@ -1844,18 +1832,6 @@ const CampaignManagementPage: React.FC = () => {
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid item xs={12} md={1.2}>
-                  <Button
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={() => setProductDialogOpen(true)}
-                    sx={compactButtonSx}
-                  >
-                    Add
-                  </Button>
                 </Grid>
 
                 <Grid item xs={12}>
@@ -2618,17 +2594,11 @@ const CampaignManagementPage: React.FC = () => {
                     </Grid>
                   )}
 
-                  {(createCampaignErrors.contactList ||
-                    createCampaignErrors.product) && (
+                  {/* {createCampaignErrors.contactList && (
                       <Alert severity="error" sx={{ mt: 1 }}>
-                        {createCampaignErrors.contactList &&
-                          createCampaignErrors.product
-                          ? "Contact List and Product are required."
-                          : createCampaignErrors.contactList
-                            ? "Contact List is required."
-                            : "Product is required."}
+                        {"Contact List is required."}
                       </Alert>
-                    )}
+                    )} */}
 
                   {createCampaignType === "email" &&
                     emailContentMode === "prompt" && (
