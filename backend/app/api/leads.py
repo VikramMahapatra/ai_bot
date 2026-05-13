@@ -58,7 +58,6 @@ CUSTOM_FIELD_LABELS = {
     "country": "Country",
 }
 
-
 def _normalize_source(source: Optional[str]) -> str:
     normalized = (source or "chat").strip().lower()
     if normalized not in ALLOWED_LEAD_SOURCES:
