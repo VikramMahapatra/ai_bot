@@ -1781,7 +1781,12 @@ def sync_campaign_from_echoleads(
 
         db.commit()
 
-        if campaign.status == "completed":
+        if campaign.status in ["completed", "cancelled", "failed"]:
+            logger.info(
+                "Releasing channel for campaign %s with status %s",
+                campaign.id,
+                campaign.status,
+            )
             organization_channel_service.release_channel(
                 db, call_type="campaign", reference_id=campaign.id
             )

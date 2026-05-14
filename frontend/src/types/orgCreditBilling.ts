@@ -70,7 +70,8 @@ export interface OrgCreditBalance {
 
 export interface OrgCreditCreateRequest {
   organization_id: number;
-  estimator_id: number;
+  estimator_id?: number | null;
+  total_credits?: number | null;
   billing_cycle?: OrgCreditBillingCycle;
   payment_status?: OrgCreditPaymentStatus;
   billing_start_date?: string;

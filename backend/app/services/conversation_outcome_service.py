@@ -672,7 +672,10 @@ def process_call_campaigns_data(
         CallCampaign.is_deleted == False,
         or_(
             CallCampaign.status.in_(SYNC_STATUSES),
-            and_(CallCampaign.status == "completed", pending_execution_exists),
+            and_(
+                CallCampaign.status.in_(["completed", "cancelled", "failed"]),
+                pending_execution_exists,
+            ),
         ),
     )
 
@@ -680,6 +683,10 @@ def process_call_campaigns_data(
         query = query.filter(CallCampaign.id < last_id)
 
     campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
+
+    logger.info(
+        f"Fetched {len(campaign_models)} campaigns for syncing with Echoleads, last_id={last_id}"
+    )
 
     org_map = defaultdict(list)
 
