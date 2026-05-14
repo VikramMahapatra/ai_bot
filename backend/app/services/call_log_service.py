@@ -642,7 +642,14 @@ def process_call(call, agent):
     db = SessionLocal()
     try:
         call_created_at = parse_datetime(call.get("created_at"))
+        source = (call.get("source") or "").strip().lower()
+
         if not call_created_at:
+            return
+
+        if (
+            source == "rescheduled_call" and call.get("status", "").lower() == "queue"
+        ):  # need to change it later to "processing" once the status is fixed in echoleads
             return
 
         existing = (
@@ -829,7 +836,7 @@ def process_call(call, agent):
         )
 
         call_status = call.get("status")
-        source = (call.get("source") or "").strip().lower()
+
         is_call_ended = call_status and call_status.lower() == "ended"
         is_call_completed_or_failed = call_status and call_status.lower() in [
             "ended",
@@ -2319,17 +2326,22 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 tz = ZoneInfo("Asia/Kolkata")  # fallback
 
             scheduled_ist = job.scheduled_at.astimezone(tz)
+            current_local = now.astimezone(tz)
 
-            if not (time(9, 0) <= scheduled_ist.time() <= time(21, 0)):
+            if not (time(9, 0) <= current_local.time() <= time(21, 0)):
                 next_valid = scheduled_ist.replace(
                     hour=9, minute=0, second=0, microsecond=0
                 )
 
-                if scheduled_ist.time() > time(21, 0):
+                if current_local.time() > time(21, 0):
                     # move to next day 9 AM
                     next_valid = next_valid + timedelta(days=1)
 
                 job.scheduled_at = next_valid.astimezone(timezone.utc)
+
+                logger.info(
+                    f"Rescheduled job {job.id} to next valid time {next_valid} due to outside business hours"
+                )
                 continue
 
             valid = organization_credit_service.validate_feature_usage(
@@ -2472,6 +2484,9 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
             new_last_id = job.id
 
         except Exception as e:
+            logger.error(
+                f"Error processing scheduled call job {job.id}: {e}", exc_info=True
+            )
             job.status = "failed"
             failed += 1
 
