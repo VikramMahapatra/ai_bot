@@ -523,6 +523,8 @@ export const CallLogsTab = () => {
                 <MenuItem value="assistant-ended-call">
                   Assistant Ended
                 </MenuItem>
+                <MenuItem value="failed-to-connect">Failed to Connect</MenuItem>
+                <MenuItem value="temporarily-unavailable">Temporarily Unavailable</MenuItem>
               </TextField>
             </Grid>
             {/* Sentiment */}

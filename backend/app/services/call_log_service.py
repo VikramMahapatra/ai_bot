@@ -191,7 +191,25 @@ def get_call_logs(
 
     # CALL END REASON
     if params.call_end_reason:
-        query = query.filter(CallLog.ended_reason == params.call_end_reason)
+        if params.call_end_reason == "failed-to-connect":
+            query = query.filter(CallLog.ended_reason.ilike("%failed-to-connect%"))
+
+        elif params.call_end_reason == "temporarily-unavailable":
+            query = query.filter(
+                CallLog.ended_reason.ilike("%temporarily-unavailable%")
+            )
+
+        else:
+            query = query.filter(CallLog.ended_reason == params.call_end_reason)
+
+    if params.is_connected is not None:
+        if params.is_connected:
+            query = query.filter(CallLog.duration.isnot(None), CallLog.duration > 0)
+        else:
+            query = query.filter(CallLog.duration.is_(None))
+
+    if params.source:
+        query = query.filter(CallLog.source == params.source)
 
     # SENTIMENT
     if params.sentiment:

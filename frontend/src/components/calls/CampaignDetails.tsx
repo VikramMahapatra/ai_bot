@@ -225,6 +225,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     sentiment: "All",
     evaluation: "All",
     is_lead_qualified: "All",
+    source: "All",
+    is_connected: "All",
     sort_by: "oldest"
   });
 
@@ -289,6 +291,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         updatedFilters.is_lead_qualified !== "All"
           ? updatedFilters.is_lead_qualified
           : undefined,
+      source:
+        updatedFilters.source !== "All"
+          ? updatedFilters.source
+          : undefined,
+      is_connected:
+        updatedFilters.is_connected !== "All"
+          ? updatedFilters.is_connected
+          : undefined,
       sort_by:
         updatedFilters.sort_by
           ? updatedFilters.sort_by
@@ -317,6 +327,9 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         sentiment: filters.sentiment !== "All" ? filters.sentiment : undefined,
         evaluation:
           filters.evaluation !== "All" ? filters.evaluation : undefined,
+        is_lead_qualified: filters.is_lead_qualified !== "All" ? filters.is_lead_qualified : undefined,
+        source: filters.source !== "All" ? filters.source : undefined,
+        is_connected: filters.is_connected !== "All" ? filters.is_connected : undefined
       });
 
       ExportToExcel(data, "Campaign_Call_Logs", user?.timezone);
