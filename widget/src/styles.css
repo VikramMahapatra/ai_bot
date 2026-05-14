@@ -552,8 +552,85 @@
   padding: 12px 16px;
   border-radius: 14px;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.chatbot-rich-text p {
+  margin: 0;
+}
+
+.chatbot-rich-text p + p,
+.chatbot-rich-text p + ul,
+.chatbot-rich-text p + ol,
+.chatbot-rich-text p + .chatbot-rich-table-wrap,
+.chatbot-rich-text ul + p,
+.chatbot-rich-text ol + p,
+.chatbot-rich-text .chatbot-rich-table-wrap + p,
+.chatbot-rich-text ul + ul,
+.chatbot-rich-text ol + ol,
+.chatbot-rich-text ul + ol,
+.chatbot-rich-text ol + ul,
+.chatbot-rich-text ul + .chatbot-rich-table-wrap,
+.chatbot-rich-text ol + .chatbot-rich-table-wrap,
+.chatbot-rich-text .chatbot-rich-table-wrap + ul,
+.chatbot-rich-text .chatbot-rich-table-wrap + ol {
+  margin-top: 8px;
+}
+
+.chatbot-rich-text strong {
+  font-weight: 700;
+  color: color-mix(in srgb, currentColor 88%, #000000);
+}
+
+.chatbot-rich-text ul,
+.chatbot-rich-text ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.chatbot-rich-text li {
+  margin: 2px 0;
+}
+
+.chatbot-rich-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.chatbot-rich-table {
+  width: 100%;
+  min-width: 220px;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chatbot-rich-table th,
+.chatbot-rich-table td {
+  padding: 7px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  vertical-align: top;
+}
+
+.chatbot-rich-table th:last-child,
+.chatbot-rich-table td:last-child {
+  border-right: none;
+}
+
+.chatbot-rich-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.chatbot-rich-table th {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--primary-color, #007bff) 12%, #ffffff);
 }
 
 
@@ -583,6 +660,26 @@
   background: var(--bubble-assistant);
   color: var(--text-secondary);
   border: 1px solid var(--divider);
+}
+
+.chatbot-widget-container.dark .chatbot-rich-text strong {
+  color: #f8fafc;
+}
+
+.chatbot-widget-container.dark .chatbot-rich-table {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(100, 116, 139, 0.45);
+}
+
+.chatbot-widget-container.dark .chatbot-rich-table th,
+.chatbot-widget-container.dark .chatbot-rich-table td {
+  border-bottom-color: rgba(100, 116, 139, 0.35);
+  border-right-color: rgba(100, 116, 139, 0.3);
+}
+
+.chatbot-widget-container.dark .chatbot-rich-table th {
+  background: color-mix(in srgb, var(--primary-color, #007bff) 24%, #1e293b);
+  color: #f8fafc;
 }
 
 .chatbot-message.assistant .chatbot-message-bubble.chatbot-appointment-bubble {
