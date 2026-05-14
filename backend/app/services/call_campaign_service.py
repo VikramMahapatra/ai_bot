@@ -80,7 +80,7 @@ def get_campaign_stats(db: Session, organization_id: int):
 
     for status, count in stats:
         result["totalCampaigns"] += count
-        if status == "active":
+        if status == "running":
             result["activeCampaigns"] = count
         elif status == "paused":
             result["pausedCampaigns"] = count

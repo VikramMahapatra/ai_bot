@@ -465,8 +465,8 @@ const AdminDashboard: React.FC = () => {
   const callingKpis = useMemo(
     () => [
       {
-        label: "Total Calls",
-        value: numberOrZero(callSummary?.total_calls),
+        label: "Initiated Calls",
+        value: numberOrZero(callSummary?.attempted_calls),
         hint: "Last 30 days",
         icon: <CallIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#9cc3f3", 0.64)} 0%, ${alpha("#dce9ff", 0.76)} 100%)`,

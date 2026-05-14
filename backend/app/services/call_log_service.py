@@ -2332,6 +2332,14 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 job.scheduled_at = next_valid.astimezone(timezone.utc)
                 continue
 
+            valid = organization_credit_service.validate_feature_usage(
+                db, job.organization_id, FeatureCodes.CORE_CALL_OUT_ATTEMPT, 1
+            )
+
+            if not valid:
+                blocked_orgs.add(job.organization_id)
+                continue
+
             # CHECK CHANNEL CAPACITY
             total_channels = (
                 db.query(func.count(Channel.id))
@@ -2361,46 +2369,55 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                 blocked_orgs.add(job.organization_id)
                 continue
 
-            active_res_subq = db.query(ChannelReservation.channel_id).filter(
-                ChannelReservation.is_active == True,
-                ChannelReservation.organization_id == job.organization_id,
-                ~and_(
+            existing_campaign_reservation = (
+                db.query(ChannelReservation)
+                .filter(
+                    ChannelReservation.organization_id == job.organization_id,
                     ChannelReservation.call_type == "campaign",
                     ChannelReservation.reference_id == job.campaign_id,
-                ),
-            )
-
-            channel = (
-                db.query(Channel)
-                .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
-                .filter(OrganizationChannel.organization_id == job.organization_id)
-                .filter(~Channel.id.in_(active_res_subq))
-                .with_for_update(skip_locked=True)
+                    ChannelReservation.is_active == True,
+                )
                 .first()
             )
 
-            if not channel:
-                blocked_orgs.add(job.organization_id)
-                continue
+            if existing_campaign_reservation:
+                channel_id = existing_campaign_reservation.channel_id
+                channel = db.query(Channel).get(channel_id)
 
-            valid = organization_credit_service.validate_feature_usage(
-                db, job.organization_id, FeatureCodes.CORE_CALL_OUT_ATTEMPT, 1
-            )
-
-            if not valid:
-                blocked_orgs.add(job.organization_id)
-                continue
-
-            try:
-                organization_channel_service.reserve_channel(
-                    db=db,
-                    organization_id=job.organization_id,
-                    call_type="rescheduled_call",
-                    reference_id=job.id,
+                logger.info(
+                    f"Reusing campaign reserved channel {channel_id} for rescheduled call"
                 )
-            except Exception:
-                blocked_orgs.add(job.organization_id)
-                continue
+            else:
+                active_res_subq = db.query(ChannelReservation.channel_id).filter(
+                    ChannelReservation.is_active == True
+                )
+
+                channel = (
+                    db.query(Channel)
+                    .join(
+                        OrganizationChannel,
+                        OrganizationChannel.channel_id == Channel.id,
+                    )
+                    .filter(OrganizationChannel.organization_id == job.organization_id)
+                    .filter(~Channel.id.in_(active_res_subq))
+                    .with_for_update(skip_locked=True)
+                    .first()
+                )
+
+                if not channel:
+                    blocked_orgs.add(job.organization_id)
+                    continue
+
+                try:
+                    organization_channel_service.reserve_channel(
+                        db=db,
+                        organization_id=job.organization_id,
+                        call_type="rescheduled_call",
+                        reference_id=job.id,
+                    )
+                except Exception:
+                    blocked_orgs.add(job.organization_id)
+                    continue
 
             response = reschedule_contact(
                 db=db,

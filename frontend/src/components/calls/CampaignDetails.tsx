@@ -252,7 +252,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     }, 400);
 
     return () => clearTimeout(delay);
-  }, [filters]);
+  }, [filters, callLogPage, callLogRowsPerPage]);
 
   const handleFilterChange = (newValues: Partial<CallLogFilterState>) => {
     setFilters((prev: CallLogFilterState) => ({
@@ -796,6 +796,11 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
       </Card>
 
       {/* ACTIONS */}
+      {loading && (
+        <Box mb={3}>
+          <LinearProgress sx={{ borderRadius: 1.2 }} />
+        </Box>
+      )}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           {/* HEADER */}
@@ -849,7 +854,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                 variant="outlined"
                 size="small"
                 startIcon={<RefreshIcon />}
-                onClick={() => loadCallLogs(filters)}
+                onClick={() => loadData()}
               >
                 Refresh
               </Button>
