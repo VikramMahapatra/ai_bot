@@ -126,9 +126,44 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
 
                     {/* Other Filters */}
                     <Grid container spacing={2}>
-
+                        <Grid item xs={12} sm={6} md={4}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Source"
+                                value={filters.source}
+                                onChange={(e) =>
+                                    onFilterChange({
+                                        source: e.target.value as CallLogFilterState["source"],
+                                    })
+                                }
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="campaign_call">Campaign Call</MenuItem>
+                                <MenuItem value="rescheduled_call">Rescheduled Call</MenuItem>
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <TextField
+                                select
+                                fullWidth
+                                size="small"
+                                label="Connection Status"
+                                value={filters.is_connected}
+                                onChange={(e) =>
+                                    onFilterChange({
+                                        is_connected: e.target.value as CallLogFilterState["is_connected"],
+                                    })
+                                }
+                            >
+                                <MenuItem value="All">All</MenuItem>
+                                <MenuItem value="true">Connected</MenuItem>
+                                <MenuItem value="false">Not Connected</MenuItem>
+                            </TextField>
+                        </Grid>
                         {/* Status */}
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
@@ -150,7 +185,7 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                         </Grid>
 
                         {/* Call End Reason */}
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
@@ -170,11 +205,13 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                                 <MenuItem value="exceeded-max-duration">Exceeded Max Duration</MenuItem>
                                 <MenuItem value="customer-ended-call">Customer Ended</MenuItem>
                                 <MenuItem value="assistant-ended-call">Assistant Ended</MenuItem>
+                                <MenuItem value="failed-to-connect">Failed to Connect</MenuItem>
+                                <MenuItem value="temporarily-unavailable">Temporarily Unavailable</MenuItem>
                             </TextField>
                         </Grid>
 
                         {/* Sentiment */}
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
@@ -197,7 +234,7 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
 
                         {/* Outcome */}
 
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <TextField
                                 select
                                 fullWidth
