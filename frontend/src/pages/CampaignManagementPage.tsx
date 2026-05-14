@@ -1906,6 +1906,7 @@ const CampaignManagementPage: React.FC = () => {
                         backgroundColor: "#F5F9FF",
                       },
                     }}
+                    disabled={!createContactListId}
                   >
                     View Contacts
                   </Button>
@@ -2528,6 +2529,12 @@ const CampaignManagementPage: React.FC = () => {
                         minRows={emailEditorMode === "html" ? 9 : 6}
                         label={`Email Template (${emailEditorMode.toUpperCase()})`}
                         value={createMessageTemplate}
+                        error={createCampaignErrors.emailBody}
+                        helperText={
+                            createCampaignErrors.emailBody
+                              ? "Email body is required"
+                              : " "
+                        }
                         onChange={(e) =>
                           setCreateMessageTemplate(e.target.value)
                         }
