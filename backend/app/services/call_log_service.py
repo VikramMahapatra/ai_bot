@@ -46,7 +46,7 @@ from app.services.sms_service import (
     send_instant_campaign_sms_using_twilio,
     send_sms,
 )
-from app.services.email_service import send_campaign_email
+from app.services.email_service import send_campaign_email, send_instant_reply_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
 from app.services.organization_setting_service import get_org_settings
 from app.models.whatsapp_channel import WhatsAppChannel
@@ -829,14 +829,14 @@ def process_call(call, agent):
         )
 
         call_status = call.get("status")
-        source = (call.get("source") or "").strip().lower()        
+        source = (call.get("source") or "").strip().lower()
         is_call_ended = call_status and call_status.lower() == "ended"
         is_call_completed_or_failed = call_status and call_status.lower() in [
             "ended",
             "executing",
             "calling fail",
         ]
-        
+
         # For test calls, we only update the status and release the reserved channel if call is ended. We don't create leads or conversations for test calls.
         if test_call:
             test_call.status = (
@@ -878,13 +878,15 @@ def process_call(call, agent):
                 )
                 .first()
             )
-            
+
             mapped_job = (
                 db.query(WorkflowScheduledCall.id)
                 .filter(
                     or_(
-                        WorkflowScheduledCall.external_call_id == call_log.external_call_a_id,
-                        WorkflowScheduledCall.external_call_id == str(call_log.external_call_id),
+                        WorkflowScheduledCall.external_call_id
+                        == call_log.external_call_a_id,
+                        WorkflowScheduledCall.external_call_id
+                        == str(call_log.external_call_id),
                     )
                 )
                 .first()
@@ -907,7 +909,7 @@ def process_call(call, agent):
                         event_type="workflow_failed",
                         metadata={"reason": "Provider failure"},
                     )
-                    
+
             if source == "rescheduled_call" and not mapped_job:
                 already_deducted = organization_credit_service.has_credit_usage(
                     db=db,
@@ -1045,7 +1047,7 @@ def handle_instant_replies(
         status="pending",
     )
     db.add(log_entry)
-    db.flush()
+    db.commit()
 
     try:
         if not (
@@ -1323,7 +1325,7 @@ def dispatch_instant_replies_safe(
         # ---------------- EMAIL ----------------
         elif mode == "email":
             try:
-                success, error, _ = send_campaign_email(
+                success, error, _ = send_instant_reply_email(
                     campaign_name=campaign.name,
                     subject=template.subject or "Update",
                     message_template=message,
@@ -2068,7 +2070,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                     f"Sending Email to {contact.email} with subject: {template.subject} and message: {message}"
                 )
 
-                success, error, message_id = send_campaign_email(
+                success, error, message_id = send_instant_reply_email(
                     campaign_name=campaign_name,
                     subject=template.subject or "Update",
                     message_template=message,

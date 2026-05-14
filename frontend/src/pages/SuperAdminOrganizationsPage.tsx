@@ -1116,7 +1116,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   <TableCell>Organization</TableCell>
                   <TableCell>Admin</TableCell>
                   <TableCell>Joining Date</TableCell>
-                  <TableCell>Effective Joining Date</TableCell>
+                  <TableCell>Effective Start Date</TableCell>
                   <TableCell>Feature Snapshot</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -1285,7 +1285,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField
-                  label="Effective Joining Date"
+                  label="Effective Start Date"
                   fullWidth
                   value={formatDate(viewOrg.effective_joining_date)}
                   InputProps={{ readOnly: true }}
@@ -1387,7 +1387,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField
-                label="Effective Joining Date"
+                label="Effective Start Date"
                 type="date"
                 fullWidth
                 value={form.effective_joining_date}
@@ -1587,7 +1587,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Effective Joining Date"
+                label="Effective Start Date"
                 type="date"
                 fullWidth
                 value={editEffectiveJoiningDate}
@@ -1965,7 +1965,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               label="Set as Default"
             />
           </Grid> : <></>}
-          
+
         </DialogContent>
 
         <DialogActions>

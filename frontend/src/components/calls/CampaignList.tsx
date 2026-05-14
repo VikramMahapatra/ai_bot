@@ -753,6 +753,20 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                                                 </Tooltip>
                                             </>
                                         )}
+                                        {["pending"].includes(campaign.status) && (
+                                            <Tooltip title="Cancel Campaign">
+                                                <IconButton
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => {
+                                                        scrollToTop();
+                                                        setConfirmDialog({ type: "cancel", campaign });
+                                                    }}
+                                                >
+                                                    <CancelIcon />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
                                         <Tooltip title="View Analytics">
                                             <IconButton onClick={() => openDrawer(campaign)}>
                                                 <InsightsIcon color="primary" />

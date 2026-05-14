@@ -78,21 +78,21 @@ type CreditRowActionsVariant = "card" | "table";
 
 type RowActionsMenuState =
   | {
-      kind: "credit";
-      variant: CreditRowActionsVariant;
-      anchor: HTMLElement;
-      row: OrgCredit;
-    }
+    kind: "credit";
+    variant: CreditRowActionsVariant;
+    anchor: HTMLElement;
+    row: OrgCredit;
+  }
   | {
-      kind: "invoice";
-      anchor: HTMLElement;
-      row: OrgCreditInvoice;
-    }
+    kind: "invoice";
+    anchor: HTMLElement;
+    row: OrgCreditInvoice;
+  }
   | {
-      kind: "payment";
-      anchor: HTMLElement;
-      row: OrgCreditPayment;
-    };
+    kind: "payment";
+    anchor: HTMLElement;
+    row: OrgCreditPayment;
+  };
 
 const toCurrency = (value: number): string =>
   value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -168,7 +168,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<OrgCredit | null>(null);
   const [createOrgId, setCreateOrgId] = useState<number | "">("");
-  const [createEstimatorId, setCreateEstimatorId] = useState<number | "">("");
+  const [createEstimatorId, setCreateEstimatorId] = useState<number | null>(null);
   const [createPaymentStatus, setCreatePaymentStatus] =
     useState<OrgCreditPaymentStatus>("unpaid");
   const [createStartDate, setCreateStartDate] = useState<string>("");
@@ -347,7 +347,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const resetCreate = () => {
     setEditTarget(null);
     setCreateOrgId("");
-    setCreateEstimatorId("");
+    setCreateEstimatorId(null);
     setCreatePaymentStatus("unpaid");
     setCreateStartDate("");
     setCreateNotes("");
@@ -365,8 +365,8 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   };
 
   const handleCreateOrgCredit = async () => {
-    if (!createOrgId || !createEstimatorId) {
-      setError("Please choose organization and estimator");
+    if (!createOrgId) {
+      setError("Please choose organization");
       return;
     }
     if (createPaymentStatus === "paid" && !createNotes.trim()) {
@@ -381,6 +381,12 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         return;
       }
     }
+
+    if (!createCustomCredits && !createEstimatorId) {
+      setError("Either select an estimator or enter custom credits");
+      return;
+    }
+
     const savedEditId = editTarget?.id;
     let createdCreditId: number | undefined;
     const customCreditsSnapshot = createCustomCredits.trim();
@@ -392,6 +398,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
       const payload = {
         organization_id: createOrgId,
         estimator_id: createEstimatorId,
+        total_credits: createCustomCredits.trim() ? Number(createCustomCredits) : undefined,
         billing_cycle: "monthly" as const,
         payment_status: createPaymentStatus,
         billing_start_date: createStartDate || undefined,
@@ -1874,7 +1881,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 size="small"
                 fullWidth
                 type="number"
-                label="Customize credits (optional)"
+                label="Credits"
                 value={createCustomCredits}
                 onChange={(event) => setCreateCustomCredits(event.target.value)}
                 inputProps={{ min: 0, step: "any" }}
@@ -2608,7 +2615,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           Math.max(
                             0,
                             receiptDocument.invoice.invoice_amount -
-                              receiptDocument.invoice.paid_amount,
+                            receiptDocument.invoice.paid_amount,
                           ),
                         )}
                       </TableCell>
@@ -2729,7 +2736,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
         {rowActionsMenu?.kind === "credit" &&
-        rowActionsMenu.variant === "card" ? (
+          rowActionsMenu.variant === "card" ? (
           <>
             {rowActionsMenu.row.payment_status === "unpaid" ? (
               <MenuItem
@@ -2797,10 +2804,10 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         ) : null}
 
         {rowActionsMenu?.kind === "credit" &&
-        rowActionsMenu.variant === "table" ? (
+          rowActionsMenu.variant === "table" ? (
           <>
             {rowActionsMenu.row.payment_status === "paid" &&
-            !rowActionsMenu.row.is_topup ? (
+              !rowActionsMenu.row.is_topup ? (
               <MenuItem
                 onClick={() => {
                   openTopupDialog(rowActionsMenu.row);
