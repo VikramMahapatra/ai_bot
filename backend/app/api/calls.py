@@ -26,6 +26,7 @@ from app.services import organization_credit_service
 from app.services.calling_agent_service import test_call
 from app.models.conversation import Conversation
 from app.services import call_log_service
+from app.models.campaign_schedules import CampaignSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -234,9 +235,17 @@ def call_analytics(
     # Call Volume Timeline (hourly)
     call_volume_data = (
         db.query(
-            extract("hour", CallLog.start_time).label("hour"),
+            extract(
+                "hour",
+                func.timezone(
+                    func.coalesce(CallCampaign.timezone, "Asia/Kolkata"),
+                    CallLog.start_time,
+                ),
+            ).label("hour"),
             func.count(CallLog.id).label("calls"),
         )
+        .join(CallCampaign, CallCampaign.id == CallLog.campaign_id)
+        .join(CampaignSchedule, CampaignSchedule.campaign_id == CallCampaign.id)
         .filter(*filters)
         .group_by("hour")
         .order_by("hour")

@@ -1486,12 +1486,12 @@ def get_campaign_analytics(db: Session, campaign_id: int, organization_id: int):
         # Timeline
         "timeline": {
             "created_at": (
-                campaign.created_at.strftime("%m/%d/%Y, %I:%M %p")
+                campaign.created_at.replace(tzinfo=timezone.utc).isoformat()
                 if campaign.created_at
                 else None
             ),
             "updated_at": (
-                campaign.updated_at.strftime("%m/%d/%Y, %I:%M %p")
+                campaign.updated_at.replace(tzinfo=timezone.utc).isoformat()
                 if campaign.updated_at
                 else None
             ),
