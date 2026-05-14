@@ -238,7 +238,7 @@ def call_analytics(
             extract(
                 "hour",
                 func.timezone(
-                    func.coalesce(CallCampaign.timezone, "Asia/Kolkata"),
+                    func.coalesce(CampaignSchedule.timezone, "Asia/Kolkata"),
                     CallLog.start_time,
                 ),
             ).label("hour"),
