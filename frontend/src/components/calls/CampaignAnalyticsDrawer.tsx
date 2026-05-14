@@ -20,6 +20,7 @@ import UpdateIcon from "@mui/icons-material/Update";
 import CallIcon from "@mui/icons-material/Call";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import { useDateFormatter } from "../../hooks/useDateFormatter";
 
 interface Props {
   open: boolean;
@@ -59,6 +60,8 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
       setLoading(false);
     }
   };
+
+  const formatDisplayDate = useDateFormatter();
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
@@ -646,7 +649,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                     Created
                   </Typography>
                   <Typography variant="body2" fontWeight={500}>
-                    {campaignAnalytics.timeline.created_at}
+                    {formatDisplayDate(campaignAnalytics.timeline.created_at)}
                   </Typography>
                 </Box>
               </Box>
@@ -672,7 +675,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                     Last Updated
                   </Typography>
                   <Typography variant="body2" fontWeight={500}>
-                    {campaignAnalytics.timeline.updated_at}
+                    {formatDisplayDate(campaignAnalytics.timeline.updated_at)}
                   </Typography>
                 </Box>
               </Box>
