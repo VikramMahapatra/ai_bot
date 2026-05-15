@@ -5,6 +5,7 @@ import {
     IconButton,
     Divider,
     Chip,
+    Tooltip,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import PhoneIcon from "@mui/icons-material/Phone";
@@ -15,6 +16,7 @@ import { WorkflowEvent } from "../../services/callCampaignService";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import BoltIcon from "@mui/icons-material/Bolt";
 import { titleCase } from "../Common/StatusChips";
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
 
 
@@ -24,14 +26,13 @@ interface Props {
     data: WorkflowEvent[];
 }
 
-const getIcon = (stepType?: string, event?: string) => {
+const getIcon = (event?: string) => {
     if (event === "workflow_triggered") return <PhoneIcon color="primary" />;
     if (event === "workflow_completed") return <CheckCircleIcon color="success" />;
     if (event === "workflow_scheduled") return <ScheduleIcon color="warning" />;
     if (event === "workflow_executed") return <BoltIcon color="primary" />;
-    if (stepType === "call") return <PhoneIcon color="primary" />;
     if (event === "workflow_execution_failed") return <BoltIcon color="error" />;
-    if (event === "workflow_schedule_failed") return <ScheduleIcon color="error" />;
+    if (event === "workflow_scheduled_failed") return <ScheduleIcon color="error" />;
     if (event === "workflow_failed") return <CloseIcon color="error" />;
     return <MessageIcon color="secondary" />;
 };
@@ -51,6 +52,10 @@ const getLabel = (item: WorkflowEvent) => {
 
     if (item.event === "workflow_executed") {
         return "Action Executed";
+    }
+
+    if (item.event === "workflow_scheduled_failed") {
+        return "Scheduled Failed";
     }
 
     return item.event;
@@ -102,7 +107,7 @@ export default function WorkflowHistoryDrawer({
                                     }}
                                 >
                                     {/* ICON */}
-                                    {getIcon(item.step_type, item.event)}
+                                    {getIcon(item.event)}
 
                                     {/* LINE */}
                                     {index !== data.length - 1 && (
@@ -202,7 +207,7 @@ export default function WorkflowHistoryDrawer({
                                         )}
 
                                         {/* FAILURE EVENTS */}
-                                        {["workflow_execution_failed", "workflow_schedule_failed", "workflow_failed"].includes(item.event) && (
+                                        {["workflow_execution_failed", "workflow_scheduled_failed", "workflow_failed"].includes(item.event) && (
                                             <>
                                                 {item.step_type && (
                                                     <Typography variant="body2" color="text.secondary">
@@ -213,23 +218,39 @@ export default function WorkflowHistoryDrawer({
                                                     </Typography>
                                                 )}
 
-                                                {item.error && (
-                                                    <Typography variant="body2" color="error.main">
+
+                                                {item.reason && (
+                                                    <Typography
+                                                        variant="body2"
+                                                        color="error.main"
+                                                        sx={{
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            gap: 0.5,
+                                                            flexWrap: "wrap",
+                                                        }}
+                                                    >
                                                         <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
-                                                            Error:
-                                                        </Box>{" "}
-                                                        <b>{item.error}</b>
+                                                            Reason:
+                                                        </Box>
+
+                                                        <b>{item.reason}</b>
+
+                                                        {item.error && (
+                                                            <Tooltip title={item.error}>
+                                                                <ErrorOutlineIcon
+                                                                    color="error"
+                                                                    fontSize="small"
+                                                                    sx={{
+                                                                        verticalAlign: "middle",
+                                                                    }}
+                                                                />
+                                                            </Tooltip>
+                                                        )}
                                                     </Typography>
                                                 )}
 
-                                                {item.reason && (
-                                                    <Typography variant="body2" color="error.main">
-                                                        <Box component="span" sx={{ fontSize: 12, opacity: 0.7 }}>
-                                                            Reason:
-                                                        </Box>{" "}
-                                                        <b>{item.reason}</b>
-                                                    </Typography>
-                                                )}
+
                                             </>
                                         )}
 

@@ -2490,7 +2490,7 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
                     db=db,
                     execution_id=execution.id,
                     step_id=None,
-                    event_type="workflow_schedule_failed",
+                    event_type="workflow_scheduled_failed",
                     metadata={
                         "step_type": "call",
                         "reason": "Provider returned failure",
@@ -2507,6 +2507,18 @@ def process_workflow_scheduled_calls(db, batch_size, last_id=None):
             )
             job.status = "failed"
             failed += 1
+
+            log_event(
+                db=db,
+                execution_id=execution.id,
+                step_id=None,
+                event_type="workflow_scheduled_failed",
+                metadata={
+                    "step_type": "call",
+                    "reason": "Provider returned failure",
+                    "error": error_msg,
+                },
+            )
 
             try:
                 organization_channel_service.release_channel(
