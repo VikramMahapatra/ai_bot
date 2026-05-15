@@ -246,5 +246,4 @@ class EcholeadsClient:
         else:
             payload["send_option"] = "now"
 
-        print("payload", payload)
         return self._post("/reschedule-contact", payload)
