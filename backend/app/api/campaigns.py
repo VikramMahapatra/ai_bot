@@ -1,10 +1,12 @@
-from datetime import datetime
+import asyncio
+from datetime import datetime, timezone
 from io import StringIO
 import csv
 import json
+import logging
 import uuid
 from io import BytesIO
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from fastapi import (
@@ -26,7 +28,7 @@ import pandas as pd
 
 from app.auth import require_admin
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models import (
     User,
     Campaign,
@@ -58,6 +60,11 @@ from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.message_templates import MessageTemplate
 from app.models.whatsapp_channel import WhatsAppChannel
 from app.services.whatsapp_service import send_whatsapp_template_message
+from app.services.conversation_outcome_service import (
+    _seconds_until_next_interval,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
 
@@ -2290,81 +2297,17 @@ async def run_due_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    _ensure_campaign_access(db, current_user.organization_id)
 
-    now = datetime.utcnow()
-    due_campaigns = (
-        db.query(Campaign)
-        .filter(
-            Campaign.organization_id == current_user.organization_id,
-            Campaign.status == "scheduled",
-            Campaign.scheduled_time.isnot(None),
-            Campaign.scheduled_time <= now,
-        )
-        .all()
+    processed, failed, skipped, _ = process_due_campaigns(
+        db=db,
+        batch_size=100,
+        organization_id=current_user.organization_id,
     )
 
-    executed = []
-    skipped = []
-
-    for campaign in due_campaigns:
-        contact_list = (
-            db.query(ContactList)
-            .filter(
-                ContactList.id == campaign.contact_list_id,
-                ContactList.organization_id == current_user.organization_id,
-            )
-            .first()
-        )
-
-        if not contact_list:
-            skipped.append(
-                {"campaign_id": campaign.id, "reason": "Contact list not found"}
-            )
-            continue
-
-        contacts = (
-            db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
-        )
-        if not contacts:
-            skipped.append(
-                {"campaign_id": campaign.id, "reason": "No contacts in selected list"}
-            )
-            continue
-
-        twilio_sms_config = None
-        if campaign.campaign_type == "sms":
-            twilio_sms_config = _get_active_twilio_sms_config(
-                db, current_user.organization_id
-            )
-            if not twilio_sms_config:
-                skipped.append(
-                    {
-                        "campaign_id": campaign.id,
-                        "reason": "Twilio SMS is not configured or inactive",
-                    }
-                )
-                continue
-
-        try:
-            _ensure_campaign_access(
-                db, current_user.organization_id, campaign.campaign_type
-            )
-        except HTTPException as exc:
-            skipped.append({"campaign_id": campaign.id, "reason": str(exc.detail)})
-            continue
-
-        result = _execute_campaign_now(
-            db, campaign, contacts, twilio_sms_config=twilio_sms_config
-        )
-        executed.append(result)
-
     return {
-        "due_count": len(due_campaigns),
-        "executed_count": len(executed),
-        "skipped_count": len(skipped),
-        "executed": executed,
-        "skipped": skipped,
+        "executed_count": processed,
+        "failed_count": failed,
+        "skipped_count": skipped,
     }
 
 
@@ -2527,3 +2470,215 @@ def format_phone_number(
             f"Failed to parse phone number: {phone_raw} with country code: {country_code}"
         )
         raise ValueError(f"Invalid phone number: {phone_raw}")
+
+
+def process_due_campaigns(
+    db,
+    batch_size: int,
+    organization_id: Optional[int] = None,
+    last_id: Optional[int] = None,
+) -> Tuple[int, int, int, Optional[int]]:
+
+    processed = 0
+    failed = 0
+    skipped = 0
+
+    now = datetime.utcnow()
+
+    query = db.query(Campaign).filter(
+        Campaign.status == "scheduled",
+        Campaign.scheduled_time.isnot(None),
+        Campaign.scheduled_time <= now,
+    )
+
+    if organization_id is not None:
+        query = query.filter(Campaign.organization_id == organization_id)
+
+    # IMPORTANT for batching
+    if last_id is not None:
+        query = query.filter(Campaign.id > last_id)
+
+    campaigns = query.order_by(Campaign.id.asc()).limit(batch_size).all()
+
+    new_last_id = last_id
+
+    for campaign in campaigns:
+
+        try:
+            new_last_id = campaign.id
+
+            # access check
+            _ensure_campaign_access(
+                db,
+                campaign.organization_id,
+                campaign.campaign_type,
+            )
+
+            # contact list
+            contact_list = (
+                db.query(ContactList)
+                .filter(
+                    ContactList.id == campaign.contact_list_id,
+                    ContactList.organization_id == campaign.organization_id,
+                )
+                .first()
+            )
+
+            if not contact_list:
+                skipped += 1
+                logger.warning(
+                    f"Campaign {campaign.id} skipped: contact list not found"
+                )
+                continue
+
+            # contacts
+            contacts = (
+                db.query(Contact)
+                .filter(Contact.contact_list_id == contact_list.id)
+                .all()
+            )
+
+            if not contacts:
+                skipped += 1
+                logger.warning(f"Campaign {campaign.id} skipped: no contacts")
+                continue
+
+            # sms config
+            twilio_sms_config = None
+
+            if campaign.campaign_type == "sms":
+                twilio_sms_config = _get_active_twilio_sms_config(
+                    db,
+                    campaign.organization_id,
+                )
+
+                if not twilio_sms_config:
+                    skipped += 1
+                    logger.warning(
+                        f"Campaign {campaign.id} skipped: twilio config missing"
+                    )
+                    continue
+
+            # execute
+            _execute_campaign_now(
+                db,
+                campaign,
+                contacts,
+                twilio_sms_config=twilio_sms_config,
+            )
+
+            processed += 1
+
+        except Exception as e:
+
+            failed += 1
+
+            logger.exception(
+                f"Campaign execution failed for campaign {campaign.id}: {str(e)}"
+            )
+
+            db.rollback()
+
+    return processed, failed, skipped, new_last_id
+
+
+async def run_daily_due_campaign_daemon(stop_event: asyncio.Event) -> None:
+    """Text campaign daemon with non-blocking execution"""
+
+    initial_delay = max(settings.OUTCOME_DAEMON_INITIAL_DELAY_SECONDS, 0)
+    if initial_delay:
+        await asyncio.sleep(initial_delay)
+
+    try:
+        processed, failed = await asyncio.to_thread(
+            run_due_campaign_batches,
+            batch_size=settings.DUE_CAMPAIGN_DAEMON_INITIAL_DELAY_SECONDS,
+            max_batches=settings.DUE_CAMPAIGN_DAEMON_MAX_BATCHES,
+        )
+
+        logger.info(
+            "Initial due campaign(text) processing completed: %s %s",
+            processed,
+            failed,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Initial due campaign(text) processing failed: %s",
+            exc,
+            exc_info=True,
+        )
+
+    while not stop_event.is_set():
+        wait_seconds = _seconds_until_next_interval(
+            settings.DUE_CAMPAIGN_DAEMON_INTERVAL_SECONDS
+        )
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
+            break
+        except asyncio.TimeoutError:
+            pass
+
+        try:
+            processed, failed = await asyncio.to_thread(
+                run_due_campaign_batches,
+                batch_size=settings.DUE_CAMPAIGN_DAEMON_BATCH_SIZE,
+                max_batches=settings.DUE_CAMPAIGN_DAEMON_MAX_BATCHES,
+            )
+
+            logger.info(
+                "Scheduled due campaign(text) processing completed: %s %s",
+                processed,
+                failed,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "Scheduled due campaign(text) processing failed: %s",
+                exc,
+                exc_info=True,
+            )
+
+
+def run_due_campaign_batches(
+    batch_size: int,
+    max_batches: int,
+    organization_id: Optional[int] = None,
+) -> Tuple[int, int]:
+
+    total_processed = 0
+    total_failed = 0
+    total_skipped = 0
+
+    db = SessionLocal()
+
+    try:
+
+        last_id = None
+
+        for _ in range(max_batches):
+
+            processed, failed, skipped, last_id = process_due_campaigns(
+                db=db,
+                batch_size=batch_size,
+                organization_id=organization_id,
+                last_id=last_id,
+            )
+
+            total_processed += processed
+            total_failed += failed
+            total_skipped += skipped
+
+            # nothing left
+            if processed == 0 and failed == 0 and skipped == 0:
+                break
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+    return total_processed, total_failed

@@ -50,6 +50,7 @@ export interface Campaign {
     progress?: number;
     created_at?: string;
     total_calls: number;
+    initiated_calls?: number;
     completed_calls: number;
     avg_duration: string;
     response_rate: string;
@@ -94,11 +95,14 @@ export interface Sentiment {
     positive: number;
     neutral: number;
     negative: number;
+    satisfactory: number;
+    other: number;
 }
 
 export interface Timeline {
     created_at: string;
-    updated_at: string;
+    started_at: string;
+    last_call_at: string;
 }
 
 export interface CampaignEngagement {

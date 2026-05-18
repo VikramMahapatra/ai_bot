@@ -85,7 +85,7 @@ export interface CallLogFilterState {
     evaluation: boolean | "All";
     is_lead_qualified?: boolean | "All";
     sort_by?: 'newest' | 'oldest';
-    source?: "campaign_call" | "rescheduled_call" | "test_call" | "All";
+    source?: string | "All";
     is_connected?: boolean | "All";
 }
 

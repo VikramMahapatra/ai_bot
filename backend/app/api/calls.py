@@ -37,12 +37,12 @@ router = APIRouter(
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 ENDED_REASON_GROUP: dict[str, str] = {
-    "customer-busy": "Failed",
-    "customer-did-not-answer": "No Answer",
-    "silence-timed-out": "No Answer",
-    "exceeded-max-duration": "Failed",
-    "customer-ended-call": "Completed",
-    "assistant-ended-call": "Completed",
+    "customer-busy": "Not Connected",
+    "customer-did-not-answer": "Not Connected",
+    "silence-timed-out": "Not Connected",
+    "exceeded-max-duration": "Connected",
+    "customer-ended-call": "Connected",
+    "assistant-ended-call": "Connected",
 }
 
 
@@ -161,9 +161,7 @@ def call_analytics(
         .scalar()
     )
 
-    conversion_rate = (
-        (converted_calls / total_attempted_calls) * 100 if total_attempted_calls else 0
-    )
+    conversion_rate = (converted_calls / total_calls) * 100 if total_calls else 0
 
     # Total duration in minutes
     total_duration_sec = (
@@ -294,7 +292,9 @@ def call_analytics(
     call_logs = db.query(CallLog.ended_reason).filter(*filters).all()
 
     # Map to user-friendly status
-    mapped_status = [ENDED_REASON_GROUP.get(r.ended_reason, "Other") for r in call_logs]
+    mapped_status = [
+        ENDED_REASON_GROUP.get(r.ended_reason, "Not Connected") for r in call_logs
+    ]
 
     # Count occurrences
     status_counts = Counter(mapped_status)
@@ -302,12 +302,33 @@ def call_analytics(
     # Transform for frontend
     call_status_data = [{"name": k, "value": v} for k, v in status_counts.items()]
 
+    latest_conversation = (
+        db.query(
+            Conversation.id,
+            Conversation.session_id,
+            Conversation.outcome,
+            func.row_number()
+            .over(
+                partition_by=Conversation.session_id,
+                order_by=Conversation.created_at.desc(),  # latest conversation
+            )
+            .label("rn"),
+        )
+    ).subquery()
+
     lead_outcome_distribution = (
         db.query(
-            Lead.lead_outcome.label("outcome"), func.count(CallLog.id).label("value")
+            latest_conversation.c.outcome.label("outcome"),
+            func.count(CallLog.id).label("value"),
         )
-        .join(CallLog, CallLog.call_session_id == Lead.session_id)
-        .filter(CallLog.campaign_id.in_(campaign_ids))
+        .join(
+            latest_conversation,
+            latest_conversation.c.session_id == CallLog.call_session_id,
+        )
+        .filter(
+            CallLog.campaign_id.in_(campaign_ids),
+            latest_conversation.c.rn == 1,
+        )
     )
 
     if start_date:
@@ -321,11 +342,14 @@ def call_analytics(
         )
 
     lead_outcome_distribution = lead_outcome_distribution.group_by(
-        Lead.lead_outcome
+        latest_conversation.c.outcome
     ).all()
 
     lead_outcome_data = [
-        {"intent": r.outcome or "Pending", "value": r.value}
+        {
+            "intent": r.outcome or "Pending",
+            "value": r.value,
+        }
         for r in lead_outcome_distribution
     ]
 

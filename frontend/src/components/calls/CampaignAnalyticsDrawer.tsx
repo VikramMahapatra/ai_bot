@@ -21,6 +21,7 @@ import CallIcon from "@mui/icons-material/Call";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 
 interface Props {
   open: boolean;
@@ -62,6 +63,8 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
   };
 
   const formatDisplayDate = useDateFormatter();
+
+  const connectedCalls = campaignAnalytics?.completed_calls || 0;
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
@@ -127,7 +130,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                       Total Calls
                     </Typography>
                     <Typography variant="h6">
-                      {campaignAnalytics.total_calls}
+                      {campaignAnalytics.initiated_calls}
                     </Typography>
                   </Box>
                 </Box>
@@ -148,7 +151,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
 
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Completed
+                      Connected
                     </Typography>
                     <Typography variant="h6">
                       {campaignAnalytics.completed_calls}
@@ -216,49 +219,81 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
               {[
                 {
                   label: "Positive",
-                  value: campaignAnalytics.sentiment.positive,
-                  color: "green",
+                  count: campaignAnalytics.sentiment.positive,
+                  color: "#22c55e",
                 },
                 {
                   label: "Neutral",
-                  value: campaignAnalytics.sentiment.neutral,
-                  color: "yellow",
+                  count: campaignAnalytics.sentiment.neutral,
+                  color: "#eab308",
                 },
                 {
                   label: "Negative",
-                  value: campaignAnalytics.sentiment.negative,
-                  color: "red",
+                  count: campaignAnalytics.sentiment.negative,
+                  color: "#ef4444",
                 },
-              ].map((item) => (
-                <Box key={item.label} sx={{ mb: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Typography variant="body2">{item.label}</Typography>
-                    <Typography variant="body2">{item.value}%</Typography>
+                {
+                  label: "Satisfactory",
+                  count: campaignAnalytics.sentiment.satisfactory,
+                  color: "#3b82f6",
+                },
+                {
+                  label: "Other",
+                  count: campaignAnalytics.sentiment.other,
+                  color: "#6b7280",
+                },
+              ].map((item) => {
+                const percentage =
+                  connectedCalls > 0
+                    ? Number(
+                      (
+                        (item.count / connectedCalls) *
+                        100
+                      ).toFixed(1)
+                    )
+                    : 0;
+
+                return (
+                  <Box key={item.label} sx={{ mb: 2 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        mb: 0.5,
+                      }}
+                    >
+                      <Typography variant="body2">
+                        {item.label}
+                      </Typography>
+
+                      <Typography variant="body2">
+                        {percentage}%
+                      </Typography>
+                    </Box>
+
+                    <LinearProgress
+                      variant="determinate"
+                      value={percentage}
+                      sx={{
+                        height: 8,
+                        borderRadius: 2,
+                        backgroundColor: "#f1f5f9",
+                        "& .MuiLinearProgress-bar": {
+                          backgroundColor: item.color,
+                        },
+                      }}
+                    />
+
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mt: 0.5, display: "block" }}
+                    >
+                      {item.count} calls
+                    </Typography>
                   </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={item.value}
-                    sx={{
-                      height: 8,
-                      borderRadius: 2,
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor:
-                          item.color === "green"
-                            ? "#22c55e"
-                            : item.color === "yellow"
-                              ? "#eab308"
-                              : "#ef4444",
-                      },
-                    }}
-                  />
-                </Box>
-              ))}
+                );
+              })}
             </Box>
 
             <Divider sx={{ my: 2 }} />
@@ -491,7 +526,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                         Total Calls
                       </Typography>
                       <Typography variant="body2" fontWeight={600}>
-                        {campaignAnalytics.total_calls}
+                        {campaignAnalytics.initiated_calls}
                       </Typography>
                     </Box>
                     <Box
@@ -504,7 +539,7 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
                       }}
                     >
                       <Typography variant="body2" color="text.secondary">
-                        Completed
+                        Connected
                       </Typography>
                       <Typography variant="body2" fontWeight={600}>
                         {campaignAnalytics.completed_calls}
@@ -632,55 +667,117 @@ const CampaignAnalyticsDrawer: React.FC<Props> = ({
               <Box
                 sx={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 1.5,
-                  mb: 1.5,
+                  justifyContent: "space-between",
+                  gap: 2,
+                  flexWrap: "wrap",
                 }}
               >
-                <AccessTimeIcon
+                {/* Created At */}
+                <Box
                   sx={{
-                    fontSize: 20,
-                    color: "#6366f1",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    minWidth: 180,
                   }}
-                />
+                >
+                  <AccessTimeIcon
+                    sx={{
+                      fontSize: 20,
+                      color: "#6366f1",
+                    }}
+                  />
 
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Created
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {formatDisplayDate(campaignAnalytics.timeline.created_at)}
-                  </Typography>
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                    >
+                      Created At
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                    >
+                      {formatDisplayDate(
+                        campaignAnalytics.timeline.created_at
+                      )}
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
 
-              <Divider sx={{ my: 1 }} />
-
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1.5,
-                }}
-              >
-                <UpdateIcon
+                {/* Started At */}
+                <Box
                   sx={{
-                    fontSize: 20,
-                    color: "#10b981",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    minWidth: 180,
                   }}
-                />
+                >
+                  <PlayArrowIcon
+                    sx={{
+                      fontSize: 20,
+                      color: "#f59e0b",
+                    }}
+                  />
 
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Last Updated
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {formatDisplayDate(campaignAnalytics.timeline.updated_at)}
-                  </Typography>
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                    >
+                      Started At
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                    >
+                      {formatDisplayDate(
+                        campaignAnalytics.timeline.started_at
+                      )}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {/* Last Call At */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    minWidth: 180,
+                  }}
+                >
+                  <UpdateIcon
+                    sx={{
+                      fontSize: 20,
+                      color: "#10b981",
+                    }}
+                  />
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                    >
+                      Last Call At
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                    >
+                      {formatDisplayDate(
+                        campaignAnalytics.timeline.last_call_at
+                      )}
+                    </Typography>
+                  </Box>
                 </Box>
               </Box>
             </Box>
-
             <Button
               variant="contained"
               onClick={onClose}

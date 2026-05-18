@@ -543,7 +543,7 @@ const CampaignManagementPage: React.FC = () => {
   const loadPreviewContacts = async (contactListId: number) => {
     const data = await campaignService.listContacts(contactListId, {
       search: previewSearch || undefined,
-      skip:  previewContactPage * previewContactRowsPerPage,
+      skip: previewContactPage * previewContactRowsPerPage,
       limit: previewContactRowsPerPage,
     });
     setPreviewContacts(data.items || []);
@@ -693,7 +693,7 @@ const CampaignManagementPage: React.FC = () => {
       } catch (err: any) {
         showError(
           err?.response?.data?.detail ||
-            "Failed to load Campaign to Lead module",
+          "Failed to load Campaign to Lead module",
         );
       }
     };
@@ -714,7 +714,7 @@ const CampaignManagementPage: React.FC = () => {
       }
     };
     run();
-  }, [previewSearch, previewContactPage,previewContactRowsPerPage]);
+  }, [previewSearch, previewContactPage, previewContactRowsPerPage]);
 
   const handleApplyCampaignFilters = async () => {
     setCampaignPage(0);
@@ -885,7 +885,7 @@ const CampaignManagementPage: React.FC = () => {
     } catch (err: any) {
       showError(
         err?.response?.data?.detail ||
-          "Failed to generate prompt-based email content",
+        "Failed to generate prompt-based email content",
       );
     } finally {
       setGeneratingEmailVariants(false);
@@ -1065,8 +1065,8 @@ const CampaignManagementPage: React.FC = () => {
           createCampaignType === "email"
             ? emailContentMode === "prompt"
               ? generatedBodies[0] ||
-                createMessageTemplate ||
-                "Generated campaign body"
+              createMessageTemplate ||
+              "Generated campaign body"
               : createMessageTemplate
             : createMessageTemplate,
         scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
@@ -1153,7 +1153,7 @@ const CampaignManagementPage: React.FC = () => {
     try {
       const result = await campaignService.runDueCampaigns();
       showSuccess(
-        `Due scheduler run complete: ${result.executed_count} executed, ${result.skipped_count} skipped (due: ${result.due_count}).`,
+        `Due scheduler run complete: ${result.executed_count} executed, ${result.skipped_count} skipped, failed ${result.failed_count}`,
       );
       await Promise.all([loadCampaigns(), loadDashboard()]);
     } catch (err: any) {
@@ -1171,7 +1171,7 @@ const CampaignManagementPage: React.FC = () => {
     setPreviewSearch("");
     setLoading(true);
     try {
-        await loadPreviewContacts(Number(createContactListId));
+      await loadPreviewContacts(Number(createContactListId));
 
       // scroll to below section
       setTimeout(() => {
@@ -1241,9 +1241,9 @@ const CampaignManagementPage: React.FC = () => {
     }
   }, [createCampaignType]);
 
-   const handleView = (contact: any) => {
-     setSelectedContact(contact);
-     setDrawerOpen(true);
+  const handleView = (contact: any) => {
+    setSelectedContact(contact);
+    setDrawerOpen(true);
   };
 
 
@@ -1773,1069 +1773,1069 @@ const CampaignManagementPage: React.FC = () => {
           {tab === 1 && (
             <Stack spacing={2.5}>
               <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{ mb: 2 }}
-                flexWrap="wrap"
-                useFlexGap
-              >
-                <Chip
-                  size="small"
-                  label="1. Configure Basics"
-                  variant="outlined"
-                />
-                <Chip
-                  size="small"
-                  label="2. Choose Audience"
-                  variant="outlined"
-                />
-                <Chip
-                  size="small"
-                  label="3. Write Template"
-                  variant="outlined"
-                />
-                <Chip
-                  size="small"
-                  label="4. Launch or Schedule"
-                  variant="outlined"
-                />
-              </Stack>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={3}>
-                  <TextField
-                    required
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ mb: 2 }}
+                  flexWrap="wrap"
+                  useFlexGap
+                >
+                  <Chip
                     size="small"
-                    sx={compactInputSx}
-                    fullWidth
-                    label="Campaign Name"
-                    value={createCampaignName}
-                    onChange={(e) => {
-                      setCreateCampaignName(e.target.value);
-                      if (createCampaignErrors.campaignName) {
-                        setCreateCampaignErrors((prev) => ({
-                          ...prev,
-                          campaignName: false,
-                        }));
-                      }
-                    }}
-                    error={createCampaignErrors.campaignName}
-                    helperText={
-                      createCampaignErrors.campaignName
-                        ? "Campaign name is required"
-                        : " "
-                    }
+                    label="1. Configure Basics"
+                    variant="outlined"
                   />
-                </Grid>
-                <Grid item xs={12} md={2.5}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Campaign Type</InputLabel>
-                    <Select
-                      value={createCampaignType}
-                      label="Campaign Type"
+                  <Chip
+                    size="small"
+                    label="2. Choose Audience"
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    label="3. Write Template"
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    label="4. Launch or Schedule"
+                    variant="outlined"
+                  />
+                </Stack>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={3}>
+                    <TextField
+                      required
+                      size="small"
+                      sx={compactInputSx}
+                      fullWidth
+                      label="Campaign Name"
+                      value={createCampaignName}
                       onChange={(e) => {
-                        const type = e.target.value as
-                          | "email"
-                          | "whatsapp"
-                          | "sms";
-
-                        setCreateCampaignType(type);
-
-                        // reset template state when switching type
-                        setSelectedTemplateId("");
-                        setSelectedTemplate(null);
-                        setCreateMessageTemplate("");
-                      }}
-                    >
-                      <MenuItem value="email">Email</MenuItem>
-                      <MenuItem value="whatsapp">WhatsApp</MenuItem>
-                      <MenuItem value="sms">SMS</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                {/* Contact List Dropdown */}
-                <Grid item xs={12} md={2.5}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Contact List</InputLabel>
-                    <Select
-                      value={createContactListId}
-                      label="Contact List"
-                      onChange={(e) => {
-                        setCreateContactListId(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        );
-                        if (createCampaignErrors.contactList) {
+                        setCreateCampaignName(e.target.value);
+                        if (createCampaignErrors.campaignName) {
                           setCreateCampaignErrors((prev) => ({
                             ...prev,
-                            contactList: false,
+                            campaignName: false,
                           }));
                         }
                       }}
-                      error={createCampaignErrors.contactList}
-                    >
-                      <MenuItem value="">
-                        <em>Select Contact List</em>
-                      </MenuItem>
-                      {contactLists.map((list) => (
-                        <MenuItem key={list.id} value={list.id}>
-                          {getContactListLabel(list)}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+                      error={createCampaignErrors.campaignName}
+                      helperText={
+                        createCampaignErrors.campaignName
+                          ? "Campaign name is required"
+                          : " "
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2.5}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Campaign Type</InputLabel>
+                      <Select
+                        value={createCampaignType}
+                        label="Campaign Type"
+                        onChange={(e) => {
+                          const type = e.target.value as
+                            | "email"
+                            | "whatsapp"
+                            | "sms";
 
-                {/* Preview Contacts Button */}
-                <Grid item xs={12} md={2}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    startIcon={<VisibilityIcon />}
-                    onClick={handlePreviewContacts}
-                    sx={{
-                      height: "40px",
-                      borderRadius: "12px",
-                      textTransform: "none",
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      borderColor: "#7BAAF7",
-                      color: "#3B82F6",
-                      whiteSpace: "nowrap",
-                      "&:hover": {
-                        borderColor: "#3B82F6",
-                        backgroundColor: "#F5F9FF",
-                      },
-                    }}
-                    disabled={!createContactListId}
-                  >
-                    View Contacts
-                  </Button>
-                </Grid>
+                          setCreateCampaignType(type);
 
-                {/* Product Dropdown */}
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Product</InputLabel>
-                    <Select
-                      value={createProductId}
-                      label="Product"
-                      onChange={(e) => {
-                        setCreateProductId(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        );
-                      }}
-                    >
-                      <MenuItem value="">
-                        <em>Select Product</em>
-                      </MenuItem>
-                      {products.map((item) => (
-                        <MenuItem key={item.id} value={item.id}>
-                          {item.name} ({item.code})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12}>
-                  {createCampaignType === "email" && (
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        p: 1.8,
-                        mb: 1.2,
-                        borderRadius: "12px",
-                        borderColor: alpha(theme.palette.primary.main, 0.2),
-                        background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.72)} 0%, ${alpha("#deebfb", 0.6)} 100%)`,
-                      }}
-                    >
-                      <Stack spacing={1.5}>
-                        <Stack
-                          direction={{ xs: "column", md: "row" }}
-                          spacing={1.2}
-                          justifyContent="space-between"
-                          alignItems={{ xs: "flex-start", md: "center" }}
-                        >
-                          <Box>
-                            <Typography
-                              variant="subtitle2"
-                              sx={{ fontWeight: 700 }}
-                            >
-                              Email Content Setup
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {CAMPAIGN_EMAIL_MERGE_TAG_HELP}
-                            </Typography>
-                          </Box>
-                          <Stack direction="row" spacing={1}>
-                            <Button
-                              size="small"
-                              startIcon={<TextFieldsIcon />}
-                              variant={
-                                emailContentMode === "manual"
-                                  ? "contained"
-                                  : "outlined"
-                              }
-                              onClick={() => setEmailContentMode("manual")}
-                            >
-                              Manual
-                            </Button>
-                            <Button
-                              size="small"
-                              startIcon={<AutoAwesomeIcon />}
-                              variant={
-                                emailContentMode === "prompt"
-                                  ? "contained"
-                                  : "outlined"
-                              }
-                              onClick={() => setEmailContentMode("prompt")}
-                            >
-                              Prompt + AI Variants
-                            </Button>
-                          </Stack>
-                        </Stack>
-
-                        <TextField
-                          required
-                          size="small"
-                          sx={compactInputSx}
-                          fullWidth
-                          label="Email Subject"
-                          value={emailSubject}
-                          onChange={(e) => {
-                            setEmailSubject(e.target.value);
-                            if (createCampaignErrors.emailSubject) {
-                              setCreateCampaignErrors((prev) => ({
-                                ...prev,
-                                emailSubject: false,
-                              }));
-                            }
-                          }}
-                          error={createCampaignErrors.emailSubject}
-                          helperText={
-                            createCampaignErrors.emailSubject
-                              ? "Email subject is required"
-                              : " "
+                          // reset template state when switching type
+                          setSelectedTemplateId("");
+                          setSelectedTemplate(null);
+                          setCreateMessageTemplate("");
+                        }}
+                      >
+                        <MenuItem value="email">Email</MenuItem>
+                        <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                        <MenuItem value="sms">SMS</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {/* Contact List Dropdown */}
+                  <Grid item xs={12} md={2.5}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Contact List</InputLabel>
+                      <Select
+                        value={createContactListId}
+                        label="Contact List"
+                        onChange={(e) => {
+                          setCreateContactListId(
+                            e.target.value === "" ? "" : Number(e.target.value),
+                          );
+                          if (createCampaignErrors.contactList) {
+                            setCreateCampaignErrors((prev) => ({
+                              ...prev,
+                              contactList: false,
+                            }));
                           }
-                          placeholder="Leave blank to use campaign name"
-                        />
+                        }}
+                        error={createCampaignErrors.contactList}
+                      >
+                        <MenuItem value="">
+                          <em>Select Contact List</em>
+                        </MenuItem>
+                        {contactLists.map((list) => (
+                          <MenuItem key={list.id} value={list.id}>
+                            {getContactListLabel(list)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
 
-                        {emailContentMode === "manual" ? (
-                          <>
-                            <Stack
-                              direction={{ xs: "column", sm: "row" }}
-                              spacing={1}
-                            >
+                  {/* Preview Contacts Button */}
+                  <Grid item xs={12} md={2}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={handlePreviewContacts}
+                      sx={{
+                        height: "40px",
+                        borderRadius: "12px",
+                        textTransform: "none",
+                        fontWeight: 600,
+                        fontSize: "14px",
+                        borderColor: "#7BAAF7",
+                        color: "#3B82F6",
+                        whiteSpace: "nowrap",
+                        "&:hover": {
+                          borderColor: "#3B82F6",
+                          backgroundColor: "#F5F9FF",
+                        },
+                      }}
+                      disabled={!createContactListId}
+                    >
+                      View Contacts
+                    </Button>
+                  </Grid>
+
+                  {/* Product Dropdown */}
+                  <Grid item xs={12} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Product</InputLabel>
+                      <Select
+                        value={createProductId}
+                        label="Product"
+                        onChange={(e) => {
+                          setCreateProductId(
+                            e.target.value === "" ? "" : Number(e.target.value),
+                          );
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Product</em>
+                        </MenuItem>
+                        {products.map((item) => (
+                          <MenuItem key={item.id} value={item.id}>
+                            {item.name} ({item.code})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    {createCampaignType === "email" && (
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          p: 1.8,
+                          mb: 1.2,
+                          borderRadius: "12px",
+                          borderColor: alpha(theme.palette.primary.main, 0.2),
+                          background: `linear-gradient(135deg, ${alpha(theme.palette.common.white, 0.72)} 0%, ${alpha("#deebfb", 0.6)} 100%)`,
+                        }}
+                      >
+                        <Stack spacing={1.5}>
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={1.2}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "flex-start", md: "center" }}
+                          >
+                            <Box>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ fontWeight: 700 }}
+                              >
+                                Email Content Setup
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {CAMPAIGN_EMAIL_MERGE_TAG_HELP}
+                              </Typography>
+                            </Box>
+                            <Stack direction="row" spacing={1}>
                               <Button
                                 size="small"
                                 startIcon={<TextFieldsIcon />}
                                 variant={
-                                  emailEditorMode === "plain"
+                                  emailContentMode === "manual"
                                     ? "contained"
                                     : "outlined"
                                 }
-                                onClick={() => setEmailEditorMode("plain")}
+                                onClick={() => setEmailContentMode("manual")}
                               >
-                                Plain Text
+                                Manual
                               </Button>
                               <Button
                                 size="small"
-                                startIcon={<CodeIcon />}
-                                variant={
-                                  emailEditorMode === "html"
-                                    ? "contained"
-                                    : "outlined"
-                                }
-                                onClick={() => setEmailEditorMode("html")}
-                              >
-                                HTML
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={handleLoadHtmlStarter}
-                              >
-                                Load HTML Starter
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() =>
-                                  setShowEmailPreview((prev) => !prev)
-                                }
-                              >
-                                {showEmailPreview
-                                  ? "Hide Preview"
-                                  : "Show Preview"}
-                              </Button>
-                            </Stack>
-                          </>
-                        ) : (
-                          <>
-                            <TextField
-                              size="small"
-                              sx={compactInputSx}
-                              fullWidth
-                              multiline
-                              minRows={4}
-                              label="Prompt Context"
-                              value={emailPromptContext}
-                              onChange={(e) => {
-                                setEmailPromptContext(e.target.value);
-                                if (createCampaignErrors.promptContext) {
-                                  setCreateCampaignErrors((prev) => ({
-                                    ...prev,
-                                    promptContext: false,
-                                  }));
-                                }
-                              }}
-                              error={createCampaignErrors.promptContext}
-                              helperText={
-                                createCampaignErrors.promptContext
-                                  ? "Prompt context is required for prompt mode"
-                                  : " "
-                              }
-                              placeholder="Describe campaign intent, audience, offer, tone, CTA, and constraints..."
-                            />
-                            <Stack
-                              direction={{ xs: "column", sm: "row" }}
-                              spacing={1}
-                              alignItems={{ xs: "stretch", sm: "center" }}
-                            >
-                              <Button
-                                variant="contained"
                                 startIcon={<AutoAwesomeIcon />}
-                                onClick={handleGeneratePromptEmailVariants}
-                                disabled={generatingEmailVariants}
-                              >
-                                {generatingEmailVariants
-                                  ? "Generating..."
-                                  : "Generate 5x5 Variants"}
-                              </Button>
-                              <Chip
-                                variant="outlined"
-                                label={`Subjects: ${generatedSubjects.length} | Bodies: ${generatedBodies.length} | Combos: ${generatedSubjects.length * generatedBodies.length}`}
-                              />
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() =>
-                                  setShowEmailPreview((prev) => !prev)
+                                variant={
+                                  emailContentMode === "prompt"
+                                    ? "contained"
+                                    : "outlined"
                                 }
+                                onClick={() => setEmailContentMode("prompt")}
                               >
-                                {showEmailPreview
-                                  ? "Hide Preview"
-                                  : "Show Preview"}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="warning"
-                                startIcon={<ErrorOutlineIcon />}
-                                onClick={handleScorePromptEmailSpam}
-                                disabled={
-                                  spamScoreLoading ||
-                                  generatedSubjects.length < 5 ||
-                                  generatedBodies.length < 5
-                                }
-                              >
-                                {spamScoreLoading
-                                  ? "Scoring..."
-                                  : "Spam Score (5x5)"}
+                                Prompt + AI Variants
                               </Button>
                             </Stack>
+                          </Stack>
 
-                            {(generatingEmailVariants || spamScoreLoading) && (
-                              <Box sx={{ mt: 0.5 }}>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: "block", mb: 0.6 }}
+                          <TextField
+                            required
+                            size="small"
+                            sx={compactInputSx}
+                            fullWidth
+                            label="Email Subject"
+                            value={emailSubject}
+                            onChange={(e) => {
+                              setEmailSubject(e.target.value);
+                              if (createCampaignErrors.emailSubject) {
+                                setCreateCampaignErrors((prev) => ({
+                                  ...prev,
+                                  emailSubject: false,
+                                }));
+                              }
+                            }}
+                            error={createCampaignErrors.emailSubject}
+                            helperText={
+                              createCampaignErrors.emailSubject
+                                ? "Email subject is required"
+                                : " "
+                            }
+                            placeholder="Leave blank to use campaign name"
+                          />
+
+                          {emailContentMode === "manual" ? (
+                            <>
+                              <Stack
+                                direction={{ xs: "column", sm: "row" }}
+                                spacing={1}
+                              >
+                                <Button
+                                  size="small"
+                                  startIcon={<TextFieldsIcon />}
+                                  variant={
+                                    emailEditorMode === "plain"
+                                      ? "contained"
+                                      : "outlined"
+                                  }
+                                  onClick={() => setEmailEditorMode("plain")}
+                                >
+                                  Plain Text
+                                </Button>
+                                <Button
+                                  size="small"
+                                  startIcon={<CodeIcon />}
+                                  variant={
+                                    emailEditorMode === "html"
+                                      ? "contained"
+                                      : "outlined"
+                                  }
+                                  onClick={() => setEmailEditorMode("html")}
+                                >
+                                  HTML
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={handleLoadHtmlStarter}
+                                >
+                                  Load HTML Starter
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() =>
+                                    setShowEmailPreview((prev) => !prev)
+                                  }
+                                >
+                                  {showEmailPreview
+                                    ? "Hide Preview"
+                                    : "Show Preview"}
+                                </Button>
+                              </Stack>
+                            </>
+                          ) : (
+                            <>
+                              <TextField
+                                size="small"
+                                sx={compactInputSx}
+                                fullWidth
+                                multiline
+                                minRows={4}
+                                label="Prompt Context"
+                                value={emailPromptContext}
+                                onChange={(e) => {
+                                  setEmailPromptContext(e.target.value);
+                                  if (createCampaignErrors.promptContext) {
+                                    setCreateCampaignErrors((prev) => ({
+                                      ...prev,
+                                      promptContext: false,
+                                    }));
+                                  }
+                                }}
+                                error={createCampaignErrors.promptContext}
+                                helperText={
+                                  createCampaignErrors.promptContext
+                                    ? "Prompt context is required for prompt mode"
+                                    : " "
+                                }
+                                placeholder="Describe campaign intent, audience, offer, tone, CTA, and constraints..."
+                              />
+                              <Stack
+                                direction={{ xs: "column", sm: "row" }}
+                                spacing={1}
+                                alignItems={{ xs: "stretch", sm: "center" }}
+                              >
+                                <Button
+                                  variant="contained"
+                                  startIcon={<AutoAwesomeIcon />}
+                                  onClick={handleGeneratePromptEmailVariants}
+                                  disabled={generatingEmailVariants}
                                 >
                                   {generatingEmailVariants
-                                    ? "Generating 5x5 variants. Please wait..."
-                                    : "Running spam score across 25 combinations. Please wait..."}
-                                </Typography>
-                                <LinearProgress sx={{ borderRadius: 999 }} />
-                              </Box>
-                            )}
+                                    ? "Generating..."
+                                    : "Generate 5x5 Variants"}
+                                </Button>
+                                <Chip
+                                  variant="outlined"
+                                  label={`Subjects: ${generatedSubjects.length} | Bodies: ${generatedBodies.length} | Combos: ${generatedSubjects.length * generatedBodies.length}`}
+                                />
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() =>
+                                    setShowEmailPreview((prev) => !prev)
+                                  }
+                                >
+                                  {showEmailPreview
+                                    ? "Hide Preview"
+                                    : "Show Preview"}
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  startIcon={<ErrorOutlineIcon />}
+                                  onClick={handleScorePromptEmailSpam}
+                                  disabled={
+                                    spamScoreLoading ||
+                                    generatedSubjects.length < 5 ||
+                                    generatedBodies.length < 5
+                                  }
+                                >
+                                  {spamScoreLoading
+                                    ? "Scoring..."
+                                    : "Spam Score (5x5)"}
+                                </Button>
+                              </Stack>
 
-                            {spamScoreResult && (
-                              <Paper
-                                variant="outlined"
-                                sx={{
-                                  p: 1.2,
-                                  borderRadius: "10px",
-                                  borderColor: alpha(
-                                    theme.palette.warning.main,
-                                    0.36,
-                                  ),
-                                }}
-                              >
-                                {(() => {
-                                  const total =
-                                    spamScoreResult.combinations.length;
-                                  const fromRow =
-                                    total > 0 ? spamVisibleStart + 1 : 0;
-                                  const toRow = Math.min(
-                                    total,
-                                    spamVisibleStart + spamRowsPerView,
-                                  );
-                                  const maxStart = Math.max(
-                                    0,
-                                    total - spamRowsPerView,
-                                  );
-                                  const canUp = spamVisibleStart > 0;
-                                  const canDown = spamVisibleStart < maxStart;
-                                  return (
-                                    <>
-                                      {spamScoreResult.fallback_used && (
-                                        <Alert severity="info" sx={{ mb: 1 }}>
-                                          Spam score used fallback heuristic due
-                                          to model timeout/availability. You can
-                                          retry for model-based scoring.
-                                        </Alert>
-                                      )}
-                                      <Stack
-                                        direction={{ xs: "column", sm: "row" }}
-                                        spacing={1}
-                                        sx={{ mb: 1 }}
-                                      >
-                                        <Chip
-                                          color="warning"
-                                          variant="outlined"
-                                          label={`Avg Spam Score: ${spamScoreResult.overall.average_spam_score}`}
-                                        />
-                                        <Chip
-                                          color="warning"
-                                          variant="outlined"
-                                          label={`Highest: ${spamScoreResult.overall.highest_spam_score}`}
-                                        />
-                                        <Chip
-                                          color={
-                                            spamScoreResult.overall
-                                              .high_risk_count > 0
-                                              ? "error"
-                                              : "success"
-                                          }
-                                          variant="outlined"
-                                          label={`High Risk Combos: ${spamScoreResult.overall.high_risk_count}`}
-                                        />
-                                      </Stack>
-                                      <Stack
-                                        direction={{ xs: "column", sm: "row" }}
-                                        spacing={1}
-                                        sx={{ mb: 1 }}
-                                      >
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          startIcon={
-                                            <KeyboardDoubleArrowUpIcon />
-                                          }
-                                          onClick={() =>
-                                            handleScrollSpamTable("top")
-                                          }
-                                          disabled={!canUp}
-                                        >
-                                          Top
-                                        </Button>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          startIcon={<ArrowUpwardIcon />}
-                                          onClick={() =>
-                                            handleScrollSpamTable("up")
-                                          }
-                                          disabled={!canUp}
-                                        >
-                                          Up
-                                        </Button>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          startIcon={<ArrowDownwardIcon />}
-                                          onClick={() =>
-                                            handleScrollSpamTable("down")
-                                          }
-                                          disabled={!canDown}
-                                        >
-                                          Down
-                                        </Button>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          startIcon={
-                                            <KeyboardDoubleArrowDownIcon />
-                                          }
-                                          onClick={() =>
-                                            handleScrollSpamTable("bottom")
-                                          }
-                                          disabled={!canDown}
-                                        >
-                                          Bottom
-                                        </Button>
-                                        <Typography
-                                          variant="caption"
-                                          color="text.secondary"
-                                          sx={{ alignSelf: "center" }}
-                                        >
-                                          Showing {fromRow}-{toRow} of {total}{" "}
-                                          combinations
-                                        </Typography>
-                                      </Stack>
-                                      <TableContainer
-                                        id="spam-score-table-scroll"
-                                        ref={spamTableContainerRef}
-                                        sx={{
-                                          maxHeight: 280,
-                                          overflowY: "auto",
-                                          overflowX: "auto",
-                                        }}
-                                      >
-                                        <Table size="small" stickyHeader>
-                                          <TableHead>
-                                            <TableRow>
-                                              <TableCell>Combo</TableCell>
-                                              <TableCell>Subject</TableCell>
-                                              <TableCell>Body</TableCell>
-                                              <TableCell>Score</TableCell>
-                                              <TableCell>Risk</TableCell>
-                                              <TableCell>Notes</TableCell>
-                                            </TableRow>
-                                          </TableHead>
-                                          <TableBody>
-                                            {spamScoreResult.combinations
-                                              .slice(
-                                                spamVisibleStart,
-                                                spamVisibleStart +
-                                                  spamRowsPerView,
-                                              )
-                                              .map((row) => (
-                                                <TableRow
-                                                  key={`spam-score-${row.combo_index}`}
-                                                >
-                                                  <TableCell>
-                                                    {row.combo_index}
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    {row.subject_index}
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    {row.body_index}
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    {row.spam_score}
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    <Chip
-                                                      size="small"
-                                                      label={row.risk_level}
-                                                      color={
-                                                        row.risk_level ===
-                                                        "high"
-                                                          ? "error"
-                                                          : row.risk_level ===
-                                                              "medium"
-                                                            ? "warning"
-                                                            : "success"
-                                                      }
-                                                      variant="outlined"
-                                                    />
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    {(row.reasons || [])
-                                                      .slice(0, 1)
-                                                      .join("; ") || "-"}
-                                                  </TableCell>
-                                                </TableRow>
-                                              ))}
-                                          </TableBody>
-                                        </Table>
-                                      </TableContainer>
-                                    </>
-                                  );
-                                })()}
-                              </Paper>
-                            )}
+                              {(generatingEmailVariants || spamScoreLoading) && (
+                                <Box sx={{ mt: 0.5 }}>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: "block", mb: 0.6 }}
+                                  >
+                                    {generatingEmailVariants
+                                      ? "Generating 5x5 variants. Please wait..."
+                                      : "Running spam score across 25 combinations. Please wait..."}
+                                  </Typography>
+                                  <LinearProgress sx={{ borderRadius: 999 }} />
+                                </Box>
+                              )}
 
-                            {(generatedSubjects.length > 0 ||
-                              generatedBodies.length > 0) && (
-                              <Paper
-                                variant="outlined"
-                                sx={{
-                                  p: 1.2,
-                                  borderRadius: "10px",
-                                  borderColor: alpha(
-                                    theme.palette.primary.main,
-                                    0.2,
-                                  ),
-                                }}
-                              >
-                                <Grid container spacing={1.5}>
-                                  <Grid item xs={12} md={6}>
-                                    <Accordion
-                                      disableGutters
-                                      sx={{
-                                        borderRadius: "8px",
-                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                        boxShadow: "none",
-                                        "&:before": { display: "none" },
-                                      }}
-                                    >
-                                      <AccordionSummary
-                                        expandIcon={<ExpandMoreIcon />}
-                                      >
-                                        <Typography
-                                          variant="body2"
-                                          sx={{ fontWeight: 600 }}
+                              {spamScoreResult && (
+                                <Paper
+                                  variant="outlined"
+                                  sx={{
+                                    p: 1.2,
+                                    borderRadius: "10px",
+                                    borderColor: alpha(
+                                      theme.palette.warning.main,
+                                      0.36,
+                                    ),
+                                  }}
+                                >
+                                  {(() => {
+                                    const total =
+                                      spamScoreResult.combinations.length;
+                                    const fromRow =
+                                      total > 0 ? spamVisibleStart + 1 : 0;
+                                    const toRow = Math.min(
+                                      total,
+                                      spamVisibleStart + spamRowsPerView,
+                                    );
+                                    const maxStart = Math.max(
+                                      0,
+                                      total - spamRowsPerView,
+                                    );
+                                    const canUp = spamVisibleStart > 0;
+                                    const canDown = spamVisibleStart < maxStart;
+                                    return (
+                                      <>
+                                        {spamScoreResult.fallback_used && (
+                                          <Alert severity="info" sx={{ mb: 1 }}>
+                                            Spam score used fallback heuristic due
+                                            to model timeout/availability. You can
+                                            retry for model-based scoring.
+                                          </Alert>
+                                        )}
+                                        <Stack
+                                          direction={{ xs: "column", sm: "row" }}
+                                          spacing={1}
+                                          sx={{ mb: 1 }}
                                         >
-                                          Generated Subjects (Editable)
-                                        </Typography>
-                                      </AccordionSummary>
-                                      <AccordionDetails sx={{ pt: 0.4 }}>
-                                        <Stack spacing={0.9}>
-                                          {ensureFive(generatedSubjects).map(
-                                            (subject, idx) => (
-                                              <TextField
-                                                key={`subject-edit-${idx}`}
-                                                size="small"
-                                                label={`Subject ${idx + 1}`}
-                                                value={subject}
-                                                onChange={(event) =>
-                                                  handleEditGeneratedSubject(
-                                                    idx,
-                                                    event.target.value,
-                                                  )
-                                                }
-                                              />
-                                            ),
-                                          )}
+                                          <Chip
+                                            color="warning"
+                                            variant="outlined"
+                                            label={`Avg Spam Score: ${spamScoreResult.overall.average_spam_score}`}
+                                          />
+                                          <Chip
+                                            color="warning"
+                                            variant="outlined"
+                                            label={`Highest: ${spamScoreResult.overall.highest_spam_score}`}
+                                          />
+                                          <Chip
+                                            color={
+                                              spamScoreResult.overall
+                                                .high_risk_count > 0
+                                                ? "error"
+                                                : "success"
+                                            }
+                                            variant="outlined"
+                                            label={`High Risk Combos: ${spamScoreResult.overall.high_risk_count}`}
+                                          />
                                         </Stack>
-                                      </AccordionDetails>
-                                    </Accordion>
-                                  </Grid>
-                                  <Grid item xs={12} md={6}>
-                                    <Accordion
-                                      disableGutters
-                                      sx={{
-                                        borderRadius: "8px",
-                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                        boxShadow: "none",
-                                        "&:before": { display: "none" },
-                                      }}
-                                    >
-                                      <AccordionSummary
-                                        expandIcon={<ExpandMoreIcon />}
-                                      >
-                                        <Typography
-                                          variant="body2"
-                                          sx={{ fontWeight: 600 }}
+                                        <Stack
+                                          direction={{ xs: "column", sm: "row" }}
+                                          spacing={1}
+                                          sx={{ mb: 1 }}
                                         >
-                                          Generated Bodies (Editable)
-                                        </Typography>
-                                      </AccordionSummary>
-                                      <AccordionDetails sx={{ pt: 0.4 }}>
-                                        <Stack spacing={0.9}>
-                                          {ensureFive(generatedBodies).map(
-                                            (body, idx) => (
-                                              <Accordion
-                                                key={`body-edit-${idx}`}
-                                                disableGutters
-                                                sx={{
-                                                  borderRadius: "8px",
-                                                  border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                                                  boxShadow: "none",
-                                                  "&:before": {
-                                                    display: "none",
-                                                  },
-                                                }}
-                                              >
-                                                <AccordionSummary
-                                                  expandIcon={
-                                                    <ExpandMoreIcon />
-                                                  }
-                                                >
-                                                  <Typography
-                                                    variant="body2"
-                                                    sx={{ fontWeight: 600 }}
+                                          <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={
+                                              <KeyboardDoubleArrowUpIcon />
+                                            }
+                                            onClick={() =>
+                                              handleScrollSpamTable("top")
+                                            }
+                                            disabled={!canUp}
+                                          >
+                                            Top
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<ArrowUpwardIcon />}
+                                            onClick={() =>
+                                              handleScrollSpamTable("up")
+                                            }
+                                            disabled={!canUp}
+                                          >
+                                            Up
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<ArrowDownwardIcon />}
+                                            onClick={() =>
+                                              handleScrollSpamTable("down")
+                                            }
+                                            disabled={!canDown}
+                                          >
+                                            Down
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={
+                                              <KeyboardDoubleArrowDownIcon />
+                                            }
+                                            onClick={() =>
+                                              handleScrollSpamTable("bottom")
+                                            }
+                                            disabled={!canDown}
+                                          >
+                                            Bottom
+                                          </Button>
+                                          <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            sx={{ alignSelf: "center" }}
+                                          >
+                                            Showing {fromRow}-{toRow} of {total}{" "}
+                                            combinations
+                                          </Typography>
+                                        </Stack>
+                                        <TableContainer
+                                          id="spam-score-table-scroll"
+                                          ref={spamTableContainerRef}
+                                          sx={{
+                                            maxHeight: 280,
+                                            overflowY: "auto",
+                                            overflowX: "auto",
+                                          }}
+                                        >
+                                          <Table size="small" stickyHeader>
+                                            <TableHead>
+                                              <TableRow>
+                                                <TableCell>Combo</TableCell>
+                                                <TableCell>Subject</TableCell>
+                                                <TableCell>Body</TableCell>
+                                                <TableCell>Score</TableCell>
+                                                <TableCell>Risk</TableCell>
+                                                <TableCell>Notes</TableCell>
+                                              </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                              {spamScoreResult.combinations
+                                                .slice(
+                                                  spamVisibleStart,
+                                                  spamVisibleStart +
+                                                  spamRowsPerView,
+                                                )
+                                                .map((row) => (
+                                                  <TableRow
+                                                    key={`spam-score-${row.combo_index}`}
                                                   >
-                                                    {`Body ${idx + 1}`}
-                                                  </Typography>
-                                                  <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ ml: 1 }}
-                                                  >
-                                                    {(body || "").slice(0, 70)}
-                                                    {(body || "").length > 70
-                                                      ? "..."
-                                                      : ""}
-                                                  </Typography>
-                                                </AccordionSummary>
-                                                <AccordionDetails
-                                                  sx={{ pt: 0.5 }}
-                                                >
+                                                    <TableCell>
+                                                      {row.combo_index}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {row.subject_index}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {row.body_index}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {row.spam_score}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      <Chip
+                                                        size="small"
+                                                        label={row.risk_level}
+                                                        color={
+                                                          row.risk_level ===
+                                                            "high"
+                                                            ? "error"
+                                                            : row.risk_level ===
+                                                              "medium"
+                                                              ? "warning"
+                                                              : "success"
+                                                        }
+                                                        variant="outlined"
+                                                      />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {(row.reasons || [])
+                                                        .slice(0, 1)
+                                                        .join("; ") || "-"}
+                                                    </TableCell>
+                                                  </TableRow>
+                                                ))}
+                                            </TableBody>
+                                          </Table>
+                                        </TableContainer>
+                                      </>
+                                    );
+                                  })()}
+                                </Paper>
+                              )}
+
+                              {(generatedSubjects.length > 0 ||
+                                generatedBodies.length > 0) && (
+                                  <Paper
+                                    variant="outlined"
+                                    sx={{
+                                      p: 1.2,
+                                      borderRadius: "10px",
+                                      borderColor: alpha(
+                                        theme.palette.primary.main,
+                                        0.2,
+                                      ),
+                                    }}
+                                  >
+                                    <Grid container spacing={1.5}>
+                                      <Grid item xs={12} md={6}>
+                                        <Accordion
+                                          disableGutters
+                                          sx={{
+                                            borderRadius: "8px",
+                                            border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                            boxShadow: "none",
+                                            "&:before": { display: "none" },
+                                          }}
+                                        >
+                                          <AccordionSummary
+                                            expandIcon={<ExpandMoreIcon />}
+                                          >
+                                            <Typography
+                                              variant="body2"
+                                              sx={{ fontWeight: 600 }}
+                                            >
+                                              Generated Subjects (Editable)
+                                            </Typography>
+                                          </AccordionSummary>
+                                          <AccordionDetails sx={{ pt: 0.4 }}>
+                                            <Stack spacing={0.9}>
+                                              {ensureFive(generatedSubjects).map(
+                                                (subject, idx) => (
                                                   <TextField
-                                                    fullWidth
+                                                    key={`subject-edit-${idx}`}
                                                     size="small"
-                                                    multiline
-                                                    minRows={4}
-                                                    value={body}
+                                                    label={`Subject ${idx + 1}`}
+                                                    value={subject}
                                                     onChange={(event) =>
-                                                      handleEditGeneratedBody(
+                                                      handleEditGeneratedSubject(
                                                         idx,
                                                         event.target.value,
                                                       )
                                                     }
                                                   />
-                                                </AccordionDetails>
-                                              </Accordion>
-                                            ),
-                                          )}
-                                        </Stack>
-                                      </AccordionDetails>
-                                    </Accordion>
-                                  </Grid>
-                                </Grid>
-                              </Paper>
-                            )}
-                          </>
-                        )}
-                      </Stack>
-                    </Paper>
-                  )}
+                                                ),
+                                              )}
+                                            </Stack>
+                                          </AccordionDetails>
+                                        </Accordion>
+                                      </Grid>
+                                      <Grid item xs={12} md={6}>
+                                        <Accordion
+                                          disableGutters
+                                          sx={{
+                                            borderRadius: "8px",
+                                            border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                            boxShadow: "none",
+                                            "&:before": { display: "none" },
+                                          }}
+                                        >
+                                          <AccordionSummary
+                                            expandIcon={<ExpandMoreIcon />}
+                                          >
+                                            <Typography
+                                              variant="body2"
+                                              sx={{ fontWeight: 600 }}
+                                            >
+                                              Generated Bodies (Editable)
+                                            </Typography>
+                                          </AccordionSummary>
+                                          <AccordionDetails sx={{ pt: 0.4 }}>
+                                            <Stack spacing={0.9}>
+                                              {ensureFive(generatedBodies).map(
+                                                (body, idx) => (
+                                                  <Accordion
+                                                    key={`body-edit-${idx}`}
+                                                    disableGutters
+                                                    sx={{
+                                                      borderRadius: "8px",
+                                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                                                      boxShadow: "none",
+                                                      "&:before": {
+                                                        display: "none",
+                                                      },
+                                                    }}
+                                                  >
+                                                    <AccordionSummary
+                                                      expandIcon={
+                                                        <ExpandMoreIcon />
+                                                      }
+                                                    >
+                                                      <Typography
+                                                        variant="body2"
+                                                        sx={{ fontWeight: 600 }}
+                                                      >
+                                                        {`Body ${idx + 1}`}
+                                                      </Typography>
+                                                      <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                        sx={{ ml: 1 }}
+                                                      >
+                                                        {(body || "").slice(0, 70)}
+                                                        {(body || "").length > 70
+                                                          ? "..."
+                                                          : ""}
+                                                      </Typography>
+                                                    </AccordionSummary>
+                                                    <AccordionDetails
+                                                      sx={{ pt: 0.5 }}
+                                                    >
+                                                      <TextField
+                                                        fullWidth
+                                                        size="small"
+                                                        multiline
+                                                        minRows={4}
+                                                        value={body}
+                                                        onChange={(event) =>
+                                                          handleEditGeneratedBody(
+                                                            idx,
+                                                            event.target.value,
+                                                          )
+                                                        }
+                                                      />
+                                                    </AccordionDetails>
+                                                  </Accordion>
+                                                ),
+                                              )}
+                                            </Stack>
+                                          </AccordionDetails>
+                                        </Accordion>
+                                      </Grid>
+                                    </Grid>
+                                  </Paper>
+                                )}
+                            </>
+                          )}
+                        </Stack>
+                      </Paper>
+                    )}
 
-                  {createCampaignType === "email" ? (
-                    emailContentMode === "manual" && (
-                      <TextField
-                        required
-                        size="small"
-                        sx={{
-                          ...compactInputSx,
-                          ...(emailEditorMode === "html"
-                            ? {
+                    {createCampaignType === "email" ? (
+                      emailContentMode === "manual" && (
+                        <TextField
+                          required
+                          size="small"
+                          sx={{
+                            ...compactInputSx,
+                            ...(emailEditorMode === "html"
+                              ? {
                                 "& .MuiInputBase-input": {
                                   fontFamily: "Consolas, Menlo, monospace",
                                 },
                               }
-                            : {}),
-                        }}
-                        fullWidth
-                        multiline
-                        minRows={emailEditorMode === "html" ? 9 : 6}
-                        label={`Email Template (${emailEditorMode.toUpperCase()})`}
-                        value={createMessageTemplate}
-                        error={createCampaignErrors.emailBody}
-                        helperText={
+                              : {}),
+                          }}
+                          fullWidth
+                          multiline
+                          minRows={emailEditorMode === "html" ? 9 : 6}
+                          label={`Email Template (${emailEditorMode.toUpperCase()})`}
+                          value={createMessageTemplate}
+                          error={createCampaignErrors.emailBody}
+                          helperText={
                             createCampaignErrors.emailBody
                               ? "Email body is required"
                               : " "
-                        }
-                        onChange={(e) =>
-                          setCreateMessageTemplate(e.target.value)
-                        }
-                      />
-                    )
-                  ) : (
-                    <Grid container spacing={1.5} alignItems="flex-start">
-                      {/* LEFT: Template Selector */}
-                      <Grid item xs={12} md={5}>
-                        <FormControl fullWidth size="small" sx={compactInputSx}>
-                          <InputLabel>Message Template</InputLabel>
+                          }
+                          onChange={(e) =>
+                            setCreateMessageTemplate(e.target.value)
+                          }
+                        />
+                      )
+                    ) : (
+                      <Grid container spacing={1.5} alignItems="flex-start">
+                        {/* LEFT: Template Selector */}
+                        <Grid item xs={12} md={5}>
+                          <FormControl fullWidth size="small" sx={compactInputSx}>
+                            <InputLabel>Message Template</InputLabel>
 
-                          <Select
-                            value={selectedTemplateId}
-                            label="Message Template"
-                            onChange={(e) => {
-                              const id = e.target.value as string;
+                            <Select
+                              value={selectedTemplateId}
+                              label="Message Template"
+                              onChange={(e) => {
+                                const id = e.target.value as string;
 
-                              setSelectedTemplateId(id);
+                                setSelectedTemplateId(id);
 
-                              const template =
-                                messageTemplates.find((t) => t.id === id) ||
-                                null;
+                                const template =
+                                  messageTemplates.find((t) => t.id === id) ||
+                                  null;
 
-                              setSelectedTemplate(template);
-                              setCreateMessageTemplate(template?.content || "");
-                            }}
-                          >
-                            <MenuItem value="">
-                              <em>Select Template</em>
-                            </MenuItem>
-
-                            {messageTemplates
-                              ?.filter((t) => t.type === createCampaignType)
-                              .filter((t) => {
-                                if (createCampaignType !== "whatsapp") {
-                                  return t.type === createCampaignType;
-                                }
-                                return (
-                                  t.type === "whatsapp" &&
-                                  t.category === "MARKETING"
-                                );
-                              })
-                              .map((template) => (
-                                <MenuItem key={template.id} value={template.id}>
-                                  {template.name}
-                                </MenuItem>
-                              ))}
-                          </Select>
-                        </FormControl>
-                        {createCampaignType === "whatsapp" && (
-                          <Alert severity="warning" sx={{ mb: 2 }}>
-                            Only <b>MARKETING</b> WhatsApp templates can be used
-                            for sending test messages.
-                          </Alert>
-                        )}
-                      </Grid>
-
-                      {/* RIGHT: Preview */}
-                      <Grid item xs={12} md={7}>
-                        {selectedTemplate ? (
-                          <Box
-                            sx={{
-                              borderRadius: 2,
-                              border: "1px solid",
-                              borderColor: "divider",
-                              overflow: "hidden",
-                              height: "100%",
-                            }}
-                          >
-                            {/* Header */}
-                            <Box
-                              sx={{
-                                px: 1.5,
-                                py: 1,
-                                bgcolor: "grey.100",
-                                display: "flex",
-                                justifyContent: "space-between",
+                                setSelectedTemplate(template);
+                                setCreateMessageTemplate(template?.content || "");
                               }}
                             >
-                              <Typography variant="subtitle2" fontWeight={600}>
-                                Preview
-                              </Typography>
+                              <MenuItem value="">
+                                <em>Select Template</em>
+                              </MenuItem>
 
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                {selectedTemplate.name}
-                              </Typography>
-                            </Box>
+                              {messageTemplates
+                                ?.filter((t) => t.type === createCampaignType)
+                                .filter((t) => {
+                                  if (createCampaignType !== "whatsapp") {
+                                    return t.type === createCampaignType;
+                                  }
+                                  return (
+                                    t.type === "whatsapp" &&
+                                    t.category === "MARKETING"
+                                  );
+                                })
+                                .map((template) => (
+                                  <MenuItem key={template.id} value={template.id}>
+                                    {template.name}
+                                  </MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
+                          {createCampaignType === "whatsapp" && (
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                              Only <b>MARKETING</b> WhatsApp templates can be used
+                              for sending test messages.
+                            </Alert>
+                          )}
+                        </Grid>
 
-                            {/* Body */}
+                        {/* RIGHT: Preview */}
+                        <Grid item xs={12} md={7}>
+                          {selectedTemplate ? (
                             <Box
                               sx={{
-                                p: 1.5,
-                                bgcolor: "#ece5dd", // WhatsApp chat background
-                                minHeight: 140,
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 1,
+                                borderRadius: 2,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                overflow: "hidden",
+                                height: "100%",
                               }}
                             >
-                              {/* incoming message bubble */}
+                              {/* Header */}
                               <Box
                                 sx={{
-                                  alignSelf: "flex-start",
-                                  maxWidth: "85%",
-                                  bgcolor: "#ffffff",
-                                  p: 1.2,
-                                  borderRadius: "12px",
-                                  borderTopLeftRadius: 4,
-                                  boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
-                                  whiteSpace: "pre-wrap",
-                                  fontSize: "0.85rem",
-                                  lineHeight: 1.4,
-                                  position: "relative",
+                                  px: 1.5,
+                                  py: 1,
+                                  bgcolor: "grey.100",
+                                  display: "flex",
+                                  justifyContent: "space-between",
                                 }}
                               >
-                                {/* sender label */}
-                                <Typography
-                                  variant="caption"
-                                  sx={{
-                                    fontWeight: 600,
-                                    display: "block",
-                                    mb: 0.5,
-                                    color: "text.secondary",
-                                  }}
-                                >
-                                  Campaign Message
+                                <Typography variant="subtitle2" fontWeight={600}>
+                                  Preview
                                 </Typography>
 
-                                {generatePreview(
-                                  selectedTemplate.content,
-                                  selectedTemplate.variable_mappings || {},
-                                )}
-
-                                {/* optional timestamp */}
                                 <Typography
                                   variant="caption"
-                                  sx={{
-                                    display: "block",
-                                    mt: 0.5,
-                                    textAlign: "right",
-                                    color: "text.disabled",
-                                    fontSize: "0.7rem",
-                                  }}
+                                  color="text.secondary"
                                 >
-                                  just now
+                                  {selectedTemplate.name}
                                 </Typography>
                               </Box>
-                            </Box>
-                          </Box>
-                        ) : (
-                          <Box
-                            sx={{
-                              height: "100%",
-                              minHeight: 80,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              border: "1px dashed",
-                              borderColor: "divider",
-                              borderRadius: 2,
-                              color: "text.secondary",
-                            }}
-                          >
-                            Select a template to preview
-                          </Box>
-                        )}
-                      </Grid>
-                    </Grid>
-                  )}
 
-                  {/* {createCampaignErrors.contactList && (
+                              {/* Body */}
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  bgcolor: "#ece5dd", // WhatsApp chat background
+                                  minHeight: 140,
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 1,
+                                }}
+                              >
+                                {/* incoming message bubble */}
+                                <Box
+                                  sx={{
+                                    alignSelf: "flex-start",
+                                    maxWidth: "85%",
+                                    bgcolor: "#ffffff",
+                                    p: 1.2,
+                                    borderRadius: "12px",
+                                    borderTopLeftRadius: 4,
+                                    boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+                                    whiteSpace: "pre-wrap",
+                                    fontSize: "0.85rem",
+                                    lineHeight: 1.4,
+                                    position: "relative",
+                                  }}
+                                >
+                                  {/* sender label */}
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontWeight: 600,
+                                      display: "block",
+                                      mb: 0.5,
+                                      color: "text.secondary",
+                                    }}
+                                  >
+                                    Campaign Message
+                                  </Typography>
+
+                                  {generatePreview(
+                                    selectedTemplate.content,
+                                    selectedTemplate.variable_mappings || {},
+                                  )}
+
+                                  {/* optional timestamp */}
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      display: "block",
+                                      mt: 0.5,
+                                      textAlign: "right",
+                                      color: "text.disabled",
+                                      fontSize: "0.7rem",
+                                    }}
+                                  >
+                                    just now
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Box>
+                          ) : (
+                            <Box
+                              sx={{
+                                height: "100%",
+                                minHeight: 80,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                border: "1px dashed",
+                                borderColor: "divider",
+                                borderRadius: 2,
+                                color: "text.secondary",
+                              }}
+                            >
+                              Select a template to preview
+                            </Box>
+                          )}
+                        </Grid>
+                      </Grid>
+                    )}
+
+                    {/* {createCampaignErrors.contactList && (
                       <Alert severity="error" sx={{ mt: 1 }}>
                         {"Contact List is required."}
                       </Alert>
                     )} */}
 
-                  {createCampaignType === "email" &&
-                    emailContentMode === "prompt" && (
-                      <Alert severity="info" sx={{ mt: 1 }}>
-                        Prompt mode sends using permutation and combination of
-                        generated variants across recipients (5 subjects x 5
-                        bodies = 25 combinations).
-                      </Alert>
-                    )}
-                </Grid>
+                    {createCampaignType === "email" &&
+                      emailContentMode === "prompt" && (
+                        <Alert severity="info" sx={{ mt: 1 }}>
+                          Prompt mode sends using permutation and combination of
+                          generated variants across recipients (5 subjects x 5
+                          bodies = 25 combinations).
+                        </Alert>
+                      )}
+                  </Grid>
 
-                {createCampaignType === "email" && showEmailPreview && (
-                  <Grid item xs={12}>
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        p: 1.6,
-                        borderRadius: "12px",
-                        borderColor: alpha(theme.palette.primary.main, 0.2),
-                      }}
-                    >
-                      <Typography
-                        variant="subtitle1"
-                        sx={{ fontWeight: 700, mb: 1 }}
-                      >
-                        Email Body Preview
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{ mb: 1.2, color: "text.secondary" }}
-                      >
-                        <strong>Subject:</strong>{" "}
-                        {emailSubject ||
-                          createCampaignName ||
-                          "Campaign Update"}
-                      </Typography>
-                      <Divider sx={{ mb: 1.4 }} />
-                      <Box
+                  {createCampaignType === "email" && showEmailPreview && (
+                    <Grid item xs={12}>
+                      <Paper
+                        variant="outlined"
                         sx={{
-                          borderRadius: "10px",
-                          border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
-                          p: 1.8,
-                          bgcolor: alpha(theme.palette.common.white, 0.82),
+                          p: 1.6,
+                          borderRadius: "12px",
+                          borderColor: alpha(theme.palette.primary.main, 0.2),
                         }}
                       >
-                        {emailEditorMode === "html" ||
-                        looksLikeHtml(createMessageTemplate) ? (
-                          <Box
-                            sx={{ "& h1, & h2, & h3": { mt: 0 } }}
-                            dangerouslySetInnerHTML={{
-                              __html:
-                                (emailContentMode === "prompt"
-                                  ? generatedBodies[0]
-                                  : createMessageTemplate) ||
-                                '<p style="color:#64748b;">No HTML content yet.</p>',
-                            }}
-                          />
-                        ) : (
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              whiteSpace: "pre-wrap",
-                              color: "text.primary",
-                            }}
-                          >
-                            {(emailContentMode === "prompt"
-                              ? generatedBodies[0]
-                              : createMessageTemplate) ||
-                              "No message content yet."}
-                          </Typography>
-                        )}
-                      </Box>
-                    </Paper>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{ fontWeight: 700, mb: 1 }}
+                        >
+                          Email Body Preview
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ mb: 1.2, color: "text.secondary" }}
+                        >
+                          <strong>Subject:</strong>{" "}
+                          {emailSubject ||
+                            createCampaignName ||
+                            "Campaign Update"}
+                        </Typography>
+                        <Divider sx={{ mb: 1.4 }} />
+                        <Box
+                          sx={{
+                            borderRadius: "10px",
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                            p: 1.8,
+                            bgcolor: alpha(theme.palette.common.white, 0.82),
+                          }}
+                        >
+                          {emailEditorMode === "html" ||
+                            looksLikeHtml(createMessageTemplate) ? (
+                            <Box
+                              sx={{ "& h1, & h2, & h3": { mt: 0 } }}
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  (emailContentMode === "prompt"
+                                    ? generatedBodies[0]
+                                    : createMessageTemplate) ||
+                                  '<p style="color:#64748b;">No HTML content yet.</p>',
+                              }}
+                            />
+                          ) : (
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                whiteSpace: "pre-wrap",
+                                color: "text.primary",
+                              }}
+                            >
+                              {(emailContentMode === "prompt"
+                                ? generatedBodies[0]
+                                : createMessageTemplate) ||
+                                "No message content yet."}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  )}
+
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      size="small"
+                      sx={compactInputSx}
+                      fullWidth
+                      type="datetime-local"
+                      label="Schedule Time (IST, optional)"
+                      value={createScheduledTime}
+                      onChange={(e) => setCreateScheduledTime(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="All campaign times are shown and interpreted in IST."
+                    />
                   </Grid>
-                )}
 
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    size="small"
-                    sx={compactInputSx}
-                    fullWidth
-                    type="datetime-local"
-                    label="Schedule Time (IST, optional)"
-                    value={createScheduledTime}
-                    onChange={(e) => setCreateScheduledTime(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    helperText="All campaign times are shown and interpreted in IST."
-                  />
-                </Grid>
+                  <Grid item xs={12} md={8}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                      <Button
+                        size="small"
+                        sx={compactButtonSx}
+                        variant="outlined"
+                        component="label"
+                        startIcon={<UploadFileIcon />}
+                      >
+                        Upload Template File
+                        <input
+                          hidden
+                          type="file"
+                          accept=".txt,.md,.html"
+                          onChange={(e) =>
+                            handleTemplateFileUpload(e.target.files?.[0] || null)
+                          }
+                        />
+                      </Button>
+                      <Button
+                        size="small"
+                        sx={compactButtonSx}
+                        variant="contained"
+                        onClick={handleCreateCampaign}
+                        startIcon={<AddIcon />}
+                      >
+                        Create Campaign
+                      </Button>
+                    </Stack>
+                  </Grid>
 
-                <Grid item xs={12} md={8}>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <Button
-                      size="small"
-                      sx={compactButtonSx}
-                      variant="outlined"
-                      component="label"
-                      startIcon={<UploadFileIcon />}
-                    >
-                      Upload Template File
-                      <input
-                        hidden
-                        type="file"
-                        accept=".txt,.md,.html"
-                        onChange={(e) =>
-                          handleTemplateFileUpload(e.target.files?.[0] || null)
-                        }
-                      />
-                    </Button>
-                    <Button
-                      size="small"
-                      sx={compactButtonSx}
-                      variant="contained"
-                      onClick={handleCreateCampaign}
-                      startIcon={<AddIcon />}
-                    >
-                      Create Campaign
-                    </Button>
-                  </Stack>
-                </Grid>
-
-                {/* <Grid item xs={12}>
+                  {/* <Grid item xs={12}>
                   <Paper
                     variant="outlined"
                     sx={{
@@ -2891,194 +2891,194 @@ const CampaignManagementPage: React.FC = () => {
                     )}
                   </Paper>
                 </Grid> */}
-              </Grid>
-            </Paper>
+                </Grid>
+              </Paper>
 
-            {createContactListId && (
-                    <div ref={secondSectionRef}>
-                          <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-                              Recipient Preview List
-                            </Typography>
-                            <Stack
-                              direction={{ xs: "column", sm: "row" }}
-                              spacing={1}
-                              sx={{ mb: 2 }}
-                            >
-                              <Grid item xs={12} md={6}>
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  label="Search Contacts"
-                                  value={previewSearch}
-                                  onChange={(e) => setPreviewSearch(e.target.value)}
-                                  InputProps={{
-                                    endAdornment: (
-                                      <InputAdornment position="end">
-                                        <SearchIcon />
-                                      </InputAdornment>
+              {createContactListId && (
+                <div ref={secondSectionRef}>
+                  <Paper sx={{ ...sectionPanelSx, p: 2.5 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                      Recipient Preview List
+                    </Typography>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      sx={{ mb: 2 }}
+                    >
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Search Contacts"
+                          value={previewSearch}
+                          onChange={(e) => setPreviewSearch(e.target.value)}
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <SearchIcon />
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </Grid>
+                    </Stack>
+                    <TableContainer
+                      sx={{
+                        borderRadius: "12px",
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                      }}
+                    >
+                      <Table>
+                        <TableHead>
+                          <TableRow
+                            sx={{
+                              background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
+                            }}
+                          >
+                            <TableCell>Contact</TableCell>
+                            <TableCell>Company</TableCell>
+                            <TableCell>Created</TableCell>
+                            <TableCell>Actions</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {previewContacts.length ? (
+                            previewContacts.map((contact) => (
+                              <TableRow
+                                key={contact.id}
+                                hover
+                                sx={{
+                                  "&:hover": {
+                                    backgroundColor: alpha(
+                                      theme.palette.primary.main,
+                                      0.05,
                                     ),
+                                  },
+                                }}
+                              >
+                                <TableCell
+                                  sx={{
+                                    minWidth: 200,
+                                    maxWidth: 300,
+                                    verticalAlign: "top",
                                   }}
-                                />
-                              </Grid>
-                            </Stack>
-                            <TableContainer
-                              sx={{
-                                borderRadius: "12px",
-                                border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
-                              }}
-                            >
-                              <Table>
-                                <TableHead>
-                                  <TableRow
-                                    sx={{
-                                      background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
-                                    }}
+                                >
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontWeight: 600, lineHeight: 1.35 }}
                                   >
-                                    <TableCell>Contact</TableCell>
-                                    <TableCell>Company</TableCell>
-                                    <TableCell>Created</TableCell>
-                                    <TableCell>Actions</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {previewContacts.length ? (
-                                    previewContacts.map((contact) => (
-                                      <TableRow
-                                        key={contact.id}
-                                        hover
+                                    {contact.name?.trim() || "—"}
+                                  </Typography>
+                                  <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+                                    {contact.email?.trim() ? (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
                                         sx={{
-                                          "&:hover": {
-                                            backgroundColor: alpha(
-                                              theme.palette.primary.main,
-                                              0.05,
-                                            ),
-                                          },
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 0.5,
+                                          lineHeight: 1.35,
+                                          fontSize: "0.7rem",
                                         }}
                                       >
-                                        <TableCell
+                                        <EmailIcon
                                           sx={{
-                                            minWidth: 200,
-                                            maxWidth: 300,
-                                            verticalAlign: "top",
+                                            fontSize: 13,
+                                            flexShrink: 0,
+                                            opacity: 0.85,
                                           }}
+                                        />
+                                        <Box
+                                          component="span"
+                                          sx={{ wordBreak: "break-word" }}
                                         >
-                                          <Typography
-                                            variant="body2"
-                                            sx={{ fontWeight: 600, lineHeight: 1.35 }}
-                                          >
-                                            {contact.name?.trim() || "—"}
-                                          </Typography>
-                                          <Stack spacing={0.35} sx={{ mt: 0.5 }}>
-                                            {contact.email?.trim() ? (
-                                              <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                                sx={{
-                                                  display: "flex",
-                                                  alignItems: "center",
-                                                  gap: 0.5,
-                                                  lineHeight: 1.35,
-                                                  fontSize: "0.7rem",
-                                                }}
-                                              >
-                                                <EmailIcon
-                                                  sx={{
-                                                    fontSize: 13,
-                                                    flexShrink: 0,
-                                                    opacity: 0.85,
-                                                  }}
-                                                />
-                                                <Box
-                                                  component="span"
-                                                  sx={{ wordBreak: "break-word" }}
-                                                >
-                                                  {contact.email}
-                                                </Box>
-                                              </Typography>
-                                            ) : null}
-                                            {contact.phone?.trim() ? (
-                                              <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                                sx={{
-                                                  display: "flex",
-                                                  alignItems: "center",
-                                                  gap: 0.5,
-                                                  lineHeight: 1.35,
-                                                  fontSize: "0.7rem",
-                                                }}
-                                              >
-                                                <CallIcon
-                                                  sx={{
-                                                    fontSize: 13,
-                                                    flexShrink: 0,
-                                                    opacity: 0.85,
-                                                  }}
-                                                />
-                                                <Box
-                                                  component="span"
-                                                  sx={{ wordBreak: "break-word" }}
-                                                >
-                                                  {contact.phone}
-                                                </Box>
-                                              </Typography>
-                                            ) : null}
-                                            {!contact.email?.trim() &&
-                                            !contact.phone?.trim() ? (
-                                              <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                                sx={{ fontSize: "0.7rem" }}
-                                              >
-                                                No email or phone on file
-                                              </Typography>
-                                            ) : null}
-                                          </Stack>
-                                        </TableCell>
-                                        <TableCell>{contact.company || "-"}</TableCell>
-                                        <TableCell>
-                                          {formatDate(contact.created_at)}
-                                        </TableCell>
-                                        <TableCell>
-                                          <Button
-                                            size="small"
-                                            color="info"
-                                            startIcon={<VisibilityIcon />}
-                                            onClick={() => handleView(contact)}
-                                          >
-                                            View
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))
-                                  ) : (
-                                    <TableRow>
-                                      <TableCell colSpan={4} align="center">
-                                        No contacts found.
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                            <TablePagination
-                              component="div"
-                              count={previewContactTotal}
-                              page={previewContactPage}
-                              onPageChange={(_, value) => setPreviewContactPage(value)}
-                              rowsPerPage={previewContactRowsPerPage}
-                              onRowsPerPageChange={(event) => {
-                                setPreviewContactRowsPerPage(parseInt(event.target.value, 10));
-                                setPreviewContactPage(0);
-                              }}
-                              rowsPerPageOptions={[10, 25, 50]}
-                            />
-                          </Paper>
-                        </div>
-                      )}
+                                          {contact.email}
+                                        </Box>
+                                      </Typography>
+                                    ) : null}
+                                    {contact.phone?.trim() ? (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 0.5,
+                                          lineHeight: 1.35,
+                                          fontSize: "0.7rem",
+                                        }}
+                                      >
+                                        <CallIcon
+                                          sx={{
+                                            fontSize: 13,
+                                            flexShrink: 0,
+                                            opacity: 0.85,
+                                          }}
+                                        />
+                                        <Box
+                                          component="span"
+                                          sx={{ wordBreak: "break-word" }}
+                                        >
+                                          {contact.phone}
+                                        </Box>
+                                      </Typography>
+                                    ) : null}
+                                    {!contact.email?.trim() &&
+                                      !contact.phone?.trim() ? (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ fontSize: "0.7rem" }}
+                                      >
+                                        No email or phone on file
+                                      </Typography>
+                                    ) : null}
+                                  </Stack>
+                                </TableCell>
+                                <TableCell>{contact.company || "-"}</TableCell>
+                                <TableCell>
+                                  {formatDate(contact.created_at)}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="small"
+                                    color="info"
+                                    startIcon={<VisibilityIcon />}
+                                    onClick={() => handleView(contact)}
+                                  >
+                                    View
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={4} align="center">
+                                No contacts found.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    <TablePagination
+                      component="div"
+                      count={previewContactTotal}
+                      page={previewContactPage}
+                      onPageChange={(_, value) => setPreviewContactPage(value)}
+                      rowsPerPage={previewContactRowsPerPage}
+                      onRowsPerPageChange={(event) => {
+                        setPreviewContactRowsPerPage(parseInt(event.target.value, 10));
+                        setPreviewContactPage(0);
+                      }}
+                      rowsPerPageOptions={[10, 25, 50]}
+                    />
+                  </Paper>
+                </div>
+              )}
             </Stack>
-            
+
           )}
 
           {tab === 2 && (
@@ -3463,8 +3463,8 @@ const CampaignManagementPage: React.FC = () => {
                           <TableCell>
                             {formatDisplayDate(
                               item.delivered_at ||
-                                item.sent_at ||
-                                item.created_at,
+                              item.sent_at ||
+                              item.created_at,
                             )}
                           </TableCell>
                           <TableCell>
@@ -3587,7 +3587,7 @@ const CampaignManagementPage: React.FC = () => {
                         } catch (err: any) {
                           showError(
                             err?.response?.data?.detail ||
-                              "Failed to refresh reports",
+                            "Failed to refresh reports",
                           );
                         } finally {
                           setLoading(false);
@@ -4184,12 +4184,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                  ...prev,
-                                  min_score_threshold: Math.max(
-                                    1,
-                                    Number(e.target.value) || 1,
-                                  ),
-                                }
+                                ...prev,
+                                min_score_threshold: Math.max(
+                                  1,
+                                  Number(e.target.value) || 1,
+                                ),
+                              }
                               : prev,
                           )
                         }
@@ -4206,12 +4206,12 @@ const CampaignManagementPage: React.FC = () => {
                           setC2lRule((prev) =>
                             prev
                               ? {
-                                  ...prev,
-                                  dedupe_window_days: Math.max(
-                                    1,
-                                    Number(e.target.value) || 1,
-                                  ),
-                                }
+                                ...prev,
+                                dedupe_window_days: Math.max(
+                                  1,
+                                  Number(e.target.value) || 1,
+                                ),
+                              }
                               : prev,
                           )
                         }
@@ -4336,9 +4336,9 @@ const CampaignManagementPage: React.FC = () => {
                                 setC2lRule((prev) =>
                                   prev
                                     ? {
-                                        ...prev,
-                                        auto_convert_enabled: e.target.checked,
-                                      }
+                                      ...prev,
+                                      auto_convert_enabled: e.target.checked,
+                                    }
                                     : prev,
                                 )
                               }
@@ -4372,7 +4372,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                  "Failed to update C2L rule",
+                                "Failed to update C2L rule",
                               );
                             } finally {
                               setC2lSaving(false);
@@ -4468,7 +4468,7 @@ const CampaignManagementPage: React.FC = () => {
                             } catch (err: any) {
                               showError(
                                 err?.response?.data?.detail ||
-                                  "Failed to run C2L engine",
+                                "Failed to run C2L engine",
                               );
                             } finally {
                               setLoading(false);
@@ -4726,156 +4726,156 @@ const CampaignManagementPage: React.FC = () => {
               </Button>
             </DialogActions>
           </Dialog>
-           <Drawer
-                  anchor="right"
-                  open={drawerOpen}
-                  onClose={handleCloseDrawer}
-                  PaperProps={{
-                    sx: {
-                      width: { xs: "90%", sm: 550 },
-                      height: "100vh",
-                      maxHeight: "100vh",
-                      display: "flex",
-                      flexDirection: "column",
-                      bgcolor: "#f9faff",
-                    },
-                  }}
-                >
-                  {/* --- Sticky Header --- */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      p: 3,
-                      borderBottom: "1px solid #e0e0e0",
-                      flexShrink: 0,
-                      bgcolor: "#f9faff",
-                    }}
+          <Drawer
+            anchor="right"
+            open={drawerOpen}
+            onClose={handleCloseDrawer}
+            PaperProps={{
+              sx: {
+                width: { xs: "90%", sm: 550 },
+                height: "100vh",
+                maxHeight: "100vh",
+                display: "flex",
+                flexDirection: "column",
+                bgcolor: "#f9faff",
+              },
+            }}
+          >
+            {/* --- Sticky Header --- */}
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                p: 3,
+                borderBottom: "1px solid #e0e0e0",
+                flexShrink: 0,
+                bgcolor: "#f9faff",
+              }}
+            >
+              <Typography variant="h6" fontWeight={700}>
+                Contact Details
+              </Typography>
+              <IconButton onClick={handleCloseDrawer}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
+
+            {/* --- Scrollable Content --- */}
+            <Box sx={{ flex: 1, overflowY: "auto", p: 3 }}>
+              {selectedContact ? (
+                <Stack spacing={3}>
+                  {/* --- Basic Info --- */}
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
                   >
-                    <Typography variant="h6" fontWeight={700}>
-                      Contact Details
-                    </Typography>
-                    <IconButton onClick={handleCloseDrawer}>
-                      <CloseIcon />
-                    </IconButton>
-                  </Box>
-          
-                  {/* --- Scrollable Content --- */}
-                  <Box sx={{ flex: 1, overflowY: "auto", p: 3 }}>
-                    {selectedContact ? (
-                      <Stack spacing={3}>
-                        {/* --- Basic Info --- */}
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
-                        >
-                          Basic Info
-                        </Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={6}>
-                            <Field label="Name" value={selectedContact.name} />
-                            <Field label="Phone" value={selectedContact.phone} />
-                            <Field label="Company" value={selectedContact.company} />
-                            <Field label="Gender" value={selectedContact.gender} />
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Field label="Email" value={selectedContact.email} />
-                            <Field
-                              label="WhatsApp"
-                              value={selectedContact.whatsapp_number}
-                            />
-                            <Field
-                              label="Designation"
-                              value={selectedContact.designation}
-                            />
-                            <Field
-                              label="Created At"
-                              value={formatDate(selectedContact.created_at)}
-                            />
-                          </Grid>
-                        </Grid>
-          
-                        {/* --- Product Info --- */}
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
-                        >
-                          Product Info
-                        </Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={6}>
-                            <Field label="Item Name" value={selectedContact.item_name} />
-                            <Field label="Item Type" value={selectedContact.item_type} />
-                            <Field
-                              label="Interest Stage"
-                              value={selectedContact.interest_stage}
-                              badge
-                            />
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Field
-                              label="Item Category"
-                              value={selectedContact.item_category}
-                            />
-                            <Field label="Amount" value={selectedContact.amount} />
-                            <Field
-                              label="Offer Value"
-                              value={selectedContact.offer_value}
-                            />
-                          </Grid>
-                        </Grid>
-          
-                        {/* --- Location --- */}
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
-                        >
-                          Location
-                        </Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12}>
-                            <Field
-                              label="City / State / Country"
-                              value={[
-                                selectedContact.city,
-                                selectedContact.state,
-                                selectedContact.country,
-                              ]
-                                .filter(Boolean)
-                                .join(", ")}
-                            />
-                          </Grid>
-                        </Grid>
-          
-                        {/* --- Tracking --- */}
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
-                        >
-                          Tracking
-                        </Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12}>
-                            <Field label="Source" value={selectedContact.source} />
-                            <Field
-                              label="Lifecycle Stage"
-                              value={selectedContact.lifecycle_stage}
-                              badge
-                            />
-                            <Field label="Tags" value={selectedContact.tags} badges />
-                          </Grid>
-                        </Grid>
-                      </Stack>
-                    ) : (
-                      <Typography>No contact selected</Typography>
-                    )}
-                  </Box>
-                </Drawer>
+                    Basic Info
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Field label="Name" value={selectedContact.name} />
+                      <Field label="Phone" value={selectedContact.phone} />
+                      <Field label="Company" value={selectedContact.company} />
+                      <Field label="Gender" value={selectedContact.gender} />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Field label="Email" value={selectedContact.email} />
+                      <Field
+                        label="WhatsApp"
+                        value={selectedContact.whatsapp_number}
+                      />
+                      <Field
+                        label="Designation"
+                        value={selectedContact.designation}
+                      />
+                      <Field
+                        label="Created At"
+                        value={formatDate(selectedContact.created_at)}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  {/* --- Product Info --- */}
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                  >
+                    Product Info
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Field label="Item Name" value={selectedContact.item_name} />
+                      <Field label="Item Type" value={selectedContact.item_type} />
+                      <Field
+                        label="Interest Stage"
+                        value={selectedContact.interest_stage}
+                        badge
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Field
+                        label="Item Category"
+                        value={selectedContact.item_category}
+                      />
+                      <Field label="Amount" value={selectedContact.amount} />
+                      <Field
+                        label="Offer Value"
+                        value={selectedContact.offer_value}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  {/* --- Location --- */}
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                  >
+                    Location
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Field
+                        label="City / State / Country"
+                        value={[
+                          selectedContact.city,
+                          selectedContact.state,
+                          selectedContact.country,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  {/* --- Tracking --- */}
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                  >
+                    Tracking
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Field label="Source" value={selectedContact.source} />
+                      <Field
+                        label="Lifecycle Stage"
+                        value={selectedContact.lifecycle_stage}
+                        badge
+                      />
+                      <Field label="Tags" value={selectedContact.tags} badges />
+                    </Grid>
+                  </Grid>
+                </Stack>
+              ) : (
+                <Typography>No contact selected</Typography>
+              )}
+            </Box>
+          </Drawer>
         </Stack>
       </Box>
     </AdminLayout>

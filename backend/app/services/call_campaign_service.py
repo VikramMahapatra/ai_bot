@@ -39,6 +39,7 @@ from app.models.message_templates import MessageTemplate
 from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
 from app.models.workflows import Workflow, WorkflowExecution, WorkflowExecutionLog
+from app.models.conversation import Conversation
 
 STALE_MINUTES = 1
 SYNC_STATUSES = ["draft", "active", "running", "pending", "scheduled"]
@@ -1446,17 +1447,50 @@ def get_campaign_analytics(db: Session, campaign_id: int, organization_id: int):
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
+    successful_calls_data = (
+        db.query(
+            func.count(CallLog.id).label("successful_calls"),
+            func.avg(CallLog.duration).label("avg_duration"),
+        )
+        .filter(
+            CallLog.campaign_id == campaign_id,
+            exists().where(CallTranscript.call_log_id == CallLog.id),
+        )
+        .first()
+    )
+
+    successful_calls = (
+        successful_calls_data.successful_calls if successful_calls_data else 0
+    )
+
+    avg_duration_seconds = (
+        float(successful_calls_data.avg_duration)
+        if successful_calls_data and successful_calls_data.avg_duration
+        else 0
+    )
+
+    total_seconds = round(avg_duration_seconds)
+
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+
+    avg_duration = f"{minutes:02}:{seconds:02}"
+
+    attempted_calls_data = (
+        db.query(CallLog.campaign_id, func.count(CallLog.id).label("attempted_calls"))
+        .filter(CallLog.campaign_id == campaign_id)
+        .group_by(CallLog.campaign_id)
+        .all()
+    )
+
+    attempted_calls = (
+        attempted_calls_data[0].attempted_calls if attempted_calls_data else 0
+    )
+
     # Key Insights
     key_insights = (
         db.query(CampaignKeyInsight)
         .filter(CampaignKeyInsight.campaign_id == campaign_id)
-        .all()
-    )
-
-    # Sentiment
-    sentiments = (
-        db.query(CampaignSentiment)
-        .filter(CampaignSentiment.campaign_id == campaign_id)
         .all()
     )
 
@@ -1468,17 +1502,57 @@ def get_campaign_analytics(db: Session, campaign_id: int, organization_id: int):
     )
 
     # Convert sentiment list to object
-    sentiment_map = {"positive": 0, "neutral": 0, "negative": 0}
+    sentiment_distribution = (
+        db.query(
+            Conversation.outcome.label("sentiment"),
+            func.count(func.distinct(CallLog.id)).label("value"),
+        )
+        .join(
+            Conversation,
+            Conversation.session_id == CallLog.call_session_id,
+        )
+        .filter(CallLog.campaign_id == campaign_id)
+    )
 
-    for s in sentiments:
-        sentiment_map[s.sentiment] = s.rate
+    sentiment_distribution = sentiment_distribution.group_by(Conversation.outcome).all()
+
+    # default keys
+    sentiment_map = {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 0,
+        "satisfactory": 0,
+        "other": 0,
+    }
+
+    # fill actual counts
+    for s in sentiment_distribution:
+        key = (s.sentiment or "other").lower()
+
+        if key not in sentiment_map:
+            key = "other"
+
+        sentiment_map[key] = s.value
+
+    started_at = (
+        db.query(func.min(CallLog.start_time))
+        .filter(CallLog.campaign_id == campaign_id)
+        .scalar()
+    )
+
+    last_call_at = (
+        db.query(func.max(CallLog.start_time))
+        .filter(CallLog.campaign_id == campaign_id)
+        .scalar()
+    )
 
     return {
         "name": campaign.name,
         "description": campaign.description,
         "total_calls": campaign.total_calls,
-        "completed_calls": campaign.completed_calls,
-        "avg_duration": getattr(campaign, "avg_duration", "00:00"),
+        "initiated_calls": attempted_calls,
+        "completed_calls": successful_calls,
+        "avg_duration": avg_duration,
         "response_rate": f"{campaign.response_rate}%",
         "status": campaign.status,
         # Sentiment
@@ -1490,9 +1564,14 @@ def get_campaign_analytics(db: Session, campaign_id: int, organization_id: int):
                 if campaign.created_at
                 else None
             ),
-            "updated_at": (
-                campaign.updated_at.replace(tzinfo=timezone.utc).isoformat()
-                if campaign.updated_at
+            "started_at": (
+                started_at.replace(tzinfo=timezone.utc).isoformat()
+                if started_at
+                else None
+            ),
+            "last_call_at": (
+                last_call_at.replace(tzinfo=timezone.utc).isoformat()
+                if last_call_at
                 else None
             ),
         },
@@ -1782,11 +1861,6 @@ def sync_campaign_from_echoleads(
         db.commit()
 
         if campaign.status in ["completed", "cancelled", "failed"]:
-            logger.info(
-                "Releasing channel for campaign %s with status %s",
-                campaign.id,
-                campaign.status,
-            )
             organization_channel_service.release_channel(
                 db, call_type="campaign", reference_id=campaign.id
             )

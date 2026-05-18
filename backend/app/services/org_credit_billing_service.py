@@ -355,7 +355,8 @@ def _refresh_org_credit_payment_status(db: Session, org_credit_id: int) -> None:
 def create_org_credit_entry(
     db: Session,
     organization_id: int,
-    estimator_id: int,
+    estimator_id: Optional[int] = None,
+    credits: Optional[float] = None,
     billing_cycle: str = "monthly",
     payment_status: str = "unpaid",
     billing_start_date: Optional[date] = None,
@@ -371,11 +372,21 @@ def create_org_credit_entry(
             status_code=400, detail="payment_status must be paid or unpaid"
         )
 
+    if estimator_id is None and credits is None:
+        raise HTTPException(
+            status_code=400, detail="Either estimator or credits must be provided"
+        )
+
     _get_organization_or_404(db, organization_id)
-    estimator = _get_estimator_or_404(db, estimator_id)
-    total_credit, payable_amount, _ = _extract_total_credit_and_payable_from_estimator(
-        estimator
-    )
+
+    if estimator_id is not None:
+        estimator = _get_estimator_or_404(db, estimator_id)
+        total_credit, payable_amount, _ = (
+            _extract_total_credit_and_payable_from_estimator(estimator)
+        )
+    else:
+        total_credit = credits or 0
+        payable_amount = credits or 0
 
     start = billing_start_date or datetime.now(timezone.utc).date()
     end = _month_end(start)
@@ -385,7 +396,6 @@ def create_org_credit_entry(
         db.query(OrgCredit)
         .filter(
             OrgCredit.organization_id == organization_id,
-            OrgCredit.estimator_id == estimator_id,
             OrgCredit.billing_start_date == start,
             OrgCredit.billing_end_date == end,
             OrgCredit.is_topup == False,
@@ -395,7 +405,7 @@ def create_org_credit_entry(
     if duplicate:
         raise HTTPException(
             status_code=409,
-            detail="A base org credit entry already exists for this organization and billing period",
+            detail="A org credit entry already exists for this organization and billing period",
         )
 
     row = OrgCredit(
@@ -427,6 +437,130 @@ def create_org_credit_entry(
     db.commit()
     db.refresh(row)
     db.refresh(invoice)
+    return row, invoice
+
+
+def update_org_credit_entry(
+    db: Session,
+    org_credit_id: int,
+    estimator_id: Optional[int] = None,
+    credits: Optional[float] = None,
+    billing_cycle: str = "monthly",
+    payment_status: Optional[str] = None,
+    billing_start_date: Optional[date] = None,
+    notes: Optional[str] = None,
+) -> Tuple[OrgCredit, OrgCreditInvoice]:
+
+    row = db.query(OrgCredit).filter(OrgCredit.id == org_credit_id).first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Org credit entry not found")
+
+    if row.billing_cycle.lower() != "monthly":
+        raise HTTPException(
+            status_code=400,
+            detail="Only monthly billing_cycle is supported",
+        )
+
+    if payment_status is not None and payment_status not in {"unpaid"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only unpaid billing can be edited.",
+        )
+
+    if estimator_id is None and credits is None and row.estimator_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Either estimator or credits must be provided",
+        )
+
+    payable_amount = None
+
+    # estimator update
+    if estimator_id is not None:
+
+        estimator = _get_estimator_or_404(db, estimator_id)
+
+        total_credit, payable_amount, _ = (
+            _extract_total_credit_and_payable_from_estimator(estimator)
+        )
+
+        row.estimator_id = estimator_id
+        row.total_credit = total_credit
+
+    # custom credits update
+    elif credits is not None:
+
+        row.estimator_id = None
+        row.total_credit = credits
+
+        payable_amount = credits
+
+    # billing date update
+    if billing_start_date is not None:
+
+        end = _month_end(billing_start_date)
+        period = _billing_period(billing_start_date)
+
+        duplicate = (
+            db.query(OrgCredit)
+            .filter(
+                OrgCredit.organization_id == row.organization_id,
+                OrgCredit.billing_start_date == billing_start_date,
+                OrgCredit.billing_end_date == end,
+                OrgCredit.is_topup == False,
+                OrgCredit.id != row.id,
+            )
+            .first()
+        )
+
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A org credit entry already exists for this "
+                    "organization and billing period"
+                ),
+            )
+
+        row.billing_start_date = billing_start_date
+        row.billing_end_date = end
+        row.billing_month = period
+
+    # payment status update
+    if payment_status is not None:
+        row.payment_status = payment_status
+
+    # notes update
+    if notes is not None:
+        row.notes = notes
+
+    invoice = (
+        db.query(OrgCreditInvoice)
+        .filter(OrgCreditInvoice.org_credit_id == row.id)
+        .first()
+    )
+
+    if invoice:
+
+        if payable_amount is not None:
+            invoice.invoice_amount = payable_amount
+
+        invoice.payment_done = row.payment_status == "paid"
+
+    _recalculate_balance_for_period(
+        db,
+        row.organization_id,
+        row.billing_month,
+    )
+
+    db.commit()
+
+    db.refresh(row)
+
+    if invoice:
+        db.refresh(invoice)
+
     return row, invoice
 
 

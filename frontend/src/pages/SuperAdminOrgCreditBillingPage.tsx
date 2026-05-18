@@ -32,6 +32,7 @@ import {
   //ToggleButton,
   ToggleButtonGroup,
   Typography,
+  Snackbar,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
@@ -160,6 +161,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
   const [busyAction, setBusyAction] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [creditError, setCreditError] = useState("");
   const [commitPopupOpen, setCommitPopupOpen] = useState(false);
   const [commitPopupMessage, setCommitPopupMessage] = useState("");
   const [automationResult, setAutomationResult] =
@@ -366,24 +368,24 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
 
   const handleCreateOrgCredit = async () => {
     if (!createOrgId) {
-      setError("Please choose organization");
+      setCreditError("Please choose organization");
       return;
     }
     if (createPaymentStatus === "paid" && !createNotes.trim()) {
-      setError("Notes are required when payment status is Paid.");
+      setCreditError("Notes are required when payment status is Paid.");
       return;
     }
     const customTrim = createCustomCredits.trim();
     if (customTrim !== "") {
       const customNum = Number(customTrim);
       if (!Number.isFinite(customNum) || customNum <= 0) {
-        setError("Customize credits must be a positive number.");
+        setCreditError("Customize credits must be a positive number.");
         return;
       }
     }
 
     if (!createCustomCredits && !createEstimatorId) {
-      setError("Either select an estimator or enter custom credits");
+      setCreditError("Either select an estimator or enter custom credits");
       return;
     }
 
@@ -392,7 +394,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
     const customCreditsSnapshot = createCustomCredits.trim();
 
     setBusyAction(true);
-    setError("");
+    setCreditError("");
     setSuccess("");
     try {
       const payload = {
@@ -436,7 +438,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         }
       }
     } catch (createError) {
-      setError(parseError(createError));
+      setCreditError(parseError(createError));
     } finally {
       setBusyAction(false);
     }
@@ -1024,16 +1026,35 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
         </Stack>
       </Paper>
 
-      {error ? (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
-          {error}
+      <Snackbar
+        open={Boolean(success || error)}
+        autoHideDuration={4000}
+        onClose={() => {
+          setError("");
+          setSuccess("");
+        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        sx={{
+          zIndex: 999999999,
+        }}
+      >
+        <Alert
+          severity={error ? "error" : "success"}
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          sx={{
+            borderRadius: "14px",
+            boxShadow: (theme) =>
+              `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+              }20`,
+            zIndex: 999999999,
+          }}
+        >
+          {error || success}
         </Alert>
-      ) : null}
-      {success ? (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess("")}>
-          {success}
-        </Alert>
-      ) : null}
+      </Snackbar>
       {automationResult ? (
         <Alert
           severity="info"
@@ -1823,6 +1844,11 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
           {editTarget ? "Edit Org Credit Entry" : "Create Org Credit Entry"}
         </DialogTitle>
         <DialogContent>
+          {creditError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {creditError}
+            </Alert>
+          )}
           <Grid container spacing={1.4} sx={{ mt: 0.1 }}>
             <Grid item xs={12}>
               <FormControl fullWidth size="small">
@@ -1848,9 +1874,12 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 <Select
                   value={createEstimatorId}
                   label="Estimator"
-                  onChange={(event) =>
-                    setCreateEstimatorId(Number(event.target.value))
-                  }
+                  onChange={(event) => {
+                    setCreateEstimatorId(Number(event.target.value));
+
+                    // Clear custom credits when estimator selected
+                    setCreateCustomCredits("");
+                  }}
                 >
                   {estimators.map((est) => (
                     <MenuItem key={est.id} value={est.id}>
@@ -1883,7 +1912,14 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                 type="number"
                 label="Credits"
                 value={createCustomCredits}
-                onChange={(event) => setCreateCustomCredits(event.target.value)}
+                onChange={(event) => {
+                  setCreateCustomCredits(event.target.value);
+
+                  // Clear estimator when custom credits entered
+                  if (event.target.value !== "") {
+                    setCreateEstimatorId(null);
+                  }
+                }}
                 inputProps={{ min: 0, step: "any" }}
               />
             </Grid>

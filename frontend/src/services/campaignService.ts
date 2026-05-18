@@ -412,8 +412,8 @@ export const campaignService = {
   },
 
   async runDueCampaigns(): Promise<{
-    due_count: number;
     executed_count: number;
+    failed_count: number;
     skipped_count: number;
   }> {
     const response = await api.post("/api/admin/campaigns/run-due");
