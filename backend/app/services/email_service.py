@@ -965,7 +965,8 @@ def send_widget_test_link_email(
         )
 
     sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
-    envelope_sender = (settings.smtp_username or sender_email).strip()
+    envelope_sender = sender_email
+
     if not sender_email or not envelope_sender:
         return False, "EMAIL_SENDER/SMTP_USERNAME is not configured"
 
@@ -1022,6 +1023,13 @@ def send_widget_test_link_email(
 
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        logger.info(
+            "SMTP send debug | username=%s | sender=%s | envelope=%s",
+            settings.smtp_username,
+            sender_email,
+            envelope_sender,
+        )
 
         with _open_smtp_server(get_org_smtp_config(settings)) as server:
             if settings.smtp_username and settings.smtp_password:
