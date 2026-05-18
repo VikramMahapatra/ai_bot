@@ -888,7 +888,7 @@ def init_db():
         try:
             conn.execute(text("""
                 ALTER TABLE org_credits
-                ALTER COLUMN IF EXISTS estimator_id DROP NOT NULL;
+                ALTER COLUMN estimator_id DROP NOT NULL;
             """))
 
         except Exception as e:
