@@ -38,6 +38,8 @@ from app.services.org_credit_billing_service import run_daily_org_credit_billing
 import logging
 import asyncio
 
+from app.api.campaigns import run_daily_due_campaign_daemon
+
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -55,6 +57,9 @@ call_campaign_daemon_stop_event = asyncio.Event()
 
 org_credit_billing_daemon_task = None
 org_credit_billing_daemon_stop_event = asyncio.Event()
+
+due_campaign_daemon_task = None
+due_campaign_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -146,6 +151,12 @@ async def startup_event():
     )
     logger.info("Org-credit billing daemon started")
 
+    due_campaign_daemon_stop_event.clear()
+    due_campaign_daemon_task = asyncio.create_task(
+        run_daily_due_campaign_daemon(due_campaign_daemon_stop_event)
+    )
+    logger.info("Due campaign daemon started")
+
     logger.info("✅ Backend is ready!")
 
 
@@ -155,9 +166,12 @@ async def shutdown_event():
     global outcome_daemon_task
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
+    global due_campaign_daemon_task
     outcome_daemon_stop_event.set()
     call_campaign_daemon_stop_event.set()
     org_credit_billing_daemon_stop_event.set()
+    due_campaign_daemon_stop_event.set()
+
     if outcome_daemon_task:
         try:
             await outcome_daemon_task
@@ -175,6 +189,12 @@ async def shutdown_event():
             await org_credit_billing_daemon_task
         except Exception:
             logger.exception("Error while stopping org-credit billing daemon")
+
+    if due_campaign_daemon_task:
+        try:
+            await due_campaign_daemon_task
+        except Exception:
+            logger.exception("Error while stopping due campaign daemon")
 
 
 @app.get("/")

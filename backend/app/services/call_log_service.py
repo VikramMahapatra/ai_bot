@@ -172,6 +172,7 @@ def get_call_logs(
                 CallCampaign.name.ilike(f"%{params.search}%"),
                 CallLog.status.ilike(f"%{params.search}%"),
                 CallLog.type.ilike(f"%{params.search}%"),
+                CallLog.phone.ilike(f"%{params.search}%"),
             )
         )
 

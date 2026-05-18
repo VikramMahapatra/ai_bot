@@ -884,3 +884,13 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE org_credits
+                ALTER COLUMN IF EXISTS estimator_id DROP NOT NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

@@ -3,7 +3,6 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-
 PaymentStatus = Literal["paid", "unpaid"]
 BillingCycle = Literal["monthly"]
 PartialPaymentStrategy = Literal["keep_open", "create_invoice", "full_payment"]
@@ -11,7 +10,8 @@ PartialPaymentStrategy = Literal["keep_open", "create_invoice", "full_payment"]
 
 class OrgCreditCreateRequest(BaseModel):
     organization_id: int
-    estimator_id: int
+    estimator_id: Optional[int] = None
+    total_credits: Optional[float] = None
     billing_cycle: BillingCycle = "monthly"
     payment_status: PaymentStatus = "unpaid"
     billing_start_date: Optional[date] = None
@@ -27,7 +27,7 @@ class OrgCreditTopupRequest(BaseModel):
 class OrgCreditResponse(BaseModel):
     id: int
     organization_id: int
-    estimator_id: int
+    estimator_id: Optional[int] = None
     parent_org_credit_id: Optional[int] = None
     total_credit: float
     billing_cycle: str
