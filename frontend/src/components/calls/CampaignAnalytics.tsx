@@ -444,7 +444,7 @@ const CampaignAnalytics = () => {
             {" "}
             {/* increase card height */}
             <CardContent>
-              <Typography fontWeight={600}>Call Outcomes</Typography>
+              <Typography fontWeight={600}>Call Status</Typography>
               <Box height={250}>
                 {" "}
                 {/* increase chart container */}
