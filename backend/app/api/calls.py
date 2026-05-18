@@ -2,7 +2,7 @@ from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy import Float, case, func, extract, cast
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.auth import get_current_user
@@ -44,6 +44,41 @@ ENDED_REASON_GROUP: dict[str, str] = {
     "customer-ended-call": "Connected",
     "assistant-ended-call": "Connected",
 }
+
+ENDED_REASON_LABELS: dict[str, str] = {
+    "customer-busy": "Customer Busy",
+    "customer-did-not-answer": "No Answer",
+    "silence-timed-out": "Silence Time Out",
+    "exceeded-max-duration": "Exceeded Max Duration",
+    "customer-ended-call": "Customer Ended",
+    "assistant-ended-call": "Assistant Ended",
+    "failed-to-connect": "Failed to Connect",
+    "temporarily-unavailable": "Temporarily Unavailable",
+}
+
+
+def normalize_reason(reason: str | None) -> str:
+    if not reason:
+        return "Unknown"
+
+    reason = reason.lower()
+
+    # high priority partial matches
+    if "failed-to-connect" in reason:
+        return "Failed to Connect"
+
+    if "temporarily-unavailable" in reason:
+        return "Temporarily Unavailable"
+
+    # exact mappings
+    return {
+        "customer-busy": "Customer Busy",
+        "customer-did-not-answer": "No Answer",
+        "silence-timed-out": "Silence Time Out",
+        "exceeded-max-duration": "Exceeded Max Duration",
+        "customer-ended-call": "Customer Ended",
+        "assistant-ended-call": "Assistant Ended",
+    }.get(reason, "Unknown")
 
 
 @router.get("/analytics")
@@ -265,7 +300,16 @@ def call_analytics(
         db.query(
             extract("dow", CallLog.start_time).label("weekday"),
             func.count(CallLog.id).label("total"),
-            func.count(func.nullif(CallLog.status != "ended", True)).label("ended"),
+            func.sum(
+                case(
+                    (
+                        (CallLog.duration.isnot(None))
+                        & (cast(CallLog.duration, Float) > 0),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("answered"),
         )
         .filter(*filters)
         .group_by("weekday")
@@ -282,25 +326,19 @@ def call_analytics(
         row = weekday_map.get(sql_dow)
 
         total = row.total if row else 0
-        completed = row.ended if row else 0
+        completed = row.answered if row else 0
         rate = round((completed / total) * 100, 2) if total else 0
 
         pickup_trend.append({"day": day_name, "rate": rate})
 
-    # Call Outcomes
-    # Fetch all call logs for the selected campaign
+    # Call Ended Reasons
     call_logs = db.query(CallLog.ended_reason).filter(*filters).all()
 
-    # Map to user-friendly status
-    mapped_status = [
-        ENDED_REASON_GROUP.get(r.ended_reason, "Not Connected") for r in call_logs
-    ]
+    mapped_reasons = [normalize_reason(r.ended_reason) for r in call_logs]
 
-    # Count occurrences
-    status_counts = Counter(mapped_status)
+    reason_counts = Counter(mapped_reasons)
 
-    # Transform for frontend
-    call_status_data = [{"name": k, "value": v} for k, v in status_counts.items()]
+    call_status_data = [{"name": k, "value": v} for k, v in reason_counts.items()]
 
     latest_conversation = (
         db.query(

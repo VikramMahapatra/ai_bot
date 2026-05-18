@@ -455,7 +455,7 @@ const AdminDashboard: React.FC = () => {
     {
       label: "Total Agents",
       value: numberOrZero(stats?.total_widgets) + numberOrZero(stats?.total_agents),
-      hint: `Chats is ${numberOrZero(stats?.total_widgets)} and Calls is ${numberOrZero(stats?.total_agents)}`,
+      hint: `Chats are ${numberOrZero(stats?.total_widgets)} and Calls are ${numberOrZero(stats?.total_agents)}`,
       icon: <SupportAgentIcon sx={{ color: theme.palette.primary.dark }} />,
       gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,
       wave: "#4b84ce",
