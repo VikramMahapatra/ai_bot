@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
+from numpy import extract
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -348,7 +349,9 @@ def _refresh_org_credit_payment_status(db: Session, org_credit_id: int) -> None:
         )
         .first()
     )
-    row.payment_status = "unpaid" if has_open_invoice else "paid"
+
+    if has_open_invoice:
+        row.payment_status = "paid"
     db.flush()
 
 
@@ -392,16 +395,27 @@ def create_org_credit_entry(
     end = _month_end(start)
     period = _billing_period(start)
 
+    if not isinstance(start, date):
+        start = start.date()
+
+    month_start = start.replace(day=1)
+
+    if start.month == 12:
+        next_month = start.replace(year=start.year + 1, month=1, day=1)
+    else:
+        next_month = start.replace(month=start.month + 1, day=1)
+
     duplicate = (
         db.query(OrgCredit)
         .filter(
             OrgCredit.organization_id == organization_id,
-            OrgCredit.billing_start_date == start,
-            OrgCredit.billing_end_date == end,
             OrgCredit.is_topup == False,
+            OrgCredit.billing_start_date >= month_start,
+            OrgCredit.billing_start_date < next_month,
         )
         .first()
     )
+
     if duplicate:
         raise HTTPException(
             status_code=409,
@@ -462,7 +476,7 @@ def update_org_credit_entry(
             detail="Only monthly billing_cycle is supported",
         )
 
-    if payment_status is not None and payment_status not in {"unpaid"}:
+    if payment_status is not None and row.payment_status != "unpaid":
         raise HTTPException(
             status_code=400,
             detail="Only unpaid billing can be edited.",
@@ -502,26 +516,44 @@ def update_org_credit_entry(
         end = _month_end(billing_start_date)
         period = _billing_period(billing_start_date)
 
-        duplicate = (
-            db.query(OrgCredit)
-            .filter(
-                OrgCredit.organization_id == row.organization_id,
-                OrgCredit.billing_start_date == billing_start_date,
-                OrgCredit.billing_end_date == end,
-                OrgCredit.is_topup == False,
-                OrgCredit.id != row.id,
-            )
-            .first()
-        )
+        month_start = billing_start_date.replace(day=1)
 
-        if duplicate:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "A org credit entry already exists for this "
-                    "organization and billing period"
-                ),
+        if billing_start_date.month == 12:
+            next_month = billing_start_date.replace(
+                year=billing_start_date.year + 1, month=1, day=1
             )
+        else:
+            next_month = billing_start_date.replace(
+                month=billing_start_date.month + 1, day=1
+            )
+
+        if row.is_topup and row.billing_start_date != billing_start_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Billing start date cannot be updated for top-up entries",
+            )
+
+        if not row.is_topup and row.billing_start_date != billing_start_date:
+            duplicate = (
+                db.query(OrgCredit)
+                .filter(
+                    OrgCredit.organization_id == row.organization_id,
+                    OrgCredit.billing_start_date >= month_start,
+                    OrgCredit.billing_start_date < next_month,
+                    OrgCredit.is_topup == False,
+                    OrgCredit.id != row.id,
+                )
+                .first()
+            )
+
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "A org credit entry already exists for this "
+                        "organization and billing period"
+                    ),
+                )
 
         row.billing_start_date = billing_start_date
         row.billing_end_date = end
@@ -1114,6 +1146,9 @@ def get_organization_summary(
 
     db.commit()
     db.refresh(balance)
+
+    organization = _get_organization_or_404(db, organization_id)
+
     return {
         "organization_id": organization_id,
         "organization_name": organization.name,
@@ -1509,7 +1544,6 @@ def _build_next_cycle_if_needed(
             db.query(OrgCredit)
             .filter(
                 OrgCredit.organization_id == current.organization_id,
-                OrgCredit.estimator_id == current.estimator_id,
                 OrgCredit.is_topup == False,
                 OrgCredit.billing_start_date == next_start,
                 OrgCredit.billing_end_date == next_end,
@@ -1521,10 +1555,14 @@ def _build_next_cycle_if_needed(
             current = existing
             continue
 
-        estimator = _get_estimator_or_404(db, current.estimator_id)
-        total_credit, payable_amount, _ = (
-            _extract_total_credit_and_payable_from_estimator(estimator)
-        )
+        if current.estimator_id:
+            estimator = _get_estimator_or_404(db, current.estimator_id)
+            total_credit, payable_amount, _ = (
+                _extract_total_credit_and_payable_from_estimator(estimator)
+            )
+        else:
+            total_credit = current.total_credit
+            payable_amount = total_credit
 
         new_row = OrgCredit(
             organization_id=current.organization_id,
@@ -1564,13 +1602,11 @@ def run_billing_automation(db: Session, today: Optional[date] = None) -> Dict[st
 
     rows = (
         db.query(OrgCredit)
-        .filter(
-            OrgCredit.is_topup == False,
-        )
+        .filter(OrgCredit.is_topup == False)
         .order_by(
             OrgCredit.organization_id.asc(),
-            OrgCredit.estimator_id.asc(),
             OrgCredit.billing_end_date.desc(),
+            OrgCredit.payment_status == "paid",
         )
         .all()
     )

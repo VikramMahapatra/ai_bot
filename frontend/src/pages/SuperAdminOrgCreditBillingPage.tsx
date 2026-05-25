@@ -1268,8 +1268,9 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                       </Typography>
                       <Typography variant="body2">
                         <strong>Estimator:</strong>{" "}
-                        {estimatorLabelById.get(row.estimator_id) ||
-                          `Estimator #${row.estimator_id}`}
+                        {row.estimator_id ? (
+                          estimatorLabelById.get(row.estimator_id) ||
+                          `Estimator #${row.estimator_id}`) : "N/A"}
                       </Typography>
                       <Typography variant="body2">
                         <strong>Billing:</strong> {row.billing_month} (
@@ -1340,8 +1341,10 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                           `Org #${row.organization_id}`}
                       </TableCell>
                       <TableCell>
-                        {estimatorLabelById.get(row.estimator_id) ||
-                          `Estimator #${row.estimator_id}`}
+                        {row.estimator_id ? (
+                          estimatorLabelById.get(row.estimator_id) ||
+                          `Estimator #${row.estimator_id}`
+                        ) : "N/A"}
                       </TableCell>
                       <TableCell>{toCurrency(row.total_credit)}</TableCell>
                       <TableCell>{row.billing_month}</TableCell>

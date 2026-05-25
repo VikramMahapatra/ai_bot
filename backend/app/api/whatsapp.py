@@ -166,7 +166,7 @@ async def upsert_global_whatsapp_config(
         payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
         payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
         payload.waba_id = settings.ZENTRIXEL_WABA_ID
-        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_I
+        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_ID
 
     if not config:
         config = WhatsAppChannel(
@@ -410,8 +410,14 @@ async def exchange_embedded_signup_code(
             config_query = config_query.filter(
                 WhatsAppChannel.widget_id == payload.widget_id
             )
+        else:
+            config_query = config_query.filter(WhatsAppChannel.widget_id.is_(None))
 
         config = config_query.first()
+
+        print(
+            f"Auto-saving WhatsApp config : {config.id} with access token: {access_token}"
+        )  # Debug log
 
         if not config:
             config = WhatsAppChannel(

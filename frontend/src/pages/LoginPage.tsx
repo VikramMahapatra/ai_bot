@@ -260,7 +260,7 @@ const LoginPage: React.FC = () => {
                   </Avatar>
                   <Box>
                     <Typography sx={{ fontSize: 12, letterSpacing: 1.6, fontWeight: 800, opacity: 0.84 }}>
-                      ZENTRIXEL AI CHATBOT PLATFORM
+                      ZENTRIXEL CONVERSATIONAL AI PLATFORM
                     </Typography>
                     <Typography sx={{ fontSize: 14, opacity: 0.88 }}>
                       Enterprise Conversational Suite
