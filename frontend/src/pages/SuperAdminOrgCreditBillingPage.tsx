@@ -1347,7 +1347,7 @@ const SuperAdminOrgCreditBillingPage: React.FC = () => {
                         ) : "N/A"}
                       </TableCell>
                       <TableCell>{toCurrency(row.total_credit)}</TableCell>
-                      <TableCell>{row.billing_month}</TableCell>
+                      <TableCell>{row.billing_cycle_display}</TableCell>
                       <TableCell>
                         {row.is_topup
                           ? "Top-up"

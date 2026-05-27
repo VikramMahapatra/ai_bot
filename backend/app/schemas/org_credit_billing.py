@@ -35,6 +35,7 @@ class OrgCreditResponse(BaseModel):
     billing_start_date: date
     billing_end_date: date
     billing_month: str
+    billing_cycle_display: str
     is_topup: bool
     topup_credit: Optional[float] = None
     is_auto_generated: bool

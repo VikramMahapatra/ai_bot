@@ -5,8 +5,11 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.sql import func
 
@@ -15,6 +18,15 @@ from app.database import Base
 
 class OrgCredit(Base):
     __tablename__ = "org_credits"
+    __table_args__ = (
+        Index(
+            "uq_org_credits_org_month_non_topup",
+            "organization_id",
+            "billing_month",
+            unique=True,
+            postgresql_where=text("is_topup = false"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(
@@ -41,3 +53,10 @@ class OrgCredit(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    @property
+    def billing_cycle_display(self):
+        return (
+            f"{self.billing_start_date.strftime('%d %b %Y')} - "
+            f"{self.billing_end_date.strftime('%d %b %Y')}"
+        )

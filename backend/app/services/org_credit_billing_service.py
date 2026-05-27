@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
-
+from dateutil.relativedelta import relativedelta
 from fastapi import HTTPException
 from numpy import extract
 from sqlalchemy.orm import Session
@@ -40,6 +40,16 @@ def _next_month_start(day: date) -> date:
 
 def _billing_period(day: date) -> str:
     return day.strftime("%Y-%m")
+
+
+def _billing_cycle_period(next_start: date, next_end: date) -> str:
+    return f"{next_start.strftime('%d %b %Y')} - " f"{next_end.strftime('%d %b %Y')}"
+
+
+def _next_cycle_dates(current_end_date):
+    next_start = current_end_date + timedelta(days=1)
+    next_end = next_start + relativedelta(months=1) - timedelta(days=1)
+    return next_start, next_end
 
 
 def _normalize_billing_period(period: str) -> str:
@@ -287,9 +297,27 @@ def _get_or_create_balance(
     if balance:
         return balance
 
+    org_credit = (
+        db.query(OrgCredit)
+        .filter(
+            OrgCredit.organization_id == organization_id,
+            OrgCredit.billing_month == billing_period,
+            OrgCredit.is_topup == False,
+        )
+        .first()
+    )
+
+    if not org_credit:
+        raise HTTPException(
+            status_code=404,
+            detail="Org credit not found for billing period",
+        )
+
     balance = OrgCreditBalance(
         organization_id=organization_id,
         billing_period=billing_period,
+        billing_start_date=org_credit.billing_start_date if org_credit else None,
+        billing_end_date=org_credit.billing_end_date if org_credit else None,
         total_credit=0,
         used_credit=0,
         remaining_credit=0,
@@ -392,26 +420,20 @@ def create_org_credit_entry(
         payable_amount = credits or 0
 
     start = billing_start_date or datetime.now(timezone.utc).date()
-    end = _month_end(start)
+    end = start + relativedelta(months=1) - timedelta(days=1)
     period = _billing_period(start)
 
     if not isinstance(start, date):
         start = start.date()
-
-    month_start = start.replace(day=1)
-
-    if start.month == 12:
-        next_month = start.replace(year=start.year + 1, month=1, day=1)
-    else:
-        next_month = start.replace(month=start.month + 1, day=1)
 
     duplicate = (
         db.query(OrgCredit)
         .filter(
             OrgCredit.organization_id == organization_id,
             OrgCredit.is_topup == False,
-            OrgCredit.billing_start_date >= month_start,
-            OrgCredit.billing_start_date < next_month,
+            # overlap check
+            OrgCredit.billing_start_date <= end,
+            OrgCredit.billing_end_date >= start,
         )
         .first()
     )
@@ -1240,7 +1262,9 @@ def get_lapse_report(
                 {
                     "organization_id": org.id,
                     "organization_name": org.name,
-                    "billing_period": period,
+                    "billing_period": (
+                        balance.billing_cycle_display if balance else period
+                    ),
                     "total_credit": total_credit,
                     "used_credit": used_credit,
                     "remaining_credit": remaining_credit,
@@ -1532,12 +1556,11 @@ def _build_next_cycle_if_needed(
     current = source
 
     while True:
-        trigger_date = current.billing_end_date - timedelta(days=15)
+        trigger_date = current.billing_start_date - timedelta(days=15)
         if today < trigger_date:
             break
 
-        next_start = _next_month_start(current.billing_end_date)
-        next_end = _month_end(next_start)
+        next_start, next_end = _next_cycle_dates(current.billing_end_date)
         next_period = _billing_period(next_start)
 
         existing = (

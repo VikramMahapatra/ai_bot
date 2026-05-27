@@ -12,6 +12,7 @@ export interface OrgCredit {
   parent_org_credit_id?: number | null;
   total_credit: number;
   billing_cycle: string;
+  billing_cycle_display: string;
   payment_status: string;
   billing_start_date: string;
   billing_end_date: string;
