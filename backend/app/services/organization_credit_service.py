@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from requests import Session
 from sqlalchemy import and_, case, func
@@ -7,6 +8,25 @@ from app.models.organization_credit_profile import OrganizationCreditProfile
 from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.models.price_matrix_item import PriceMatrixItem
 from app.models.org_credit_balance import OrgCreditBalance
+
+
+def get_current_org_credit_balance(
+    db: Session,
+    organization_id: int,
+) -> Optional[OrgCreditBalance]:
+
+    today = datetime.now(timezone.utc).date()
+
+    return (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_start_date <= today,
+            OrgCreditBalance.billing_end_date >= today,
+        )
+        .with_for_update()
+        .first()
+    )
 
 
 def get_price_item(db, category, module, sub_module=None):
@@ -27,19 +47,13 @@ def get_credit_summary(
     organization_id: int,
 ):
 
-    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
-
     # -------------------------
     # Get Balance (Monthly)
     # -------------------------
 
-    balance = (
-        db.query(OrgCreditBalance)
-        .filter(
-            OrgCreditBalance.organization_id == organization_id,
-            OrgCreditBalance.billing_period == billing_period,
-        )
-        .first()
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
     )
 
     total_allocated = balance.total_credit if balance else 0
@@ -50,15 +64,16 @@ def get_credit_summary(
     # Reserved (From Usage Table)
     # -------------------------
 
-    current_month = func.date_trunc("month", func.now())
+    cycle_start = balance.billing_start_date if balance else None
+    cycle_end = balance.billing_end_date if balance else None
 
     reserved = (
         db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
         .filter(
             OrganizationCreditUsage.organization_id == organization_id,
             OrganizationCreditUsage.status == "reserved",
-            func.date_trunc("month", OrganizationCreditUsage.created_at)
-            == current_month,
+            OrganizationCreditUsage.created_at >= cycle_start,
+            OrganizationCreditUsage.created_at < cycle_end + timedelta(days=1),
         )
         .scalar()
     )
@@ -150,8 +165,8 @@ def get_credit_summary(
             and_(
                 OrganizationCreditUsage.price_matrix_item_id == PriceMatrixItem.id,
                 OrganizationCreditUsage.organization_id == organization_id,
-                func.date_trunc("month", OrganizationCreditUsage.created_at)
-                == current_month,
+                OrganizationCreditUsage.created_at >= cycle_start,
+                OrganizationCreditUsage.created_at < cycle_end + timedelta(days=1),
             ),
         )
         .group_by(
@@ -201,7 +216,7 @@ def get_credit_summary(
             for row in feature_summary
         ],
         "monthly_summary": {
-            "month": datetime.utcnow().strftime("%B %Y"),
+            "month": balance.billing_cycle_display if balance else None,
             "allocated": total_allocated,
             "reserved": reserved,
             "used": total_used,
@@ -319,17 +334,10 @@ def validate_credits(
     if not item:
         return False, "Invalid feature"
 
-    # Get current billing period
-    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
-
     # Fetch balance
-    balance = (
-        db.query(OrgCreditBalance)
-        .filter(
-            OrgCreditBalance.organization_id == organization_id,
-            OrgCreditBalance.billing_period == billing_period,
-        )
-        .first()
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
     )
 
     if not balance:
@@ -384,17 +392,10 @@ def deduct_credits(
 
     db.add(usage)
 
-    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
-
-    balance = (
-        db.query(OrgCreditBalance)
-        .filter(
-            OrgCreditBalance.organization_id == organization_id,
-            OrgCreditBalance.billing_period == billing_period,
-        )
-        .with_for_update()
-        .first()
-    )  # prevents race conditions
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
+    )
 
     if not balance:
         raise Exception("Credit balance not found")
@@ -477,16 +478,9 @@ def refund_credits(
     # -------------------------
     # Update balance
     # -------------------------
-    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
-
-    balance = (
-        db.query(OrgCreditBalance)
-        .filter(
-            OrgCreditBalance.organization_id == organization_id,
-            OrgCreditBalance.billing_period == billing_period,
-        )
-        .with_for_update()
-        .first()
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
     )
 
     if not balance:
@@ -572,16 +566,9 @@ def consume_reserved_credits(db, reference_type, reference_id, actual_quantity):
     usage.status = "consumed"
 
     # Update OrgCreditBalance
-    billing_period = datetime.now(timezone.utc).strftime("%Y-%m")
-
-    balance = (
-        db.query(OrgCreditBalance)
-        .filter(
-            OrgCreditBalance.organization_id == usage.organization_id,
-            OrgCreditBalance.billing_period == billing_period,
-        )
-        .with_for_update()
-        .first()
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=usage.organization_id,
     )
 
     if not balance:
