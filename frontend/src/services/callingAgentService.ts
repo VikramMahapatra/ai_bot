@@ -28,6 +28,7 @@ export interface CallingAgent {
     who_speaks_first?: "ai" | "user"
 
     // Voice
+    language?: string //New
     gender?: "Male" | "Female"
     accent?: string
     voice?: string
@@ -50,6 +51,13 @@ export interface CallingAgent {
 
     enable_sentiment?: boolean
     voice_mail_detection?: boolean
+    voicemail_start_at_seconds?: number, //New
+    voicemail_frequency_seconds?: number,//New
+    voicemail_max_retries?: number,//New
+    voicemail_beep_max_await_seconds?: number,//New
+
+    end_call_message?: string,//New
+
     enable_call_recording?: boolean
 
     // Call Success / Summary
@@ -61,14 +69,23 @@ export interface CallingAgent {
     // AI Behaviour
     important_data_points?: string
     enable_background_sound?: boolean
+    background_sound?: string
     background_sound_url?: string
     start_speaking_wait_seconds?: number
     stop_speaking_voice_seconds?: number
+
+    message_plan_idle_timeout_seconds?: number
+    message_plan_idle_message_max_spoken_count?: number
+    message_plan_idle_messages_selected: string[]
 
     // Transcriber
     transcriber_provider?: "deepgram" | "azure"
     transcriber_language?: string
     transcriber_model?: string
+
+    punctuation_boundaries?: string[] //New
+
+    temperature?: number //New
 
     // Files
     training_doc?: string[]
@@ -85,14 +102,27 @@ export interface CallingAgentLookup {
 
 export interface Voice {
     id?: number;
+    external_id?: number;
+
     caller_name: string;
     voice_id: string;
+    provider: string;
+
     gender: string;
-    language: string;
+
+    languages: string[];
+    tags?: string[];
+
     accent: string;
     recording_url: string;
-}
 
+    voice_types: string[];
+
+    is_active: boolean;
+    is_test_voice: boolean;
+    is_cloned_voice: boolean;
+    is_vapi_voice: boolean;
+}
 export interface CallingAgentFilters {
     search?: string
     skip?: number

@@ -63,6 +63,8 @@ from app.services.whatsapp_service import send_whatsapp_template_message
 from app.services.conversation_outcome_service import (
     _seconds_until_next_interval,
 )
+from app.models.organization_settings import OrganizationSettings
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -141,19 +143,75 @@ def _ensure_campaign_access(
         )
 
     channel = (campaign_type or "").strip().lower()
-    if channel == "email" and not limits.get("email_campaign_enabled", False):
-        raise HTTPException(
-            status_code=403, detail="Email campaigns are disabled for this organization"
+    if channel == "email":
+        if not limits.get("email_campaign_enabled", False):
+            raise HTTPException(
+                status_code=403,
+                detail="Email campaigns are disabled for this organization",
+            )
+
+        settings = (
+            db.query(OrganizationSettings)
+            .filter(OrganizationSettings.organization_id == organization_id)
+            .first()
         )
-    if channel == "sms" and not limits.get("sms_campaign_enabled", False):
-        raise HTTPException(
-            status_code=403, detail="SMS campaigns are disabled for this organization"
+
+        if (
+            not settings
+            or not settings.smtp_host
+            or not settings.smtp_port
+            or not settings.smtp_username
+            or not settings.smtp_password
+            or not settings.smtp_sender_email
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="SMTP settings are not configured for this organization",
+            )
+
+    if channel == "sms":
+        if not limits.get("sms_campaign_enabled", False):
+            raise HTTPException(
+                status_code=403,
+                detail="SMS campaigns are disabled for this organization",
+            )
+
+        sms_channel = (
+            db.query(TwilioSmsChannel)
+            .filter(
+                TwilioSmsChannel.organization_id == organization_id,
+                TwilioSmsChannel.is_active == True,
+            )
+            .first()
         )
-    if channel == "whatsapp" and not limits.get("whatsapp_enabled", False):
-        raise HTTPException(
-            status_code=403,
-            detail="WhatsApp campaigns are disabled for this organization",
+
+        if not sms_channel:
+            raise HTTPException(
+                status_code=400,
+                detail="SMS channel is not configured for this organization",
+            )
+
+    if channel == "whatsapp":
+        if not limits.get("whatsapp_enabled", False):
+            raise HTTPException(
+                status_code=403,
+                detail="WhatsApp campaigns are disabled for this organization",
+            )
+
+        whatsapp_channel = (
+            db.query(WhatsAppChannel)
+            .filter(
+                WhatsAppChannel.organization_id == organization_id,
+                WhatsAppChannel.widget_id.is_(None),
+            )
+            .first()
         )
+
+        if not whatsapp_channel:
+            raise HTTPException(
+                status_code=400,
+                detail="WhatsApp channel is not configured for this organization",
+            )
 
 
 class ContactListCreateRequest(BaseModel):
@@ -179,6 +237,7 @@ class CampaignCreateRequest(BaseModel):
     message_template: str
     contact_list_id: int
     product_id: Optional[int] = None
+    category: Optional[str] = None
     scheduled_time: Optional[datetime] = None
     status: Optional[str] = "draft"
     email_content_mode: Optional[str] = "manual"
@@ -2062,6 +2121,7 @@ async def create_campaign(
         message_template=message_template,
         contact_list_id=payload.contact_list_id,
         product_id=payload.product_id,
+        category=payload.category,
         scheduled_time=payload.scheduled_time,
         status=status_value,
         number_sent=0,
@@ -2422,10 +2482,6 @@ async def get_campaign_logs(
             "limit": limit,
         },
     }
-
-
-import phonenumbers
-from typing import Optional
 
 
 def format_phone_number(

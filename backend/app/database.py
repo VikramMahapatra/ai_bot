@@ -894,3 +894,18 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE voices
+                ADD COLUMN IF NOT EXISTS external_id INTEGER UNIQUE NULL,
+                ADD COLUMN IF NOT EXISTS languages JSONB NULL,
+                ADD COLUMN IF NOT EXISTS tags JSONB NULL,
+                ADD COLUMN IF NOT EXISTS voice_types JSONB NULL,
+                ADD COLUMN IF NOT EXISTS is_cloned_voice BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS is_vapi_voice BOOLEAN DEFAULT FALSE;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass

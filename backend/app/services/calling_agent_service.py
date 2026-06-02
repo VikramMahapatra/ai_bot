@@ -1,9 +1,11 @@
 # Create Agent
-from datetime import datetime, timezone
+import copy
+from datetime import datetime, timedelta, timezone
 import os
 import random
 import re
 import shutil
+from types import SimpleNamespace
 from typing import List, Optional
 from uuid import UUID, uuid4
 
@@ -21,7 +23,7 @@ from app.schemas.calling_agent import (
     TestCallRequest,
 )
 from app.utils.echoleads_client import EcholeadsClient
-from app.models.voices import Voice
+from app.models.voices import Voice, VoiceSync
 from app.models.call_logs import CallLog, CallTranscript
 from app.models.call_campaigns import CallCampaign
 from app.models.user import Organization
@@ -29,6 +31,7 @@ from app.services.call_log_service import process_call, sync_test_call_log
 from app.services import organization_credit_service
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_channel_service
+from app.database import SessionLocal
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
@@ -96,6 +99,7 @@ def create_agent(
             agent.inbound_phone_number if agent.type.lower() == "inbound" else None
         ),
         # Voice
+        language=agent.language,
         gender=agent.gender,
         accent=agent.accent,
         voice=agent.voice,
@@ -113,13 +117,18 @@ def create_agent(
         call_forwarding_number=agent.call_forwarding_number,
         call_forwarding_role=agent.call_forwarding_role,
         call_forwarding_action_desc=agent.call_forwarding_action_desc,
-        # Analysis
+        # Call Behaviour
         silence_timeout=agent.silence_timeout,
         talking_speed=agent.talking_speed,
         max_call_duration=agent.max_call_duration,
         calendar_sync=agent.calendar_sync,
         enable_sentiment=agent.enable_sentiment,
         voice_mail_detection=agent.voice_mail_detection,
+        voicemail_start_at_seconds=agent.voicemail_start_at_seconds,
+        voicemail_frequency_seconds=agent.voicemail_frequency_seconds,
+        voicemail_max_retries=agent.voicemail_max_retries,
+        voicemail_beep_max_await_seconds=agent.voicemail_beep_max_await_seconds,
+        end_call_message=agent.end_call_message,
         enable_call_recording=agent.enable_call_recording,
         # Summary
         success_parameters=agent.success_parameters,
@@ -129,13 +138,19 @@ def create_agent(
         # AI Config
         important_data_points=agent.important_data_points,
         enable_background_sound=agent.enable_background_sound,
+        background_sound=agent.background_sound,
         background_sound_url=agent.background_sound_url,
         start_speaking_wait_seconds=agent.start_speaking_wait_seconds,
         stop_speaking_voice_seconds=agent.stop_speaking_voice_seconds,
+        temperature=agent.temperature,
+        message_plan_idle_timeout_seconds=agent.message_plan_idle_timeout_seconds,
+        message_plan_idle_message_max_spoken_count=agent.message_plan_idle_message_max_spoken_count,
+        message_plan_idle_messages_selected=agent.message_plan_idle_messages_selected,
         # Transcriber
         transcriber_provider=agent.transcriber_provider,
         transcriber_language=agent.transcriber_language,
         transcriber_model=agent.transcriber_model,
+        punctuation_boundaries=agent.punctuation_boundaries,
         status="pending",
         external_agent_name=unique_agent_code,
     )
@@ -145,70 +160,11 @@ def create_agent(
 
     # CREATE REQUEST TO ECHO LEADS
     echoleads = EcholeadsClient(organization_id)
-    echo_payload = {
-        "name": db_agent.external_agent_name,
-        "agent_call_type": (
-            "outgoing" if agent.type.lower() == "outbound" else "incoming"
-        ),
-        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
-        "firstMessage": agent.greeting,
-        "prompt": agent.prompt,
-        "google_sheet_id": "",
-        "success_parameters": agent.success_parameters,
-        "data_extract": None,
-        "summary_capturing": agent.summary_prompt,
-        "summary": "1" if agent.summary_prompt else "0",
-        "sentiment_detection": "1" if agent.enable_sentiment else "0",
-        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
-        "call_recording": "0",
-        "automated_follow_ups": "0",
-        "calendar_sync": agent.calendar_sync,
-        "temperature": "10",
-        "agent_status": "draft",
-        "remaning_call_count": None,
-        "voice_id": agent.voice,
-        "speaks_first": agent.who_speaks_first,
-        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
-        "silence_timeout": str(agent.silence_timeout),
-        "talking_speed": str(agent.talking_speed),
-        "max_duration_seconds": str(agent.max_call_duration),
-        "voice_mail_detection_enabled": "1" if agent.voice_mail_detection else "0",
-        "voicemail_provider": "vapi",
-        "voicemail_beep_max_await_seconds": "5",
-        "voicemail_max_retries": "10",
-        "voicemail_start_at_seconds": "5",
-        "voicemail_frequency_seconds": "5",
-        "background_sound": "" if agent.enable_background_sound else "off",
-        "background_sound_url": agent.background_sound_url,
-        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
-        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
-        "analysis_plan": None,
-        "transaction_id": None,
-        "prompt_timezone": None,
-        "tool_ids": [],
-        "phone": None,
-        "transcriber": {
-            "provider": agent.transcriber_provider,
-            "language": agent.transcriber_language,
-            "model": agent.transcriber_model,
-        },
-        "transcriber_provider": agent.transcriber_provider,
-        "transcriber_language": agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model,
-        "punctuation_boundaries": [],
-        "server_location": agent.server_location,
-        "speech_to_speech": False,
-        "is_pay_as_you_go": True,
-        "is_connected_calls": False,
-        "call_forwarding_enabled": agent.enable_call_forwarding,
-        "call_forwarding_number": agent.call_forwarding_number,
-        "call_forwarding_action_desc": agent.call_forwarding_action_desc,
-        "call_forwarding_message": agent.call_forwarding_role,
-    }
-
-    if agent.type.lower() == "inbound":
-        echo_payload["inbound_phone"] = agent.inbound_phone_number
-        echo_payload["phone"] = agent.inbound_phone_number
+    echo_payload = build_echoleads_payload(
+        agent=agent,
+        agent_name=db_agent.external_agent_name,
+        agent_status="draft",
+    )
 
     external_agent_id = None
     external_agent_a_id = None
@@ -290,6 +246,13 @@ def update_agent(
             status_code=400, detail="Selected Agent not synced correctly"
         )
 
+    merged_data = {
+        **db_agent.__dict__,
+        **agent.dict(exclude_unset=True),
+    }
+
+    merged_agent = SimpleNamespace(**merged_data)
+
     unique_agent_code = f"ORG{org.id}AG{uuid4().hex[:5]}".upper()
 
     pattern = rf"^ORG{org.id}AG[A-F0-9]{{5}}$"
@@ -301,51 +264,11 @@ def update_agent(
 
     # 🔹 Update Echoleads
     echoleads = EcholeadsClient(db_agent.organization_id)
-
-    echo_payload = {
-        "name": db_agent.external_agent_name,
-        "agent_call_type": (
-            "outgoing" if db_agent.type.lower() == "outbound" else "incoming"
-        ),
-        "language": agent.transcriber_language or db_agent.transcriber_language,
-        "firstMessage": agent.greeting if agent.greeting else db_agent.greeting,
-        "prompt": agent.prompt if agent.prompt else db_agent.prompt,
-        "prompt_timezone": agent.prompt_timezone,
-        "voice_id": agent.voice if agent.voice else db_agent.voice,
-        "data_extract": agent.important_data_points or db_agent.important_data_points,
-        "summary_capturing": agent.summary_prompt,
-        "summary": "1" if agent.summary_prompt else "0",
-        "sentiment_detection": "1" if agent.enable_sentiment else "0",
-        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
-        "voicemail_provider": "vapi",
-        "voicemail_beep_max_await_seconds": "5",
-        "voicemail_max_retries": "10",
-        "voicemail_start_at_seconds": "5",
-        "voicemail_frequency_seconds": "5",
-        "calendar_sync": agent.calendar_sync,
-        "speaks_first": agent.who_speaks_first,
-        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
-        "silence_timeout": str(agent.silence_timeout),
-        "talking_speed": str(agent.talking_speed),
-        "max_duration_seconds": str(agent.max_call_duration),
-        "background_sound": "" if agent.enable_background_sound else "off",
-        "background_sound_url": agent.background_sound_url,
-        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
-        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
-        "transcriber": {
-            "provider": agent.transcriber_provider,
-            "language": agent.transcriber_language,
-            "model": agent.transcriber_model,
-        },
-        "transcriber_provider": agent.transcriber_provider,
-        "transcriber_language": agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model,
-        "agent_status": "draft" if db_agent.status == "testing" else db_agent.status,
-    }
-
-    if agent.type.lower() == "inbound":
-        echo_payload["inbound_phone"] = agent.inbound_phone_number
-        echo_payload["phone"] = agent.inbound_phone_number
+    echo_payload = build_echoleads_payload(
+        agent=merged_agent,
+        agent_name=db_agent.external_agent_name,
+        agent_status=("draft" if db_agent.status == "testing" else db_agent.status),
+    )
 
     # print(echo_payload)
     # Call Echoleads update
@@ -603,8 +526,11 @@ def test_call(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    if not agent.external_agent_id:
-        raise HTTPException(status_code=400, detail="Agent not synced with Echoleads")
+    if not agent.external_agent_id or not agent.external_agent_a_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to place a test call. Agent synchronization is pending.",
+        )
 
     # CHANNEL VALIDATION
     organization_channel_service.validate_channel_available(
@@ -719,72 +645,12 @@ def publish_agent(db: Session, agent_id: int):
     echoleads = EcholeadsClient(agent.organization_id)
 
     # Prepare minimal payload for Echoleads
-    echo_payload = {
-        "name": agent.external_agent_name,
-        "agent_call_type": (
-            "outgoing" if agent.type.lower() == "outbound" else "incoming"
-        ),
-        "language": agent.accent if agent.accent and agent.accent != "all" else "en-US",
-        "firstMessage": agent.greeting,
-        "prompt": agent.prompt,
-        "google_sheet_id": "",
-        "success_parameters": agent.success_parameters,
-        "data_extract": None,
-        "summary_capturing": agent.summary_prompt,
-        "summary": "1" if agent.summary_prompt else "0",
-        "sentiment_detection": "1" if agent.enable_sentiment else "0",
-        "voice_mail_detection": "1" if agent.voice_mail_detection else "0",
-        "call_recording": "0",
-        "automated_follow_ups": "0",
-        "calendar_sync": agent.calendar_sync,
-        "temperature": "10",
-        "agent_status": "active",
-        "remaning_call_count": None,
-        "voice_id": agent.voice,
-        "speaks_first": agent.who_speaks_first,
-        "agent_speaks_first": True if agent.who_speaks_first == "ai" else False,
-        "silence_timeout": str(agent.silence_timeout),
-        "talking_speed": str(agent.talking_speed),
-        "max_duration_seconds": str(agent.max_call_duration),
-        "voice_mail_detection_enabled": "1" if agent.voice_mail_detection else "0",
-        "voicemail_provider": "vapi",
-        "voicemail_beep_max_await_seconds": "0",
-        "voicemail_max_retries": "10",
-        "voicemail_start_at_seconds": "5",
-        "voicemail_frequency_seconds": "5",
-        "background_sound": "" if agent.enable_background_sound else "off",
-        "background_sound_url": agent.background_sound_url,
-        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
-        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
-        "analysis_plan": None,
-        "transaction_id": f"{agent.external_agent_a_id}",
-        "prompt_timezone": None,
-        "tool_ids": [],
-        "phone": None,
-        "transcriber": {
-            "provider": agent.transcriber_provider,
-            "language": agent.transcriber_language,
-            "model": agent.transcriber_model,
-        },
-        "transcriber_provider": agent.transcriber_provider,
-        "transcriber_language": agent.transcriber_language,
-        "transcriber_model": agent.transcriber_model,
-        "punctuation_boundaries": [],
-        "server_location": agent.server_location,
-        "speech_to_speech": False,
-        "is_pay_as_you_go": True,
-        "is_connected_calls": False,
-        "call_forwarding_enabled": agent.enable_call_forwarding,
-        "call_forwarding_number": agent.call_forwarding_number,
-        "call_forwarding_action_desc": agent.call_forwarding_action_desc,
-        "call_forwarding_message": agent.call_forwarding_role,
-    }
-
-    if agent.type.lower() == "inbound":
-        echo_payload["inbound_phone"] = agent.inbound_phone_number
-        echo_payload["phone"] = agent.inbound_phone_number
-
-    print(echo_payload)
+    echo_payload = build_echoleads_payload(
+        agent=agent,
+        agent_name=agent.external_agent_name,
+        agent_status="active",
+        transaction_id=str(agent.external_agent_a_id),
+    )
 
     # Update Echoleads agent
     echo_success = True
@@ -808,10 +674,112 @@ def publish_agent(db: Session, agent_id: int):
         "message": (
             "Agent published successfully"
             if echo_success
-            else "Publish failed. Upgrade account to proceed."
+            else "Publish failed. Please try again or contact support if the issue persists."
         ),
         "agent_id": agent.id,
     }
+
+
+def build_echoleads_payload(
+    agent,
+    agent_name: str,
+    agent_status: str,
+    transaction_id: str | None = None,
+):
+    payload = {
+        "name": agent_name,
+        "agent_call_type": (
+            "outgoing" if agent.type.lower() == "outbound" else "incoming"
+        ),
+        "language": (
+            agent.accent
+            if getattr(agent, "accent", None) and agent.accent != "all"
+            else "en"
+        ),
+        "firstMessage": agent.greeting,
+        "prompt": agent.prompt,
+        "google_sheet_id": "",
+        "success_parameters": getattr(
+            agent,
+            "success_parameters",
+            None,
+        ),
+        "data_extract": getattr(
+            agent,
+            "important_data_points",
+            None,
+        ),
+        "summary_capturing": agent.summary_prompt,
+        "summary": "1" if agent.summary_prompt else "0",
+        "sentiment_detection": ("1" if agent.enable_sentiment else "0"),
+        "call_recording": "0",
+        "automated_follow_ups": "0",
+        "calendar_sync": agent.calendar_sync,
+        "temperature": str(getattr(agent, "temperature", 1)),
+        "agent_status": agent_status,
+        "remaning_call_count": None,
+        "voice_id": agent.voice,
+        "speaks_first": agent.who_speaks_first,
+        "agent_speaks_first": (agent.who_speaks_first == "ai"),
+        "end_call_message": agent.end_call_message,
+        "silence_timeout": str(agent.silence_timeout),
+        "voice_speed": str(agent.talking_speed),
+        "max_duration_seconds": str(agent.max_call_duration),
+        "voice_mail_detection": ("1" if agent.voice_mail_detection else "0"),
+        "voice_mail_detection_enabled": ("1" if agent.voice_mail_detection else "0"),
+        "voicemail_provider": "vapi",
+        "voicemail_beep_max_await_seconds": str(agent.voicemail_beep_max_await_seconds),
+        "voicemail_max_retries": str(agent.voicemail_max_retries),
+        "voicemail_start_at_seconds": str(agent.voicemail_start_at_seconds),
+        "voicemail_frequency_seconds": str(agent.voicemail_frequency_seconds),
+        "background_sound": (
+            "off" if not agent.background_sound else agent.background_sound
+        ),
+        "background_sound_url": (agent.background_sound_url),
+        "start_speaking_wait_seconds": str(agent.start_speaking_wait_seconds),
+        "stop_speaking_voice_seconds": str(agent.stop_speaking_voice_seconds),
+        "analysis_plan": None,
+        "transaction_id": transaction_id,
+        "prompt_timezone": getattr(
+            agent,
+            "prompt_timezone",
+            None,
+        ),
+        "tool_ids": [],
+        "phone": None,
+        "message_plan_idle_timeout_seconds": str(
+            agent.message_plan_idle_timeout_seconds
+        ),
+        "message_plan_idle_message_max_spoken_count": str(
+            agent.message_plan_idle_message_max_spoken_count
+        ),
+        "message_plan_idle_messages_selected": agent.message_plan_idle_messages_selected
+        or [],
+        "transcriber": {
+            "provider": agent.transcriber_provider,
+            "language": agent.transcriber_language,
+            "model": agent.transcriber_model,
+        },
+        "transcriber_provider": (agent.transcriber_provider),
+        "transcriber_language": (agent.transcriber_language),
+        "transcriber_model": (agent.transcriber_model),
+        "punctuation_boundaries": agent.punctuation_boundaries or [],
+        "server_location": agent.server_location,
+        "speech_to_speech": False,
+        "is_pay_as_you_go": True,
+        "is_connected_calls": False,
+        "call_forwarding_enabled": (agent.enable_call_forwarding),
+        "call_forwarding_number": (agent.call_forwarding_number),
+        "call_forwarding_message": (agent.call_forwarding_role),
+    }
+
+    if agent.type.lower() == "inbound":
+        payload["inbound_phone"] = agent.inbound_phone_number
+        payload["phone"] = agent.inbound_phone_number
+
+    print(f"Built Echoleads payload: {payload}")
+
+    return payload
 
 
 def update_agent_status(
@@ -916,42 +884,167 @@ def all_agent_lookup(db: Session, organization_id: int, search: Optional[str] = 
     return [{"id": agent.id, "name": agent.name} for agent in agents]
 
 
-def get_voices(db: Session, organization_id: int):
+def get_voices(background_tasks: BackgroundTasks, db: Session, organization_id: int):
 
     voices = db.query(Voice).all()
 
-    # If already stored → return
-    if voices:
-        return voices
+    # First time load
+    if not voices:
+        sync_voices_from_echoleads(organization_id=organization_id)
 
-    # If empty → call Echoleads API
-    client = EcholeadsClient(organization_id)
-    response = client.fetch_voices()
+        return db.query(Voice).all()
 
-    voice_list = response.get("data", [])
+    # Existing data
+    sync_info = get_sync_info(db, organization_id)
 
-    for voice in voice_list:
+    should_sync = (
+        not sync_info
+        or sync_info.last_synced_at < datetime.utcnow() - timedelta(hours=6)
+    )
 
-        db_voice = Voice(
-            id=voice.get("id"),
-            caller_name=voice.get("caller_name"),
-            voice_id=voice.get("voice_id"),
-            provider=voice.get("provider"),
-            gender=voice.get("gender"),
-            language=voice.get("language"),
-            accent=voice.get("accent"),
-            recording_url=voice.get("recording_url"),
-            is_active=voice.get("is_active"),
-            is_test_voice=voice.get("is_test_voice"),
-            created_at=parse_datetime(voice.get("created_at")),
-            updated_at=parse_datetime(voice.get("updated_at")),
+    if should_sync:
+        background_tasks.add_task(
+            sync_voices_from_echoleads,
+            organization_id,
         )
 
-        db.add(db_voice)
+    return voices
 
-    db.commit()
 
-    return db.query(Voice).all()
+def sync_voices_from_echoleads(
+    organization_id: int,
+) -> dict:
+    db = SessionLocal()
+    created = 0
+    updated = 0
+    voice_list = []
+
+    try:
+        client = EcholeadsClient(organization_id)
+
+        response = client.fetch_voices()
+
+        voice_list = response.get("data", [])
+
+        existing_voices = {voice.external_id: voice for voice in db.query(Voice).all()}
+
+        for voice_data in voice_list:
+
+            voice_pk = voice_data.get("id")
+
+            api_updated_at = parse_datetime(voice_data.get("updated_at"))
+
+            db_voice = existing_voices.get(voice_pk)
+
+            if db_voice:
+
+                # Skip if nothing changed
+                if (
+                    db_voice.updated_at
+                    and api_updated_at
+                    and db_voice.updated_at == api_updated_at
+                ):
+                    continue
+
+                db_voice.caller_name = voice_data.get("caller_name")
+                db_voice.voice_id = voice_data.get("voice_id")
+                db_voice.provider = voice_data.get("provider")
+                db_voice.gender = voice_data.get("gender")
+
+                languages = voice_data.get("languages") or []
+                db_voice.languages = languages
+
+                db_voice.tags = voice_data.get("tags")
+                db_voice.accent = voice_data.get("accent")
+                db_voice.recording_url = voice_data.get("recording_url")
+
+                db_voice.voice_types = voice_data.get("voice_types")
+
+                db_voice.is_active = voice_data.get("is_active")
+                db_voice.is_test_voice = voice_data.get("is_test_voice")
+
+                db_voice.is_cloned_voice = voice_data.get(
+                    "isClonedVoice",
+                    False,
+                )
+
+                db_voice.is_vapi_voice = voice_data.get(
+                    "is_vapi_voice",
+                    False,
+                )
+
+                db_voice.created_at = parse_datetime(voice_data.get("created_at"))
+
+                db_voice.updated_at = api_updated_at
+
+                updated += 1
+
+            else:
+
+                languages = voice_data.get("languages") or []
+
+                db_voice = Voice(
+                    external_id=voice_pk,
+                    caller_name=voice_data.get("caller_name"),
+                    voice_id=voice_data.get("voice_id"),
+                    provider=voice_data.get("provider"),
+                    gender=voice_data.get("gender"),
+                    languages=languages,
+                    tags=voice_data.get("tags"),
+                    accent=voice_data.get("accent"),
+                    recording_url=voice_data.get("recording_url"),
+                    voice_types=voice_data.get("voice_types"),
+                    is_active=voice_data.get("is_active"),
+                    is_test_voice=voice_data.get("is_test_voice"),
+                    is_cloned_voice=voice_data.get(
+                        "isClonedVoice",
+                        False,
+                    ),
+                    is_vapi_voice=voice_data.get(
+                        "is_vapi_voice",
+                        False,
+                    ),
+                    created_at=parse_datetime(voice_data.get("created_at")),
+                    updated_at=api_updated_at,
+                )
+
+                db.add(db_voice)
+                created += 1
+
+        # IDs received from API
+        api_voice_ids = {
+            voice.get("id") for voice in voice_list if voice.get("id") is not None
+        }
+
+        # Delete voices that no longer exist in API
+        deleted = (
+            db.query(Voice)
+            .filter(~Voice.external_id.in_(api_voice_ids))
+            .delete(synchronize_session=False)
+        )
+
+        db.commit()
+    except Exception as e:
+        print(f"Voice sync failed: {str(e)}")
+        db.rollback()
+    finally:
+        db.close()
+
+    return {
+        "created": created,
+        "updated": updated,
+        "total": len(voice_list),
+        "synced_at": datetime.utcnow().isoformat(),
+    }
+
+
+def get_sync_info(
+    db: Session,
+    organization_id: int,
+) -> VoiceSync | None:
+    return (
+        db.query(VoiceSync).filter(VoiceSync.organization_id == organization_id).first()
+    )
 
 
 def parse_datetime(dt):

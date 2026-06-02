@@ -408,6 +408,18 @@ def create_org_credit_entry(
             status_code=400, detail="Either estimator or credits must be provided"
         )
 
+    # Check organization status
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == organization_id, Organization.is_active.is_(True))
+        .first()
+    )
+
+    if not organization:
+        raise HTTPException(
+            status_code=400, detail="Organization not found or is not active"
+        )
+
     _get_organization_or_404(db, organization_id)
 
     if estimator_id is not None:
@@ -510,6 +522,20 @@ def update_org_credit_entry(
             detail="Either estimator or credits must be provided",
         )
 
+    # Check organization status
+    organization = (
+        db.query(Organization)
+        .filter(
+            Organization.id == row.organization_id, Organization.is_active.is_(True)
+        )
+        .first()
+    )
+
+    if not organization:
+        raise HTTPException(
+            status_code=400, detail="Organization not found or is not active"
+        )
+
     payable_amount = None
 
     # estimator update
@@ -600,7 +626,7 @@ def update_org_credit_entry(
         if payable_amount is not None:
             invoice.invoice_amount = payable_amount
 
-        invoice.payment_done = row.payment_status == "paid"
+        invoice.payment_done_flag = row.payment_status == "paid"
 
     _recalculate_balance_for_period(
         db,
@@ -1556,12 +1582,25 @@ def _build_next_cycle_if_needed(
     current = source
 
     while True:
-        trigger_date = current.billing_start_date - timedelta(days=15)
+        next_start, next_end = _next_cycle_dates(current.billing_end_date)
+        next_period = _billing_period(next_start)
+
+        trigger_date = next_start - timedelta(days=15)
         if today < trigger_date:
             break
 
-        next_start, next_end = _next_cycle_dates(current.billing_end_date)
-        next_period = _billing_period(next_start)
+        # Check organization status
+        organization = (
+            db.query(Organization)
+            .filter(
+                Organization.id == current.organization_id,
+                Organization.is_active.is_(True),
+            )
+            .first()
+        )
+
+        if not organization:
+            break
 
         existing = (
             db.query(OrgCredit)

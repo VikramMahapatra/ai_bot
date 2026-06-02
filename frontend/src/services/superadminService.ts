@@ -39,20 +39,20 @@ import {
 import { OrgCreditAdminMonthSummary } from '../types/orgCreditBilling';
 
 export interface CreditUsageFilters {
-    organization_id?: number,
-    billing_period?: string,
-    search?: string;
-    skip?: number;
-    limit?: number;
+  organization_id?: number,
+  billing_period?: string,
+  search?: string;
+  skip?: number;
+  limit?: number;
 }
 
 export interface CrediUsageListResponse {
-    items: OrgCreditAdminMonthSummary[];
-    pagination: {
-        total: number;
-        skip: number;
-        limit: number;
-    };
+  items: OrgCreditAdminMonthSummary[];
+  pagination: {
+    total: number;
+    skip: number;
+    limit: number;
+  };
 }
 
 export const superadminService = {
@@ -72,8 +72,8 @@ export const superadminService = {
   },
 
   async listCreditUsage(params?: CreditUsageFilters): Promise<CrediUsageListResponse> {
-      const response = await api.get<CrediUsageListResponse>(`/api/superadmin/org-credit-usage`, { params });
-      return response.data;
+    const response = await api.get<CrediUsageListResponse>(`/api/superadmin/org-credit-usage`, { params });
+    return response.data;
   },
 
   async createOrganization(payload: {
@@ -105,6 +105,11 @@ export const superadminService = {
     }
   ) {
     const response = await api.put<SuperAdminOrganization>(`/api/superadmin/organizations/${orgId}`, payload);
+    return response.data;
+  },
+
+  async updateOrganizationStatus(orgId: number, isActive: boolean) {
+    const response = await api.patch<SuperAdminOrganization>(`/api/superadmin/organizations/${orgId}/status`, { is_active: isActive });
     return response.data;
   },
 
@@ -164,28 +169,28 @@ export const superadminService = {
     return response.data;
   },
 
-   // Channel
+  // Channel
   async getMasterChanels(): Promise<Channel[]> {
     const response = await api.get<Channel[]>(`/api/superadmin/master/channels`);
     return response.data;
   },
 
-   async getOrganizationChanels(orgId: number): Promise<OrganizationChannel[]> {
+  async getOrganizationChanels(orgId: number): Promise<OrganizationChannel[]> {
     const response = await api.get<OrganizationChannel[]>(`/api/superadmin/org/${orgId}/channels`);
     return response.data;
   },
 
   async createOrgChannel(orgId: number, channel_id: number) {
-    const response = await api.post<OrganizationChannel>(`/api/superadmin/org/${orgId}/channel`, {"channel_id": channel_id});
+    const response = await api.post<OrganizationChannel>(`/api/superadmin/org/${orgId}/channel`, { "channel_id": channel_id });
     return response.data;
   },
 
   async updateOrgChannel(orgChannelId: number, channel_id: number) {
-    const response = await api.put<OrganizationChannel>(`/api/superadmin/org/channel/${orgChannelId}`, {"channel_id": channel_id});
+    const response = await api.put<OrganizationChannel>(`/api/superadmin/org/channel/${orgChannelId}`, { "channel_id": channel_id });
     return response.data;
   },
 
-   async deleteOrgChannel(orgChannelId: number) {
+  async deleteOrgChannel(orgChannelId: number) {
     const response = await api.delete<OrganizationChannel>(`/api/superadmin/org/channel/${orgChannelId}`);
     return response.data;
   },

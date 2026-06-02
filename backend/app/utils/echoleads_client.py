@@ -133,6 +133,7 @@ class EcholeadsClient:
             )
 
             # print("====== ECHOLEADS API RESPONSE ======")
+            # print("Request Headers:", dict(response.request.headers))
             # print("URL:", f"{self.base_url}{endpoint}")
             # print("Status Code:", response.status_code)
             # print("Response Text:", response.text)

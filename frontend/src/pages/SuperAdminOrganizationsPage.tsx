@@ -498,6 +498,30 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       console.error(error);
     }
   };
+  const handleOrganizationStatusChange = async (
+    orgId: number,
+    isActive: boolean
+  ) => {
+    try {
+      const response = await superadminService.updateOrganizationStatus(
+        orgId,
+        isActive
+      );
+
+      setOrganizations((prev) =>
+        prev.map((org) =>
+          org.id === orgId
+            ? {
+              ...org,
+              is_active: response.is_active,
+            }
+            : org
+        )
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleDefault = async (row: any) => {
     await superadminService.setDefaultCallingNumber(row.id);
@@ -945,19 +969,45 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                         {formatDate(org.effective_joining_date)}
                       </Typography>
                     </Box>
-                    <Chip
-                      label={
-                        org.limits?.lead_generation_enabled
-                          ? "Lead Gen: ON"
-                          : "Lead Gen: OFF"
+                    {/* <FormControlLabel
+                      control={
+                        <Switch
+                          checked={org.is_active}
+                          onChange={(e) =>
+                            handleOrganizationStatusChange(org.id, e.target.checked)
+                          }
+                          color="success"
+                        />
                       }
-                      size="small"
-                      color={
-                        org.limits?.lead_generation_enabled
-                          ? "success"
-                          : "default"
-                      }
-                    />
+                      label={org.is_active ? "Active" : "Inactive"}
+                    /> */}
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                      px={1.5}
+                      py={0.5}
+                      borderRadius="999px"
+                      bgcolor={org.is_active ? "success.light" : "grey.200"}
+                      width="fit-content"
+                    >
+                      <Typography
+                        variant="body2"
+                        fontWeight={600}
+                        color={org.is_active ? "success.dark" : "text.secondary"}
+                      >
+                        {org.is_active ? "Active" : "Inactive"}
+                      </Typography>
+
+                      <Switch
+                        checked={org.is_active}
+                        onChange={(e) =>
+                          handleOrganizationStatusChange(org.id, e.target.checked)
+                        }
+                        color="success"
+                        size="small"
+                      />
+                    </Box>
                   </Stack>
 
                   <Stack
@@ -1117,7 +1167,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                   <TableCell>Admin</TableCell>
                   <TableCell>Joining Date</TableCell>
                   <TableCell>Effective Start Date</TableCell>
-                  <TableCell>Feature Snapshot</TableCell>
+                  <TableCell>Status</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -1131,13 +1181,35 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                 ) : (
                   pagedOrganizations.map((org) => (
                     <TableRow key={`org-table-${org.id}`} hover>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      <TableCell sx={{ maxWidth: 250, width: 250 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
                           {org.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {org.description || "-"}
-                        </Typography>
+
+                        <Tooltip title={org.description || "-"} arrow>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              display: "block",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              maxWidth: 200,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {org.description || "-"}
+                          </Typography>
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
@@ -1152,28 +1224,22 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                         {formatDate(org.effective_joining_date)}
                       </TableCell>
                       <TableCell>
-                        <Stack
-                          direction="row"
-                          spacing={0.8}
-                          flexWrap="wrap"
-                          useFlexGap
+                        <Tooltip
+                          title={org.is_active ? "Current Status: Active" : "Current Status: Inactive"}
+                          arrow
                         >
-                          <Chip
-                            label={`Lead: ${org.limits?.lead_generation_enabled ? "On" : "Off"}`}
+                          <Switch
+                            checked={org.is_active}
+                            onChange={(e) =>
+                              handleOrganizationStatusChange(
+                                org.id,
+                                e.target.checked
+                              )
+                            }
+                            color="success"
                             size="small"
-                            variant="outlined"
                           />
-                          <Chip
-                            label={`Voice: ${org.limits?.voice_chat_enabled ? "On" : "Off"}`}
-                            size="small"
-                            variant="outlined"
-                          />
-                          <Chip
-                            label={`WA: ${org.limits?.whatsapp_enabled ? "On" : "Off"}`}
-                            size="small"
-                            variant="outlined"
-                          />
-                        </Stack>
+                        </Tooltip>
                       </TableCell>
                       <TableCell align="right">
                         <Tooltip title="View">

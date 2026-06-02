@@ -20,6 +20,18 @@ export interface InstantReply {
     created_at?: string;
 }
 
+export interface SentimentDetails {
+    outcome?: string;
+    reasoning?: string;
+    sentiment?: "positive" | "neutral" | "negative";
+    confidence?: number;
+    key_signals?: string[];
+    next_action?: string;
+    customer_questions?: string[];
+}
+
+
+
 export interface CallLog {
     id: string;
     contact_id?: number;
@@ -33,6 +45,7 @@ export interface CallLog {
     status: string;
     ended_reason?: string;
     sentiment?: string;
+    sentiment_details?: SentimentDetails;
     call_summary?: string;
     follow_up_recommended?: string[];
     extract_data?: string;

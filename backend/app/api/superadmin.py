@@ -162,6 +162,7 @@ def _build_org_response(
         admin_email=admin_user.email if admin_user else None,
         limits=limits,
         echoleads_api_key=org.echoleads_api_key,
+        is_active=org.is_active,
     )
 
 
@@ -1113,6 +1114,28 @@ async def update_organization_with_admin(
     db.refresh(org)
     db.refresh(admin_user)
     return _build_org_response(db, org, admin_user)
+
+
+@router.patch("/organizations/{organization_id}/status")
+def update_organization_status(
+    organization_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
+
+    if not organization:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    organization.is_active = payload.get("is_active", True)
+
+    db.commit()
+    db.refresh(organization)
+
+    return _build_org_response(db, organization)
 
 
 @router.get("/organizations/{org_id}/limits", response_model=OrganizationLimitsResponse)
@@ -3377,4 +3400,3 @@ async def get_admin_org_credit_current_month_summary(
         org_list.append(OrgCreditAdminMonthSummaryResponse(**payload))
 
     return {"items": org_list, "total": total, "skip": skip, "limit": limit}
-

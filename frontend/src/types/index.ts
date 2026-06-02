@@ -285,6 +285,7 @@ export interface SuperAdminOrganization {
   admin_email?: string;
   limits?: OrganizationLimits;
   echoleads_api_key?: string;
+  is_active: boolean;
 }
 
 

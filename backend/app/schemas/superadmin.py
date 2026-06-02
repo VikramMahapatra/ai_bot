@@ -102,6 +102,7 @@ class SuperAdminOrganizationResponse(BaseModel):
     admin_email: Optional[str] = None
     limits: Optional[OrganizationLimitsResponse] = None
     echoleads_api_key: Optional[str] = None
+    is_active: bool
 
     class Config:
         from_attributes = True

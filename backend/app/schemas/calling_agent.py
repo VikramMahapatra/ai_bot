@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from sqlalchemy import Float
 
+
 class CallingAgentCreate(BaseModel):
     name: str
     type: str = "Outbound"
@@ -67,7 +68,27 @@ class CallingAgentCreate(BaseModel):
     transcriber_provider: Optional[str] = None
     transcriber_language: Optional[str] = None
     transcriber_model: Optional[str] = None
-    
+
+    language: Optional[str] = None
+
+    voicemail_start_at_seconds: Optional[int] = 5
+    voicemail_frequency_seconds: Optional[int] = 5
+    voicemail_max_retries: Optional[int] = 5
+    voicemail_beep_max_await_seconds: Optional[int] = 0
+
+    end_call_message: Optional[str] = None
+
+    background_sound: Optional[str] = None
+
+    message_plan_idle_timeout_seconds: Optional[float] = 28.7
+    message_plan_idle_message_max_spoken_count: Optional[int] = 4
+    message_plan_idle_messages_selected: Optional[List[str]] = []
+
+    punctuation_boundaries: Optional[List[str]] = []
+
+    temperature: Optional[float] = 0.4
+
+
 class CallingAgentUpdate(BaseModel):
 
     type: Optional[str] = None
@@ -123,23 +144,44 @@ class CallingAgentUpdate(BaseModel):
     transcriber_provider: Optional[str] = None
     transcriber_language: Optional[str] = None
     transcriber_model: Optional[str] = None
-  
-    
+
+    language: Optional[str] = None
+
+    voicemail_start_at_seconds: Optional[int] = None
+    voicemail_frequency_seconds: Optional[int] = None
+    voicemail_max_retries: Optional[int] = None
+    voicemail_beep_max_await_seconds: Optional[int] = None
+
+    end_call_message: Optional[str] = None
+
+    background_sound: Optional[str] = None
+
+    message_plan_idle_timeout_seconds: Optional[float] = None
+    message_plan_idle_message_max_spoken_count: Optional[int] = None
+    message_plan_idle_messages_selected: Optional[List[str]] = []
+
+    punctuation_boundaries: Optional[List[str]] = []
+
+    temperature: Optional[float] = None
+
+
 class CallingAgentRead(CallingAgentCreate):
     id: int
     created_at: datetime
 
     class Config:
         from_attributes = True
-        
-        
+
+
 class TestCallRequest(BaseModel):
     phone_no: str
     calling_no: str
     variables: Optional[Dict[str, str]] = {}
 
+
 class AgentStatusUpdate(BaseModel):
     status: str  # Active | Paused | Draft
-    
+
+
 class CallingNumberRequest(BaseModel):
     type: str

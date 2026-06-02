@@ -283,7 +283,12 @@ async def get_organizations_by_username(username: str, db: Session = Depends(get
 
     # Get unique organizations
     org_ids = set(user.organization_id for user in users)
-    organizations = db.query(Organization).filter(Organization.id.in_(org_ids)).all()
+
+    organizations = (
+        db.query(Organization)
+        .filter(Organization.id.in_(org_ids), Organization.is_active == True)
+        .all()
+    )
 
     return organizations
 

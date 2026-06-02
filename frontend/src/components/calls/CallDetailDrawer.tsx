@@ -426,7 +426,7 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                     <Box
                         sx={{
                             flex: 1,
-                            maxHeight: 400,
+                            maxHeight: 450,
                             overflowY: 'auto',
                             display: 'flex',
                             flexDirection: 'column',

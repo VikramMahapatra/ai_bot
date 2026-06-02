@@ -4,7 +4,8 @@ import {
     Typography,
     Grid,
     LinearProgress,
-    IconButton
+    IconButton,
+    Chip
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { CallLog } from "../../services/callLogService";
@@ -27,7 +28,15 @@ export default function CallInsightsDrawer({ open, onClose, data }: Props) {
 
     const leadInfo = data?.lead_info || {};
     const steps = data?.follow_up_recommended || [];
+    const sentimentDetails = data?.sentiment_details;
+    const customerQuestions = sentimentDetails?.customer_questions ?? [];
+    const keySignals = sentimentDetails?.key_signals ?? [];
 
+    const hasSentimentData =
+        !!sentimentDetails?.outcome ||
+        !!sentimentDetails?.reasoning ||
+        customerQuestions.length > 0 ||
+        keySignals.length > 0;
     return (
         <Drawer
             anchor="right"
@@ -86,6 +95,197 @@ export default function CallInsightsDrawer({ open, onClose, data }: Props) {
                         </Typography>
                     </Box>
                 </Box>
+                {/* ================= Sentiment Analysis ================= */}
+                {sentimentDetails && (
+                    <Box sx={{ mb: 3 }}>
+                        <Typography fontWeight={700} mb={1}>
+                            Sentiment Analysis
+                        </Typography>
+
+                        <Box
+                            sx={{
+                                background:
+                                    "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)",
+                                border: "1px solid #c4b5fd",
+                                borderRadius: 3,
+                                p: 2,
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    background: "#fff",
+                                    borderRadius: 2,
+                                    p: 2,
+                                }}
+                            >
+                                {!hasSentimentData ? (
+                                    <Box
+                                        sx={{
+                                            py: 4,
+                                            textAlign: "center",
+                                        }}
+                                    >
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                        >
+                                            No sentiment analysis is available for this call.
+                                        </Typography>
+                                    </Box>
+                                ) : (
+                                    <>
+                                        <Box mb={2}>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    fontWeight: 700,
+                                                    color: "text.secondary",
+                                                    textTransform: "uppercase",
+                                                    display: "block",
+                                                    mb: 0.5,
+                                                }}
+                                            >
+                                                Outcome
+                                            </Typography>
+
+                                            <Typography variant="body2">
+                                                {sentimentDetails.outcome || "-"}
+                                            </Typography>
+                                        </Box>
+
+                                        {customerQuestions.length > 0 && (
+                                            <Box mb={2}>
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                        fontWeight: 700,
+                                                        color: "text.secondary",
+                                                        textTransform: "uppercase",
+                                                        display: "block",
+                                                        mb: 0.5,
+                                                    }}
+                                                >
+                                                    Customer Questions
+                                                </Typography>
+
+                                                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                                                    {customerQuestions.map(
+                                                        (question: string, idx: number) => (
+                                                            <li key={idx}>
+                                                                <Typography variant="body2">
+                                                                    {question}
+                                                                </Typography>
+                                                            </li>
+                                                        )
+                                                    )}
+                                                </ul>
+                                            </Box>
+                                        )}
+
+                                        {keySignals.length > 0 && (
+                                            <Box mb={2}>
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                        fontWeight: 700,
+                                                        color: "text.secondary",
+                                                        textTransform: "uppercase",
+                                                        display: "block",
+                                                        mb: 0.5,
+                                                    }}
+                                                >
+                                                    Key Signals
+                                                </Typography>
+
+                                                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                                                    {keySignals.map(
+                                                        (signal: string, idx: number) => (
+                                                            <li key={idx}>
+                                                                <Typography variant="body2">
+                                                                    {signal}
+                                                                </Typography>
+                                                            </li>
+                                                        )
+                                                    )}
+                                                </ul>
+                                            </Box>
+                                        )}
+
+                                        <Box mb={2}>
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    fontWeight: 700,
+                                                    color: "text.secondary",
+                                                    textTransform: "uppercase",
+                                                    display: "block",
+                                                    mb: 0.5,
+                                                }}
+                                            >
+                                                Reasoning
+                                            </Typography>
+
+                                            <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                                sx={{ whiteSpace: "pre-wrap" }}
+                                            >
+                                                {sentimentDetails.reasoning || "-"}
+                                            </Typography>
+                                        </Box>
+
+                                        {/* <Grid item xs={6}>
+                                            <Box
+                                                sx={{
+                                                    bgcolor: "#f8fafc",
+                                                    p: 1.5,
+                                                    borderRadius: 2,
+                                                }}
+                                            >
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    Confidence
+                                                </Typography>
+
+                                                <Typography fontWeight={700}>
+                                                    {sentimentDetails.confidence
+                                                        ? `${Math.round(
+                                                            sentimentDetails.confidence * 100
+                                                        )}%`
+                                                        : "-"}
+                                                </Typography>
+                                            </Box>
+                                        </Grid>
+
+                                        <Grid item xs={6}>
+                                            <Box
+                                                sx={{
+                                                    bgcolor: "#f8fafc",
+                                                    p: 1.5,
+                                                    borderRadius: 2,
+                                                }}
+                                            >
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    Next Action
+                                                </Typography>
+
+                                                <Typography fontWeight={700}>
+                                                    {sentimentDetails.next_action || "-"}
+                                                </Typography>
+                                            </Box>
+                                        </Grid> 
+                                        </Grid> */}
+                                    </>
+                                )}
+                            </Box>
+                        </Box>
+                    </Box>
+                )}
 
                 {/* ================= Next Steps ================= */}
                 <Box sx={{ mb: 3 }}>

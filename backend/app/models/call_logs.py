@@ -45,6 +45,7 @@ class CallLog(Base):
     ended_reason = Column(String)
     call_summary = Column(Text)
     sentiment = Column(String)
+    sentiment_details = Column(JSON)
     follow_up_recommended = Column(JSON)
     extract_data = Column(JSON)
     lead_info = Column(JSON)

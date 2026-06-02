@@ -293,6 +293,7 @@ export interface CreateCampaignPayload {
   message_template_id?: number;
   message_template: string;
   scheduled_time?: string;
+  category?: string;
   contact_list_id: number;
   product_id?: number;
   status?: "draft" | "scheduled";
