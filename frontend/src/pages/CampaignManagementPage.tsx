@@ -274,6 +274,7 @@ const CampaignManagementPage: React.FC = () => {
   >("email");
   const [products, setProducts] = useState<Product[]>([]);
   const [createProductId, setCreateProductId] = useState<number | "">("");
+  const [createCategory, setCreateCategory] = useState<string | "">("");
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [newProductCode, setNewProductCode] = useState("");
@@ -1072,6 +1073,7 @@ const CampaignManagementPage: React.FC = () => {
         scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
         contact_list_id: Number(createContactListId),
         product_id: createProductId ? Number(createProductId) : undefined,
+        category: createCategory || undefined,
         status: createScheduledTime ? "scheduled" : "draft",
         email_content_mode:
           createCampaignType === "email" ? emailContentMode : undefined,
@@ -1803,31 +1805,6 @@ const CampaignManagementPage: React.FC = () => {
                 </Stack>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={3}>
-                    <TextField
-                      required
-                      size="small"
-                      sx={compactInputSx}
-                      fullWidth
-                      label="Campaign Name"
-                      value={createCampaignName}
-                      onChange={(e) => {
-                        setCreateCampaignName(e.target.value);
-                        if (createCampaignErrors.campaignName) {
-                          setCreateCampaignErrors((prev) => ({
-                            ...prev,
-                            campaignName: false,
-                          }));
-                        }
-                      }}
-                      error={createCampaignErrors.campaignName}
-                      helperText={
-                        createCampaignErrors.campaignName
-                          ? "Campaign name is required"
-                          : " "
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2.5}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Campaign Type</InputLabel>
                       <Select
@@ -1853,8 +1830,36 @@ const CampaignManagementPage: React.FC = () => {
                       </Select>
                     </FormControl>
                   </Grid>
+                  <Grid item xs={12} md={9}>
+                    <TextField
+                      required
+                      size="small"
+                      sx={compactInputSx}
+                      fullWidth
+                      label="Campaign Name"
+                      value={createCampaignName}
+                      onChange={(e) => {
+                        setCreateCampaignName(e.target.value);
+                        if (createCampaignErrors.campaignName) {
+                          setCreateCampaignErrors((prev) => ({
+                            ...prev,
+                            campaignName: false,
+                          }));
+                        }
+                      }}
+                      error={createCampaignErrors.campaignName}
+                      helperText={
+                        createCampaignErrors.campaignName
+                          ? "Campaign name is required"
+                          : " "
+                      }
+                    />
+                  </Grid>
+
+                </Grid>
+                <Grid container spacing={2} sx={{ mb: 2 }}>
                   {/* Contact List Dropdown */}
-                  <Grid item xs={12} md={2.5}>
+                  <Grid item xs={12} md={4}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Contact List</InputLabel>
                       <Select
@@ -1913,7 +1918,7 @@ const CampaignManagementPage: React.FC = () => {
                   </Grid>
 
                   {/* Product Dropdown */}
-                  <Grid item xs={12} md={2}>
+                  <Grid item xs={12} md={3}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Product</InputLabel>
                       <Select
@@ -1936,7 +1941,28 @@ const CampaignManagementPage: React.FC = () => {
                       </Select>
                     </FormControl>
                   </Grid>
-
+                  <Grid item xs={12} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Category</InputLabel>
+                      <Select
+                        value={createCategory}
+                        label="Category"
+                        onChange={(e) => {
+                          setCreateCategory(
+                            e.target.value === "" ? "" : e.target.value,
+                          );
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Category</em>
+                        </MenuItem>
+                        <MenuItem value="sales">Sales Outreach</MenuItem>
+                        <MenuItem value="support">Support</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+                <Grid container spacing={2}>
                   <Grid item xs={12}>
                     {createCampaignType === "email" && (
                       <Paper
@@ -2575,7 +2601,7 @@ const CampaignManagementPage: React.FC = () => {
                                   }
                                   return (
                                     t.type === "whatsapp" &&
-                                    t.category === "MARKETING"
+                                    ["MARKETING", "UTILITY"].includes(t.category)
                                   );
                                 })
                                 .map((template) => (
@@ -2587,7 +2613,7 @@ const CampaignManagementPage: React.FC = () => {
                           </FormControl>
                           {createCampaignType === "whatsapp" && (
                             <Alert severity="warning" sx={{ mb: 2 }}>
-                              Only <b>MARKETING</b> WhatsApp templates can be used
+                              Only <b>MARKETING</b> and <b>UTILITY</b> WhatsApp templates can be used
                               for sending test messages.
                             </Alert>
                           )}

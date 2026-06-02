@@ -370,6 +370,7 @@ def get_call_logs(
                 "ended_reason": log.ended_reason,
                 "call_summary": log.call_summary,
                 "sentiment": lead_outcome if lead_outcome and log.campaign_id else "",
+                "sentiment_details": log.sentiment_details or {},
                 "follow_up_recommended": log.follow_up_recommended or [],
                 "extract_data": log.extract_data or {},
                 "lead_info": log.lead_info or {},
@@ -712,6 +713,7 @@ def process_call(call, agent):
             ended_reason = call.get("ended_reason")
             call_summary = call.get("call_summary")
             sentiment = call.get("sentiment")
+            sentiment_details = call.get("sentiment_details")
             follow_up_recommended = call.get("follow_up_recommended")
             extract_data = call.get("extract_data")
             lead_info = call.get("lead_info")
@@ -755,6 +757,8 @@ def process_call(call, agent):
                 existing.ended_reason = ended_reason
                 existing.call_summary = call_summary
                 existing.sentiment = sentiment
+                existing.sentiment_details = sentiment_details
+                existing.industry = call.get("industry")
                 existing.follow_up_recommended = follow_up_recommended
                 existing.extract_data = extract_data
                 existing.lead_info = lead_info
@@ -799,6 +803,7 @@ def process_call(call, agent):
                     follow_up_recommended=follow_up_recommended,
                     extract_data=extract_data,
                     lead_info=lead_info,
+                    sentiment_details=sentiment_details,
                     source=NORMALIZED_SOURCES.get(source, source),
                     success_evaluation=success_eval_str.lower() == "true",
                     created_at=call_created_at,
@@ -809,12 +814,12 @@ def process_call(call, agent):
                     db.flush()
 
                     if call_log.type == "inbound":
-                        organization_credit_service.deduct_credits(
+                        organization_credit_service.deduct_credits_per_minute(
                             db=db,
                             organization_id=call_log.organization_id,
-                            feature_code=FeatureCodes.CORE_CALL_IN_ATTEMPT,
-                            quantity=1,
-                            reference_type="call_log",
+                            feature_code=FeatureCodes.CORE_CALL_IN_MINUTE,
+                            duration_seconds=call_log.duration,
+                            reference_type="inbound_call",
                             reference_id=call_log.call_session_id,
                         )
 

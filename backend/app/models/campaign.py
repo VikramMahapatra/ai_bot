@@ -97,6 +97,7 @@ class Campaign(Base):
         Integer, ForeignKey("contact_lists.id"), nullable=False, index=True
     )
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    category = Column(String)
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
     status = Column(String, nullable=False, default="draft", index=True)
     number_sent = Column(Integer, nullable=False, default=0)

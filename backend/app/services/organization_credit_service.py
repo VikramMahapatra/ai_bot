@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import math
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from requests import Session
@@ -384,6 +385,68 @@ def deduct_credits(
         organization_id=organization_id,
         price_matrix_item_id=item.id,
         used_quantity=quantity,
+        credits_used=credits_required,
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+        status="consumed",
+    )
+
+    db.add(usage)
+
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
+    )
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    balance.used_credit += credits_required
+    balance.remaining_credit = balance.total_credit - balance.used_credit
+
+    db.flush()
+    return True
+
+
+def deduct_credits_per_minute(
+    db,
+    organization_id: int,
+    feature_code: str,
+    duration_seconds: int,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+):
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
+
+    if not item:
+        raise Exception("Invalid feature")
+
+    # Round up to nearest minute
+    billable_minutes = math.ceil(duration_seconds / 60)
+
+    credits_required = billable_minutes * item.credits_per_unit
+
+    valid, remaining = validate_credits(
+        db,
+        organization_id,
+        feature_code,
+        credits_required,
+    )
+
+    if not valid:
+        raise Exception("Insufficient credits. Please add more credits to continue.")
+
+    usage = OrganizationCreditUsage(
+        organization_id=organization_id,
+        price_matrix_item_id=item.id,
+        used_quantity=billable_minutes,
         credits_used=credits_required,
         reference_type=reference_type,
         reference_id=str(reference_id) if reference_id else None,

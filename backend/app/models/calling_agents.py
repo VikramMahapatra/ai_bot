@@ -1,6 +1,19 @@
 # models.py
 import uuid
-from sqlalchemy import Column, Float, ForeignKey, Identity, Index, String, Boolean, DateTime, Integer, JSON, Text, func
+from sqlalchemy import (
+    Column,
+    Float,
+    ForeignKey,
+    Identity,
+    Index,
+    String,
+    Boolean,
+    DateTime,
+    Integer,
+    JSON,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.sqlite import BLOB
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -11,9 +24,11 @@ class CallingAgent(Base):
     __tablename__ = "calling_agents"
 
     id = Column(Integer, Identity(), primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, index=True
+    )
     widget_id = Column(String, unique=True, index=True)
-    
+
     # Agent info
     name = Column(String, nullable=False)
     type = Column(String, nullable=False, default="outbound")  # 'inbound' | 'outbound'
@@ -40,7 +55,7 @@ class CallingAgent(Base):
     summary_prompt = Column(String, nullable=True)
     follow_up_whatsapp = Column(Boolean, default=False)
     inbound_phone_number = Column(String, nullable=True)
-    
+
     gender = Column(String, nullable=False)
     accent = Column(String)
     voice = Column(String, nullable=False)
@@ -71,25 +86,43 @@ class CallingAgent(Base):
     transcriber_language = Column(String)
     transcriber_model = Column(String)
 
+    language = Column(String(100))
+
+    voicemail_start_at_seconds = Column(Integer, default=5)
+    voicemail_frequency_seconds = Column(Integer, default=5)
+    voicemail_max_retries = Column(Integer, default=5)
+    voicemail_beep_max_await_seconds = Column(Integer, default=0)
+
+    end_call_message = Column(Text)
+
+    background_sound = Column(String(50))
+
+    message_plan_idle_timeout_seconds = Column(Float, default=28.7)
+    message_plan_idle_message_max_spoken_count = Column(Integer, default=4)
+    message_plan_idle_messages_selected = Column(JSON, nullable=True)
+
+    punctuation_boundaries = Column(JSON, nullable=True)
+
+    temperature = Column(Float, default=0.4)
+
     # Meta
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)
-    
-    external_agent_id = Column(String, nullable=True) 
-    external_agent_name = Column(String, nullable=True) 
+
+    external_agent_id = Column(String, nullable=True)
+    external_agent_name = Column(String, nullable=True)
     external_agent_a_id = Column(String, nullable=True)
-    
+
     campaigns = relationship("CallCampaign", back_populates="agent")
     call_logs = relationship("CallLog", back_populates="agent")
-    
+
     __table_args__ = (
         Index("idx_agent_external_id", "external_agent_id"),
         Index("idx_agent_external_a_id", "external_agent_a_id"),
     )
-    
-    
-    
+
+
 class CallingAgentTestCall(Base):
     __tablename__ = "calling_agent_test_calls"
 
@@ -100,5 +133,5 @@ class CallingAgentTestCall(Base):
     status = Column(String, default="Triggered")
     created_at = Column(DateTime, default=datetime.utcnow)
     external_call_id = Column(String, nullable=True)  # NEW COLUMN
-    
+
     agent = relationship("CallingAgent")
