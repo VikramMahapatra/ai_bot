@@ -1119,9 +1119,7 @@ const CampaignManagementPage: React.FC = () => {
     setLoading(true);
     try {
       const result = await campaignService.runCampaign(campaignId);
-      showSuccess(
-        `Campaign run complete: sent ${result.number_sent}, failed ${result.number_failed}`,
-      );
+      showSuccess(result.message);
       await Promise.all([loadCampaigns(), loadDashboard()]);
     } catch (err: any) {
       showError(err?.response?.data?.detail || "Failed to run campaign");

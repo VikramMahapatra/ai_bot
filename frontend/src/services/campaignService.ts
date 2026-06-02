@@ -407,7 +407,7 @@ export const campaignService = {
 
   async runCampaign(
     campaignId: number,
-  ): Promise<{ status: string; number_sent: number; number_failed: number }> {
+  ): Promise<{ message: string; campaign_id: number }> {
     const response = await api.post(`/api/admin/campaigns/${campaignId}/run`);
     return response.data;
   },
