@@ -4,6 +4,8 @@ from io import StringIO
 import csv
 import json
 import logging
+from threading import Thread
+import time
 import uuid
 from io import BytesIO
 from typing import Any, List, Optional, Tuple
@@ -691,6 +693,57 @@ def get_feature_code_for_campaign_type(campaign_type: str) -> str:
         return FeatureCodes.CMP_EMAIL_SEND
 
 
+def run_campaign_background(
+    campaign_id: int,
+    organization_id: int,
+):
+    db = SessionLocal()
+
+    try:
+        campaign = (
+            db.query(Campaign)
+            .filter(
+                Campaign.id == campaign_id,
+                Campaign.organization_id == organization_id,
+            )
+            .first()
+        )
+
+        if not campaign:
+            return
+
+        contact_list = (
+            db.query(ContactList)
+            .filter(ContactList.id == campaign.contact_list_id)
+            .first()
+        )
+
+        if not contact_list:
+            return
+
+        contacts = (
+            db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+        )
+
+        twilio_sms_config = None
+
+        if campaign.campaign_type == "sms":
+            twilio_sms_config = _get_active_twilio_sms_config(
+                db,
+                organization_id,
+            )
+
+        _execute_campaign_now(
+            db,
+            campaign,
+            contacts,
+            twilio_sms_config=twilio_sms_config,
+        )
+
+    finally:
+        db.close()
+
+
 def _execute_campaign_now(
     db: Session,
     campaign: Campaign,
@@ -717,7 +770,7 @@ def _execute_campaign_now(
     sent_count = 0
     failed_count = 0
 
-    for contact in contacts:
+    for idx, contact in enumerate(contacts):
         for_index = sent_count + failed_count
         tracking_token = uuid.uuid4().hex if campaign.campaign_type == "email" else None
 
@@ -755,6 +808,12 @@ def _execute_campaign_now(
             sent_count += 1
         else:
             failed_count += 1
+
+        db.commit()
+        if idx < len(contacts) - 1:
+            time.sleep(
+                settings.CONTACT_SEND_INTERVAL_SECONDS
+            )  # wait according to settings before next contact
 
     campaign.number_sent = sent_count
     campaign.number_failed = failed_count
@@ -2419,9 +2478,18 @@ async def run_campaign(
                 status_code=400, detail="Twilio SMS is not configured or inactive"
             )
 
-    return _execute_campaign_now(
-        db, campaign, contacts, twilio_sms_config=twilio_sms_config
+    thread = Thread(
+        target=run_campaign_background,
+        args=(campaign.id, current_user.organization_id),
+        daemon=True,
     )
+
+    thread.start()
+
+    return {
+        "message": "Campaign started successfully",
+        "campaign_id": campaign.id,
+    }
 
 
 @router.get("/{campaign_id}/logs")
@@ -2570,59 +2638,13 @@ def process_due_campaigns(
                 campaign.campaign_type,
             )
 
-            # contact list
-            contact_list = (
-                db.query(ContactList)
-                .filter(
-                    ContactList.id == campaign.contact_list_id,
-                    ContactList.organization_id == campaign.organization_id,
-                )
-                .first()
+            thread = Thread(
+                target=run_campaign_background,
+                args=(campaign.id, campaign.organization_id),
+                daemon=True,
             )
 
-            if not contact_list:
-                skipped += 1
-                logger.warning(
-                    f"Campaign {campaign.id} skipped: contact list not found"
-                )
-                continue
-
-            # contacts
-            contacts = (
-                db.query(Contact)
-                .filter(Contact.contact_list_id == contact_list.id)
-                .all()
-            )
-
-            if not contacts:
-                skipped += 1
-                logger.warning(f"Campaign {campaign.id} skipped: no contacts")
-                continue
-
-            # sms config
-            twilio_sms_config = None
-
-            if campaign.campaign_type == "sms":
-                twilio_sms_config = _get_active_twilio_sms_config(
-                    db,
-                    campaign.organization_id,
-                )
-
-                if not twilio_sms_config:
-                    skipped += 1
-                    logger.warning(
-                        f"Campaign {campaign.id} skipped: twilio config missing"
-                    )
-                    continue
-
-            # execute
-            _execute_campaign_now(
-                db,
-                campaign,
-                contacts,
-                twilio_sms_config=twilio_sms_config,
-            )
-
+            thread.start()
             processed += 1
 
         except Exception as e:

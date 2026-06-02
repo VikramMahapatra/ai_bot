@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     ZENTRIXEL_PHONE_NUMBER_ID: str = "1009878228875130"
     ZENTRIXEL_BUSINESS_PHONE: str = "+1 555-181-6029"
 
+    CONTACT_SEND_INTERVAL_SECONDS: int = (
+        60  # Minimum interval between sending messages to the same contact
+    )
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
