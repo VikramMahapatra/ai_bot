@@ -401,8 +401,8 @@ def _render_campaign_wrapper(
                 <meta charset=\"UTF-8\" />
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
             </head>
-            <body style=\"margin:0; padding:22px 10px; background:#eef3fb; font-family:Segoe UI,Arial,sans-serif; color:#1e293b;\">
-                <div style=\"max-width:660px; margin:0 auto; background:#ffffff;\">
+            <body style=\"margin:0; padding:22px 10px; font-family:Segoe UI,Arial,sans-serif;\">
+                <div style=\"max-width:660px; margin:0 auto;\">
                     <div style=\"padding:10px 26px 26px 26px;\">
                         {greeting_html}
                         <div style=\"font-size:15px; line-height:1.72; color:#223659;\">{body_html}</div>
