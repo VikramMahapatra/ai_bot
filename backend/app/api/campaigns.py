@@ -2225,11 +2225,7 @@ async def create_campaign(
         organization_id=current_user.organization_id,
         campaign_name=campaign_name,
         campaign_type=campaign_type,
-        message_template_id=(
-            payload.message_template_id
-            if campaign_type in ["whatsapp", "sms"]
-            else None
-        ),
+        message_template_id=payload.message_template_id,
         message_template=message_template,
         contact_list_id=payload.contact_list_id,
         product_id=payload.product_id,

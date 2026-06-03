@@ -401,11 +401,11 @@ def _render_campaign_wrapper(
                 <meta charset=\"UTF-8\" />
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
             </head>
-            <body style=\"margin:0; font-family:Segoe UI,Arial,sans-serif;\">
-                <div style=\"max-width:660px; margin:0 auto;\">
+            <body style=\"font-family:Segoe UI,Arial,sans-serif;\">
+                <div>
                     <div style=\"padding:10px 26px 26px 26px;\">
                         {greeting_html}
-                        <div style=\"font-size:15px; line-height:1.72; color:#223659;\">{body_html}</div>
+                        <div style=\"font-size:15px; line-height:1.72;\">{body_html}</div>
                         <div style=\"margin-top:22px; padding:14px 16px; border:1px solid #d9e7ff; border-radius:10px; background:#f8fbff; color:#4a628b; font-size:13px;\">
                             Need help or have questions? Simply reply to this email.
                         </div>
