@@ -528,6 +528,7 @@ const CampaignManagementPage: React.FC = () => {
 
   const loadTemplateLookup = async () => {
     const data = await messageTemplateService.templateLookup();
+    console.log("Loaded templates:", data);
     setMessageTemplates(data || []);
   };
 
@@ -2067,6 +2068,7 @@ const CampaignManagementPage: React.FC = () => {
 
                                       setSelectedTemplate(template);
                                       setCreateMessageTemplate(template?.content || "");
+                                      setEmailSubject(template?.subject || "");
                                     }}
                                     error={createCampaignErrors.emailBody}
                                   >
