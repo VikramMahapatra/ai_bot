@@ -2021,32 +2021,71 @@ const CampaignManagementPage: React.FC = () => {
                               </Button>
                             </Stack>
                           </Stack>
+                          <Grid container>
+                            <Grid item xs={12} md={emailContentMode === "manual" ? 7 : 12}>
+                              <TextField
+                                required
+                                size="small"
+                                sx={compactInputSx}
+                                fullWidth
+                                label="Email Subject"
+                                value={emailSubject}
+                                onChange={(e) => {
+                                  setEmailSubject(e.target.value);
+                                  if (createCampaignErrors.emailSubject) {
+                                    setCreateCampaignErrors((prev) => ({
+                                      ...prev,
+                                      emailSubject: false,
+                                    }));
+                                  }
+                                }}
+                                error={createCampaignErrors.emailSubject}
+                                helperText={
+                                  createCampaignErrors.emailSubject
+                                    ? "Email subject is required"
+                                    : " "
+                                }
+                                placeholder="Leave blank to use campaign name"
+                              />
+                            </Grid>
+                            {emailContentMode === "manual" && (
+                              <Grid item xs={12} md={5} sx={{ pl: { md: 2 } }}>
+                                <FormControl fullWidth size="small" sx={compactInputSx}>
+                                  <InputLabel>Message Template</InputLabel>
 
-                          <TextField
-                            required
-                            size="small"
-                            sx={compactInputSx}
-                            fullWidth
-                            label="Email Subject"
-                            value={emailSubject}
-                            onChange={(e) => {
-                              setEmailSubject(e.target.value);
-                              if (createCampaignErrors.emailSubject) {
-                                setCreateCampaignErrors((prev) => ({
-                                  ...prev,
-                                  emailSubject: false,
-                                }));
-                              }
-                            }}
-                            error={createCampaignErrors.emailSubject}
-                            helperText={
-                              createCampaignErrors.emailSubject
-                                ? "Email subject is required"
-                                : " "
-                            }
-                            placeholder="Leave blank to use campaign name"
-                          />
+                                  <Select
+                                    value={selectedTemplateId}
+                                    label="Message Template"
+                                    onChange={(e) => {
+                                      const id = e.target.value as string;
 
+                                      setSelectedTemplateId(id);
+
+                                      const template =
+                                        messageTemplates.find((t) => t.id === id) ||
+                                        null;
+
+                                      setSelectedTemplate(template);
+                                      setCreateMessageTemplate(template?.content || "");
+                                    }}
+                                    error={createCampaignErrors.emailBody}
+                                  >
+                                    <MenuItem value="">
+                                      <em>Select Template</em>
+                                    </MenuItem>
+
+                                    {messageTemplates
+                                      ?.filter((t) => t.type === createCampaignType)
+                                      .map((template) => (
+                                        <MenuItem key={template.id} value={template.id}>
+                                          {template.name}
+                                        </MenuItem>
+                                      ))}
+                                  </Select>
+                                </FormControl>
+                              </Grid>
+                            )}
+                          </Grid>
                           {emailContentMode === "manual" ? (
                             <>
                               <Stack
@@ -2586,6 +2625,7 @@ const CampaignManagementPage: React.FC = () => {
                                 setSelectedTemplate(template);
                                 setCreateMessageTemplate(template?.content || "");
                               }}
+                              error={createCampaignErrors.emailBody}
                             >
                               <MenuItem value="">
                                 <em>Select Template</em>
