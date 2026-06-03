@@ -10,6 +10,7 @@ import uuid
 from io import BytesIO
 from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
+import re
 
 from fastapi import (
     APIRouter,
@@ -604,6 +605,8 @@ def _send_campaign_message(
             contact_index=contact_index,
         )
 
+        body = render_template(body, contact)
+
         org_settings = get_org_settings(db, campaign.organization_id)
 
         return send_campaign_email(
@@ -667,11 +670,27 @@ def _send_campaign_message(
         if not twilio_sms_config:
             return False, "Twilio SMS is not configured or inactive", None
 
+        template = (
+            db.query(MessageTemplate)
+            .filter(
+                MessageTemplate.id == campaign.message_template_id,
+                MessageTemplate.organization_id == campaign.organization_id,
+                MessageTemplate.type == "sms",
+            )
+            .first()
+        )
+
+        if not template:
+            return False, "SMS message template not found", None
+
         rendered_message = render_sms_template(
             template=campaign.message_template,
             recipient_name=contact.name or "",
             campaign_name=campaign.campaign_name,
         )
+
+        rendered_message = render_template(rendered_message, contact)
+
         is_sent, error_message = send_twilio_sms(
             config=twilio_sms_config,
             to_number=contact.phone or "",
@@ -680,6 +699,32 @@ def _send_campaign_message(
         return is_sent, error_message, None
 
     return False, "Unsupported campaign type", None
+
+
+def extract_placeholders(text):
+    if not text:
+        return set()
+    return set(re.findall(r"\{\{(.*?)\}\}", text))
+
+
+def render_template(template_body: str, contact):
+    if not template_body:
+        return ""
+
+    placeholders = extract_placeholders(template_body)
+
+    for key in placeholders:
+        value = getattr(contact, key, "")
+
+        # handle None safely + numeric types
+        if value is None:
+            value = ""
+        else:
+            value = str(value)
+
+        template_body = template_body.replace(f"{{{{{key}}}}}", value)
+
+    return template_body
 
 
 def get_feature_code_for_campaign_type(campaign_type: str) -> str:

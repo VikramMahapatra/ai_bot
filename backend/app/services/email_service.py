@@ -402,10 +402,7 @@ def _render_campaign_wrapper(
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
             </head>
             <body style=\"margin:0; padding:22px 10px; background:#eef3fb; font-family:Segoe UI,Arial,sans-serif; color:#1e293b;\">
-                <div style=\"max-width:660px; margin:0 auto; background:#ffffff; border:1px solid #dbe6f7; border-radius:14px; overflow:hidden; box-shadow:0 12px 34px rgba(32,57,96,0.08);\">
-                    <div style=\"padding:26px 26px 22px; background:linear-gradient(135deg,#1f4f95 0%,#2f6fd4 52%,#44acd6 100%);\">
-                        <h1 style=\"margin:0; font-size:24px; line-height:1.3; color:#ffffff;\">{safe_campaign}</h1>
-                    </div>
+                <div style=\"max-width:660px; margin:0 auto; background:#ffffff;\">
                     <div style=\"padding:10px 26px 26px 26px;\">
                         {greeting_html}
                         <div style=\"font-size:15px; line-height:1.72; color:#223659;\">{body_html}</div>
