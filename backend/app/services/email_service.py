@@ -401,7 +401,7 @@ def _render_campaign_wrapper(
                 <meta charset=\"UTF-8\" />
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
             </head>
-            <body style=\"margin:0; padding:22px 10px; font-family:Segoe UI,Arial,sans-serif;\">
+            <body style=\"margin:0; font-family:Segoe UI,Arial,sans-serif;\">
                 <div style=\"max-width:660px; margin:0 auto;\">
                     <div style=\"padding:10px 26px 26px 26px;\">
                         {greeting_html}
