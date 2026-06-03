@@ -1410,7 +1410,6 @@ async def generate_email_variants(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    del current_user
     try:
 
         valid = organization_credit_service.validate_feature_usage(
@@ -1423,10 +1422,15 @@ async def generate_email_variants(
                 detail="Insufficient credits. Please add more credits to continue.",
             )
 
+        db.close()
+
         data = generate_email_variants_from_prompt(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
         )
+
+        # get fresh session
+        db = SessionLocal()
 
         organization_credit_service.deduct_credits(
             db=db,
@@ -1457,7 +1461,6 @@ async def score_email_variants_for_spam(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    del current_user
     try:
         valid = organization_credit_service.validate_feature_usage(
             db, current_user.organization_id, FeatureCodes.CMP_AI_SPAM_CHECK, 1
@@ -1469,12 +1472,17 @@ async def score_email_variants_for_spam(
                 detail="Insufficient credits. Please add more credits to continue.",
             )
 
+        db.close()
+
         data = evaluate_email_spam_score(
             campaign_name=(payload.campaign_name or "Campaign").strip() or "Campaign",
             prompt_context=payload.prompt_context,
             subjects=payload.subjects,
             bodies=payload.bodies,
         )
+
+        # get fresh session
+        db = SessionLocal()
 
         organization_credit_service.deduct_credits(
             db=db,
