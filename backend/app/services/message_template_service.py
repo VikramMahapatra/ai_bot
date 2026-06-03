@@ -461,6 +461,7 @@ def get_template_lookup(db: Session, organization_id: int, type: Optional[str] =
             "type": t.type,
             "name": t.name,
             "content": t.content,
+            "subject": t.subject,
             "category": t.category,
             "language": t.language,
             "meta_template_id": t.meta_template_id,
