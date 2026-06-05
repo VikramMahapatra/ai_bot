@@ -140,7 +140,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
 
   // Filter menu items based on user role
   const visibleMenuItems = allMenuItems.filter((item) => {
-    if (item.featureKey && featureFlags[item.featureKey] === false) return false;
+    //  if (item.featureKey && featureFlags[item.featureKey] === false) return false;
     if (item.requiredRole === 'ALL') return true;
     if (item.requiredRole === 'ADMIN_OR_HANDOFF') return userRole === 'ADMIN' || userRole === 'USER_HANDOFF';
     return item.requiredRole === userRole;

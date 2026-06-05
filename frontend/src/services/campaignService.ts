@@ -302,6 +302,9 @@ export interface CreateCampaignPayload {
   email_prompt_context?: string;
   email_subject_variants?: string[];
   email_body_variants?: string[];
+  open_tracking_enabled?: boolean;
+  click_tracking_enabled?: boolean;
+  footer_display_enabled?: boolean;
 }
 
 export interface GenerateEmailVariantsPayload {

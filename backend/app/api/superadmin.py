@@ -162,7 +162,11 @@ def _build_org_response(
         admin_email=admin_user.email if admin_user else None,
         limits=limits,
         echoleads_api_key=org.echoleads_api_key,
-        is_active=org.is_active,
+        status=org.status,
+        trial_end_date=org.trial_end_date,
+        industry=org.industry,
+        timezone=org.timezone,
+        commercial_notes=org.commercial_notes,
     )
 
 
@@ -887,6 +891,11 @@ async def create_organization_with_admin(
         org_domain=_build_org_domain(org_name),
         access_token=secrets.token_urlsafe(32),
         echoleads_api_key=request.echoleads_api_key,
+        status=request.status,
+        industry=request.industry,
+        timezone=request.timezone,
+        commercial_notes=request.commercial_notes,
+        trial_end_date=request.trial_end_date,
     )
     db.add(org)
     db.commit()
@@ -926,6 +935,11 @@ async def create_organization_with_admin(
         admin_email=admin_user.email,
         limits=limits,
         echoleads_api_key=org.echoleads_api_key,
+        status=org.status,
+        industry=org.industry,
+        timezone=org.timezone,
+        commercial_notes=org.commercial_notes,
+        trial_end_date=org.trial_end_date,
     )
 
 
@@ -981,6 +995,16 @@ async def update_organization_with_admin(
         org.effective_joining_date = request.effective_joining_date
     if request.echoleads_api_key is not None:
         org.echoleads_api_key = request.echoleads_api_key
+    if request.status is not None:
+        org.status = request.status
+    if request.industry is not None:
+        org.industry = request.industry
+    if request.timezone is not None:
+        org.timezone = request.timezone
+    if request.commercial_notes is not None:
+        org.commercial_notes = request.commercial_notes
+    if request.trial_end_date is not None:
+        org.trial_end_date = request.trial_end_date
 
     admin_username = (
         request.admin_username.strip() if request.admin_username is not None else None

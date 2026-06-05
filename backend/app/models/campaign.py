@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    Boolean,
     Column,
     Identity,
     Index,
@@ -98,6 +99,11 @@ class Campaign(Base):
     )
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     category = Column(String)
+
+    open_tracking_enabled = Column(Boolean, nullable=False, default=False)
+    click_tracking_enabled = Column(Boolean, nullable=False, default=False)
+    footer_display_enabled = Column(Boolean, nullable=False, default=False)
+
     scheduled_time = Column(DateTime(timezone=True), nullable=True, index=True)
     status = Column(String, nullable=False, default="draft", index=True)
     number_sent = Column(Integer, nullable=False, default=0)

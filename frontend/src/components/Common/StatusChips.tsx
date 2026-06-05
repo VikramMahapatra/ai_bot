@@ -3,6 +3,7 @@ import { FunnelCategory } from "../../types";
 import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import BlockIcon from "@mui/icons-material/Block";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 
 export const titleCase = (value?: unknown): string => {
     if (typeof value !== "string") return "";
@@ -16,8 +17,13 @@ export const titleCase = (value?: unknown): string => {
         )
         .join(" ");
 };
-
-export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?: () => void; }) => {
+export const StatusChip = ({
+    value,
+    onClick,
+}: {
+    value?: string | null;
+    onClick?: () => void;
+}) => {
     if (!value || !value.trim()) {
         return (
             <Chip
@@ -35,18 +41,18 @@ export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?
 
     const normalized = value.toLowerCase().trim();
 
-    type StatusType = "active" | "inactive";
+    type StatusType = "active" | "inactive" | "trial";
 
     const isStatusType = (value: string): value is StatusType => {
-        return value === "active" || value === "inactive";
+        return ["active", "inactive", "trial"].includes(value);
     };
 
     const configMap: Record<
         StatusType,
         {
             label: string;
-            color: "success" | "default";
-            icon: React.ReactElement;
+            color: "success" | "default" | "warning";
+            icon?: React.ReactElement;
         }
     > = {
         active: {
@@ -59,10 +65,15 @@ export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?
             color: "default",
             icon: <BlockIcon fontSize="small" />,
         },
+        trial: {
+            label: "Trial",
+            color: "warning",
+            icon: <HourglassEmptyIcon fontSize="small" />,
+        },
     };
 
     const config = isStatusType(normalized)
-        ? configMap[normalized] // ✅ now TS knows it's valid
+        ? configMap[normalized]
         : {
             label: value,
             color: "default" as const,
@@ -76,13 +87,13 @@ export const StatusChip = ({ value, onClick }: { value?: string | null; onClick?
             variant="outlined"
             color={config.color}
             icon={config.icon}
-            clickable
+            clickable={!!onClick}
             onClick={onClick}
             sx={{
-                cursor: "pointer",
+                cursor: onClick ? "pointer" : "default",
                 "&:hover": {
                     opacity: 0.8,
-                    transform: "scale(1.05)",
+                    transform: onClick ? "scale(1.05)" : "none",
                 },
                 transition: "all 0.15s ease",
             }}

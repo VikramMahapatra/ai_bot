@@ -23,6 +23,7 @@ from app.models import (
     UserRole,
 )
 from app.services.email_service import send_campaign_email
+from app.models.user import OrganizationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -1594,7 +1595,7 @@ def _build_next_cycle_if_needed(
             db.query(Organization)
             .filter(
                 Organization.id == current.organization_id,
-                Organization.is_active.is_(True),
+                Organization.status == OrganizationStatus.ACTIVE,
             )
             .first()
         )

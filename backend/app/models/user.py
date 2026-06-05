@@ -8,6 +8,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     Boolean,
     ForeignKey,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -20,6 +21,12 @@ class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
     USER = "USER"
     USER_HANDOFF = "USER_HANDOFF"
+
+
+class OrganizationStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    TRIAL = "trial"
 
 
 class Organization(Base):
@@ -35,8 +42,20 @@ class Organization(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     org_domain = Column(String, unique=True, nullable=False)
     access_token = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
+    status = Column(
+        SQLEnum(
+            OrganizationStatus,
+            values_callable=lambda obj: [e.value for e in obj],
+            name="organization_status",
+        ),
+        nullable=False,
+        default=OrganizationStatus.TRIAL,
+    )
+    trial_end_date = Column(Date, nullable=True)
     echoleads_api_key = Column(String)
+    timezone = Column(String, nullable=True)
+    industry = Column(String, nullable=True)
+    commercial_notes = Column(Text, nullable=True)
 
     # Relationship
     users = relationship("User", back_populates="organization")

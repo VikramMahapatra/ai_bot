@@ -43,6 +43,7 @@ from app.api.organization_setting import get_settings
 from app.services.organization_setting_service import get_org_settings
 from app.context.org_context import set_org_id
 from app.models.channels import Channel, OrganizationChannel
+from app.models.user import OrganizationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +287,15 @@ async def get_organizations_by_username(username: str, db: Session = Depends(get
 
     organizations = (
         db.query(Organization)
-        .filter(Organization.id.in_(org_ids), Organization.is_active == True)
+        .filter(
+            Organization.id.in_(org_ids),
+            Organization.status.in_(
+                [
+                    OrganizationStatus.ACTIVE,
+                    OrganizationStatus.TRIAL,
+                ]
+            ),
+        )
         .all()
     )
 

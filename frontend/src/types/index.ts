@@ -242,6 +242,27 @@ export interface SuperAdminLoginResponse {
   superadmin_id: number;
 }
 
+export type OrganizationLimitKey = Exclude<
+  keyof OrganizationLimits,
+  "id" | "organization_id"
+>;
+
+export interface LimitToggleField {
+  key: OrganizationLimitKey;
+  label: string;
+  visible: boolean;
+  category: LimitCategory;
+}
+
+export type LimitCategory =
+  | "Communication Channels"
+  | "AI & Automation"
+  | "Campaigns"
+  | "Voice Calling"
+  | "Core Modules"
+  | "Analytics";
+
+
 export interface OrganizationLimits {
   id?: number;
   organization_id?: number;
@@ -249,9 +270,17 @@ export interface OrganizationLimits {
   voice_chat_enabled?: boolean;
   multilingual_text_enabled?: boolean;
   whatsapp_enabled?: boolean;
+  instagram_chat_enabled?: boolean;
+  facebook_messenger_enabled?: boolean;
   human_handoff_enabled?: boolean;
   email_campaign_enabled?: boolean;
   sms_campaign_enabled?: boolean;
+  whatsapp_campaign_enabled?: boolean;
+  ai_assistant_campaign_enabled?: boolean;
+  inbound_voice_enabled?: boolean;
+  outbound_voice_enabled?: boolean;
+  call_forwarding_enabled?: boolean;
+  module_followup_workflow_enabled?: boolean;
   module_knowledge_enabled?: boolean;
   module_leads_enabled?: boolean;
   module_analytics_enabled?: boolean;
@@ -261,6 +290,11 @@ export interface OrganizationLimits {
   module_appointments_enabled?: boolean;
   module_products_enabled?: boolean;
   module_users_enabled?: boolean;
+
+  outbound_call_billing_model?: "per_attempt" | "per_minute";
+  max_outbound_voice_agents?: number;
+  max_inbound_voice_agents?: number;
+  max_outbound_calls?: number;
 }
 
 export interface OrganizationUsage {
@@ -275,9 +309,15 @@ export interface OrganizationUsage {
   leads_count: number;
 }
 
+export type OrganizationStatus =
+  | "active"
+  | "inactive"
+  | "trial";
+
 export interface SuperAdminOrganization {
   id: number;
   name: string;
+  organization_name: string;
   description?: string;
   joining_date?: string | null;
   effective_joining_date?: string | null;
@@ -285,7 +325,11 @@ export interface SuperAdminOrganization {
   admin_email?: string;
   limits?: OrganizationLimits;
   echoleads_api_key?: string;
-  is_active: boolean;
+  status: OrganizationStatus;
+  trial_end_date?: string | null;
+  industry?: string | null;
+  commercial_notes?: string | null;
+  timezone?: string | null;
 }
 
 

@@ -292,6 +292,16 @@ def _escape_html(text: str) -> str:
     return text
 
 
+def text_to_html(text: str) -> str:
+    paragraphs = [
+        p.strip() for p in text.replace("\r\n", "\n").split("\n\n") if p.strip()
+    ]
+
+    return "".join(
+        f"<p>{_escape_html(p).replace(chr(10), '<br>')}</p>" for p in paragraphs
+    )
+
+
 def _apply_campaign_placeholders(
     template: str, recipient_name: str, campaign_name: str
 ) -> str:
@@ -319,6 +329,12 @@ def _looks_like_html(content: str) -> bool:
 def _looks_like_full_email_html(content: str) -> bool:
     lowered = (content or "").lower()
     return "<html" in lowered or "<body" in lowered
+
+
+def _preserve_html_line_breaks(content: str) -> str:
+    paragraphs = re.split(r"\r?\n\s*\r?\n", content.strip())
+
+    return "".join(f"<p>{p.replace(chr(10), '<br>')}</p>" for p in paragraphs)
 
 
 def _sanitize_email_html(content: str) -> str:
@@ -386,37 +402,70 @@ def _render_campaign_wrapper(
     campaign_name: str,
     body_html: str,
     include_greeting: bool = True,
+    footer_display_enabled: bool = False,
 ) -> str:
     safe_name = _escape_html((recipient_name or "there").strip() or "there")
     safe_campaign = _escape_html(campaign_name or "Campaign Update")
+
     greeting_html = (
         f'<p style="margin-top:0; color:#425b84; font-size:15px;">Hi {safe_name},</p>'
         if include_greeting
         else ""
     )
-    return f"""
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <meta charset=\"UTF-8\" />
-                <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
-            </head>
-            <body style=\"font-family:Segoe UI,Arial,sans-serif;\">
-                <div>
-                    <div style=\"padding:10px 26px 26px 26px;\">
-                        {greeting_html}
-                        <div style=\"font-size:15px; line-height:1.72;\">{body_html}</div>
-                        <div style=\"margin-top:22px; padding:14px 16px; border:1px solid #d9e7ff; border-radius:10px; background:#f8fbff; color:#4a628b; font-size:13px;\">
-                            Need help or have questions? Simply reply to this email.
-                        </div>
-                    </div>
-                    <div style=\"padding:15px 26px; border-top:1px solid #e4ecf8; font-size:12px; color:#6b7fa5; background:#fbfdff;\">
-                        Powered by: <a href=\"https://zentrixel.com/\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color:#4c7ccf; text-decoration:none;\">zentrixel.com</a>
-                    </div>
-                </div>
-            </body>
-        </html>
+
+    help_section = (
         """
+        <div style="margin-top:22px; padding:14px 16px; border:1px solid #d9e7ff;
+                    border-radius:10px; background:#f8fbff; color:#4a628b;
+                    font-size:13px;">
+            Need help or have questions? Simply reply to this email.
+        </div>
+        """
+        if footer_display_enabled
+        else ""
+    )
+
+    footer_section = (
+        """
+        <div style="padding:15px 26px; border-top:1px solid #e4ecf8;
+                    font-size:12px; color:#6b7fa5; background:#fbfdff;">
+            Powered by:
+            <a href="https://zentrixel.com/"
+               target="_blank"
+               rel="noopener noreferrer"
+               style="color:#4c7ccf; text-decoration:none;">
+                zentrixel.com
+            </a>
+        </div>
+        """
+        if footer_display_enabled
+        else ""
+    )
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body style="font-family:Segoe UI,Arial,sans-serif;">
+            <div>
+                <div style="padding:10px 26px 26px 26px;">
+                    {greeting_html}
+
+                    <div style="font-size:15px; line-height:1.72;">
+                        {body_html}
+                    </div>
+
+                    {help_section}
+                </div>
+
+                {footer_section}
+            </div>
+        </body>
+    </html>
+    """
 
 
 def _render_instant_reply_wrapper(
@@ -567,10 +616,16 @@ def send_campaign_email(
     tracking_token: Optional[str] = None,
     tracking_base_url: Optional[str] = None,
     settings: OrganizationSettings = None,
+    open_tracking_enabled: bool = False,
+    click_tracking_enabled: bool = False,
+    footer_display_enabled: bool = False,
 ) -> tuple[bool, str | None, str | None]:
     """Send a campaign email and return success/failure with an optional error message."""
 
     def _append_attribution(html: str) -> str:
+        if not footer_display_enabled:
+            return html
+
         if "zentrixel.com" in (html or "").lower():
             return html
 
@@ -610,31 +665,33 @@ def send_campaign_email(
             tracked = f"{base}/api/admin/campaigns/public/email-track/click/{tracking_token}?url={quote(original_url, safe='')}"
             return f"href={quote_char}{tracked}{quote_char}"
 
-        tracked_html = re.sub(
-            r"href\s*=\s*([\"'])([^\"']+)\1",
-            _href_rewrite,
-            html,
-            flags=re.IGNORECASE,
-        )
+        tracked_html = html
 
-        pixel_url = (
-            f"{base}/api/admin/campaigns/public/email-track/open/{tracking_token}.gif"
-        )
-        pixel_tag = (
-            f'<img src="{pixel_url}" width="1" height="1" alt="" '
-            'style="display:none;max-width:1px;max-height:1px;opacity:0;" />'
-        )
-
-        if "</body>" in tracked_html.lower():
+        if click_tracking_enabled:
             tracked_html = re.sub(
-                r"</body>",
-                f"{pixel_tag}</body>",
-                tracked_html,
-                count=1,
+                r"href\s*=\s*([\"'])([^\"']+)\1",
+                _href_rewrite,
+                html,
                 flags=re.IGNORECASE,
             )
-        else:
-            tracked_html = f"{tracked_html}{pixel_tag}"
+
+        if open_tracking_enabled:
+            pixel_url = f"{base}/api/admin/campaigns/public/email-track/open/{tracking_token}.gif"
+            pixel_tag = (
+                f'<img src="{pixel_url}" width="1" height="1" alt="" '
+                'style="display:none;max-width:1px;max-height:1px;opacity:0;" />'
+            )
+
+            if "</body>" in tracked_html.lower():
+                tracked_html = re.sub(
+                    r"</body>",
+                    f"{pixel_tag}</body>",
+                    tracked_html,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                tracked_html = f"{tracked_html}{pixel_tag}"
 
         return _append_attribution(tracked_html)
 
@@ -679,6 +736,7 @@ def send_campaign_email(
 
         if _looks_like_html(personalized_template):
             html_source = _sanitize_email_html(personalized_template)
+            html_source = _preserve_html_line_breaks(html_source)
             if _looks_like_full_email_html(html_source):
                 final_html = html_source
             else:
@@ -688,15 +746,17 @@ def send_campaign_email(
                     campaign_name=campaign_name,
                     body_html=_linkify_plain_urls(html_source),
                     include_greeting=include_greeting,
+                    footer_display_enabled=footer_display_enabled,
                 )
         else:
-            escaped_body = _escape_html(personalized_template)
+            escaped_body = text_to_html(personalized_template)
             include_greeting = not _starts_with_greeting(escaped_body)
             final_html = _render_campaign_wrapper(
                 recipient_name=recipient_name,
                 campaign_name=campaign_name,
                 body_html=_linkify_plain_urls(escaped_body),
                 include_greeting=include_greeting,
+                footer_display_enabled=footer_display_enabled,
             )
 
         final_html = _inject_tracking(final_html)
