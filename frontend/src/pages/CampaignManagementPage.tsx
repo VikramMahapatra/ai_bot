@@ -38,6 +38,8 @@ import {
   InputAdornment,
   Drawer,
   IconButton,
+  Card,
+  CardContent,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -311,6 +313,9 @@ const CampaignManagementPage: React.FC = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
     null,
   );
+  const [openTrackingEnabled, setOpenTrackingEnabled] = useState(false);
+  const [clickTrackingEnabled, setClickTrackingEnabled] = useState(false);
+  const [footerDisplayEnabled, setFooterDisplayEnabled] = useState(false);
 
   const [emailEditorMode, setEmailEditorMode] = useState<"plain" | "html">(
     "plain",
@@ -1075,6 +1080,9 @@ const CampaignManagementPage: React.FC = () => {
         contact_list_id: Number(createContactListId),
         product_id: createProductId ? Number(createProductId) : undefined,
         category: createCategory || undefined,
+        open_tracking_enabled: openTrackingEnabled,
+        click_tracking_enabled: clickTrackingEnabled,
+        footer_display_enabled: footerDisplayEnabled,
         status: createScheduledTime ? "scheduled" : "draft",
         email_content_mode:
           createCampaignType === "email" ? emailContentMode : undefined,
@@ -1252,6 +1260,12 @@ const CampaignManagementPage: React.FC = () => {
     setDrawerOpen(false);
     setSelectedContact(null);
   };
+
+  const formatEmailPreview = (content: string) =>
+    content
+      .split(/\n\s*\n/)
+      .map((p) => `<p>${p.replace(/\n/g, "<br/>")}</p>`)
+      .join("");
 
   return (
     <AdminLayout>
@@ -2069,6 +2083,8 @@ const CampaignManagementPage: React.FC = () => {
                                       setSelectedTemplate(template);
                                       setCreateMessageTemplate(template?.content || "");
                                       setEmailSubject(template?.subject || "");
+
+                                      console.log(template?.content);
                                     }}
                                     error={createCampaignErrors.emailBody}
                                   >
@@ -2088,6 +2104,97 @@ const CampaignManagementPage: React.FC = () => {
                               </Grid>
                             )}
                           </Grid>
+                          <Card variant="outlined" sx={{ mt: 2 }}>
+                            <CardContent>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ fontWeight: 700, mb: 2 }}
+                              >
+                                Email Configurations
+                              </Typography>
+
+                              <Stack spacing={2}>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      Open Tracking
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Track when recipients open or read the email. Open rates
+                                      will be available in campaign analytics.
+                                    </Typography>
+                                  </Box>
+
+                                  <Switch
+                                    checked={openTrackingEnabled}
+                                    onChange={(e) =>
+                                      setOpenTrackingEnabled(e.target.checked)
+                                    }
+                                  />
+                                </Box>
+
+                                <Divider />
+
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      Click Tracking
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Track clicks on links within the email and measure
+                                      engagement for each recipient.
+                                    </Typography>
+                                  </Box>
+
+                                  <Switch
+                                    checked={clickTrackingEnabled}
+                                    onChange={(e) =>
+                                      setClickTrackingEnabled(e.target.checked)
+                                    }
+                                  />
+                                </Box>
+
+                                <Divider />
+
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      Footer Display
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Include company branding, contact information, and
+                                      unsubscribe links in the email footer.
+                                    </Typography>
+                                  </Box>
+
+                                  <Switch
+                                    checked={footerDisplayEnabled}
+                                    onChange={(e) =>
+                                      setFooterDisplayEnabled(e.target.checked)
+                                    }
+                                  />
+                                </Box>
+                              </Stack>
+                            </CardContent>
+                          </Card>
                           {emailContentMode === "manual" ? (
                             <>
                               <Stack
@@ -2828,12 +2935,16 @@ const CampaignManagementPage: React.FC = () => {
                           {emailEditorMode === "html" ||
                             looksLikeHtml(createMessageTemplate) ? (
                             <Box
-                              sx={{ "& h1, & h2, & h3": { mt: 0 } }}
+                              sx={{
+                                "& h1, & h2, & h3": { mt: 0 },
+                                whiteSpace: "pre-wrap",
+                                lineHeight: 1.7
+                              }}
                               dangerouslySetInnerHTML={{
-                                __html:
+                                __html: formatEmailPreview(
                                   (emailContentMode === "prompt"
                                     ? generatedBodies[0]
-                                    : createMessageTemplate) ||
+                                    : createMessageTemplate)) ||
                                   '<p style="color:#64748b;">No HTML content yet.</p>',
                               }}
                             />

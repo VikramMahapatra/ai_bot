@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import date, datetime
 
+from app.models.user import OrganizationStatus
+
 
 class SuperAdminLoginRequest(BaseModel):
     username: str
@@ -39,6 +41,20 @@ class OrganizationLimitsBase(BaseModel):
     module_products_enabled: Optional[bool] = None
     module_users_enabled: Optional[bool] = None
 
+    instagram_chat_enabled: Optional[bool] = None
+    facebook_messenger_enabled: Optional[bool] = None
+    whatsapp_campaign_enabled: Optional[bool] = None
+    call_forwarding_enabled: Optional[bool] = None
+    inbound_voice_enabled: Optional[bool] = None
+    outbound_voice_enabled: Optional[bool] = None
+    ai_assistant_campaign_enabled: Optional[bool] = None
+    module_followup_workflow_enabled: Optional[bool] = None
+
+    outbound_call_billing_model: Optional[str] = None
+    max_outbound_voice_agents: Optional[int] = None
+    max_inbound_voice_agents: Optional[int] = None
+    max_outbound_calls: Optional[int] = None
+
 
 class OrganizationLimitsUpdate(BaseModel):
     lead_generation_enabled: Optional[bool] = None
@@ -57,6 +73,20 @@ class OrganizationLimitsUpdate(BaseModel):
     module_appointments_enabled: Optional[bool] = None
     module_products_enabled: Optional[bool] = None
     module_users_enabled: Optional[bool] = None
+
+    instagram_chat_enabled: Optional[bool] = None
+    facebook_messenger_enabled: Optional[bool] = None
+    whatsapp_campaign_enabled: Optional[bool] = None
+    call_forwarding_enabled: Optional[bool] = None
+    inbound_voice_enabled: Optional[bool] = None
+    outbound_voice_enabled: Optional[bool] = None
+    ai_assistant_campaign_enabled: Optional[bool] = None
+    module_followup_workflow_enabled: Optional[bool] = None
+
+    outbound_call_billing_model: Optional[str] = None
+    max_outbound_voice_agents: Optional[int] = None
+    max_inbound_voice_agents: Optional[int] = None
+    max_outbound_calls: Optional[int] = None
 
 
 class OrganizationLimitsResponse(OrganizationLimitsBase):
@@ -78,6 +108,11 @@ class SuperAdminCreateOrganizationRequest(BaseModel):
     admin_email: EmailStr
     admin_password: str
     limits: Optional[OrganizationLimitsUpdate] = None
+    status: Optional[OrganizationStatus] = OrganizationStatus.TRIAL
+    trial_end_date: Optional[date] = None
+    industry: Optional[str] = None
+    timezone: Optional[str] = None
+    commercial_notes: Optional[str] = None
     echoleads_api_key: Optional[str] = None
 
 
@@ -90,6 +125,11 @@ class SuperAdminUpdateOrganizationRequest(BaseModel):
     admin_email: Optional[EmailStr] = None
     admin_password: Optional[str] = None
     echoleads_api_key: Optional[str] = None
+    status: Optional[OrganizationStatus] = None
+    trial_end_date: Optional[date] = None
+    industry: Optional[str] = None
+    timezone: Optional[str] = None
+    commercial_notes: Optional[str] = None
 
 
 class SuperAdminOrganizationResponse(BaseModel):
@@ -102,7 +142,11 @@ class SuperAdminOrganizationResponse(BaseModel):
     admin_email: Optional[str] = None
     limits: Optional[OrganizationLimitsResponse] = None
     echoleads_api_key: Optional[str] = None
-    is_active: bool
+    status: OrganizationStatus
+    industry: Optional[str] = None
+    timezone: Optional[str] = None
+    commercial_notes: Optional[str] = None
+    trial_end_date: Optional[date] = None
 
     class Config:
         from_attributes = True

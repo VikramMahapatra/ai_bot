@@ -909,3 +909,48 @@ def init_db():
         except Exception as e:
             print(f"Migration failed: {e}")
             pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE organizations
+                ADD COLUMN IF NOT EXISTS trial_end_date DATE NULL,
+                ADD COLUMN IF NOT EXISTS timezone VARCHAR(100) NULL,
+                ADD COLUMN IF NOT EXISTS industry VARCHAR(255) NULL,
+                ADD COLUMN IF NOT EXISTS commercial_notes TEXT NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE organization_limits
+                ADD COLUMN IF NOT EXISTS outbound_call_billing_model VARCHAR(20) NULL,
+                ADD COLUMN IF NOT EXISTS max_outbound_voice_agents INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS max_inbound_voice_agents INTEGER NULL,
+                ADD COLUMN IF NOT EXISTS max_outbound_calls INTEGER NULL,
+
+                ADD COLUMN IF NOT EXISTS instagram_chat_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS facebook_messenger_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS whatsapp_campaign_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS call_forwarding_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS inbound_voice_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS outbound_voice_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS ai_assistant_campaign_enabled BOOLEAN NULL,
+                ADD COLUMN IF NOT EXISTS module_followup_workflow_enabled BOOLEAN NULL;
+            """))
+
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            pass
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE campaigns
+                ADD COLUMN IF NOT EXISTS open_tracking_enabled BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS click_tracking_enabled BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS footer_display_enabled BOOLEAN DEFAULT TRUE;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")

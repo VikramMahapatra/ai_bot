@@ -4,6 +4,7 @@ from io import StringIO
 import csv
 import json
 import logging
+import random
 from threading import Thread
 import time
 import uuid
@@ -248,6 +249,9 @@ class CampaignCreateRequest(BaseModel):
     email_prompt_context: Optional[str] = None
     email_subject_variants: Optional[List[str]] = None
     email_body_variants: Optional[List[str]] = None
+    open_tracking_enabled: Optional[bool] = None
+    click_tracking_enabled: Optional[bool] = None
+    footer_display_enabled: Optional[bool] = None
 
 
 class EmailVariantGenerateRequest(BaseModel):
@@ -605,6 +609,7 @@ def _send_campaign_message(
             contact_index=contact_index,
         )
 
+        subject = render_template(subject, contact)
         body = render_template(body, contact)
 
         org_settings = get_org_settings(db, campaign.organization_id)
@@ -618,6 +623,9 @@ def _send_campaign_message(
             tracking_token=tracking_token,
             tracking_base_url=_get_tracking_base_url(),
             settings=org_settings,
+            open_tracking_enabled=campaign.open_tracking_enabled,
+            click_tracking_enabled=campaign.click_tracking_enabled,
+            footer_display_enabled=campaign.footer_display_enabled,
         )
 
     if campaign.campaign_type == "whatsapp":
@@ -856,9 +864,28 @@ def _execute_campaign_now(
 
         db.commit()
         if idx < len(contacts) - 1:
-            time.sleep(
-                settings.CONTACT_SEND_INTERVAL_SECONDS
-            )  # wait according to settings before next contact
+            base_interval = settings.CONTACT_SEND_INTERVAL_SECONDS
+
+            if campaign.campaign_type == "email":
+                delay = base_interval + random.randint(-8, 12)
+
+                # 10% chance of a longer pause
+                if random.random() < 0.10:
+                    delay += random.randint(15, 45)
+
+                delay = max(1, delay)
+
+                logger.info(
+                    "Waiting %s seconds before next email (base=%s)",
+                    delay,
+                    base_interval,
+                )
+
+                time.sleep(delay)
+            else:
+                time.sleep(
+                    base_interval
+                )  # wait according to settings before next contact
 
     campaign.number_sent = sent_count
     campaign.number_failed = failed_count
@@ -2231,6 +2258,9 @@ async def create_campaign(
         product_id=payload.product_id,
         category=payload.category,
         scheduled_time=payload.scheduled_time,
+        open_tracking_enabled=payload.open_tracking_enabled,
+        click_tracking_enabled=payload.click_tracking_enabled,
+        footer_display_enabled=payload.footer_display_enabled,
         status=status_value,
         number_sent=0,
         number_failed=0,
