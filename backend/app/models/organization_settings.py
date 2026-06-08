@@ -4,7 +4,6 @@ from app.database import Base
 from app.config import settings
 
 
-
 class OrganizationSettings(Base):
     __tablename__ = "organization_settings"
 
@@ -40,6 +39,7 @@ class OrganizationSettings(Base):
     smtp_username = Column(String, nullable=True)
     smtp_password = Column(String, nullable=True)
     smtp_sender_email = Column(String, nullable=True)
+    smtp_sender_name = Column(String, nullable=True)
     smtp_use_tls = Column(Boolean, default=True)
 
     default_escalation_level_1 = Column(String, nullable=True)

@@ -1050,6 +1050,7 @@ def send_test_email(
         smtp_password=payload.smtp_password,
         smtp_sender_email=payload.smtp_sender_email,
         smtp_use_tls=payload.smtp_use_tls,
+        smtp_sender_name=payload.smtp_sender_name,
     )
 
     db.commit()

@@ -79,7 +79,8 @@ class UserListResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        
+
+
 class AgentReport(BaseModel):
     name: str
     external_agent_name: Optional[str]
@@ -102,15 +103,14 @@ class OrganizationReport(BaseModel):
 
     agents: List[AgentReport]
     campaigns: List[CampaignReport]
-    
-    
+
+
 class CreditParameters(BaseModel):
     feature_code: str
     required_credits: Optional[float] = None
     quantity: Optional[float] = None
-    reference_type: Optional[str] =None,
-    reference_id: Optional[str] =None
-
+    reference_type: Optional[str] = (None,)
+    reference_id: Optional[str] = None
 
 
 class SMTPTestRequest(BaseModel):
@@ -119,5 +119,6 @@ class SMTPTestRequest(BaseModel):
     smtp_username: str
     smtp_password: str
     smtp_sender_email: str
+    smtp_sender_name: Optional[str] = None
     smtp_use_tls: bool
     test_email: str

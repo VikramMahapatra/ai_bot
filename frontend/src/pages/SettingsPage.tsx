@@ -129,6 +129,7 @@ const SettingsPage: React.FC = () => {
     smtp_username: "",
     smtp_password: "",
     smtp_sender_email: "",
+    smtp_sender_name: "",
     smtp_use_tls: true,
 
     default_escalation_level_1: "",
@@ -512,6 +513,7 @@ const SettingsPage: React.FC = () => {
         smtp_username: orgSettings.smtp_username,
         smtp_password: orgSettings.smtp_password,
         smtp_sender_email: orgSettings.smtp_sender_email,
+        smtp_sender_name: orgSettings.smtp_sender_name,
         smtp_use_tls: orgSettings.smtp_use_tls,
         test_email: testEmail,
       })
@@ -1060,6 +1062,22 @@ const SettingsPage: React.FC = () => {
                         onChange={(e) =>
                           handleOrgFieldChange(
                             "smtp_sender_email",
+                            e.target.value,
+                          )
+                        }
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Sender Name"
+                        size="small"
+                        helperText="Shown before the email address (e.g., Zentrixel Team <hello@zentrixel.com>)"
+                        value={orgSettings.smtp_sender_name}
+                        onChange={(e) =>
+                          handleOrgFieldChange(
+                            "smtp_sender_name",
                             e.target.value,
                           )
                         }

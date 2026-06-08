@@ -9,7 +9,7 @@ import re
 from sqlalchemy.orm import Session
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.utils import make_msgid, formatdate
+from email.utils import formataddr, make_msgid, formatdate
 from datetime import datetime
 from html import unescape
 import dns.resolver
@@ -581,7 +581,16 @@ def send_new_lead_notification(
 
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = f"🎉 New Lead: {lead_name}"
-                    msg["From"] = org_settings.smtp_sender_email
+                    msg["From"] = (
+                        formataddr(
+                            (
+                                org_settings.smtp_sender_name,
+                                org_settings.smtp_sender_email,
+                            )
+                        )
+                        if org_settings.smtp_sender_name
+                        else org_settings.smtp_sender_email
+                    )
                     msg["To"] = admin_email
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
@@ -714,6 +723,8 @@ def send_campaign_email(
             settings.smtp_sender_email or settings.smtp_username or ""
         ).strip()
         envelope_sender = (settings.smtp_username or sender_email).strip()
+        sender_name = (settings.smtp_sender_name or "").strip()
+
         if not sender_email:
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
 
@@ -721,7 +732,9 @@ def send_campaign_email(
         msg["Subject"] = (
             subject or campaign_name or "Campaign Update"
         ).strip() or "Campaign Update"
-        msg["From"] = sender_email
+        msg["From"] = (
+            formataddr((sender_name, sender_email)) if sender_name else sender_email
+        )
         msg["Reply-To"] = sender_email
         msg["To"] = normalized_email
         msg["Message-ID"] = make_msgid(
@@ -906,6 +919,7 @@ def send_instant_reply_email(
             settings.smtp_sender_email or settings.smtp_username or ""
         ).strip()
         envelope_sender = (settings.smtp_username or sender_email).strip()
+        sender_name = (settings.smtp_sender_name or "").strip()
         if not sender_email:
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
 
@@ -913,7 +927,9 @@ def send_instant_reply_email(
         msg["Subject"] = (
             subject or campaign_name or "Campaign Update"
         ).strip() or "Campaign Update"
-        msg["From"] = sender_email
+        msg["From"] = (
+            formataddr((sender_name, sender_email)) if sender_name else sender_email
+        )
         msg["Reply-To"] = sender_email
         msg["To"] = normalized_email
         msg["Message-ID"] = make_msgid(
@@ -1020,6 +1036,7 @@ def send_widget_test_link_email(
             rcpt_error,
         )
 
+    sender_name = (settings.smtp_sender_name or "").strip()
     sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
     envelope_sender = sender_email
 
@@ -1069,7 +1086,9 @@ def send_widget_test_link_email(
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = safe_subject
-        msg["From"] = sender_email
+        msg["From"] = (
+            formataddr((sender_name, sender_email)) if sender_name else sender_email
+        )
         msg["Reply-To"] = sender_email
         msg["To"] = normalized_email
         msg["Date"] = formatdate(localtime=True)
@@ -1081,9 +1100,10 @@ def send_widget_test_link_email(
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
         logger.info(
-            "SMTP send debug | username=%s | sender=%s | envelope=%s",
+            "SMTP send debug | username=%s | sender email=%s | sender name=%s | envelope=%s",
             settings.smtp_username,
             sender_email,
+            sender_name,
             envelope_sender,
         )
 
@@ -1252,6 +1272,7 @@ def send_appointment_rescheduled_notification(
     errors: list[str] = []
     sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
     envelope_sender = (settings.smtp_username or sender_email).strip()
+    sender_name = (settings.smtp_sender_name or "").strip()
 
     if not sender_email or not envelope_sender:
         return False, ["EMAIL_SENDER/SMTP_USERNAME is not configured"]
@@ -1267,7 +1288,11 @@ def send_appointment_rescheduled_notification(
                     msg["Subject"] = (
                         f"Appointment Rescheduled: {participant_name or 'Participant'}"
                     )
-                    msg["From"] = sender_email
+                    msg["From"] = (
+                        formataddr((sender_name, sender_email))
+                        if sender_name
+                        else sender_email
+                    )
                     msg["Reply-To"] = sender_email
                     msg["To"] = recipient
                     msg["Date"] = formatdate(localtime=True)
