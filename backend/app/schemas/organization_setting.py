@@ -25,6 +25,7 @@ class OrganizationSettingsBase(BaseModel):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_sender_email: str | None = None
+    smtp_sender_name: str | None = None
     smtp_use_tls: bool = True
 
     default_escalation_level_1: str | None = None

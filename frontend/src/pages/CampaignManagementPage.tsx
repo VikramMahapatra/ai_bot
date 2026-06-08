@@ -1116,7 +1116,11 @@ const CampaignManagementPage: React.FC = () => {
       setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
       showSuccess("Campaign created");
       await Promise.all([loadCampaigns(), loadDashboard()]);
-      setTab(0);
+      setTab(2);
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     } catch (err: any) {
       showError(err?.response?.data?.detail || "Failed to create campaign");
     } finally {
@@ -2037,34 +2041,8 @@ const CampaignManagementPage: React.FC = () => {
                             </Stack>
                           </Stack>
                           <Grid container>
-                            <Grid item xs={12} md={emailContentMode === "manual" ? 7 : 12}>
-                              <TextField
-                                required
-                                size="small"
-                                sx={compactInputSx}
-                                fullWidth
-                                label="Email Subject"
-                                value={emailSubject}
-                                onChange={(e) => {
-                                  setEmailSubject(e.target.value);
-                                  if (createCampaignErrors.emailSubject) {
-                                    setCreateCampaignErrors((prev) => ({
-                                      ...prev,
-                                      emailSubject: false,
-                                    }));
-                                  }
-                                }}
-                                error={createCampaignErrors.emailSubject}
-                                helperText={
-                                  createCampaignErrors.emailSubject
-                                    ? "Email subject is required"
-                                    : " "
-                                }
-                                placeholder="Leave blank to use campaign name"
-                              />
-                            </Grid>
                             {emailContentMode === "manual" && (
-                              <Grid item xs={12} md={5} sx={{ pl: { md: 2 } }}>
+                              <Grid item xs={12} md={5} >
                                 <FormControl fullWidth size="small" sx={compactInputSx}>
                                   <InputLabel>Message Template</InputLabel>
 
@@ -2103,6 +2081,38 @@ const CampaignManagementPage: React.FC = () => {
                                 </FormControl>
                               </Grid>
                             )}
+                            <Grid
+                              item
+                              xs={12}
+                              md={emailContentMode === "manual" ? 7 : 12}
+                              sx={emailContentMode === "manual" ? { pl: { md: 2 } } : {}}
+                            >
+                              <TextField
+                                required
+                                size="small"
+                                sx={compactInputSx}
+                                fullWidth
+                                label="Email Subject"
+                                value={emailSubject}
+                                onChange={(e) => {
+                                  setEmailSubject(e.target.value);
+                                  if (createCampaignErrors.emailSubject) {
+                                    setCreateCampaignErrors((prev) => ({
+                                      ...prev,
+                                      emailSubject: false,
+                                    }));
+                                  }
+                                }}
+                                error={createCampaignErrors.emailSubject}
+                                helperText={
+                                  createCampaignErrors.emailSubject
+                                    ? "Email subject is required"
+                                    : " "
+                                }
+                                placeholder="Leave blank to use campaign name"
+                              />
+                            </Grid>
+
                           </Grid>
                           <Card variant="outlined" sx={{ mt: 2 }}>
                             <CardContent>
