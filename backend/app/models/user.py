@@ -60,6 +60,12 @@ class Organization(Base):
     # Relationship
     users = relationship("User", back_populates="organization")
 
+    email_settings = relationship(
+        "OrganizationEmailSetting",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+
 
 class User(Base):
     __tablename__ = "users"

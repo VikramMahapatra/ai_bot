@@ -48,7 +48,10 @@ from app.services.sms_service import (
 )
 from app.services.email_service import send_campaign_email, send_instant_reply_email
 from app.models.call_campaign_instant_replies import CallCampaignInstantReply
-from app.services.organization_setting_service import get_org_settings
+from app.services.organization_setting_service import (
+    get_org_email_setting,
+    get_org_settings,
+)
 from app.models.whatsapp_channel import WhatsAppChannel
 from app.services.whatsapp_service import (
     send_whatsapp_template_message,
@@ -1128,7 +1131,7 @@ def handle_instant_replies(
                 "access_token": config.access_token,
             }
 
-        org_settings = get_org_settings(db, campaign.organization_id)
+        org_email_setting = get_org_email_setting(db, campaign.organization_id)
         twilio_config = get_twilio_sms_config(
             db=db, organization_id=campaign.organization_id
         )
@@ -1166,7 +1169,7 @@ def handle_instant_replies(
             replies=eligible_replies,
             contact=contact,
             campaign=campaign,
-            org_settings=org_settings,
+            org_email_setting=org_email_setting,
             whatsapp_config=whatsapp_data,
             twilio_config=twilio_config,
         )
@@ -1304,7 +1307,7 @@ def get_feature_code_for_instant_reply(reply_mode: str) -> str:
 
 
 def dispatch_instant_replies_safe(
-    replies, contact, campaign, org_settings, whatsapp_config, twilio_config
+    replies, contact, campaign, org_email_setting, whatsapp_config, twilio_config
 ):
     results = {}
 
@@ -1362,7 +1365,7 @@ def dispatch_instant_replies_safe(
                     message_template=message,
                     recipient_name=contact.name,
                     recipient_email=contact.email,
-                    settings=org_settings,
+                    org_email_setting=org_email_setting,
                 )
 
                 results[mode]["success"] = success
@@ -2031,6 +2034,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
             .first()
         )
 
+        org_email_setting = get_org_email_setting(db, call_log.organization_id)
         org_settings = get_org_settings(db, call_log.organization_id)
 
         campaign_name = (
@@ -2107,7 +2111,7 @@ def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
                     message_template=message,
                     recipient_name=contact.name,
                     recipient_email=contact.email,
-                    settings=org_settings,
+                    org_email_setting=org_email_setting,
                 )
 
                 if success:

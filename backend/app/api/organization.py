@@ -38,6 +38,7 @@ from app.models.organization_settings import OrganizationSettings
 from app.services import email_service
 from app.services.organization_setting_service import get_org_settings
 from app.models.organization_limits import OrganizationLimits
+from app.models.organization_email_settings import OrganizationEmailSetting
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
@@ -1030,8 +1031,9 @@ def consume_credits(
     )
 
 
-@router.post("/smtp/test")
+@router.post("/smtp/{email_setting_id:int}/test")
 def send_test_email(
+    email_setting_id: int,
     payload: SMTPTestRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -1043,20 +1045,24 @@ def send_test_email(
     )
 
     # Build temporary settings object
-    settings = OrganizationSettings(
-        smtp_host=payload.smtp_host,
-        smtp_port=payload.smtp_port,
-        smtp_username=payload.smtp_username,
-        smtp_password=payload.smtp_password,
-        smtp_sender_email=payload.smtp_sender_email,
-        smtp_use_tls=payload.smtp_use_tls,
-        smtp_sender_name=payload.smtp_sender_name,
+    email_setting = (
+        db.query(OrganizationEmailSetting)
+        .filter(
+            OrganizationEmailSetting.id == email_setting_id,
+            OrganizationEmailSetting.organization_id == current_user.organization_id,
+            OrganizationEmailSetting.is_active == True,
+        )
+        .first()
     )
 
-    db.commit()
+    if not email_setting:
+        raise HTTPException(
+            status_code=404,
+            detail="Email setting not found",
+        )
 
     success, error = email_service.send_smtp_test_email(
-        payload.test_email, org_name, settings
+        payload.test_email, org_name, email_setting
     )
 
     if not success:

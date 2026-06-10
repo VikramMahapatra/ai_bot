@@ -114,11 +114,4 @@ class CreditParameters(BaseModel):
 
 
 class SMTPTestRequest(BaseModel):
-    smtp_host: str
-    smtp_port: int
-    smtp_username: str
-    smtp_password: str
-    smtp_sender_email: str
-    smtp_sender_name: Optional[str] = None
-    smtp_use_tls: bool
     test_email: str

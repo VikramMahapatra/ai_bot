@@ -962,3 +962,11 @@ def init_db():
             """))
         except Exception as e:
             print(f"Migration failed: {e}")
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE organization_email_settings
+                ADD COLUMN IF NOT EXISTS cc_emails TEXT NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")

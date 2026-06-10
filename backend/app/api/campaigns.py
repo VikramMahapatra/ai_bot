@@ -70,6 +70,8 @@ from app.services.conversation_outcome_service import (
 from app.models.organization_settings import OrganizationSettings
 from typing import Optional
 
+from app.models.organization_email_settings import OrganizationEmailSetting
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/campaigns", tags=["campaigns"])
@@ -154,23 +156,19 @@ def _ensure_campaign_access(
                 detail="Email campaigns are disabled for this organization",
             )
 
-        settings = (
-            db.query(OrganizationSettings)
-            .filter(OrganizationSettings.organization_id == organization_id)
+        email_setting = (
+            db.query(OrganizationEmailSetting)
+            .filter(
+                OrganizationEmailSetting.organization_id == organization_id,
+                OrganizationEmailSetting.is_active == True,
+            )
             .first()
         )
 
-        if (
-            not settings
-            or not settings.smtp_host
-            or not settings.smtp_port
-            or not settings.smtp_username
-            or not settings.smtp_password
-            or not settings.smtp_sender_email
-        ):
+        if not email_setting:
             raise HTTPException(
                 status_code=400,
-                detail="SMTP settings are not configured for this organization",
+                detail="No active email configuration found for this organization",
             )
 
     if channel == "sms":
@@ -612,7 +610,18 @@ def _send_campaign_message(
         subject = render_template(subject, contact)
         body = render_template(body, contact)
 
-        org_settings = get_org_settings(db, campaign.organization_id)
+        # Round-robin using contact index to distribute across multiple SMTP configs if available
+        smtp_profiles = (
+            db.query(OrganizationEmailSetting)
+            .filter(
+                OrganizationEmailSetting.organization_id == campaign.organization_id,
+                OrganizationEmailSetting.is_active == True,
+            )
+            .order_by(OrganizationEmailSetting.id)
+            .all()
+        )
+
+        smtp_profile = smtp_profiles[contact_index % len(smtp_profiles)]
 
         return send_campaign_email(
             recipient_email=contact.email or "",
@@ -622,7 +631,7 @@ def _send_campaign_message(
             subject=subject,
             tracking_token=tracking_token,
             tracking_base_url=_get_tracking_base_url(),
-            settings=org_settings,
+            org_email_setting=smtp_profile,
             open_tracking_enabled=campaign.open_tracking_enabled,
             click_tracking_enabled=campaign.click_tracking_enabled,
             footer_display_enabled=campaign.footer_display_enabled,
@@ -822,6 +831,7 @@ def _execute_campaign_now(
 
     sent_count = 0
     failed_count = 0
+    next_break_after = get_next_break_after()
 
     for idx, contact in enumerate(contacts):
         for_index = sent_count + failed_count
@@ -864,16 +874,19 @@ def _execute_campaign_now(
 
         db.commit()
         if idx < len(contacts) - 1:
-            base_interval = settings.CONTACT_SEND_INTERVAL_SECONDS
+            if campaign.campaign_type == "sms":
+                base_interval = settings.SMS_CAMPAIGN_SEND_INTERVAL_SECONDS
+            elif campaign.campaign_type == "whatsapp":
+                base_interval = settings.WHATSAPP_CAMPAIGN_SEND_INTERVAL_SECONDS
+            else:
+                base_interval = settings.EMAIL_CAMPAIGN_SEND_INTERVAL_SECONDS
 
             if campaign.campaign_type == "email":
-                delay = base_interval + random.randint(-8, 12)
-
-                # 10% chance of a longer pause
-                if random.random() < 0.10:
-                    delay += random.randint(15, 45)
-
-                delay = max(1, delay)
+                delay, next_break_after = get_email_send_interval(
+                    base_interval=base_interval,
+                    emails_sent=idx + 1,
+                    next_break_after=next_break_after,
+                )
 
                 logger.info(
                     "Waiting %s seconds before next email (base=%s)",
@@ -2839,3 +2852,41 @@ def run_due_campaign_batches(
         db.close()
 
     return total_processed, total_failed
+
+
+def get_email_send_interval(
+    base_interval: int,
+    emails_sent: int,
+    next_break_after: int,
+) -> tuple[int, int]:
+    variation = int(base_interval * 0.30)
+
+    delay = random.randint(
+        max(1, base_interval - variation),
+        base_interval + variation,
+    )
+
+    if emails_sent >= next_break_after:
+        delay += get_break_duration_seconds()
+
+        # Schedule next break 20-30 emails later
+        next_break_after = emails_sent + get_next_break_after()
+
+    return delay, next_break_after
+
+
+def get_next_break_after() -> int:
+    return random.randint(
+        settings.EMAIL_CAMPAIGN_BREAK_MIN_EMAILS,
+        settings.EMAIL_CAMPAIGN_BREAK_MAX_EMAILS,
+    )
+
+
+def get_break_duration_seconds() -> int:
+    return (
+        random.randint(
+            settings.EMAIL_CAMPAIGN_BREAK_MIN_MINUTES,
+            settings.EMAIL_CAMPAIGN_BREAK_MAX_MINUTES,
+        )
+        * 60
+    )

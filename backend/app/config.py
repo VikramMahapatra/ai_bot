@@ -137,9 +137,21 @@ class Settings(BaseSettings):
     ZENTRIXEL_PHONE_NUMBER_ID: str = "1009878228875130"
     ZENTRIXEL_BUSINESS_PHONE: str = "+1 555-181-6029"
 
-    CONTACT_SEND_INTERVAL_SECONDS: int = (
+    SMS_CAMPAIGN_SEND_INTERVAL_SECONDS: int = (
         60  # Minimum interval between sending messages to the same contact
     )
+    WHATSAPP_CAMPAIGN_SEND_INTERVAL_SECONDS: int = (
+        60  # Minimum interval between sending messages to the same contact
+    )
+
+    EMAIL_CAMPAIGN_SEND_INTERVAL_SECONDS: int = (
+        60  # Minimum interval between sending messages to the same contact
+    )
+    EMAIL_CAMPAIGN_BREAK_MIN_EMAILS: int = 20
+    EMAIL_CAMPAIGN_BREAK_MAX_EMAILS: int = 30
+
+    EMAIL_CAMPAIGN_BREAK_MIN_MINUTES: int = 10
+    EMAIL_CAMPAIGN_BREAK_MAX_MINUTES: int = 20
 
     @property
     def cors_origins_list(self) -> List[str]:

@@ -20,6 +20,8 @@ import {
   DialogContent,
   DialogActions,
   MenuItem,
+  Chip,
+  Tooltip,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -43,6 +45,8 @@ import axios from "axios";
 import { whatsappService } from "../services/whatsappService";
 import { messageTemplateService, Template } from "../services/messageTemplateService";
 import { generatePreview } from "./TemplatePage";
+import { DeleteIcon, EditIcon } from "lucide-react";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -65,6 +69,22 @@ type TwilioFormState = {
   testMessage: string;
 };
 
+type EmailSetting = {
+  // SMTP
+  id?: number;
+  name: string;
+  smtp_host: string;
+  smtp_port: string;
+  smtp_username: string;
+  smtp_password: string;
+  sender_email: string;
+  sender_name?: string;
+  cc_emails?: string; // comma-separated
+  use_tls: boolean;
+  is_active: boolean;
+  is_default: boolean;
+};
+
 const buildDefaultTwilioState = (): TwilioFormState => ({
   accountSid: DEFAULT_TWILIO_ACCOUNT_SID,
   authToken: "",
@@ -77,6 +97,7 @@ const buildDefaultTwilioState = (): TwilioFormState => ({
   testToNumber: "",
   testMessage: "Hello from AI Bot SMS Campaign!",
 });
+
 
 const SettingsPage: React.FC = () => {
   const theme = useTheme();
@@ -123,37 +144,33 @@ const SettingsPage: React.FC = () => {
     require_email_for_lead: true,
     send_lead_notifications: false,
 
-    // SMTP
-    smtp_host: "",
-    smtp_port: "",
-    smtp_username: "",
-    smtp_password: "",
-    smtp_sender_email: "",
-    smtp_sender_name: "",
-    smtp_use_tls: true,
-
     default_escalation_level_1: "",
     default_escalation_level_2: "",
 
     expected_close_days: 0,
   });
+
+  const [orgEmailSettings, setOrgEmailSettings] = useState<EmailSetting | null>(null);
+
+  const [emailSettings, setEmailSettings] = useState<EmailSetting[]>([]);
+  const [selectedEmailSetting, setSelectedEmailSetting] = useState<EmailSetting | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [smtpErrors, setSmtpErrors] = useState<Record<string, string>>({});
+
+  const [smtpProfileToDelete, setSmtpProfileToDelete] = useState<EmailSetting | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
   const [orgSaving, setOrgSaving] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [whatsappData, setWhatsappData] = useState<any>(null);
 
-  useEffect(() => {
-    const loadOrgSettings = async () => {
-      try {
-        const data = await organizationService.getOrgSettings();
-        setOrgSettings(data);
-      } catch (err) {
-        console.error("Failed to load org settings");
-      }
-    };
 
+  useEffect(() => {
     loadOrgSettings();
+    loadOrgEmailSettings();
   }, []);
 
   useEffect(() => {
@@ -192,6 +209,16 @@ const SettingsPage: React.FC = () => {
     loadWhatsAppUtilityTemplates();
   }, []);
 
+
+  const loadOrgSettings = async () => {
+    const data = await organizationService.getOrgSettings();
+    setOrgSettings(data);
+  };
+
+  const loadOrgEmailSettings = async () => {
+    const data = await organizationService.getOrgEmailSettings();
+    setEmailSettings(data);
+  };
 
   const loadWhatsAppConfig = async () => {
     try {
@@ -439,96 +466,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  // END WHATSAPP
-  const handleOrgFieldChange = (key: string, value: any) => {
-    setOrgSettings((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
-
-  const handleSaveOrgSettings = async () => {
-    setOrgSaving(true);
-    try {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      await organizationService.updateOrgSettings(orgSettings);
-      showSuccess("Settings updated successfully");
-    } catch (err) {
-      showError("Failed to update settings");
-    }
-
-    setOrgSaving(false);
-  };
-
-  const handleSendTestEmail = async () => {
-    setError("");
-    setSuccess("");
-
-    // Validation
-    if (!orgSettings.smtp_host) {
-      setError("SMTP Host is required");
-      return;
-    }
-
-    if (!orgSettings.smtp_port) {
-      setError("SMTP Port is required");
-      return;
-    }
-
-    if (!orgSettings.smtp_username) {
-      setError("SMTP Username is required");
-      return;
-    }
-
-    if (!orgSettings.smtp_password) {
-      setError("SMTP Password is required");
-      return;
-    }
-
-    if (!orgSettings.smtp_sender_email) {
-      setError("Sender Email is required");
-      return;
-    }
-
-    if (!testEmail) {
-      setError("Test Email is required");
-      return;
-    }
-
-    // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(testEmail)) {
-      setError("Invalid test email format");
-      return;
-    }
-
-    try {
-      setSendingTestEmail(true);
-
-      // Call API here
-      await organizationService.sendTestEmail({
-        smtp_host: orgSettings.smtp_host,
-        smtp_port: orgSettings.smtp_port,
-        smtp_username: orgSettings.smtp_username,
-        smtp_password: orgSettings.smtp_password,
-        smtp_sender_email: orgSettings.smtp_sender_email,
-        smtp_sender_name: orgSettings.smtp_sender_name,
-        smtp_use_tls: orgSettings.smtp_use_tls,
-        test_email: testEmail,
-      })
-
-      setSuccess("Test email sent successfully");
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.detail || "Failed to send test email"
-      );
-    } finally {
-      setSendingTestEmail(false);
-    }
-  };
-
-
   const sendWhatsAppTest = async () => {
 
     if (!testToNumber.trim()) {
@@ -566,6 +503,117 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+
+  // END WHATSAPP
+
+
+  const handleOrgFieldChange = (key: string, value: any) => {
+    setOrgSettings((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleOrgEmailFieldChange = (key: string, value: any) => {
+    setSelectedEmailSetting((prev: any) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleSaveOrgSettings = async () => {
+    setOrgSaving(true);
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      await organizationService.updateOrgSettings(orgSettings);
+      showSuccess("Settings updated successfully");
+    } catch (err) {
+      showError("Failed to update settings");
+    }
+
+    setOrgSaving(false);
+  };
+
+  const handleSaveOrgEmailSettings = async () => {
+    if (!validateEmailSetting()) {
+      return;
+    }
+
+    setOrgSaving(true);
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      await organizationService.updateOrgEmailSettings(selectedEmailSetting);
+      setEmailDialogOpen(false);
+      showSuccess("Settings updated successfully");
+
+      loadOrgEmailSettings();
+    } catch (err) {
+      showError("Failed to update settings");
+    }
+
+    setOrgSaving(false);
+  };
+
+  const handleSendTestEmail = async () => {
+    setError("");
+    setSuccess("");
+
+    if (!selectedEmailSetting?.id) {
+      setError("Please select an email configuration");
+      return;
+    }
+
+    if (!testEmail) {
+      setError("Test Email is required");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(testEmail)) {
+      setError("Invalid test email format");
+      return;
+    }
+
+    try {
+      setSendingTestEmail(true);
+
+      await organizationService.sendTestEmail(
+        selectedEmailSetting.id,
+        testEmail
+      );
+      setTestDialogOpen(false);
+      setSuccess("Test email sent successfully");
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+        "Failed to send test email"
+      );
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+
+  const handleSMTPDelete = async () => {
+    if (!smtpProfileToDelete?.id) return;
+    setError("");
+    setSuccess("");
+    setDeleteSubmitting(true);
+    setLoading(true);
+    try {
+      await organizationService.deleteEmailSetting(smtpProfileToDelete.id);
+      setSmtpProfileToDelete(null);
+      await loadOrgEmailSettings();
+      setSuccess("SMTP profile deleted successfully");
+    } catch (error) {
+      showError(`Failed to delete the SMTP profile`);
+    } finally {
+      setDeleteSubmitting(false);
+      setLoading(false);
+    }
+  };
+
   const showError = (message: string) => {
     setSuccess("");
     setError(message);
@@ -583,6 +631,59 @@ const SettingsPage: React.FC = () => {
       backgroundColor: alpha(theme.palette.common.white, 0.72),
     },
   } as const;
+
+  const validateEmailSetting = () => {
+    const newErrors: Record<string, string> = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!selectedEmailSetting?.name?.trim()) {
+      newErrors.name = "Profile name is required";
+    }
+
+    if (!selectedEmailSetting?.smtp_host?.trim()) {
+      newErrors.smtp_host = "SMTP host is required";
+    }
+
+    if (!selectedEmailSetting?.smtp_port) {
+      newErrors.smtp_port = "SMTP port is required";
+    }
+
+    if (!selectedEmailSetting?.smtp_username?.trim()) {
+      newErrors.smtp_username = "SMTP username is required";
+    }
+
+    if (!selectedEmailSetting?.smtp_password?.trim()) {
+      newErrors.smtp_password = "SMTP password is required";
+    }
+
+    if (!selectedEmailSetting?.sender_email?.trim()) {
+      newErrors.sender_email = "Sender email is required";
+    } else {
+
+
+      if (!emailRegex.test(selectedEmailSetting.sender_email)) {
+        newErrors.sender_email = "Invalid email address";
+      }
+    }
+    if (selectedEmailSetting?.cc_emails?.trim()) {
+      const emails = selectedEmailSetting.cc_emails
+        .split(",")
+        .map((email) => email.trim())
+        .filter(Boolean);
+
+      const invalidEmails = emails.filter(
+        (email) => !emailRegex.test(email)
+      );
+
+      if (invalidEmails.length > 0) {
+        newErrors.cc_emails = `Invalid email(s): ${invalidEmails.join(", ")}`;
+      }
+    }
+
+    setSmtpErrors(newErrors);
+
+    return Object.keys(newErrors).length === 0;
+  };
 
 
   return (
@@ -975,8 +1076,209 @@ const SettingsPage: React.FC = () => {
               </Card>
             </Grid>
 
+
+
             <Grid item xs={12}>
+              <Box display="flex" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  onClick={handleSaveOrgSettings}
+                  disabled={orgSaving}
+                >
+                  {orgSaving ? "Saving..." : "Save Settings"}
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        )}
+        {activeTab === 1 && (
+          <>
+            <Grid item xs={12}>
+              <Box
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+                borderBottom="1px solid"
+                borderColor="divider"
+                pb={2}
+              >
+                <Box>
+                  <Typography variant="h6" fontWeight={600}>
+                    Integrations
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Connect external services and communication channels
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+            <Grid item xs={12} mt={2}>
               <Card sx={{ boxShadow: 2 }}>
+                <CardContent>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    mb={2}
+                  >
+                    <Typography variant="h6">
+                      Email SMTP Configurations
+                    </Typography>
+
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        setSelectedEmailSetting(null);
+                        setEmailDialogOpen(true);
+                        setSmtpErrors({});
+                      }}
+                    >
+                      Add SMTP Profile
+                    </Button>
+                  </Box>
+                  {emailSettings.length === 0 ? (
+                    <Box
+                      sx={{
+                        py: 6,
+                        textAlign: "center",
+                        border: "1px dashed",
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        bgcolor: "background.default",
+                      }}
+                    >
+                      <MailOutlineIcon
+                        color="disabled"
+                        sx={{ fontSize: 48, mb: 2 }}
+                      />
+
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                      >
+                        No SMTP Profiles Configured
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: 3 }}
+                      >
+                        Add your first SMTP profile to send emails, campaigns,
+                        notifications, and conversation transcripts.
+                      </Typography>
+
+                      <Button
+                        variant="contained"
+                        onClick={() => {
+                          setSelectedEmailSetting(null);
+                          setEmailDialogOpen(true);
+                          setSmtpErrors({});
+                        }}
+                      >
+                        Add SMTP Profile
+                      </Button>
+                    </Box>
+                  ) : (
+
+                    emailSettings.map((setting) => (
+                      <Card
+                        key={setting.id}
+                        variant="outlined"
+                        sx={{
+                          mb: 2,
+                          borderRadius: 2,
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            boxShadow: 3,
+                          },
+                        }}
+                      >
+                        <CardContent>
+                          <Box
+                            display="flex"
+                            justifyContent="space-between"
+                            alignItems="center"
+                          >
+                            <Box>
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <MailOutlineIcon color="primary" />
+
+                                <Typography variant="h6">
+                                  {setting.name}
+                                </Typography>
+
+                                {setting.is_default && (
+                                  <Chip
+                                    label="Default"
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                  />
+                                )}
+
+                                <Chip
+                                  label={setting.is_active ? "Active" : "Inactive"}
+                                  size="small"
+                                  color={setting.is_active ? "success" : "default"}
+                                  variant="outlined"
+                                />
+                              </Box>
+
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ mt: 1 }}
+                              >
+                                {setting.sender_email}
+                              </Typography>
+
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                {setting.smtp_host}:{setting.smtp_port}
+                              </Typography>
+                            </Box>
+
+                            <Box display="flex" gap={1}>
+                              <Button
+                                startIcon={<SendIcon />}
+                                onClick={() => {
+                                  setSelectedEmailSetting(setting);
+                                  setTestDialogOpen(true);
+                                }}
+                              >
+                                Test
+                              </Button>
+                              <Button
+                                size="small"
+                                startIcon={<EditIcon />}
+                                onClick={() => {
+                                  setSelectedEmailSetting(setting);
+                                  setEmailDialogOpen(true);
+                                  setSmtpErrors({});
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="small"
+                                startIcon={<DeleteIcon />}
+                                color="error"
+                                onClick={() => setSmtpProfileToDelete(setting)}
+                              >
+                                Delete
+                              </Button>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+              {/* <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" gap={1} mb={2}>
                     <MailOutlineIcon color="primary" />
@@ -992,121 +1294,9 @@ const SettingsPage: React.FC = () => {
                     via email
                   </Typography>
 
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="SMTP Host"
-                        defaultValue="smtp.office365.com"
-                        size="small"
-                        helperText="e.g., smtp.gmail.com, smtp.office365.com"
-                        value={orgSettings.smtp_host}
-                        onChange={(e) =>
-                          handleOrgFieldChange("smtp_host", e.target.value)
-                        }
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="SMTP Port"
-                        size="small"
-                        type="number"
-                        helperText="Common: 25, 587, 465"
-                        value={orgSettings.smtp_port}
-                        onChange={(e) => {
-                          console.log("SMTP PORT : ", parseInt(e.target.value)),
-                            handleOrgFieldChange(
-                              "smtp_port",
-                              parseInt(e.target.value),
-                            )
-                        }
-                        }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="SMTP Username"
-                        size="small"
-                        helperText="Your SMTP authentication username"
-                        value={orgSettings.smtp_username}
-                        onChange={(e) =>
-                          handleOrgFieldChange("smtp_username", e.target.value)
-                        }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="SMTP Password"
-                        size="small"
-                        type="password"
-                        helperText="App password or SMTP password"
-                        value={orgSettings.smtp_password}
-                        onChange={(e) =>
-                          handleOrgFieldChange("smtp_password", e.target.value)
-                        }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Email Sender"
-                        size="small"
-                        helperText="From email address"
-                        value={orgSettings.smtp_sender_email}
-                        onChange={(e) =>
-                          handleOrgFieldChange(
-                            "smtp_sender_email",
-                            e.target.value,
-                          )
-                        }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Sender Name"
-                        size="small"
-                        helperText="Shown before the email address (e.g., Zentrixel Team <hello@zentrixel.com>)"
-                        value={orgSettings.smtp_sender_name}
-                        onChange={(e) =>
-                          handleOrgFieldChange(
-                            "smtp_sender_name",
-                            e.target.value,
-                          )
-                        }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Box sx={{ pt: 1 }}>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={orgSettings.smtp_use_tls}
-                              onChange={(e) =>
-                                handleOrgFieldChange(
-                                  "smtp_use_tls",
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                          }
-                          label="Use SSL/TLS"
-                        />
-                      </Box>
-                    </Grid>
-                  </Grid>
-                  {/* Divider */}
+
                   <Divider sx={{ my: 3 }} />
 
-                  {/* Test Email Section */}
                   <Box mb={2}>
                     <Typography variant="subtitle1" fontWeight={600}>
                       Test SMTP Configuration
@@ -1145,46 +1335,10 @@ const SettingsPage: React.FC = () => {
                     </Grid>
                   </Grid>
                 </CardContent>
-              </Card>
+              </Card> */}
 
             </Grid>
-
-            <Grid item xs={12}>
-              <Box display="flex" justifyContent="flex-end">
-                <Button
-                  variant="contained"
-                  onClick={handleSaveOrgSettings}
-                  disabled={orgSaving}
-                >
-                  {orgSaving ? "Saving..." : "Save Settings"}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        )}
-        {activeTab === 1 && (
-          <>
-            <Grid item xs={12}>
-              <Box
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                borderBottom="1px solid"
-                borderColor="divider"
-                pb={2}
-              >
-                <Box>
-                  <Typography variant="h6" fontWeight={600}>
-                    Integrations
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Connect external services and communication channels
-                  </Typography>
-                </Box>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
+            <Grid item xs={12} mt={2}>
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1733,6 +1887,283 @@ const SettingsPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+        <Dialog
+          open={emailDialogOpen}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            {selectedEmailSetting
+              ? "Edit SMTP Profile"
+              : "Add SMTP Profile"}
+          </DialogTitle>
+
+          <DialogContent>
+            <Grid container spacing={2} mt={1}>
+              <Grid item xs={12} md={12}>
+                <TextField
+                  fullWidth
+                  label="SMTP Profile Name"
+                  defaultValue="Default SMTP"
+                  size="small"
+                  value={selectedEmailSetting?.name}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange("name", e.target.value)
+                  }
+                  error={!!smtpErrors.name}
+                  helperText={smtpErrors.name || "e.g., Default SMTP, Gmail, Office365"}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="SMTP Host"
+                  defaultValue="smtp.office365.com"
+                  size="small"
+                  value={selectedEmailSetting?.smtp_host}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange("smtp_host", e.target.value)
+                  }
+                  error={!!smtpErrors.smtp_host}
+                  helperText={
+                    smtpErrors.smtp_host || "e.g., smtp.gmail.com, smtp.office365.com"
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="SMTP Port"
+                  size="small"
+                  type="number"
+                  value={selectedEmailSetting?.smtp_port}
+                  onChange={(e) => {
+                    console.log("SMTP PORT : ", parseInt(e.target.value)),
+                      handleOrgEmailFieldChange(
+                        "smtp_port",
+                        parseInt(e.target.value),
+                      )
+                  }
+                  }
+                  error={!!smtpErrors.smtp_port}
+                  helperText={
+                    smtpErrors.smtp_port || "e.g., 25, 587 (TLS), 465 (SSL)"
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="SMTP Username"
+                  size="small"
+                  value={selectedEmailSetting?.smtp_username}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange("smtp_username", e.target.value)
+                  }
+                  error={!!smtpErrors.smtp_username}
+                  helperText={
+                    smtpErrors.smtp_username ||
+                    "Your SMTP authentication username"
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="SMTP Password"
+                  size="small"
+                  type="password"
+                  value={selectedEmailSetting?.smtp_password}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange("smtp_password", e.target.value)
+                  }
+                  error={!!smtpErrors.smtp_password}
+                  helperText={smtpErrors.smtp_password || "App password or SMTP password"}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Email Sender"
+                  size="small"
+                  value={selectedEmailSetting?.sender_email}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange(
+                      "sender_email",
+                      e.target.value,
+                    )
+                  }
+                  error={!!smtpErrors.sender_email}
+                  helperText={
+                    smtpErrors.sender_email ||
+                    "The email address that will appear in the 'From' field when sending emails"
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Sender Name"
+                  size="small"
+                  helperText="Shown before the email address (e.g., Zentrixel Team <hello@zentrixel.com>)"
+                  value={selectedEmailSetting?.sender_name}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange(
+                      "sender_name",
+                      e.target.value,
+                    )
+                  }
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="CC Email Addresses"
+                  size="small"
+                  value={selectedEmailSetting?.cc_emails}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange(
+                      "cc_emails",
+                      e.target.value,
+                    )
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  error={!!smtpErrors.cc_emails}
+                  helperText={
+                    smtpErrors.cc_emails ||
+                    "Comma-separated list of email addresses"
+                  }
+                />
+              </Grid>
+              <Grid
+                item
+                xs={12}
+                md={3}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  height: "40px", // match small TextField height
+                  mt: "2px",      // optional fine-tuning
+                }}
+              >
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={selectedEmailSetting?.use_tls}
+                      onChange={(e) =>
+                        handleOrgEmailFieldChange(
+                          "use_tls",
+                          e.target.checked
+                        )
+                      }
+                    />
+                  }
+                  label="Use SSL/TLS"
+                  sx={{ m: 0 }}
+                />
+              </Grid>
+              <Grid
+                item
+                xs={12}
+                md={3}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  height: "40px", // match small TextField height
+                  mt: "2px",      // optional fine-tuning
+                }}
+              >
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={selectedEmailSetting?.is_default}
+                      onChange={(e) =>
+                        handleOrgEmailFieldChange(
+                          "is_default",
+                          e.target.checked
+                        )
+                      }
+                    />
+                  }
+                  label="Set as Default"
+                  sx={{ m: 0 }}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button
+              onClick={() => setEmailDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="contained"
+              onClick={handleSaveOrgEmailSettings}
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog
+          open={testDialogOpen}
+          onClose={() => setTestDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            Send Test Email
+          </DialogTitle>
+
+          <DialogContent>
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Recipient Email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setTestDialogOpen(false)}>
+              Cancel
+            </Button>
+
+            <Button
+              variant="contained"
+              onClick={() =>
+                handleSendTestEmail()
+              }
+            >
+              Send Test Email
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <ConfirmDialog
+          open={Boolean(smtpProfileToDelete)}
+          title="Delete SMTP profile?"
+          description={
+            smtpProfileToDelete
+              ? `This will permanently remove "${smtpProfileToDelete.name}". This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmColor="error"
+          loading={deleteSubmitting}
+          onCancel={() => !deleteSubmitting && setSmtpProfileToDelete(null)}
+          onConfirm={handleSMTPDelete}
+        />
       </Box>
     </AdminLayout>
   );

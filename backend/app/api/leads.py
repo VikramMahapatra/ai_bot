@@ -20,7 +20,10 @@ from app.api.organization_setting import get_settings
 from app.models.organization_settings import OrganizationSettings
 from app.services.call_log_service import create_lead_activity
 from app.models.lead_activities import LeadActivity
-from app.services.organization_setting_service import get_org_settings
+from app.services.organization_setting_service import (
+    get_org_email_setting,
+    get_org_settings,
+)
 from app.models.campaign import Contact
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.api.chat import _get_or_create_agent_contact_list, _normalize_phone
@@ -57,6 +60,7 @@ CUSTOM_FIELD_LABELS = {
     "state": "State",
     "country": "Country",
 }
+
 
 def _normalize_source(source: Optional[str]) -> str:
     normalized = (source or "chat").strip().lower()
@@ -312,7 +316,7 @@ async def create_lead(
                     admin_emails = [admin.email for admin in admins if admin.email]
 
                     if admin_emails:
-                        settings = get_org_settings(db, org_id)
+                        email_setting = get_org_email_setting(db, org_id)
                         # Send notification asynchronously would be ideal, but for now send synchronously
                         send_new_lead_notification(
                             lead_email=new_lead.email or "",
@@ -320,7 +324,7 @@ async def create_lead(
                             lead_phone=new_lead.phone or "",
                             lead_company=new_lead.company,
                             admin_emails=admin_emails,
-                            settings=settings,
+                            org_email_setting=email_setting,
                         )
                 except Exception as e:
                     logger.error(
@@ -418,8 +422,8 @@ def build_lead_filters(
     if campaign_id:
         filters.append(
             exists().where(
-                (LeadActivity.lead_id == Lead.id) &
-                (LeadActivity.campaign_id == campaign_id)
+                (LeadActivity.lead_id == Lead.id)
+                & (LeadActivity.campaign_id == campaign_id)
             )
         )
 
