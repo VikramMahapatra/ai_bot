@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -19,15 +21,6 @@ class OrganizationSettingsBase(BaseModel):
     require_email_for_lead: bool = True
     send_lead_notifications: bool = False
 
-    # SMTP
-    smtp_host: str | None = None
-    smtp_port: int | None = None
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    smtp_sender_email: str | None = None
-    smtp_sender_name: str | None = None
-    smtp_use_tls: bool = True
-
     default_escalation_level_1: str | None = None
     default_escalation_level_2: str | None = None
 
@@ -41,6 +34,42 @@ class OrganizationSettingsUpdate(OrganizationSettingsBase):
 class OrganizationSettingsResponse(OrganizationSettingsBase):
     id: int
     organization_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class OrganizationEmailSettingUpdate(BaseModel):
+    id: Optional[int] = None
+
+    name: str
+    smtp_host: str
+    smtp_port: int
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+
+    sender_email: str
+    sender_name: Optional[str] = None
+    cc_emails: Optional[str] = None
+
+    use_tls: bool = True
+    is_default: bool = False
+    is_active: bool = True
+
+
+class OrganizationEmailSettingResponse(BaseModel):
+    id: int
+    name: str
+    sender_email: str
+    sender_name: Optional[str]
+    cc_emails: Optional[str]
+    smtp_username: str
+    smtp_password: str
+    smtp_host: str
+    smtp_port: int
+    use_tls: bool
+    is_default: bool
+    is_active: bool
 
     class Config:
         from_attributes = True

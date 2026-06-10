@@ -33,15 +33,6 @@ class OrganizationSettings(Base):
     require_email_for_lead = Column(Boolean, default=True)
     send_lead_notifications = Column(Boolean, default=False)
 
-    # -------- SMTP Settings --------
-    smtp_host = Column(String, nullable=True)
-    smtp_port = Column(Integer, nullable=True)
-    smtp_username = Column(String, nullable=True)
-    smtp_password = Column(String, nullable=True)
-    smtp_sender_email = Column(String, nullable=True)
-    smtp_sender_name = Column(String, nullable=True)
-    smtp_use_tls = Column(Boolean, default=True)
-
     default_escalation_level_1 = Column(String, nullable=True)
     default_escalation_level_2 = Column(String, nullable=True)
 

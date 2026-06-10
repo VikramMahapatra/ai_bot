@@ -18,11 +18,11 @@ from typing import Iterable, Optional
 from urllib.parse import quote
 from app.config import settings
 from app.services.organization_setting_service import (
-    get_org_settings,
     get_org_smtp_config,
 )
 from app.models.organization_settings import OrganizationSettings
 from app.models.user import Organization
+from app.models.organization_email_settings import OrganizationEmailSetting
 
 logger = logging.getLogger(__name__)
 SMTP_TIMEOUT_SECONDS = 20
@@ -98,7 +98,7 @@ def _is_reputation_or_blocklist_rejection(rcpt_message: str) -> bool:
 
 
 def _precheck_recipient_mailbox(
-    email: str, org_settings: OrganizationSettings
+    email: str, org_email_setting: OrganizationEmailSetting
 ) -> tuple[bool | None, str | None]:
     """Best-effort recipient mailbox check via MX + SMTP RCPT.
 
@@ -125,7 +125,7 @@ def _precheck_recipient_mailbox(
     if not mx_hosts:
         return None, "MX lookup inconclusive: no MX hosts found"
 
-    probe_from = org_settings.smtp_sender_email or "noreply@example.com"
+    probe_from = org_email_setting.sender_email or "noreply@example.com"
     inconclusive_errors = []
 
     for host in mx_hosts[:3]:
@@ -162,7 +162,9 @@ def _precheck_recipient_mailbox(
 
 
 def send_conversation_email(
-    recipient_email: str, conversation_data: list, settings: OrganizationSettings
+    recipient_email: str,
+    conversation_data: list,
+    org_email_setting: OrganizationEmailSetting,
 ) -> bool:
     """
     Send conversation transcript via email
@@ -174,17 +176,19 @@ def send_conversation_email(
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Your Conversation Transcript - Zentrixel AI"
-        msg["From"] = settings.smtp_sender_email
+        msg["From"] = org_email_setting.sender_email
         msg["To"] = recipient_email
 
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
             print("SMTP CONNECTED")
-            if settings.smtp_username and settings.smtp_password:
+            if org_email_setting.smtp_username and org_email_setting.smtp_password:
                 print("Logging into SMTP")
-                server.login(settings.smtp_username, settings.smtp_password)
+                server.login(
+                    org_email_setting.smtp_username, org_email_setting.smtp_password
+                )
             print("Sending email...")
             refused = server.send_message(msg)
             print("Send response:", refused)
@@ -509,7 +513,7 @@ def send_new_lead_notification(
     lead_phone: str,
     lead_company: str = None,
     admin_emails: list = None,
-    org_settings: OrganizationSettings = None,
+    org_email_setting: OrganizationEmailSetting = None,
 ) -> bool:
     """
     Send notification email when new lead is captured
@@ -570,10 +574,12 @@ def send_new_lead_notification(
 
         plain_content = _html_to_plain_text(html_content)
 
-        with _open_smtp_server(get_org_smtp_config(org_settings)) as server:
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
 
-            if org_settings.smtp_username and org_settings.smtp_password:
-                server.login(org_settings.smtp_username, org_settings.smtp_password)
+            if org_email_setting.smtp_username and org_email_setting.smtp_password:
+                server.login(
+                    org_email_setting.smtp_username, org_email_setting.smtp_password
+                )
 
             for admin_email in admin_emails:
 
@@ -584,14 +590,18 @@ def send_new_lead_notification(
                     msg["From"] = (
                         formataddr(
                             (
-                                org_settings.smtp_sender_name,
-                                org_settings.smtp_sender_email,
+                                org_email_setting.sender_name,
+                                org_email_setting.sender_email,
                             )
                         )
-                        if org_settings.smtp_sender_name
-                        else org_settings.smtp_sender_email
+                        if org_email_setting.sender_name
+                        else org_email_setting.sender_email
                     )
                     msg["To"] = admin_email
+                    cc_list = get_cc_emails(org_email_setting.cc_emails)
+
+                    if cc_list:
+                        msg["Cc"] = ", ".join(cc_list)
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
                     msg.attach(MIMEText(html_content, "html", "utf-8"))
@@ -624,7 +634,7 @@ def send_campaign_email(
     subject: Optional[str] = None,
     tracking_token: Optional[str] = None,
     tracking_base_url: Optional[str] = None,
-    settings: OrganizationSettings = None,
+    org_email_setting: OrganizationEmailSetting = None,
     open_tracking_enabled: bool = False,
     click_tracking_enabled: bool = False,
     footer_display_enabled: bool = False,
@@ -708,7 +718,9 @@ def send_campaign_email(
     if not normalized_email:
         return False, validation_error or "Missing or invalid email", None
 
-    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email, settings)
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(
+        normalized_email, org_email_setting
+    )
     if rcpt_ok is False:
         return False, rcpt_error or "Recipient mailbox rejected", None
     if rcpt_ok is None and rcpt_error:
@@ -720,10 +732,10 @@ def send_campaign_email(
 
     try:
         sender_email = (
-            settings.smtp_sender_email or settings.smtp_username or ""
+            org_email_setting.sender_email or org_email_setting.smtp_username or ""
         ).strip()
-        envelope_sender = (settings.smtp_username or sender_email).strip()
-        sender_name = (settings.smtp_sender_name or "").strip()
+        envelope_sender = (org_email_setting.smtp_username or sender_email).strip()
+        sender_name = (org_email_setting.sender_name or "").strip()
 
         if not sender_email:
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
@@ -740,6 +752,10 @@ def send_campaign_email(
         msg["Message-ID"] = make_msgid(
             domain=sender_email.split("@", 1)[1] if "@" in sender_email else None
         )
+        cc_list = get_cc_emails(org_email_setting.cc_emails)
+
+        if cc_list:
+            msg["Cc"] = ", ".join(cc_list)
 
         personalized_template = _apply_campaign_placeholders(
             message_template or "",
@@ -783,8 +799,10 @@ def send_campaign_email(
         msg.attach(text_part)
         msg.attach(html_part)
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
-            server.login(settings.smtp_username, settings.smtp_password)
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
+            server.login(
+                org_email_setting.smtp_username, org_email_setting.smtp_password
+            )
             refused_recipients = server.send_message(
                 msg,
                 from_addr=envelope_sender,
@@ -828,7 +846,7 @@ def send_instant_reply_email(
     subject: Optional[str] = None,
     tracking_token: Optional[str] = None,
     tracking_base_url: Optional[str] = None,
-    settings: OrganizationSettings = None,
+    org_email_setting: OrganizationEmailSetting = None,
 ) -> tuple[bool, str | None, str | None]:
     """Send a campaign email and return success/failure with an optional error message."""
 
@@ -904,7 +922,9 @@ def send_instant_reply_email(
     if not normalized_email:
         return False, validation_error or "Missing or invalid email", None
 
-    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email, settings)
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(
+        normalized_email, org_email_setting
+    )
     if rcpt_ok is False:
         return False, rcpt_error or "Recipient mailbox rejected", None
     if rcpt_ok is None and rcpt_error:
@@ -916,10 +936,10 @@ def send_instant_reply_email(
 
     try:
         sender_email = (
-            settings.smtp_sender_email or settings.smtp_username or ""
+            org_email_setting.sender_email or org_email_setting.smtp_username or ""
         ).strip()
-        envelope_sender = (settings.smtp_username or sender_email).strip()
-        sender_name = (settings.smtp_sender_name or "").strip()
+        envelope_sender = (org_email_setting.smtp_username or sender_email).strip()
+        sender_name = (org_email_setting.sender_name or "").strip()
         if not sender_email:
             return False, "EMAIL_SENDER/SMTP_USERNAME is not configured", None
 
@@ -975,8 +995,10 @@ def send_instant_reply_email(
         msg.attach(text_part)
         msg.attach(html_part)
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
-            server.login(settings.smtp_username, settings.smtp_password)
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
+            server.login(
+                org_email_setting.smtp_username, org_email_setting.smtp_password
+            )
             refused_recipients = server.send_message(
                 msg,
                 from_addr=envelope_sender,
@@ -1016,7 +1038,7 @@ def send_widget_test_link_email(
     recipient_email: str,
     subject: str,
     message_body: str,
-    settings: OrganizationSettings,
+    org_email_setting: OrganizationEmailSetting,
 ) -> tuple[bool, str | None]:
     """Send a simple Zentrixel-branded widget test-link email."""
     normalized_email, validation_error = _validate_email_address(recipient_email)
@@ -1026,7 +1048,9 @@ def send_widget_test_link_email(
     if _is_reserved_test_email(normalized_email):
         return False, "Recipient email uses a placeholder/test domain"
 
-    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(normalized_email, settings)
+    rcpt_ok, rcpt_error = _precheck_recipient_mailbox(
+        normalized_email, org_email_setting
+    )
     if rcpt_ok is False:
         return False, rcpt_error or "Recipient mailbox rejected"
     if rcpt_ok is None and rcpt_error:
@@ -1036,8 +1060,10 @@ def send_widget_test_link_email(
             rcpt_error,
         )
 
-    sender_name = (settings.smtp_sender_name or "").strip()
-    sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
+    sender_name = (org_email_setting.sender_name or "").strip()
+    sender_email = (
+        org_email_setting.sender_email or org_email_setting.smtp_username or ""
+    ).strip()
     envelope_sender = sender_email
 
     if not sender_email or not envelope_sender:
@@ -1096,20 +1122,27 @@ def send_widget_test_link_email(
             domain=sender_email.split("@", 1)[1] if "@" in sender_email else None
         )
 
+        cc_list = get_cc_emails(org_email_setting.cc_emails)
+
+        if cc_list:
+            msg["Cc"] = ", ".join(cc_list)
+
         msg.attach(MIMEText(plain_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
         logger.info(
             "SMTP send debug | username=%s | sender email=%s | sender name=%s | envelope=%s",
-            settings.smtp_username,
+            org_email_setting.smtp_username,
             sender_email,
             sender_name,
             envelope_sender,
         )
 
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
-            if settings.smtp_username and settings.smtp_password:
-                server.login(settings.smtp_username, settings.smtp_password)
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
+            if org_email_setting.smtp_username and org_email_setting.smtp_password:
+                server.login(
+                    org_email_setting.smtp_username, org_email_setting.smtp_password
+                )
 
             refused = server.send_message(
                 msg,
@@ -1141,7 +1174,7 @@ def send_widget_test_link_email(
 
 
 def send_smtp_test_email(
-    recipient_email: str, org_name: str, settings: OrganizationSettings
+    recipient_email: str, org_name: str, org_email_setting: OrganizationEmailSetting
 ) -> tuple[bool, str | None]:
     """
     Send SMTP test email to verify configuration
@@ -1156,9 +1189,9 @@ def send_smtp_test_email(
     If you're receiving this email, your SMTP settings are working correctly.
 
     SMTP Details:
-    Host: {settings.smtp_host}
-    Port: {settings.smtp_port}
-    TLS Enabled: {"Yes" if settings.smtp_use_tls else "No"}
+    Host: {org_email_setting.smtp_host}
+    Port: {org_email_setting.smtp_port}
+    TLS Enabled: {"Yes" if org_email_setting.use_tls else "No"}
 
     You can now send emails from {org_name}.
 
@@ -1170,7 +1203,7 @@ def send_smtp_test_email(
         recipient_email=recipient_email,
         subject=subject,
         message_body=message_body,
-        settings=settings,
+        org_email_setting=org_email_setting,
     )
 
 
@@ -1184,7 +1217,7 @@ def send_appointment_rescheduled_notification(
     meeting_link: Optional[str] = None,
     widget_name: Optional[str] = None,
     notes: Optional[str] = None,
-    settings: OrganizationSettings = None,
+    org_email_setting: OrganizationEmailSetting = None,
 ) -> tuple[bool, list[str]]:
     """Send appointment reschedule notifications to participant and escalation/admin contacts."""
     unique_recipients: list[str] = []
@@ -1270,17 +1303,21 @@ def send_appointment_rescheduled_notification(
     html_content = "".join(html_parts)
     plain_content = _html_to_plain_text(html_content)
     errors: list[str] = []
-    sender_email = (settings.smtp_sender_email or settings.smtp_username or "").strip()
-    envelope_sender = (settings.smtp_username or sender_email).strip()
-    sender_name = (settings.smtp_sender_name or "").strip()
+    sender_email = (
+        org_email_setting.sender_email or org_email_setting.smtp_username or ""
+    ).strip()
+    envelope_sender = (org_email_setting.smtp_username or sender_email).strip()
+    sender_name = (org_email_setting.sender_name or "").strip()
 
     if not sender_email or not envelope_sender:
         return False, ["EMAIL_SENDER/SMTP_USERNAME is not configured"]
 
     try:
-        with _open_smtp_server(get_org_smtp_config(settings)) as server:
-            if settings.smtp_username and settings.smtp_password:
-                server.login(settings.smtp_username, settings.smtp_password)
+        with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
+            if org_email_setting.smtp_username and org_email_setting.smtp_password:
+                server.login(
+                    org_email_setting.smtp_username, org_email_setting.smtp_password
+                )
 
             for recipient in unique_recipients:
                 try:
@@ -1303,6 +1340,10 @@ def send_appointment_rescheduled_notification(
                             else None
                         )
                     )
+                    cc_list = get_cc_emails(org_email_setting.cc_emails)
+
+                    if cc_list:
+                        msg["Cc"] = ", ".join(cc_list)
 
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
                     msg.attach(MIMEText(html_content, "html", "utf-8"))
@@ -1332,3 +1373,10 @@ def send_appointment_rescheduled_notification(
         logger.error(err, exc_info=True)
 
     return len(errors) == 0, errors
+
+
+def get_cc_emails(cc_emails: str | None) -> list[str]:
+    if not cc_emails:
+        return []
+
+    return [email.strip() for email in cc_emails.split(",") if email.strip()]

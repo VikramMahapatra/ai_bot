@@ -168,13 +168,25 @@ export const organizationService = {
     return res.data;
   },
 
+  async getOrgEmailSettings() {
+    const res = await api.get("/api/organization-settings/email-settings");
+    return res.data;
+  },
+
   async updateOrgSettings(data: any) {
     const res = await api.put("/api/organization-settings", data);
     return res.data;
   },
 
-  async sendTestEmail(data: any): Promise<any> {
-    const response = await api.post<User>('/api/organizations/smtp/test', data);
+  async updateOrgEmailSettings(data: any) {
+    const res = await api.put("/api/organization-settings/email-settings", data);
+    return res.data;
+  },
+
+  async sendTestEmail(email_setting_id: any, test_email: string): Promise<any> {
+    const response = await api.post<User>(`/api/organizations/smtp/${email_setting_id}/test`, {
+      test_email: test_email,
+    });
     return response.data;
   },
 
@@ -184,4 +196,8 @@ export const organizationService = {
     });
     return res.data;
   },
+
+  async deleteEmailSetting(id: number): Promise<void> {
+    return api.delete(`/api/organization-settings/email-settings/${id}`);
+  }
 };

@@ -56,6 +56,7 @@ from app.models.workflows import (
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 from app.models.instant_reply_logs import InstantReplyLog, InstantReplyChannelLog
 from app.models.voices import Voice, VoiceSync
+from app.models.organization_email_settings import OrganizationEmailSetting
 
 __all__ = [
     "User",
@@ -120,4 +121,5 @@ __all__ = [
     "WorkflowScheduledCall",
     "InstantReplyChannelLog",
     "VoiceSync",
+    "OrganizationEmailSetting",
 ]

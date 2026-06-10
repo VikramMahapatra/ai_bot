@@ -95,8 +95,6 @@ export const generatePreview = (
 
   });
 
-  console.log("Generated preview:", preview);
-
   return preview;
 };
 
