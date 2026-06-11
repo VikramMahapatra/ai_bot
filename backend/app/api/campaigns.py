@@ -594,6 +594,7 @@ def _send_campaign_message(
     contact_index: int,
     tracking_token: Optional[str] = None,
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
+    smtp_profile: Optional[OrganizationEmailSetting] = None,
     db: Session = None,
 ) -> tuple[bool, Optional[str], Optional[str]]:
     """Send campaign message for the selected channel.
@@ -608,20 +609,7 @@ def _send_campaign_message(
         )
 
         subject = render_template(subject, contact)
-        body = render_template(body, contact)
-
-        # Round-robin using contact index to distribute across multiple SMTP configs if available
-        smtp_profiles = (
-            db.query(OrganizationEmailSetting)
-            .filter(
-                OrganizationEmailSetting.organization_id == campaign.organization_id,
-                OrganizationEmailSetting.is_active == True,
-            )
-            .order_by(OrganizationEmailSetting.id)
-            .all()
-        )
-
-        smtp_profile = smtp_profiles[contact_index % len(smtp_profiles)]
+        body = render_template(body, contact, smtp_profile)
 
         return send_campaign_email(
             recipient_email=contact.email or "",
@@ -724,16 +712,22 @@ def extract_placeholders(text):
     return set(re.findall(r"\{\{(.*?)\}\}", text))
 
 
-def render_template(template_body: str, contact):
+def render_template(
+    template_body: str,
+    contact,
+    smtp_profile: OrganizationEmailSetting | None = None,
+):
     if not template_body:
         return ""
 
     placeholders = extract_placeholders(template_body)
 
     for key in placeholders:
-        value = getattr(contact, key, "")
+        if key == "sender_name":
+            value = getattr(smtp_profile, "sender_name", "") if smtp_profile else ""
+        else:
+            value = getattr(contact, key, "")
 
-        # handle None safely + numeric types
         if value is None:
             value = ""
         else:
@@ -833,9 +827,42 @@ def _execute_campaign_now(
     failed_count = 0
     next_break_after = get_next_break_after()
 
+    smtp_profiles = []
+    if campaign.campaign_type == "email":
+        smtp_profiles = (
+            db.query(OrganizationEmailSetting)
+            .filter(
+                OrganizationEmailSetting.organization_id == campaign.organization_id,
+                OrganizationEmailSetting.is_active == True,
+            )
+            .order_by(OrganizationEmailSetting.id)
+            .all()
+        )
+
+    delivered_contact_ids = set()
+    if run_sequence > 1:
+        delivered_contact_ids = {
+            row[0]
+            for row in db.query(CampaignLog.contact_id)
+            .filter(
+                CampaignLog.campaign_id == campaign.id,
+                CampaignLog.status == "delivered",
+            )
+            .all()
+        }
+
+    contacts = [
+        contact for contact in contacts if contact.id not in delivered_contact_ids
+    ]
+
     for idx, contact in enumerate(contacts):
         for_index = sent_count + failed_count
         tracking_token = uuid.uuid4().hex if campaign.campaign_type == "email" else None
+
+        # Round-robin using contact index to distribute across multiple SMTP configs if available
+        smtp_profile = (
+            smtp_profiles[idx % len(smtp_profiles)] if smtp_profiles else None
+        )
 
         log = CampaignLog(
             campaign_id=campaign.id,
@@ -844,6 +871,7 @@ def _execute_campaign_now(
             run_started_at=run_started_at,
             status="pending",
             tracking_token=tracking_token,
+            from_email=smtp_profile.sender_email if smtp_profile else None,
             open_count=0,
             click_count=0,
         )
@@ -856,6 +884,7 @@ def _execute_campaign_now(
             contact_index=for_index,
             tracking_token=tracking_token,
             twilio_sms_config=twilio_sms_config,
+            smtp_profile=smtp_profile,
             db=db,
         )
 
@@ -878,21 +907,15 @@ def _execute_campaign_now(
                 base_interval = settings.SMS_CAMPAIGN_SEND_INTERVAL_SECONDS
             elif campaign.campaign_type == "whatsapp":
                 base_interval = settings.WHATSAPP_CAMPAIGN_SEND_INTERVAL_SECONDS
-            else:
-                base_interval = settings.EMAIL_CAMPAIGN_SEND_INTERVAL_SECONDS
 
             if campaign.campaign_type == "email":
                 delay, next_break_after = get_email_send_interval(
-                    base_interval=base_interval,
                     emails_sent=idx + 1,
                     next_break_after=next_break_after,
+                    profile_count=len(smtp_profiles),
                 )
 
-                logger.info(
-                    "Waiting %s seconds before next email (base=%s)",
-                    delay,
-                    base_interval,
-                )
+                logger.info("Waiting %s seconds before next email", delay)
 
                 time.sleep(delay)
             else:
@@ -2855,16 +2878,20 @@ def run_due_campaign_batches(
 
 
 def get_email_send_interval(
-    base_interval: int,
-    emails_sent: int,
-    next_break_after: int,
+    emails_sent: int, next_break_after: int, profile_count: int = 1
 ) -> tuple[int, int]:
-    variation = int(base_interval * 0.30)
 
-    delay = random.randint(
-        max(1, base_interval - variation),
-        base_interval + variation,
+    min_interval = max(
+        1,
+        settings.EMAIL_CAMPAIGN_SEND_INTERVAL_MIN_SECONDS // profile_count,
     )
+
+    max_interval = max(
+        min_interval,
+        settings.EMAIL_CAMPAIGN_SEND_INTERVAL_MAX_SECONDS // profile_count,
+    )
+
+    delay = random.randint(min_interval, max_interval)
 
     if emails_sent >= next_break_after:
         delay += get_break_duration_seconds()

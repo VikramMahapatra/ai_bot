@@ -25,6 +25,7 @@ class OrganizationEmailSetting(Base):
     smtp_password = Column(String, nullable=True)
 
     sender_email = Column(String, nullable=False)
+    reply_to_email = Column(String, nullable=True)
     sender_name = Column(String, nullable=True)
     cc_emails = Column(String, nullable=True)
 

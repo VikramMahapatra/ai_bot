@@ -144,9 +144,8 @@ class Settings(BaseSettings):
         60  # Minimum interval between sending messages to the same contact
     )
 
-    EMAIL_CAMPAIGN_SEND_INTERVAL_SECONDS: int = (
-        60  # Minimum interval between sending messages to the same contact
-    )
+    EMAIL_CAMPAIGN_SEND_INTERVAL_MIN_SECONDS: int = 180
+    EMAIL_CAMPAIGN_SEND_INTERVAL_MAX_SECONDS: int = 300
     EMAIL_CAMPAIGN_BREAK_MIN_EMAILS: int = 20
     EMAIL_CAMPAIGN_BREAK_MAX_EMAILS: int = 30
 

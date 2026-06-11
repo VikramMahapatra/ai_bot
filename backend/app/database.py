@@ -966,7 +966,16 @@ def init_db():
         try:
             conn.execute(text("""
                 ALTER TABLE organization_email_settings
-                ADD COLUMN IF NOT EXISTS cc_emails TEXT NULL;
+                ADD COLUMN IF NOT EXISTS cc_emails TEXT NULL,
+                ADD COLUMN IF NOT EXISTS reply_to_email VARCHAR(255) NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE campaign_logs
+                ADD COLUMN IF NOT EXISTS from_email VARCHAR(255) NULL;
             """))
         except Exception as e:
             print(f"Migration failed: {e}")
