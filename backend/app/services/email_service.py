@@ -806,23 +806,26 @@ def send_campaign_email(
             refused_recipients = server.send_message(
                 msg,
                 from_addr=envelope_sender,
-                to_addrs=[normalized_email],
+                to_addrs=[normalized_email, *cc_list],
             )
 
         # send_message returns a dict of refused recipients.
         # For single-recipient campaign sends, any refusal means failure.
         if refused_recipients:
-            refusal = refused_recipients.get(normalized_email) or next(
-                iter(refused_recipients.values())
+            errors = []
+
+            for email, refusal in refused_recipients.items():
+                if isinstance(refusal, tuple) and len(refusal) >= 2:
+                    code, message = refusal[0], _decode_smtp_message(refusal[1])
+                    errors.append(f"{email} ({code}): {message}")
+                else:
+                    errors.append(f"{email}: SMTP recipient refused")
+
+            return (
+                False,
+                "; ".join(errors),
+                msg.get("Message-ID"),
             )
-            if isinstance(refusal, tuple) and len(refusal) >= 2:
-                code, message = refusal[0], _decode_smtp_message(refusal[1])
-                return (
-                    False,
-                    f"SMTP recipient refused ({code}): {message}",
-                    msg.get("Message-ID"),
-                )
-            return False, "SMTP recipient refused", msg.get("Message-ID")
 
         logger.info(
             "Campaign email accepted by SMTP for %s (from=%s, message_id=%s)",
@@ -1147,15 +1150,19 @@ def send_widget_test_link_email(
             refused = server.send_message(
                 msg,
                 from_addr=envelope_sender,
-                to_addrs=[normalized_email],
+                to_addrs=[normalized_email, *cc_list],
             )
 
         if refused:
-            refusal = refused.get(normalized_email) or next(iter(refused.values()))
-            if isinstance(refusal, tuple) and len(refusal) >= 2:
-                code, message = refusal[0], _decode_smtp_message(refusal[1])
-                return False, f"SMTP recipient refused ({code}): {message}"
-            return False, "SMTP recipient refused"
+            errors = []
+            for email, refusal in refused.items():
+                if isinstance(refusal, tuple) and len(refusal) >= 2:
+                    code, message = refusal[0], _decode_smtp_message(refusal[1])
+                    errors.append(f"{email} ({code}): {message}")
+                else:
+                    errors.append(f"{email}: SMTP recipient refused")
+
+            return (False, "; ".join(errors))
 
         logger.info(
             "Widget test-link email accepted by SMTP for %s (message_id=%s)",
@@ -1351,12 +1358,18 @@ def send_appointment_rescheduled_notification(
                     refused = server.send_message(
                         msg,
                         from_addr=envelope_sender,
-                        to_addrs=[recipient],
+                        to_addrs=[recipient, *cc_list],
                     )
                     if refused:
-                        err = f"SMTP refused recipient {recipient}: {refused}"
-                        errors.append(err)
-                        logger.error(err)
+                        errors = []
+                        for email, refusal in refused.items():
+                            if isinstance(refusal, tuple) and len(refusal) >= 2:
+                                code, message = refusal[0], _decode_smtp_message(
+                                    refusal[1]
+                                )
+                                errors.append(f"{email} ({code}): {message}")
+                            else:
+                                errors.append(f"{email}: SMTP recipient refused")
                     else:
                         logger.info(
                             "Appointment reschedule notification accepted by SMTP for %s (message_id=%s)",
