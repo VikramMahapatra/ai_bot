@@ -123,6 +123,7 @@ class CampaignLog(Base):
     run_sequence = Column(Integer, nullable=False, default=1, index=True)
     run_started_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, nullable=False, index=True)  # sent | failed | pending
+    from_email = Column(String, nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
     opened_at = Column(DateTime(timezone=True), nullable=True)

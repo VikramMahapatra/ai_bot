@@ -78,6 +78,7 @@ type EmailSetting = {
   smtp_username: string;
   smtp_password: string;
   sender_email: string;
+  reply_to_email?: string;
   sender_name?: string;
   cc_emails?: string; // comma-separated
   use_tls: boolean;
@@ -1904,7 +1905,6 @@ const SettingsPage: React.FC = () => {
                 <TextField
                   fullWidth
                   label="SMTP Profile Name"
-                  defaultValue="Default SMTP"
                   size="small"
                   value={selectedEmailSetting?.name}
                   onChange={(e) =>
@@ -1918,7 +1918,6 @@ const SettingsPage: React.FC = () => {
                 <TextField
                   fullWidth
                   label="SMTP Host"
-                  defaultValue="smtp.office365.com"
                   size="small"
                   value={selectedEmailSetting?.smtp_host}
                   onChange={(e) =>
@@ -2020,6 +2019,22 @@ const SettingsPage: React.FC = () => {
                     )
                   }
                   InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Reply-To Email"
+                  size="small"
+                  value={selectedEmailSetting?.reply_to_email}
+                  onChange={(e) =>
+                    handleOrgEmailFieldChange(
+                      "reply_to_email",
+                      e.target.value,
+                    )
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  helperText="Replies from recipients will be sent to this address."
                 />
               </Grid>
               <Grid item xs={12} md={6}>

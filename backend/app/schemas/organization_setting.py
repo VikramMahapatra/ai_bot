@@ -49,6 +49,7 @@ class OrganizationEmailSettingUpdate(BaseModel):
     smtp_password: Optional[str] = None
 
     sender_email: str
+    reply_to_email: Optional[str] = None
     sender_name: Optional[str] = None
     cc_emails: Optional[str] = None
 
@@ -61,6 +62,7 @@ class OrganizationEmailSettingResponse(BaseModel):
     id: int
     name: str
     sender_email: str
+    reply_to_email: Optional[str]
     sender_name: Optional[str]
     cc_emails: Optional[str]
     smtp_username: str
