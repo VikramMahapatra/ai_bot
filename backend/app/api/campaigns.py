@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 import re
+import phonenumbers
 
 from fastapi import (
     APIRouter,
@@ -2696,6 +2697,8 @@ def format_phone_number(
             parsed = phonenumbers.parse(
                 phone_raw, country_code.upper() if country_code else None
             )
+
+        print(f"parsed phone no. : {parsed}")
 
         # Validate number
         if not phonenumbers.is_valid_number(parsed):

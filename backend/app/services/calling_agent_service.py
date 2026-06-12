@@ -897,16 +897,24 @@ def get_voices(background_tasks: BackgroundTasks, db: Session, organization_id: 
     # Existing data
     sync_info = get_sync_info(db, organization_id)
 
-    should_sync = (
-        not sync_info
-        or sync_info.last_synced_at < datetime.utcnow() - timedelta(hours=6)
-    )
+    should_sync = not sync_info or sync_info.last_synced_at < datetime.now(
+        timezone.utc
+    ) - timedelta(hours=6)
 
     if should_sync:
         background_tasks.add_task(
             sync_voices_from_echoleads,
             organization_id,
         )
+
+        if sync_info:
+            sync_record.last_synced_at = datetime.utcnow()
+        else:
+            sync_record = VoiceSync(
+                organization_id=organization_id,
+                last_synced_at=datetime.utcnow(),
+            )
+            db.add(sync_record)
 
     return voices
 
@@ -937,14 +945,6 @@ def sync_voices_from_echoleads(
             db_voice = existing_voices.get(voice_pk)
 
             if db_voice:
-
-                # Skip if nothing changed
-                if (
-                    db_voice.updated_at
-                    and api_updated_at
-                    and db_voice.updated_at == api_updated_at
-                ):
-                    continue
 
                 db_voice.caller_name = voice_data.get("caller_name")
                 db_voice.voice_id = voice_data.get("voice_id")
@@ -978,6 +978,8 @@ def sync_voices_from_echoleads(
                 db_voice.updated_at = api_updated_at
 
                 updated += 1
+
+                print(f"caller name : {db_voice.caller_name}")
 
             else:
 
