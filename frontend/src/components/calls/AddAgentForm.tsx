@@ -326,7 +326,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             summary_prompt: agent?.summary_prompt || '',
             follow_up_whatsapp: agent?.follow_up_whatsapp || false,
             important_data_points: agent?.important_data_points || "",
-            background_sound: agent?.background_sound || "none",
+            background_sound: agent?.background_sound || "off",
             background_sound_url: agent?.background_sound_url || "",
             start_speaking_wait_seconds: agent?.start_speaking_wait_seconds || "0.1",
             stop_speaking_voice_seconds: agent?.stop_speaking_voice_seconds || "0.3",
@@ -1382,10 +1382,6 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                                 setFormData({ ...formData, background_sound: e.target.value })
                                             }
                                         >
-                                            <MenuItem value="none">
-                                                None
-                                            </MenuItem>
-
                                             <MenuItem value="off">Off</MenuItem>
                                             <MenuItem value="office">Office</MenuItem>
 

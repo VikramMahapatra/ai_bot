@@ -138,7 +138,9 @@ def create_agent(
         # AI Config
         important_data_points=agent.important_data_points,
         enable_background_sound=agent.enable_background_sound,
-        background_sound=agent.background_sound,
+        background_sound=(
+            agent.background_sound if agent.background_sound != "none" else ""
+        ),
         background_sound_url=agent.background_sound_url,
         start_speaking_wait_seconds=agent.start_speaking_wait_seconds,
         stop_speaking_voice_seconds=agent.stop_speaking_voice_seconds,
@@ -401,6 +403,9 @@ def sync_agents(db: Session, organization_id: int):
                             quantity=1,
                         )
 
+                    # if db_agent.status != "pending":
+                    #     db_agent.is_deleted = True
+
             db.commit()
 
     except Exception as e:
@@ -645,18 +650,17 @@ def publish_agent(db: Session, agent_id: int):
     echoleads = EcholeadsClient(agent.organization_id)
 
     # Prepare minimal payload for Echoleads
-    echo_payload = build_echoleads_payload(
-        agent=agent,
-        agent_name=agent.external_agent_name,
-        agent_status="active",
-        transaction_id=str(agent.external_agent_a_id),
-    )
+    echo_payload = {
+        "agent_id": agent.external_agent_id,
+        "user_id": 42,  ##hardcoded for Chiranjibi's account
+        "plan_id": 18 if agent.type == "outbound" else 16,
+    }
 
     # Update Echoleads agent
     echo_success = True
     if agent.external_agent_id:
         try:
-            echoleads.update_agent(agent.external_agent_id, echo_payload)
+            echoleads.publish_agent(echo_payload)
 
             # Update local DB
             agent.status = "active"
@@ -692,8 +696,8 @@ def build_echoleads_payload(
             "outgoing" if agent.type.lower() == "outbound" else "incoming"
         ),
         "language": (
-            agent.accent
-            if getattr(agent, "accent", None) and agent.accent != "all"
+            agent.language.lower()
+            if getattr(agent, "language", None) and agent.language != "all"
             else "en"
         ),
         "firstMessage": agent.greeting,
@@ -747,14 +751,11 @@ def build_echoleads_payload(
         ),
         "tool_ids": [],
         "phone": None,
-        "message_plan_idle_timeout_seconds": str(
-            agent.message_plan_idle_timeout_seconds
-        ),
-        "message_plan_idle_message_max_spoken_count": str(
-            agent.message_plan_idle_message_max_spoken_count
-        ),
-        "message_plan_idle_messages_selected": agent.message_plan_idle_messages_selected
-        or [],
+        "message_plan": {
+            "idleMessages": agent.message_plan_idle_messages_selected or [],
+            "idleMessageMaxSpokenCount": agent.message_plan_idle_message_max_spoken_count,
+            "idleTimeoutSeconds": agent.message_plan_idle_timeout_seconds,
+        },
         "transcriber": {
             "provider": agent.transcriber_provider,
             "language": agent.transcriber_language,
@@ -908,11 +909,11 @@ def get_voices(background_tasks: BackgroundTasks, db: Session, organization_id: 
         )
 
         if sync_info:
-            sync_record.last_synced_at = datetime.utcnow()
+            sync_record.last_synced_at = datetime.now(timezone.utc)
         else:
             sync_record = VoiceSync(
                 organization_id=organization_id,
-                last_synced_at=datetime.utcnow(),
+                last_synced_at=datetime.now(timezone.utc),
             )
             db.add(sync_record)
 
