@@ -911,11 +911,11 @@ def get_voices(background_tasks: BackgroundTasks, db: Session, organization_id: 
         if sync_info:
             sync_info.last_synced_at = datetime.now(timezone.utc)
         else:
-            sync_info = VoiceSync(
+            sync_record = VoiceSync(
                 organization_id=organization_id,
                 last_synced_at=datetime.now(timezone.utc),
             )
-            db.add(sync_info)
+            db.add(sync_record)
 
     return voices
 
