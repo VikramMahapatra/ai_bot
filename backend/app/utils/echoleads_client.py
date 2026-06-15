@@ -161,7 +161,7 @@ class EcholeadsClient:
     def update_agent(self, agent_id: str, payload: dict):
         return self._put(f"/agent-tables/{agent_id}", payload)
 
-    def publish_agent(self, agent_id: str, payload: dict):
+    def publish_agent(self, payload: dict):
         return self._post(f"/agent-tables/publish", payload)
 
     def fetch_voices(self):
