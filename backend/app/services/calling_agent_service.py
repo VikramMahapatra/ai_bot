@@ -909,7 +909,7 @@ def get_voices(background_tasks: BackgroundTasks, db: Session, organization_id: 
         )
 
         if sync_info:
-            sync_record.last_synced_at = datetime.now(timezone.utc)
+            sync_info.last_synced_at = datetime.now(timezone.utc)
         else:
             sync_record = VoiceSync(
                 organization_id=organization_id,
