@@ -52,10 +52,10 @@ import { superadminService } from "../services/superadminService";
 import {
   OrganizationLimits,
   SuperAdminOrganization,
-  CallingNumber,
   Channel,
   OrganizationLimitKey,
   LimitToggleField,
+  OrganizationCallingNumber,
 } from "../types";
 import SettingsPhoneIcon from "@mui/icons-material/SettingsPhone";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -66,6 +66,7 @@ import LiveTvIcon from "@mui/icons-material/LiveTv";
 import TvIcon from "@mui/icons-material/Tv";
 import { StatusChip } from "../components/Common/StatusChips";
 import OrganizationFormDialog from "../components/SuperAdmin/OrganizationFormDialog";
+import { CallingNumber } from "../services/callingNumberService";
 
 
 const limitToggleFields: LimitToggleField[] = [
@@ -343,15 +344,15 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     message: "",
   });
 
-  const [callingform, setCallingForm] = useState<Omit<CallingNumber, "id">>({
-    calling_number: "",
+  const [callingform, setCallingForm] = useState<Partial<OrganizationCallingNumber>>({
+    calling_number_id: "",
     is_default: false,
     is_active: true,
     type: "outbound",
   });
 
   const [callingFormError, setCallingFormError] = useState({
-    calling_number: "",
+    calling_number_id: "",
   });
   const [channelForm, setChannelForm] = useState({
     channel_id: 0,
@@ -370,6 +371,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
   const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState("");
   const [callingNumberDefault, setCallingNumberDefault] = useState(false);
+  const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([]);
+  const [callingNumberError, setCallingNumberError] = useState("");
 
   const orgStats = useMemo(() => {
     const total = organizations.length;
@@ -440,8 +443,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   useEffect(() => {
     if (openCallingNumberDialog) {
       fetchCallingNumbers();
+      loadCallingNumbers();
     }
   }, [openCallingNumberDialog]);
+
+
+  useEffect(() => {
+    loadCallingNumbers();
+  }, [callingform.type]);
 
   useEffect(() => {
     if (openChannelDialog) {
@@ -482,12 +491,23 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     }
   };
 
+  const loadCallingNumbers = async () => {
+    if (!selectedOrg) return;
+
+    try {
+      const data = await superadminService.getMasterCallingNumbers(callingform.type);
+      setCallingNumbers(data);
+    } catch (error) {
+      console.error("Failed to fetch organization channels", error);
+    }
+  };
+
   const validateCallingForm = () => {
     let valid = true;
     let errors: any = {};
 
-    if (!callingform.calling_number?.trim()) {
-      errors.calling_number = "Calling number is required";
+    if (!callingform.calling_number_id) {
+      errors.calling_number_id = "Calling number is required";
       valid = false;
     }
 
@@ -660,8 +680,12 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
       fetchCallingNumbers();
       handleCloseCallingForm();
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      setCallingNumberError(
+        error?.response?.data?.detail ||
+        error?.detail ||
+        "Failed to save calling number",
+      );
     }
   };
 
@@ -1683,7 +1707,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                     <TableCell>{row.calling_number}</TableCell>
 
                     <TableCell>
-                      <Chip label={row.type} variant="outlined" size="small" />
+                      <Chip
+                        label={row.type.replace(/^./, (c: any) => c.toUpperCase())}
+                        size="small"
+                        color={
+                          row.type === "inbound"
+                            ? "success"
+                            : "primary"
+                        }
+                        variant="outlined"
+                      />
                     </TableCell>
 
                     <TableCell>
@@ -1739,6 +1772,8 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       </Dialog>
 
       <Dialog
+        maxWidth="sm"
+        fullWidth
         open={openCallingNumberForm}
         onClose={handleCloseCallingForm}
         PaperProps={{ sx: { borderRadius: "18px" } }}
@@ -1746,22 +1781,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         <DialogTitle>{editing ? "Edit" : "Add"} Calling Number</DialogTitle>
 
         <DialogContent>
-          <TextField
-            required
-            fullWidth
-            label="Calling Number"
-            placeholder="+1234567890"
-            value={callingform.calling_number}
-            error={!!callingFormError.calling_number}
-            helperText={callingFormError.calling_number}
-            onChange={(e) =>
-              setCallingForm({
-                ...callingform,
-                calling_number: e.target.value,
-              })
-            }
-            sx={{ mt: 1 }}
-          />
+
+          {callingNumberError && (
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+              onClose={() => setCallingNumberError("")}
+            >
+              {callingNumberError}
+            </Alert>
+          )}
 
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel id="calling-type-label">Type</InputLabel>
@@ -1769,17 +1798,55 @@ const SuperAdminOrganizationsPage: React.FC = () => {
               labelId="calling-type-label"
               value={callingform.type || "outbound"}
               label="Type"
-              onChange={(e) =>
+              onChange={(e) => {
                 setCallingForm({
                   ...callingform,
                   type: e.target.value as "inbound" | "outbound",
-                })
-              }
+                });
+              }}
             >
               <MenuItem value="inbound">Inbound</MenuItem>
               <MenuItem value="outbound">Outbound</MenuItem>
             </Select>
           </FormControl>
+
+          <FormControl
+            fullWidth
+            required
+            error={!!callingFormError.calling_number_id}
+            sx={{ mt: 2 }}
+          >
+            <InputLabel>Calling Number</InputLabel>
+
+            <Select
+              value={callingform.calling_number_id || ""}
+              label="Calling Number"
+              onChange={(e) =>
+                setCallingForm({
+                  ...callingform,
+                  calling_number_id: Number(e.target.value),
+                })
+              }
+            >
+              {callingNumbers.map((number) => (
+                <MenuItem
+                  key={number.id}
+                  value={number.id}
+                >
+                  {number.country_code}
+                  {number.phone_number}
+                </MenuItem>
+              ))}
+            </Select>
+
+            {callingFormError.calling_number_id && (
+              <FormHelperText>
+                {callingFormError.calling_number_id}
+              </FormHelperText>
+            )}
+          </FormControl>
+
+
 
           {callingform.type == "outbound" ? <Grid item xs={12}>
             <FormControlLabel

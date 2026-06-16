@@ -74,6 +74,7 @@ class CallingAgent(Base):
     talking_speed = Column(Float, nullable=False)
     max_call_duration = Column(Integer, nullable=False)
     calendar_sync = Column(Boolean)
+    background_denoising_filter_enabled = Column(Boolean)
 
     important_data_points = Column(Text)
     enable_background_sound = Column(Boolean)

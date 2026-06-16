@@ -54,6 +54,8 @@ import TemplatePage from "./pages/TemplatePage.tsx";
 import { organizationService } from "./services/organizationService.ts";
 import RestrictedFeaturePage from "./components/Common/RestrictedModulePage.tsx";
 import SuperAdminChannelPage from "./pages/SuperAdminChannelPage.tsx";
+import SuperAdminCallingNumberPage from "./pages/SuperAdminCallingNumberPage";
+
 
 type ColorMode = "light" | "dark";
 
@@ -61,7 +63,7 @@ export const ColorModeContext = createContext<{
   toggleColorMode: () => void;
   mode: ColorMode;
 }>({
-  toggleColorMode: () => {},
+  toggleColorMode: () => { },
   mode: "light",
 });
 
@@ -632,6 +634,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="SUPERADMIN">
             <SuperAdminChannelPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/calling-numbers"
+        element={
+          <ProtectedRoute requiredRole="SUPERADMIN">
+            <SuperAdminCallingNumberPage />
           </ProtectedRoute>
         }
       />

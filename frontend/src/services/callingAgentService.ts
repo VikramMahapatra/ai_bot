@@ -115,6 +115,7 @@ export interface Voice {
 
     accent: string;
     recording_url: string;
+    recordings?: string[];
 
     voice_types: string[];
 
@@ -122,6 +123,8 @@ export interface Voice {
     is_test_voice: boolean;
     is_cloned_voice: boolean;
     is_vapi_voice: boolean;
+
+    price: number;
 }
 export interface CallingAgentFilters {
     search?: string

@@ -27,6 +27,7 @@ from app.api import (
     message_templates_router,
     workflow_router,
     channel_router,
+    calling_number_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -114,6 +115,7 @@ app.include_router(conversation_decision_router)
 app.include_router(message_templates_router)
 app.include_router(workflow_router)
 app.include_router(channel_router)
+app.include_router(calling_number_router)
 
 
 # Handle OPTIONS requests for CORS preflight

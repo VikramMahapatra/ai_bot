@@ -36,6 +36,11 @@ from app.database import SessionLocal
 UPLOAD_DIR = "uploads/agent_training_docs"
 
 
+def safe_set(obj, attr, value):
+    if value is not None:
+        setattr(obj, attr, value)
+
+
 def get_agent_feature_code(agent_type: str):
     return (
         FeatureCodes.CORE_CALL_AGENT_OUT
@@ -122,6 +127,7 @@ def create_agent(
         talking_speed=agent.talking_speed,
         max_call_duration=agent.max_call_duration,
         calendar_sync=agent.calendar_sync,
+        background_denoising_filter_enabled=agent.background_denoising_filter_enabled,
         enable_sentiment=agent.enable_sentiment,
         voice_mail_detection=agent.voice_mail_detection,
         voicemail_start_at_seconds=agent.voicemail_start_at_seconds,
@@ -389,11 +395,94 @@ def sync_agents(db: Session, organization_id: int):
                                 quantity=1,
                             )
 
-                    if not db_agent.external_agent_id:
-                        db_agent.external_agent_id = echo_agent.get("id")
+                    # link external IDs
+                    safe_set(db_agent, "external_agent_id", echo_agent.get("id"))
+                    safe_set(db_agent, "external_agent_a_id", echo_agent.get("a_id"))
 
-                    if not db_agent.external_agent_a_id:
-                        db_agent.external_agent_a_id = echo_agent.get("a_id")
+                    # ---------------------------
+                    # FULL CONFIG SYNC
+                    # ---------------------------
+
+                    print(f"Syncing agent : {db_agent.external_agent_name}")
+
+                    safe_set(db_agent, "external_agent_name", echo_agent.get("name"))
+                    # safe_set(db_agent, "language", echo_agent.get("language"))
+
+                    safe_set(db_agent, "voice", echo_agent.get("voice_id"))
+
+                    safe_set(
+                        db_agent,
+                        "transcriber_provider",
+                        echo_agent.get("transcriber_provider"),
+                    )
+                    safe_set(
+                        db_agent,
+                        "transcriber_language",
+                        echo_agent.get("transcriber_language"),
+                    )
+                    safe_set(
+                        db_agent,
+                        "transcriber_model",
+                        echo_agent.get("transcriber_model"),
+                    )
+
+                    safe_set(db_agent, "firstMessage", echo_agent.get("firstMessage"))
+                    safe_set(db_agent, "prompt", echo_agent.get("prompt"))
+
+                    safe_set(db_agent, "calendar_sync", echo_agent.get("calendar_sync"))
+                    safe_set(
+                        db_agent,
+                        "background_denoising_filter_enabled",
+                        echo_agent.get("backgroundVoiceFilterEnabled"),
+                    )
+
+                    safe_set(db_agent, "temperature", echo_agent.get("temperature"))
+                    safe_set(
+                        db_agent, "end_call_message", echo_agent.get("end_call_message")
+                    )
+
+                    safe_set(
+                        db_agent, "silence_timeout", echo_agent.get("silence_timeout")
+                    )
+                    safe_set(db_agent, "talking_speed", echo_agent.get("voice_speed"))
+                    safe_set(
+                        db_agent,
+                        "max_call_duration",
+                        echo_agent.get("max_duration_seconds"),
+                    )
+
+                    safe_set(
+                        db_agent,
+                        "voice_mail_detection",
+                        echo_agent.get("voice_mail_detection_enabled"),
+                    )
+
+                    safe_set(
+                        db_agent, "background_sound", echo_agent.get("background_sound")
+                    )
+                    safe_set(
+                        db_agent,
+                        "background_sound_url",
+                        echo_agent.get("background_sound_url"),
+                    )
+
+                    safe_set(
+                        db_agent,
+                        "call_forwarding_number",
+                        echo_agent.get("call_forwarding_number"),
+                    )
+                    safe_set(
+                        db_agent,
+                        "call_forwarding_role",
+                        echo_agent.get("call_forwarding_message"),
+                    )
+
+                    safe_set(
+                        db_agent,
+                        "who_speaks_first",
+                        "ai" if echo_agent.get("agent_speaks_first") else "user",
+                    )
+
                 else:
                     if old_status == "pending":
                         organization_credit_service.release_reserved_credits(
@@ -403,8 +492,8 @@ def sync_agents(db: Session, organization_id: int):
                             quantity=1,
                         )
 
-                    # if db_agent.status != "pending":
-                    #     db_agent.is_deleted = True
+                    if db_agent.status != "pending":
+                        db_agent.is_deleted = True
 
             db.commit()
 
@@ -719,6 +808,7 @@ def build_echoleads_payload(
         "call_recording": "0",
         "automated_follow_ups": "0",
         "calendar_sync": agent.calendar_sync,
+        "backgroundVoiceFilterEnabled": agent.background_denoising_filter_enabled,
         "temperature": str(getattr(agent, "temperature", 1)),
         "agent_status": agent_status,
         "remaning_call_count": None,
@@ -958,6 +1048,7 @@ def sync_voices_from_echoleads(
                 db_voice.tags = voice_data.get("tags")
                 db_voice.accent = voice_data.get("accent")
                 db_voice.recording_url = voice_data.get("recording_url")
+                db_voice.recordings = voice_data.get("recording")
 
                 db_voice.voice_types = voice_data.get("voice_types")
 
@@ -996,6 +1087,7 @@ def sync_voices_from_echoleads(
                     tags=voice_data.get("tags"),
                     accent=voice_data.get("accent"),
                     recording_url=voice_data.get("recording_url"),
+                    recordings=voice_data.get("recording"),
                     voice_types=voice_data.get("voice_types"),
                     is_active=voice_data.get("is_active"),
                     is_test_voice=voice_data.get("is_test_voice"),
@@ -1007,6 +1099,7 @@ def sync_voices_from_echoleads(
                         "is_vapi_voice",
                         False,
                     ),
+                    price=7.5,  ## default
                     created_at=parse_datetime(voice_data.get("created_at")),
                     updated_at=api_updated_at,
                 )

@@ -94,6 +94,7 @@ from app.models.organization_settings import OrganizationSettings
 from app.schemas.org_credit_billing import OrgCreditAdminMonthSummaryResponse
 from app.services import org_credit_billing_service
 from app.models.channels import Channel, OrganizationChannel
+from app.models.calling_numbers import CallingNumber
 
 logger = logging.getLogger(__name__)
 
@@ -3074,17 +3075,59 @@ async def superadmin_analytics_by_org(
 
 
 ### Organization Calling No
+@router.get("/master/calling-numbers")
+def get_master_calling_numbers(
+    type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    superadmin: SuperAdmin = Depends(require_superadmin),
+):
+    query = db.query(CallingNumber).filter(
+        CallingNumber.is_active.is_(True),
+        CallingNumber.is_deleted.is_(False),
+    )
+
+    if type:
+        query = query.filter(CallingNumber.type == type)
+
+    return query.all()
+
+
 @router.get("/org/{org_id}/calling-numbers")
 def get_calling_numbers(
     org_id: int,
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
-    return (
-        db.query(OrganizationCallingNumber)
-        .filter(OrganizationCallingNumber.organization_id == org_id)
+    rows = (
+        db.query(
+            OrganizationCallingNumber.id,
+            func.concat(CallingNumber.country_code, CallingNumber.phone_number).label(
+                "calling_number"
+            ),
+            OrganizationCallingNumber.type,
+            OrganizationCallingNumber.is_default,
+            OrganizationCallingNumber.is_active,
+        )
+        .join(
+            CallingNumber,
+            CallingNumber.id == OrganizationCallingNumber.calling_number_id,
+        )
+        .filter(
+            OrganizationCallingNumber.organization_id == org_id,
+        )
         .all()
     )
+
+    return [
+        {
+            "id": row.id,
+            "calling_number": row.calling_number,
+            "type": row.type,
+            "is_default": row.is_default,
+            "is_active": row.is_active,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/org/{org_id}/calling-number")
@@ -3094,6 +3137,24 @@ def create_calling_number(
     db: Session = Depends(get_db),
     superadmin: SuperAdmin = Depends(require_superadmin),
 ):
+    # Prevent duplicate inbound mapping
+    if payload.type == "inbound":
+        existing = (
+            db.query(OrganizationCallingNumber)
+            .filter(
+                OrganizationCallingNumber.calling_number_id
+                == payload.calling_number_id,
+                OrganizationCallingNumber.type == "inbound",
+            )
+            .first()
+        )
+
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="This inbound number is already assigned to an organization.",
+            )
+
     is_default = False
 
     # Only outbound numbers can be default
@@ -3107,7 +3168,7 @@ def create_calling_number(
 
     obj = OrganizationCallingNumber(
         organization_id=org_id,
-        calling_number=payload.calling_number,
+        calling_number_id=payload.calling_number_id,
         type=payload.type,
         is_default=is_default,
     )
@@ -3131,6 +3192,25 @@ def update_calling_number(
     if not obj:
         raise HTTPException(status_code=404, detail="Calling number not found")
 
+    # Prevent duplicate inbound mapping
+    if payload.type == "inbound":
+        existing = (
+            db.query(OrganizationCallingNumber)
+            .filter(
+                OrganizationCallingNumber.calling_number_id
+                == payload.calling_number_id,
+                OrganizationCallingNumber.type == "inbound",
+                OrganizationCallingNumber.id != id,  # exclude current record
+            )
+            .first()
+        )
+
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="This inbound number is already assigned to another organization.",
+            )
+
     # Remove old default only for outbound + default=True
     if payload.type == "outbound" and payload.is_default:
         db.query(OrganizationCallingNumber).filter(
@@ -3138,12 +3218,16 @@ def update_calling_number(
             OrganizationCallingNumber.type == "outbound",
         ).update({"is_default": False})
 
-        obj.is_default = payload.is_default
+        obj.is_default = True
+    elif payload.type != "outbound":
+        obj.is_default = False
 
-    obj.calling_number = payload.calling_number
+    obj.calling_number_id = payload.calling_number_id
     obj.type = payload.type
 
     db.commit()
+    db.refresh(obj)
+
     return obj
 
 
