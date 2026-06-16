@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     Identity,
     Integer,
+    Numeric,
     String,
     DateTime,
     ForeignKey,
@@ -32,6 +33,7 @@ class Voice(Base):
 
     accent = Column(String(50))
     recording_url = Column(Text)
+    recordings = Column(JSON, nullable=True)
     voice_types = Column(JSON, nullable=True)
 
     is_active = Column(Boolean, default=True)
@@ -39,6 +41,8 @@ class Voice(Base):
 
     is_cloned_voice = Column(Boolean, default=False)
     is_vapi_voice = Column(Boolean, default=False)
+
+    price = Column(Numeric(10, 2), nullable=False, default=0.00)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

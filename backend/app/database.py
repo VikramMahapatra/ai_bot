@@ -903,7 +903,9 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS tags JSONB NULL,
                 ADD COLUMN IF NOT EXISTS voice_types JSONB NULL,
                 ADD COLUMN IF NOT EXISTS is_cloned_voice BOOLEAN DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS is_vapi_voice BOOLEAN DEFAULT FALSE;
+                ADD COLUMN IF NOT EXISTS is_vapi_voice BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS recordings JSONB NULL,
+                ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) NOT NULL DEFAULT 0.00;
             """))
 
         except Exception as e:
@@ -948,9 +950,9 @@ def init_db():
         try:
             conn.execute(text("""
                 ALTER TABLE campaigns
-                ADD COLUMN IF NOT EXISTS open_tracking_enabled BOOLEAN DEFAULT TRUE,
-                ADD COLUMN IF NOT EXISTS click_tracking_enabled BOOLEAN DEFAULT TRUE,
-                ADD COLUMN IF NOT EXISTS footer_display_enabled BOOLEAN DEFAULT TRUE;
+                ADD COLUMN IF NOT EXISTS open_tracking_enabled BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS click_tracking_enabled BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS footer_display_enabled BOOLEAN DEFAULT FALSE;
             """))
         except Exception as e:
             print(f"Migration failed: {e}")
@@ -976,6 +978,14 @@ def init_db():
             conn.execute(text("""
                 ALTER TABLE campaign_logs
                 ADD COLUMN IF NOT EXISTS from_email VARCHAR(255) NULL;
+            """))
+        except Exception as e:
+            print(f"Migration failed: {e}")
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE calling_agents
+                ADD COLUMN IF NOT EXISTS background_denoising_filter_enabled BOOLEAN DEFAULT FALSE;
             """))
         except Exception as e:
             print(f"Migration failed: {e}")

@@ -27,6 +27,7 @@ from app.services.calling_agent_service import test_call
 from app.models.conversation import Conversation
 from app.services import call_log_service
 from app.models.campaign_schedules import CampaignSchedule
+from app.models.calling_numbers import CallingNumber
 
 logger = logging.getLogger(__name__)
 
@@ -428,12 +429,35 @@ def get_calling_numbers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
-        db.query(OrganizationCallingNumber)
+    rows = (
+        db.query(
+            OrganizationCallingNumber.id,
+            func.concat(CallingNumber.country_code, CallingNumber.phone_number).label(
+                "calling_number"
+            ),
+            OrganizationCallingNumber.type,
+            OrganizationCallingNumber.is_default,
+            OrganizationCallingNumber.is_active,
+        )
+        .join(
+            CallingNumber,
+            CallingNumber.id == OrganizationCallingNumber.calling_number_id,
+        )
         .filter(
             OrganizationCallingNumber.organization_id == current_user.organization_id,
-            OrganizationCallingNumber.is_active == True,
+            OrganizationCallingNumber.is_active.is_(True),
             OrganizationCallingNumber.type == params.type,
         )
         .all()
     )
+
+    return [
+        {
+            "id": row.id,
+            "calling_number": row.calling_number,
+            "type": row.type,
+            "is_default": row.is_default,
+            "is_active": row.is_active,
+        }
+        for row in rows
+    ]

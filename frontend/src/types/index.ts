@@ -333,9 +333,10 @@ export interface SuperAdminOrganization {
 }
 
 
-export interface CallingNumber {
+export interface OrganizationCallingNumber {
   id: number;
   calling_number: string;
+  calling_number_id: number | "";
   type: 'inbound' | 'outbound';
   is_default?: boolean;
   is_active?: boolean;

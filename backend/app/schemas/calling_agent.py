@@ -47,6 +47,7 @@ class CallingAgentCreate(BaseModel):
     talking_speed: float = 1.0
     max_call_duration: int = 120
     calendar_sync: bool = False
+    background_denoising_filter_enabled: bool = False
     enable_sentiment: bool = False
     voice_mail_detection: bool = False
     enable_call_recording: bool = False
@@ -122,6 +123,7 @@ class CallingAgentUpdate(BaseModel):
     talking_speed: Optional[float] = None
     max_call_duration: Optional[int] = None
     calendar_sync: Optional[bool] = None
+    background_denoising_filter_enabled: bool = False
 
     enable_sentiment: Optional[bool] = None
     voice_mail_detection: Optional[bool] = None

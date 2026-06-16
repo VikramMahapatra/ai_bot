@@ -26,6 +26,7 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import InventoryIcon from "@mui/icons-material/Inventory";
+import PhoneIcon from "@mui/icons-material/Phone";
 
 const drawerWidth = 274;
 
@@ -51,6 +52,11 @@ const menuItems: MenuItem[] = [
     text: "Channel Management",
     icon: <InventoryIcon />,
     path: "/superadmin/channel-management",
+  },
+  {
+    text: "Calling Numbers",
+    icon: <PhoneIcon />,
+    path: "/superadmin/calling-numbers",
   },
   { text: "Analytics", icon: <InsightsIcon />, path: "/superadmin/analytics" },
   {

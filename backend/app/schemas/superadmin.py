@@ -174,7 +174,7 @@ class SuperAdminOverviewResponse(BaseModel):
 
 
 class CallingNumberBase(BaseModel):
-    calling_number: str
+    calling_number_id: int
     type: str = "outbound"  # 'outbound' or 'inbound'
     is_default: Optional[bool] = False
     is_active: Optional[bool] = True
@@ -192,6 +192,7 @@ class CallingNumberResponse(BaseModel):
     id: int
     organization_id: int
     calling_number: str
+    type: str
     is_default: bool
     is_active: bool
 
