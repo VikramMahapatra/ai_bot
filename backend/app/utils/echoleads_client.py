@@ -253,3 +253,24 @@ class EcholeadsClient:
             payload["send_option"] = "now"
 
         return self._post("/reschedule-contact", payload)
+
+    def deactivate_agent(self, agent_id: int):
+        return self._put(
+            f"/agent-tables/{agent_id}/toggle-ind-status",
+            {"status": "inactive"},
+        )
+
+    def activate_agent(
+        self,
+        agent_id: int,
+        phone: str,
+    ):
+        payload = {
+            "status": "active",
+            "phone": phone,
+        }
+
+        return self._put(
+            f"/agent-tables/{agent_id}/toggle-ind-status",
+            payload,
+        )

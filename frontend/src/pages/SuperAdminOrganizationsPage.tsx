@@ -73,7 +73,7 @@ const limitToggleFields: LimitToggleField[] = [
   // Communication Channels
   {
     key: "whatsapp_enabled",
-    label: "WhatsApp",
+    label: "WhatsApp Chatbot",
     visible: true,
     category: "Communication Channels",
   },
