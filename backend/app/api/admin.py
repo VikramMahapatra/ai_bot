@@ -7,7 +7,7 @@ from fastapi import (
     Body,
     Query,
 )
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import (
@@ -289,11 +289,12 @@ async def get_organizations_by_username(username: str, db: Session = Depends(get
         db.query(Organization)
         .filter(
             Organization.id.in_(org_ids),
-            Organization.status.in_(
-                [
-                    OrganizationStatus.ACTIVE,
-                    OrganizationStatus.TRIAL,
-                ]
+            or_(
+                Organization.status == OrganizationStatus.ACTIVE,
+                and_(
+                    Organization.status == OrganizationStatus.TRIAL,
+                    Organization.trial_end_date >= datetime.now(timezone.utc),
+                ),
             ),
         )
         .all()

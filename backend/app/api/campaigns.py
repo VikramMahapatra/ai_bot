@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from io import StringIO
 import csv
@@ -195,7 +196,7 @@ def _ensure_campaign_access(
             )
 
     if channel == "whatsapp":
-        if not limits.get("whatsapp_enabled", False):
+        if not limits.get("whatsapp_campaign_enabled", False):
             raise HTTPException(
                 status_code=403,
                 detail="WhatsApp campaigns are disabled for this organization",
@@ -829,6 +830,9 @@ def _execute_campaign_now(
     next_break_after = get_next_break_after()
 
     smtp_profiles = []
+    smtp_profiles_by_email = {}
+    previous_smtp_mapping = {}
+
     if campaign.campaign_type == "email":
         smtp_profiles = (
             db.query(OrganizationEmailSetting)
@@ -839,6 +843,33 @@ def _execute_campaign_now(
             .order_by(OrganizationEmailSetting.id)
             .all()
         )
+
+        smtp_profiles_by_email = {
+            profile.sender_email: profile for profile in smtp_profiles
+        }
+
+        # Find last delivered email SMTP used for each contact
+        previous_logs = (
+            db.query(
+                Contact.email,
+                CampaignLog.from_email,
+            )
+            .join(Contact, CampaignLog.contact_id == Contact.id)
+            .filter(
+                Contact.email.in_([c.email for c in contacts]),
+                CampaignLog.status == "delivered",
+                CampaignLog.from_email.isnot(None),
+            )
+            .order_by(
+                Contact.email,
+                CampaignLog.id.desc(),
+            )
+            .all()
+        )
+
+        for email, from_email in previous_logs:
+            if email not in previous_smtp_mapping:
+                previous_smtp_mapping[email] = from_email
 
     delivered_contact_ids = set()
     if run_sequence > 1:
@@ -856,73 +887,128 @@ def _execute_campaign_now(
         contact for contact in contacts if contact.id not in delivered_contact_ids
     ]
 
+    smtp_queues = defaultdict(deque)
+    smtp_remaining_counts = defaultdict(int)
+
     for idx, contact in enumerate(contacts):
-        for_index = sent_count + failed_count
-        tracking_token = uuid.uuid4().hex if campaign.campaign_type == "email" else None
+        smtp_profile = None
 
-        # Round-robin using contact index to distribute across multiple SMTP configs if available
-        smtp_profile = (
-            smtp_profiles[idx % len(smtp_profiles)] if smtp_profiles else None
-        )
+        if smtp_profiles:
+            previous_from_email = previous_smtp_mapping.get(contact.email)
 
-        log = CampaignLog(
-            campaign_id=campaign.id,
-            contact_id=contact.id,
-            run_sequence=run_sequence,
-            run_started_at=run_started_at,
-            status="pending",
-            tracking_token=tracking_token,
-            from_email=smtp_profile.sender_email if smtp_profile else None,
-            open_count=0,
-            click_count=0,
-        )
-        db.add(log)
-        db.flush()
+            if previous_from_email:
+                smtp_profile = smtp_profiles_by_email.get(previous_from_email)
 
-        is_sent, error_message, provider_message_id = _send_campaign_message(
-            campaign,
-            contact,
-            contact_index=for_index,
-            tracking_token=tracking_token,
-            twilio_sms_config=twilio_sms_config,
-            smtp_profile=smtp_profile,
-            db=db,
-        )
+            if smtp_profile is None:
+                smtp_profile = smtp_profiles[idx % len(smtp_profiles)]
 
-        log.provider_message_id = provider_message_id
-        if is_sent:
-            _apply_tracking_event(log, "delivered")
-            log.error_message = None
-        else:
-            _apply_tracking_event(log, "failed")
-            log.error_message = error_message
+            smtp_queues[smtp_profile.id].append(
+                {
+                    "contact": contact,
+                    "smtp_profile": smtp_profile,
+                }
+            )
 
-        if is_sent:
-            sent_count += 1
-        else:
-            failed_count += 1
+        if smtp_profile:
+            smtp_remaining_counts[smtp_profile.id] += 1
 
-        db.commit()
-        if idx < len(contacts) - 1:
-            if campaign.campaign_type == "sms":
-                base_interval = settings.SMS_CAMPAIGN_SEND_INTERVAL_SECONDS
-            elif campaign.campaign_type == "whatsapp":
-                base_interval = settings.WHATSAPP_CAMPAIGN_SEND_INTERVAL_SECONDS
+    active_smtp_ids = list(smtp_queues.keys())
+    while active_smtp_ids:
 
-            if campaign.campaign_type == "email":
-                delay, next_break_after = get_email_send_interval(
-                    emails_sent=idx + 1,
-                    next_break_after=next_break_after,
-                    profile_count=len(smtp_profiles),
+        for smtp_id in active_smtp_ids[:]:
+
+            queue = smtp_queues[smtp_id]
+
+            if not queue:
+                active_smtp_ids.remove(smtp_id)
+                continue
+
+            item = queue.popleft()
+
+            contact = item["contact"]
+            smtp_profile = item["smtp_profile"]
+
+            for_index = sent_count + failed_count
+            tracking_token = (
+                uuid.uuid4().hex if campaign.campaign_type == "email" else None
+            )
+
+            log = CampaignLog(
+                campaign_id=campaign.id,
+                contact_id=contact.id,
+                run_sequence=run_sequence,
+                run_started_at=run_started_at,
+                status="pending",
+                tracking_token=tracking_token,
+                from_email=smtp_profile.sender_email if smtp_profile else None,
+                open_count=0,
+                click_count=0,
+            )
+            db.add(log)
+            db.flush()
+
+            is_sent, error_message, provider_message_id = _send_campaign_message(
+                campaign,
+                contact,
+                contact_index=for_index,
+                tracking_token=tracking_token,
+                twilio_sms_config=twilio_sms_config,
+                smtp_profile=smtp_profile,
+                db=db,
+            )
+
+            log.provider_message_id = provider_message_id
+            if is_sent:
+                _apply_tracking_event(log, "delivered")
+                log.error_message = None
+            else:
+                _apply_tracking_event(log, "failed")
+                log.error_message = error_message
+
+            if is_sent:
+                sent_count += 1
+            else:
+                failed_count += 1
+
+            if smtp_profile:
+                active_profile_count = max(
+                    1,
+                    sum(
+                        1
+                        for remaining in smtp_remaining_counts.values()
+                        if remaining > 0
+                    ),
                 )
 
-                logger.info("Waiting %s seconds before next email", delay)
+                smtp_remaining_counts[smtp_profile.id] -= 1
 
-                time.sleep(delay)
-            else:
-                time.sleep(
-                    base_interval
-                )  # wait according to settings before next contact
+            db.commit()
+
+            has_pending_contacts = any(len(queue) > 0 for queue in smtp_queues.values())
+
+            if has_pending_contacts:
+                if campaign.campaign_type == "sms":
+                    base_interval = settings.SMS_CAMPAIGN_SEND_INTERVAL_SECONDS
+                elif campaign.campaign_type == "whatsapp":
+                    base_interval = settings.WHATSAPP_CAMPAIGN_SEND_INTERVAL_SECONDS
+
+                if campaign.campaign_type == "email":
+
+                    delay, next_break_after = get_email_send_interval(
+                        emails_sent=sent_count + failed_count,
+                        next_break_after=next_break_after,
+                        profile_count=(
+                            active_profile_count if active_profile_count else 1
+                        ),
+                    )
+
+                    logger.info("Waiting %s seconds before next email", delay)
+
+                    time.sleep(delay)
+                else:
+                    time.sleep(
+                        base_interval
+                    )  # wait according to settings before next contact
 
     campaign.number_sent = sent_count
     campaign.number_failed = failed_count

@@ -132,7 +132,7 @@ async def upsert_global_whatsapp_config(
     limits = get_effective_limits(db, current_user.organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
-    if not limits.get("whatsapp_enabled"):
+    if not limits.get("whatsapp_campaign_enabled"):
         raise HTTPException(
             status_code=403, detail="WhatsApp is not enabled in current plan"
         )
@@ -304,7 +304,7 @@ async def send_test_whatsapp_message(
     limits = get_effective_limits(db, current_user.organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
-    if not limits.get("whatsapp_enabled"):
+    if not limits.get("whatsapp_campaign_enabled"):
         raise HTTPException(
             status_code=403, detail="WhatsApp is not enabled in current plan"
         )
@@ -357,7 +357,13 @@ async def exchange_embedded_signup_code(
     limits = get_effective_limits(db, current_user.organization_id)
     if not limits.get("subscription_active"):
         raise HTTPException(status_code=403, detail="Subscription inactive or expired")
-    if not limits.get("whatsapp_enabled"):
+
+    feature_enabled = (
+        limits.get("whatsapp_enabled")
+        if payload.widget_id
+        else limits.get("whatsapp_campaign_enabled")
+    )
+    if not feature_enabled:
         raise HTTPException(
             status_code=403, detail="WhatsApp is not enabled in current plan"
         )

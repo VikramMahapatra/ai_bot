@@ -167,8 +167,8 @@ export const CallingAgentTab: React.FC = () => {
         // API returned error
         showError(
           err?.response?.data?.detail ||
-            err?.detail ||
-            "Failed to save the data",
+          err?.detail ||
+          "Failed to save the data",
         );
       }
     } finally {
@@ -189,8 +189,8 @@ export const CallingAgentTab: React.FC = () => {
     } catch (error: any) {
       showError(
         error?.response?.data?.detail ||
-          error?.detail ||
-          "Failed to publish agent",
+        error?.detail ||
+        "Failed to publish agent",
       );
     } finally {
       setLoading(false);
@@ -200,8 +200,8 @@ export const CallingAgentTab: React.FC = () => {
   const handleTestCall = async (agent: CallingAgent) => {
     const isChannelAvailable = await validateChannel();
     if (!isChannelAvailable) {
-        setError("Channel is not available for your organization. Please contact support for assistance.");
-        return;
+      setError("Channel is not available for your organization. Please contact support for assistance.");
+      return;
     }
 
     const featureCode =
@@ -241,8 +241,8 @@ export const CallingAgentTab: React.FC = () => {
   const handleAddAgent = async () => {
     const isChannelAvailable = await validateChannel();
     if (!isChannelAvailable) {
-        setError("Channel is not available for your organization. Please contact support for assistance.");
-        return;
+      setError("Channel is not available for your organization. Please contact support for assistance.");
+      return;
     }
     setShowTypeDialog(true);
     setFormMode("create");
@@ -681,7 +681,7 @@ export const CallingAgentTab: React.FC = () => {
                               </Tooltip>
                             </>
                           )}
-                          {agent.status !== "pending" && (
+                          {!["pending", "inactive"].includes(agent.status) && (
                             <>
                               <Tooltip title="Edit">
                                 <IconButton

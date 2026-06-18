@@ -827,14 +827,37 @@ def process_call(call, agent):
 
                         voice = db.query(Voice).filter(Voice.id == agent.voice).first()
 
-                        organization_credit_service.deduct_inbound_voice_credits(
-                            db=db,
-                            organization_id=call_log.organization_id,
-                            duration_seconds=call_log.duration,
-                            voice_price=float(voice.price),
-                            reference_type="inbound_call",
-                            reference_id=call_log.call_session_id,
-                        )
+                        try:
+                            organization_credit_service.deduct_inbound_voice_credits(
+                                db=db,
+                                organization_id=call_log.organization_id,
+                                duration_seconds=call_log.duration,
+                                voice_price=float(voice.price),
+                                reference_type="inbound_call",
+                                reference_id=call_log.call_session_id,
+                            )
+
+                        except Exception as e:
+
+                            if "Insufficient credits" in str(e):
+
+                                try:
+                                    echoleads = EcholeadsClient(
+                                        call_log.organization_id
+                                    )
+
+                                    if agent.external_agent_id:
+                                        echoleads.deactivate_agent(
+                                            agent.external_agent_id
+                                        )
+
+                                    agent.status = "inactive"
+                                    db.commit()
+
+                                except Exception as deactivate_error:
+                                    print(
+                                        f"Failed to deactivate agent: {deactivate_error}"
+                                    )
 
                     normalized_transcript = save_transcripts(
                         db, call_log, call.get("transcript")
