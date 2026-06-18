@@ -68,6 +68,19 @@ def get_credit_summary(
     cycle_start = balance.billing_start_date if balance else None
     cycle_end = balance.billing_end_date if balance else None
 
+    if not cycle_start or not cycle_end:
+        return {
+            "credits": [],
+            "monthly_summary": {
+                "month": None,
+                "allocated": total_allocated,
+                "reserved": 0,
+                "used": total_used,
+                "remaining": total_remaining,
+            },
+            "price_matrix": [],
+        }
+
     reserved = (
         db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
         .filter(
@@ -668,5 +681,47 @@ def release_reserved_credits(db, reference_type, reference_id):
         usage.credits_used = 0
 
     db.commit()
+
+    return True
+
+
+def deduct_inbound_voice_credits(
+    db,
+    organization_id: int,
+    duration_seconds: int,
+    voice_price: float,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+):
+    billable_minutes = math.ceil(duration_seconds / 60)
+
+    credits_required = billable_minutes * voice_price
+
+    balance = get_current_org_credit_balance(
+        db=db,
+        organization_id=organization_id,
+    )
+
+    if not balance:
+        raise Exception("Credit balance not found")
+
+    if balance.remaining_credit < credits_required:
+        raise Exception("Insufficient credits. Please add more credits to continue.")
+
+    usage = OrganizationCreditUsage(
+        organization_id=organization_id,
+        used_quantity=billable_minutes,
+        credits_used=credits_required,
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+        status="consumed",
+    )
+
+    db.add(usage)
+
+    balance.used_credit += credits_required
+    balance.remaining_credit = balance.total_credit - balance.used_credit
+
+    db.flush()
 
     return True

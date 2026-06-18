@@ -60,8 +60,9 @@ class EcholeadsClient:
             return response.json()
 
         except requests.exceptions.HTTPError as e:  # only catch actual HTTP errors
-            print("HTTP ERROR:", e.response.status_code, e.response.text)
-            raise HTTPException(status_code=400, detail=f"API error: {str(e)}")
+            error_text = e.response.text
+            print("HTTP ERROR:", e.response.status_code, error_text)
+            raise HTTPException(status_code=e.response.status_code, detail=error_text)
         except requests.exceptions.RequestException as e:  # network errors
             print("NETWORK ERROR:", str(e))
             raise HTTPException(status_code=400, detail=f"Network Error: {str(e)}")
@@ -86,8 +87,9 @@ class EcholeadsClient:
             return response.json()
 
         except requests.exceptions.HTTPError as e:  # only catch actual HTTP errors
-            print("HTTP ERROR:", e.response.status_code, e.response.text)
-            raise HTTPException(status_code=400, detail=f"API Error: {str(e)}")
+            error_text = e.response.text
+            print("HTTP ERROR:", e.response.status_code, error_text)
+            raise HTTPException(status_code=e.response.status_code, detail=error_text)
         except requests.exceptions.RequestException as e:  # network errors
             print("NETWORK ERROR:", str(e))
             raise HTTPException(status_code=400, detail=f"Network Error: {str(e)}")

@@ -85,7 +85,7 @@ const languageRoutingRules: Record<
     Hindi: {
         provider: "deepgram",
         model: "nova-3",
-        languageCode: "hi",
+        languageCode: "hi-IN",
     },
 
     Telugu: {

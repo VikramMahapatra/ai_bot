@@ -283,9 +283,14 @@ def update_agent(
     echo_failed = False
     if db_agent.external_agent_id:
         try:
-            echoleads.update_agent(db_agent.external_agent_id, echo_payload)
+            update_with_auto_publish(
+                echoleads,
+                db_agent.external_agent_id,
+                echo_payload,
+                db_agent.type,
+            )
         except Exception as e:
-            print(f"EchoLeads API failed: {str(e)}")
+            print(f"EchoLeads sync failed: {str(e)}")
             echo_failed = True
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -706,12 +711,12 @@ def test_call(
             reference_id=str(test_call.id),
         )
 
-        organization_channel_service.reserve_channel(
-            db,
-            organization_id=agent.organization_id,
-            call_type="test",
-            reference_id=test_call.id,
-        )
+        # organization_channel_service.reserve_channel(
+        #     db,
+        #     organization_id=agent.organization_id,
+        #     call_type="test",
+        #     reference_id=test_call.id,
+        # )
 
     db.commit()
     db.refresh(test_call)
@@ -771,6 +776,43 @@ def publish_agent(db: Session, agent_id: int):
         ),
         "agent_id": agent.id,
     }
+
+
+def update_with_auto_publish(
+    echoleads,
+    external_agent_id,
+    payload,
+    agent_type,
+):
+    try:
+        echoleads.update_agent(external_agent_id, payload)
+        return True
+
+    except Exception as e:
+
+        print(e)
+
+        if (
+            e.status_code == 403
+            and "Subscription for this agent has expired or is missing" in str(e.detail)
+        ):
+
+            print("Subscription expired. Publishing agent and retrying update...")
+
+            publish_payload = {
+                "agent_id": external_agent_id,
+                "user_id": 42,
+                "plan_id": 18 if agent_type == "outbound" else 16,
+            }
+
+            echoleads.publish_agent(publish_payload)
+
+            # retry once
+            echoleads.update_agent(external_agent_id, payload)
+        else:
+            raise
+
+        return True
 
 
 def build_echoleads_payload(

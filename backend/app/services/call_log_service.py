@@ -79,6 +79,8 @@ from app.models.instant_reply_logs import InstantReplyChannelLog, InstantReplyLo
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 from app.models.appointment import Appointment
 from app.models.user import Organization
+from app.models.voices import Voice
+from app.services.limits_service import get_effective_limits
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -817,11 +819,19 @@ def process_call(call, agent):
                     db.flush()
 
                     if call_log.type == "inbound":
-                        organization_credit_service.deduct_credits_per_minute(
+                        agent = (
+                            db.query(CallingAgent)
+                            .filter(CallingAgent.id == call_log.agent_id)
+                            .first()
+                        )
+
+                        voice = db.query(Voice).filter(Voice.id == agent.voice).first()
+
+                        organization_credit_service.deduct_inbound_voice_credits(
                             db=db,
                             organization_id=call_log.organization_id,
-                            feature_code=FeatureCodes.CORE_CALL_IN_MINUTE,
                             duration_seconds=call_log.duration,
+                            voice_price=float(voice.price),
                             reference_type="inbound_call",
                             reference_id=call_log.call_session_id,
                         )
@@ -879,9 +889,18 @@ def process_call(call, agent):
                 else test_call.status
             )
 
-            if is_call_ended:
+            should_release = is_call_ended
+
+            if not should_release and test_call.start_time:
+                should_release = (
+                    datetime.now(timezone.utc) - test_call.start_time
+                ) >= timedelta(minutes=10)
+
+            if should_release:
                 organization_channel_service.release_channel(
-                    db, call_type="test", reference_id=test_call.id
+                    db,
+                    call_type="test",
+                    reference_id=test_call.id,
                 )
 
         # Only create lead for Campaign calls, not for test calls.
@@ -899,6 +918,30 @@ def process_call(call, agent):
 
             # Create conversation
             create_conversation_from_transcripts(db=db, call_log=call_log, agent=agent)
+
+            limits = get_effective_limits(db, call_log.organization_id)
+            outbound_call_billing_model = limits.get(
+                "outbound_call_billing_model", "per_attempt"
+            )
+
+            if outbound_call_billing_model == "per_minute":
+                already_deducted = organization_credit_service.has_credit_usage(
+                    db=db,
+                    organization_id=call_log.organization_id,
+                    feature_code=FeatureCodes.CORE_CALL_OUT_MINUTE,
+                    reference_type="outbound_call",
+                    reference_id=call_log.call_session_id,
+                )
+
+                if not already_deducted:
+                    organization_credit_service.deduct_credits_per_minute(
+                        db=db,
+                        organization_id=call_log.organization_id,
+                        feature_code=FeatureCodes.CORE_CALL_OUT_MINUTE,
+                        duration_seconds=call_log.duration,
+                        reference_type="outbound_call",
+                        reference_id=call_log.call_session_id,
+                    )
 
         # For campaign calls, once call is completed or failed, we can release the reserved channel and update the scheduled call status if exists
         if campaign and is_call_completed_or_failed:

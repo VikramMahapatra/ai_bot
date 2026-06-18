@@ -40,6 +40,7 @@ from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
 from app.models.workflows import Workflow, WorkflowExecution, WorkflowExecutionLog
 from app.models.conversation import Conversation
+from app.services.limits_service import get_effective_limits
 
 STALE_MINUTES = 1
 SYNC_STATUSES = ["draft", "active", "running", "pending", "scheduled"]
@@ -622,28 +623,38 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     campaign.external_campaign_id = echoleads_campaign_id
     db.flush()
 
+    limits = get_effective_limits(db, campaign.organization_id)
+    outbound_call_billing_model = limits.get(
+        "outbound_call_billing_model", "per_attempt"
+    )
+    is_per_attempt_calculation = (
+        True if outbound_call_billing_model == "per_attempt" else False
+    )
+
     if echo_failed:
         message = "Campaign created successfully, but sync failed. Please reload the page to sync the campaign."
 
-        organization_credit_service.reserve_credits(
-            db=db,
-            organization_id=agent.organization_id,
-            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-            quantity=calls_needed,
-            reference_type="call_campaign",
-            reference_id=str(campaign.id),
-        )
+        if is_per_attempt_calculation:
+            organization_credit_service.reserve_credits(
+                db=db,
+                organization_id=agent.organization_id,
+                feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                quantity=calls_needed,
+                reference_type="call_campaign",
+                reference_id=str(campaign.id),
+            )
     else:
         message = "Campaign created successfully"
 
-        organization_credit_service.deduct_credits(
-            db=db,
-            organization_id=agent.organization_id,
-            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-            quantity=calls_needed,
-            reference_type="call_campaign",
-            reference_id=str(campaign.id),
-        )
+        if is_per_attempt_calculation:
+            organization_credit_service.deduct_credits(
+                db=db,
+                organization_id=agent.organization_id,
+                feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                quantity=calls_needed,
+                reference_type="call_campaign",
+                reference_id=str(campaign.id),
+            )
 
         organization_channel_service.reserve_channel(
             db,

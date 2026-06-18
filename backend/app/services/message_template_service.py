@@ -4,7 +4,7 @@ from typing import Optional
 import requests
 from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
-from app.models.message_templates import MessageTemplate, TemplateStatus
+from app.models.message_templates import MessageTemplate, TemplateStatus, TemplateType
 from app.schemas.message_template import TemplateCreate, TemplateUpdate
 from app.models.whatsapp_channel import WhatsAppChannel
 from app.config import settings
@@ -77,15 +77,53 @@ def sync_whatsapp_templates(db: Session, organization_id):
     for item in data:
         template = (
             db.query(MessageTemplate)
-            .filter(MessageTemplate.whatsapp_template_name == item["name"])
+            .filter(
+                MessageTemplate.whatsapp_template_name == item["name"],
+                MessageTemplate.organization_id == organization_id,
+            )
             .first()
         )
 
         if template:
             template.meta_status = item.get("status")
             template.rejection_reason = item.get("rejected_reason")
+            template.category = item.get("category")
+            template.language = item.get("language")
+        else:
+            # Extract body content from Meta template
+            body_content = ""
 
-    db.commit()
+            for component in item.get("components", []):
+                if component.get("type") == "BODY":
+                    body_content = component.get("text", "")
+                    break
+
+            placeholders = re.findall(r"{{\d+}}", body_content)
+
+            template = MessageTemplate(
+                organization_id=organization_id,
+                name=item["name"].replace("_", " ").title(),
+                whatsapp_template_name=item["name"],
+                type=TemplateType.whatsapp,
+                content=body_content,
+                category=item.get("category"),
+                language=item.get("language"),
+                meta_template_id=item.get("id"),
+                meta_status=item.get("status"),
+                rejection_reason=item.get("rejected_reason"),
+                status=(
+                    TemplateStatus.inactive if placeholders else TemplateStatus.active
+                ),
+            )
+
+            db.add(template)
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("Commit failed:", str(e))
+        raise
 
     return {"success": True, "message": "WhatsApp templates synced successfully"}
 
@@ -385,21 +423,34 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
 
 def update_template_status(db: Session, template_id: int, status: str):
     template = get_template(db, template_id)
+
     if not template:
         return {"success": False, "message": "Template not found"}
 
     try:
-        # convert string → enum (case-insensitive)
         status_enum = TemplateStatus[status.lower()]
     except KeyError:
         return {"success": False, "message": "Invalid status value"}
 
-    # Optional business rule
-    if template.type == "whatsapp" and template.meta_status == "APPROVED":
-        return {
-            "success": False,
-            "message": "Approved WhatsApp templates cannot be deactivated",
-        }
+    # Validate WhatsApp template before activating
+    if template.type == TemplateType.whatsapp and status_enum == TemplateStatus.active:
+        mappings = template.variable_mappings or {}
+
+        # No mappings configured
+        if not mappings:
+            return {
+                "success": False,
+                "message": "Please configure variable mappings before activating this WhatsApp template.",
+            }
+
+        # Check for empty/null mappings
+        unmapped = [key for key, value in mappings.items() if value in (None, "", [])]
+
+        if unmapped:
+            return {
+                "success": False,
+                "message": f"Please map all variables before activating. Unmapped: {', '.join(unmapped)}",
+            }
 
     template.status = status_enum
 
