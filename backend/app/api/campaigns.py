@@ -878,10 +878,7 @@ def _execute_campaign_now(
     delivered_contact_ids = {
         row[0]
         for row in db.query(CampaignLog.contact_id)
-        .filter(
-            CampaignLog.campaign_id == campaign.id,
-            CampaignLog.status == "delivered",
-        )
+        .filter(CampaignLog.campaign_id == campaign.id)
         .all()
     }
 
@@ -926,14 +923,16 @@ def _execute_campaign_now(
     while active_smtp_ids:
         db_campaign = db.query(Campaign).filter(Campaign.id == campaign.id).first()
         if db_campaign.status == "paused":
-            break
+            logger.info("Campaign %s paused. Exiting thread.", campaign.id)
+            return
 
         for smtp_id in active_smtp_ids[:]:
             if (
                 db.query(Campaign.status).filter(Campaign.id == campaign.id).scalar()
                 == "paused"
             ):
-                break
+                logger.info("Campaign %s paused. Exiting thread.", campaign.id)
+                return
 
             queue = smtp_queues[smtp_id]
 
