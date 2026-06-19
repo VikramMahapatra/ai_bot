@@ -83,9 +83,12 @@ export const whatsappService = {
   },
 
 
-  async disconnectWhatsApp(): Promise<WhatsAppDisconnectResponse> {
+  async disconnectWhatsApp(widget_id?: string): Promise<WhatsAppDisconnectResponse> {
     const response = await api.delete(
-      "/api/admin/whatsapp/disconnect"
+      "/api/admin/whatsapp/disconnect",
+      {
+        params: { widget_id },
+      }
     );
 
     return response.data;

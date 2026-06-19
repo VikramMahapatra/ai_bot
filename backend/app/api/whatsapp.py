@@ -14,6 +14,7 @@ from app.services.chat_service import generate_chat_response
 from app.services.limits_service import get_effective_limits, increment_usage
 from app.services.whatsapp_service import (
     WhatsAppEmbeddedSignupError,
+    ensure_whatsapp_waba_ready,
     exchange_meta_embedded_signup_code,
     fetch_phone_number_details,
     send_whatsapp_test_message,
@@ -147,7 +148,8 @@ async def upsert_global_whatsapp_config(
     )
 
     duplicate_query = db.query(WhatsAppChannel).filter(
-        WhatsAppChannel.phone_number_id == payload.phone_number_id
+        WhatsAppChannel.phone_number_id == payload.phone_number_id,
+        WhatsAppChannel.widget_id.is_(None),
     )
 
     if config:
@@ -160,13 +162,6 @@ async def upsert_global_whatsapp_config(
             status_code=400,
             detail="This WhatsApp phone number is already in use",
         )
-
-    if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
-        payload.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
-        payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
-        payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
-        payload.waba_id = settings.ZENTRIXEL_WABA_ID
-        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_ID
 
     if not config:
         config = WhatsAppChannel(
@@ -191,6 +186,15 @@ async def upsert_global_whatsapp_config(
         config.phone_number_id = payload.phone_number_id
         config.waba_id = payload.waba_id
         config.is_active = payload.is_active
+
+        result = ensure_whatsapp_waba_ready(
+            waba_id=config.waba_id,
+            phone_number_id=config.phone_number_id,
+            access_token=config.access_token,
+            pin=settings.META_WHATSAPP_REGISTRATION_PIN,
+        )
+
+        print(result)
 
     db.commit()
     db.refresh(config)
@@ -241,7 +245,8 @@ async def upsert_whatsapp_config(
     )
 
     duplicate_query = db.query(WhatsAppChannel).filter(
-        WhatsAppChannel.phone_number_id == payload.phone_number_id
+        WhatsAppChannel.phone_number_id == payload.phone_number_id,
+        WhatsAppChannel.widget_id.is_not(None),
     )
 
     if config:
@@ -254,13 +259,6 @@ async def upsert_whatsapp_config(
             status_code=400,
             detail="This WhatsApp phone number is already in use",
         )
-
-    if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
-        payload.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
-        payload.business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
-        payload.access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
-        payload.waba_id = settings.ZENTRIXEL_WABA_ID
-        payload.phone_number_id = settings.ZENTRIXEL_PHONE_NUMBER_ID
 
     if not config:
         config = WhatsAppChannel(
@@ -282,6 +280,15 @@ async def upsert_whatsapp_config(
         config.verify_token = settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN
         config.business_phone_number = payload.business_phone_number
         config.is_active = payload.is_active
+
+        result = ensure_whatsapp_waba_ready(
+            waba_id=config.waba_id,
+            phone_number_id=config.phone_number_id,
+            access_token=payload.access_token,
+            pin=settings.META_WHATSAPP_REGISTRATION_PIN,
+        )
+
+        print(result)
 
     db.commit()
     db.refresh(config)
@@ -381,10 +388,7 @@ async def exchange_embedded_signup_code(
     if expires_in:
         token_expires_at = token_created_at + timedelta(seconds=expires_in)
 
-    if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
-        access_token = settings.ZENTRIXEL_WHATSAPP_ACCESS_TOKEN
-    else:
-        access_token = exchange.get("access_token")
+    access_token = exchange.get("access_token")
 
     response_payload = {
         "message": "Meta code exchanged successfully",
@@ -439,15 +443,13 @@ async def exchange_embedded_signup_code(
             )
             db.add(config)
         else:
-            if current_user.organization_id == 1:  # Hardcoded logic for Zentrixel
-                business_phone_number = settings.ZENTRIXEL_BUSINESS_PHONE
-            else:
-                phone_details = fetch_phone_number_details(
-                    config.phone_number_id,
-                    access_token,
-                )
 
-                business_phone_number = phone_details.get("display_phone_number")
+            phone_details = fetch_phone_number_details(
+                config.phone_number_id,
+                access_token,
+            )
+
+            business_phone_number = phone_details.get("display_phone_number")
 
             config.access_token = access_token
             config.widget_id = payload.widget_id
@@ -457,6 +459,15 @@ async def exchange_embedded_signup_code(
             config.token_expires_in = expires_in
             config.token_created_at = token_created_at
             config.token_expires_at = token_expires_at
+
+            result = ensure_whatsapp_waba_ready(
+                waba_id=config.waba_id,
+                phone_number_id=config.phone_number_id,
+                access_token=access_token,
+                pin=settings.META_WHATSAPP_REGISTRATION_PIN,
+            )
+
+            print(result)
 
         db.commit()
         db.refresh(config)
@@ -474,19 +485,20 @@ async def exchange_embedded_signup_code(
 
 @router.delete("/api/admin/whatsapp/disconnect")
 def disconnect_whatsapp(
+    widget_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
-    channel = (
-        db.query(WhatsAppChannel)
-        .filter(
-            WhatsAppChannel.organization_id == current_user.organization_id,
-            WhatsAppChannel.widget_id
-            == None,  # Only allow disconnect if not linked to a widget
-        )
-        .first()
+    query = db.query(WhatsAppChannel).filter(
+        WhatsAppChannel.organization_id == current_user.organization_id
     )
+
+    if widget_id:
+        query = query.filter(WhatsAppChannel.widget_id == widget_id)
+    else:
+        query = query.filter(WhatsAppChannel.widget_id.is_(None))
+
+    channel = query.first()
 
     if not channel:
         return {"success": False, "message": "No WhatsApp channel found"}
