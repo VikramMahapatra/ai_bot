@@ -875,16 +875,15 @@ def _execute_campaign_now(
                 previous_smtp_mapping[email] = from_email
 
     delivered_contact_ids = set()
-    if run_sequence > 1:
-        delivered_contact_ids = {
-            row[0]
-            for row in db.query(CampaignLog.contact_id)
-            .filter(
-                CampaignLog.campaign_id == campaign.id,
-                CampaignLog.status == "delivered",
-            )
-            .all()
-        }
+    delivered_contact_ids = {
+        row[0]
+        for row in db.query(CampaignLog.contact_id)
+        .filter(
+            CampaignLog.campaign_id == campaign.id,
+            CampaignLog.status == "delivered",
+        )
+        .all()
+    }
 
     contacts = [
         contact for contact in contacts if contact.id not in delivered_contact_ids
@@ -893,42 +892,48 @@ def _execute_campaign_now(
     smtp_queues = defaultdict(deque)
     smtp_remaining_counts = defaultdict(int)
 
-    for idx, contact in enumerate(contacts):
-        smtp_profile = None
+    if campaign.campaign_type != "email":
+        active_smtp_ids = ["default"]
 
-        if smtp_profiles:
-            previous_from_email = previous_smtp_mapping.get(contact.email)
+        smtp_queues["default"] = deque(
+            [{"contact": contact, "smtp_profile": None} for contact in contacts]
+        )
+    else:
+        for idx, contact in enumerate(contacts):
+            smtp_profile = None
 
-            if previous_from_email:
-                smtp_profile = smtp_profiles_by_email.get(previous_from_email)
+            if smtp_profiles:
+                previous_from_email = previous_smtp_mapping.get(contact.email)
 
-            if smtp_profile is None:
-                smtp_profile = smtp_profiles[idx % len(smtp_profiles)]
+                if previous_from_email:
+                    smtp_profile = smtp_profiles_by_email.get(previous_from_email)
 
-            smtp_queues[smtp_profile.id].append(
-                {
-                    "contact": contact,
-                    "smtp_profile": smtp_profile,
-                }
-            )
+                if smtp_profile is None:
+                    smtp_profile = smtp_profiles[idx % len(smtp_profiles)]
 
-        if smtp_profile:
-            smtp_remaining_counts[smtp_profile.id] += 1
+                smtp_queues[smtp_profile.id].append(
+                    {
+                        "contact": contact,
+                        "smtp_profile": smtp_profile,
+                    }
+                )
 
-    active_smtp_ids = list(smtp_queues.keys())
+            if smtp_profile:
+                smtp_remaining_counts[smtp_profile.id] += 1
+
+        active_smtp_ids = list(smtp_queues.keys())
+
     while active_smtp_ids:
-
         db_campaign = db.query(Campaign).filter(Campaign.id == campaign.id).first()
         if db_campaign.status == "paused":
             break
 
         for smtp_id in active_smtp_ids[:]:
-
             if (
                 db.query(Campaign.status).filter(Campaign.id == campaign.id).scalar()
                 == "paused"
             ):
-                return
+                break
 
             queue = smtp_queues[smtp_id]
 
