@@ -536,9 +536,12 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const handleDisconnectWhatsApp = async () => {
+    if (!createdWidgetId)
+      return;
+
     try {
       setMetaConnecting(true);
-      await whatsappService.disconnectWhatsApp();
+      await whatsappService.disconnectWhatsApp(createdWidgetId);
       setWhatsappForm(initialWhatsAppForm);
       setWhatsappConfigured(false);
       setSuccess("WhatsApp disconnected successfully");
@@ -690,7 +693,7 @@ const CreateChatAgentPage: React.FC = () => {
       } catch (err: any) {
         setError(
           err?.response?.data?.detail ||
-          err?.message ||
+          err?.detail ||
           "Failed to save WhatsApp config"
         );
       }
@@ -1205,7 +1208,7 @@ const CreateChatAgentPage: React.FC = () => {
       setSuccess('WhatsApp integration saved successfully.');
       setIntegrationDialogOpen(false);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save WhatsApp integration.');
+      setError(err.response?.data?.detail || err?.detail || 'Failed to save WhatsApp integration.');
     } finally {
       setWhatsappSaving(false);
     }
@@ -2384,6 +2387,15 @@ const CreateChatAgentPage: React.FC = () => {
                             <Typography variant="body2" color="text.secondary">
                               Connect Meta WhatsApp Cloud API for two-way messaging with the same knowledge base.
                             </Typography>
+                            {whatsappConfigured && whatsappForm?.business_phone_number && (
+                              <Typography
+                                variant="caption"
+                                color="success.main"
+                                sx={{ fontWeight: 500 }}
+                              >
+                                Connected • {whatsappForm.business_phone_number}
+                              </Typography>
+                            )}
                             <Stack
                               direction={{ xs: 'column', sm: 'row' }}
                               spacing={1}

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 from typing import Optional
 
 from fastapi import HTTPException
@@ -355,3 +356,70 @@ def exchange_meta_embedded_signup_code(
         "token_type": long_lived.get("token_type"),
         "expires_in": long_lived.get("expires_in"),
     }
+
+
+def subscribe_waba_to_app(waba_id: str, access_token: str):
+    version = _graph_version()
+    url = f"https://graph.facebook.com/{version}/{waba_id}/subscribed_apps"
+    response = requests.post(url, params={"access_token": access_token})
+    response.raise_for_status()
+    data = response.json()
+    return data.get("success", False)
+
+
+def get_phone_health_status(phone_number_id: str, access_token: str):
+    version = _graph_version()
+    url = f"https://graph.facebook.com/{version}/{phone_number_id}"
+
+    params = {"fields": "health_status", "access_token": access_token}
+
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+
+    return response.json()
+
+
+def register_phone_number(phone_number_id: str, access_token: str, pin: str):
+    version = _graph_version()
+    url = f"https://graph.facebook.com/{version}/{phone_number_id}/register"
+
+    payload = {"messaging_product": "whatsapp", "pin": pin}
+
+    params = {"access_token": access_token}
+
+    response = requests.post(url, json=payload, params=params)
+    response.raise_for_status()
+
+    return response.json()
+
+
+def ensure_whatsapp_waba_ready(waba_id, phone_number_id, access_token, pin=None):
+
+    result = {"subscribed": False, "health_status": None, "registered": False}
+
+    # 1. Subscribe FIRST
+    result["subscribed"] = subscribe_waba_to_app(waba_id, access_token)
+
+    # 2. Register if needed (optional)
+    health = get_phone_health_status(phone_number_id, access_token)
+    status = (health.get("health_status", {}) or {}).get("can_send_message")
+    result["health_status"] = status
+
+    if status not in ["AVAILABLE", "LIMITED"]:
+        if not pin:
+            raise Exception("PIN required for registration")
+
+        result["registration_response"] = register_phone_number(
+            phone_number_id, access_token, pin
+        )
+        result["registered"] = True
+
+        time.sleep(2)
+
+        # re-check health
+        health = get_phone_health_status(phone_number_id, access_token)
+        result["health_status"] = (health.get("health_status", {}) or {}).get(
+            "can_send_message"
+        )
+
+    return result

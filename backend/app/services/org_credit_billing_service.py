@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 from fastapi import HTTPException
 from numpy import extract
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -412,7 +413,16 @@ def create_org_credit_entry(
     # Check organization status
     organization = (
         db.query(Organization)
-        .filter(Organization.id == organization_id, Organization.is_active.is_(True))
+        .filter(
+            Organization.id == organization_id,
+            or_(
+                Organization.status == OrganizationStatus.ACTIVE,
+                and_(
+                    Organization.status == OrganizationStatus.TRIAL,
+                    Organization.trial_end_date >= datetime.now(timezone.utc),
+                ),
+            ),
+        )
         .first()
     )
 
@@ -527,7 +537,14 @@ def update_org_credit_entry(
     organization = (
         db.query(Organization)
         .filter(
-            Organization.id == row.organization_id, Organization.is_active.is_(True)
+            Organization.id == row.organization_id,
+            or_(
+                Organization.status == OrganizationStatus.ACTIVE,
+                and_(
+                    Organization.status == OrganizationStatus.TRIAL,
+                    Organization.trial_end_date >= datetime.now(timezone.utc),
+                ),
+            ),
         )
         .first()
     )

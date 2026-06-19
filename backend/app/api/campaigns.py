@@ -603,6 +603,12 @@ def _send_campaign_message(
 
     Email sends via SMTP, WhatsApp remains placeholder, SMS sends via Twilio.
     """
+    if (
+        db.query(Campaign.status).filter(Campaign.id == campaign.id).scalar()
+        == "paused"
+    ):
+        return
+
     if campaign.campaign_type == "email":
         subject, body = _resolve_email_payload_for_contact(
             campaign_name=campaign.campaign_name,
@@ -851,19 +857,16 @@ def _execute_campaign_now(
         # Find last delivered email SMTP used for each contact
         previous_logs = (
             db.query(
-                Contact.email,
+                CampaignLog.email,
                 CampaignLog.from_email,
             )
-            .join(Contact, CampaignLog.contact_id == Contact.id)
             .filter(
-                Contact.email.in_([c.email for c in contacts]),
                 CampaignLog.status == "delivered",
                 CampaignLog.from_email.isnot(None),
+                CampaignLog.email.in_([c.email for c in contacts]),
             )
-            .order_by(
-                Contact.email,
-                CampaignLog.id.desc(),
-            )
+            .order_by(CampaignLog.email, CampaignLog.id.desc())
+            .distinct(CampaignLog.email)
             .all()
         )
 
@@ -915,7 +918,17 @@ def _execute_campaign_now(
     active_smtp_ids = list(smtp_queues.keys())
     while active_smtp_ids:
 
+        db_campaign = db.query(Campaign).filter(Campaign.id == campaign.id).first()
+        if db_campaign.status == "paused":
+            break
+
         for smtp_id in active_smtp_ids[:]:
+
+            if (
+                db.query(Campaign.status).filter(Campaign.id == campaign.id).scalar()
+                == "paused"
+            ):
+                return
 
             queue = smtp_queues[smtp_id]
 
@@ -941,6 +954,7 @@ def _execute_campaign_now(
                 status="pending",
                 tracking_token=tracking_token,
                 from_email=smtp_profile.sender_email if smtp_profile else None,
+                email=contact.email,
                 open_count=0,
                 click_count=0,
             )

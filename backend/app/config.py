@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     EMAIL_CAMPAIGN_BREAK_MIN_MINUTES: int = 10
     EMAIL_CAMPAIGN_BREAK_MAX_MINUTES: int = 20
 
+    META_WHATSAPP_REGISTRATION_PIN: str
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
