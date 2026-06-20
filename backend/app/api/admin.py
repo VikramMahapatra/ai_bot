@@ -202,6 +202,7 @@ class LoginResponse(BaseModel):
     organization_id: int
     role: str
     organization_name: str
+    timezone: Optional[str] = None
 
 
 class GetOrganizationsResponse(BaseModel):
@@ -266,6 +267,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         organization_id=user.organization_id,
         role=user.role.value,
         organization_name=org.name,
+        timezone=org.timezone
     )
 
 
@@ -366,6 +368,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value,
         "organization_id": current_user.organization_id,
         "is_active": current_user.is_active,
+        "timezone": current_user.organization.timezone if current_user.organization else None
     }
 
 
