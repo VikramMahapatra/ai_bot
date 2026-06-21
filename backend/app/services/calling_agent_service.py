@@ -662,10 +662,7 @@ def test_call(
         )
 
     if agent.type == "outbound":
-        validate_outbound_call_limit(
-            db,
-            agent.organization_id,
-        )
+        validate_outbound_call_limit(db, agent.organization_id, 1)
 
     # Prepare API request
     echoleads = EcholeadsClient(agent.organization_id)

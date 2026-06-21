@@ -2670,6 +2670,7 @@ def sync_echoleads_bookings(
     organization_id: int,
 ):
     client = EcholeadsClient(organization_id)
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
 
     response = client.fetch_bookings()
 
@@ -2722,6 +2723,13 @@ def sync_echoleads_bookings(
             contact = (
                 db.query(Contact).filter(Contact.id == call_log.contact_id).first()
             )
+        else:
+            contact = (
+                db.query(Contact)
+                .filter(Contact.phone == call_log.phone)
+                .order_by(Contact.created_at.desc())
+                .first()
+            )
 
         # Agent
         agent = None
@@ -2741,11 +2749,11 @@ def sync_echoleads_bookings(
                 .first()
             )
 
-        # Normalize phone
-        phone = booking.get("customer_number")
-
-        if phone:
-            phone = phone if phone.startswith("+") else f"+{phone}"
+        timezone = (
+            campaign.schedule.timezone
+            if campaign and campaign.schedule
+            else (org.timezone or "UTC")
+        )
 
         # Create appointment
         appointment = Appointment(
@@ -2753,14 +2761,12 @@ def sync_echoleads_bookings(
             session_id=call_log.call_session_id,
             widget_id=agent.widget_id if agent else None,
             name=contact.name if contact else "Unknown",
-            phone=phone,
+            phone=call_log.phone,
             appointment_at=parser.parse(booking.get("start_date")),
             status="booked",
             email=None,
             notes=None,
-            timezone=(
-                campaign.schedule.timezone if campaign and campaign.schedule else "UTC"
-            ),
+            timezone=timezone,
         )
 
         db.add(appointment)
