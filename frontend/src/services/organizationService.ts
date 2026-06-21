@@ -194,6 +194,7 @@ export const organizationService = {
     const res = await api.get("/api/organizations/feature-access", {
       params: { path },
     });
+
     return res.data;
   },
 

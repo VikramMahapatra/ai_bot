@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from app.models.call_logs import CallLog
+from fastapi import HTTPException
+from app.models.calling_agents import CallingAgent
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.models import (
@@ -358,3 +361,90 @@ def increment_usage(
         db.refresh(subscription_usage)
 
     return usage
+
+
+def validate_agent_limit(
+    db: Session,
+    organization_id: int,
+    agent_type: str,
+):
+    limits = get_effective_limits(db, organization_id)
+
+    agent_type = agent_type.lower()
+
+    if agent_type == "inbound":
+        max_allowed = limits.get("max_inbound_voice_agents", 0)
+
+        current_count = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == organization_id,
+                CallingAgent.type == "inbound",
+                CallingAgent.is_deleted == False,
+            )
+            .count()
+        )
+
+    elif agent_type == "outbound":
+        max_allowed = limits.get("max_outbound_voice_agents", 0)
+
+        current_count = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.organization_id == organization_id,
+                CallingAgent.type == "outbound",
+                CallingAgent.is_deleted == False,
+            )
+            .count()
+        )
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid agent type: {agent_type}",
+        )
+
+    if max_allowed == 0:
+        return
+
+    if current_count >= max_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have reached the maximum allowed {agent_type} voice agents for your subscription plan.",
+        )
+
+
+def validate_outbound_call_limit(
+    db: Session,
+    organization_id: int,
+    calls_needed: int = 1,
+):
+    limits = get_effective_limits(db, organization_id)
+
+    max_allowed = limits.get("max_outbound_calls", 0)
+
+    # 0 = unlimited
+    if max_allowed == 0:
+        return
+
+    current_count = (
+        db.query(CallLog)
+        .join(
+            CallingAgent,
+            CallLog.agent_id == CallingAgent.id,
+        )
+        .filter(
+            CallLog.organization_id == organization_id,
+            CallingAgent.type == "outbound",
+        )
+        .count()
+    )
+
+    if current_count + calls_needed > max_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Unable to proceed. Your organization's outbound call "
+                "limit has been reached. Please contact your administrator."
+            ),
+        )

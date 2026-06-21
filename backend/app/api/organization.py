@@ -51,6 +51,9 @@ ROUTE_MODULE_MAP = {
     "/appointments": "module_appointments_enabled",
     "/products": "module_products_enabled",
     "/users": "module_users_enabled",
+    "/follow-up-workflow": "module_followup_workflow_enabled",
+    "/handoff": "human_handoff_enabled",
+    "/knowledge": "module_knowledge_enabled",
 }
 
 

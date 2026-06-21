@@ -9,10 +9,13 @@ from types import SimpleNamespace
 from typing import List, Optional
 from uuid import UUID, uuid4
 
+from app.services.limits_service import (
+    validate_agent_limit,
+    validate_outbound_call_limit,
+)
 from sqlalchemy import case, func
 from app.config import settings
 from fastapi import BackgroundTasks, File, HTTPException, UploadFile, requests
-
 from app.models.calling_agents import CallingAgent, CallingAgentTestCall
 from sqlalchemy.orm import Session
 
@@ -59,6 +62,12 @@ def create_agent(
 
     if not org:
         raise ValueError("Organization not found")
+
+    validate_agent_limit(
+        db=db,
+        organization_id=org.id,
+        agent_type=agent.type,
+    )
 
     valid = organization_credit_service.validate_feature_usage(
         db, org.id, get_agent_feature_code(agent.type), 1
@@ -652,6 +661,12 @@ def test_call(
             detail="Insufficient credits. Please add more credits to continue.",
         )
 
+    if agent.type == "outbound":
+        validate_outbound_call_limit(
+            db,
+            agent.organization_id,
+        )
+
     # Prepare API request
     echoleads = EcholeadsClient(agent.organization_id)
 
@@ -1112,8 +1127,6 @@ def sync_voices_from_echoleads(
                 db_voice.updated_at = api_updated_at
 
                 updated += 1
-
-                print(f"caller name : {db_voice.caller_name}")
 
             else:
 

@@ -267,7 +267,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         organization_id=user.organization_id,
         role=user.role.value,
         organization_name=org.name,
-        timezone=org.timezone
+        timezone=org.timezone,
     )
 
 
@@ -368,7 +368,9 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value,
         "organization_id": current_user.organization_id,
         "is_active": current_user.is_active,
-        "timezone": current_user.organization.timezone if current_user.organization else None
+        "timezone": (
+            current_user.organization.timezone if current_user.organization else None
+        ),
     }
 
 
@@ -377,28 +379,7 @@ async def get_feature_flags(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Get effective feature flags for current user's organization"""
-    limits = get_effective_limits(db, current_user.organization_id)
-    return {
-        "subscription_active": limits.get("subscription_active", False),
-        "days_left": limits.get("days_left", 0),
-        "voice_chat_enabled": limits.get("voice_chat_enabled", False),
-        "multilingual_text_enabled": limits.get("multilingual_text_enabled", False),
-        "human_handoff_enabled": limits.get("human_handoff_enabled", False),
-        "whatsapp_enabled": limits.get("whatsapp_enabled", False),
-        "email_campaign_enabled": limits.get("email_campaign_enabled", False),
-        "sms_campaign_enabled": limits.get("sms_campaign_enabled", False),
-        "module_knowledge_enabled": limits.get("module_knowledge_enabled", False),
-        "module_leads_enabled": limits.get("module_leads_enabled", False),
-        "module_analytics_enabled": limits.get("module_analytics_enabled", False),
-        "module_advanced_analytics_enabled": limits.get(
-            "module_advanced_analytics_enabled", False
-        ),
-        "module_reports_enabled": limits.get("module_reports_enabled", False),
-        "module_campaigns_enabled": limits.get("module_campaigns_enabled", False),
-        "module_appointments_enabled": limits.get("module_appointments_enabled", False),
-        "module_products_enabled": limits.get("module_products_enabled", False),
-        "module_users_enabled": limits.get("module_users_enabled", False),
-    }
+    return get_effective_limits(db, current_user.organization_id)
 
 
 @router.get(

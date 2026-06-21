@@ -40,7 +40,10 @@ from app.models.organization_credit_usages import OrganizationCreditUsage
 from app.services import organization_channel_service
 from app.models.workflows import Workflow, WorkflowExecution, WorkflowExecutionLog
 from app.models.conversation import Conversation
-from app.services.limits_service import get_effective_limits
+from app.services.limits_service import (
+    get_effective_limits,
+    validate_outbound_call_limit,
+)
 
 STALE_MINUTES = 1
 SYNC_STATUSES = ["draft", "active", "running", "pending", "scheduled"]
@@ -471,6 +474,12 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
             detail="Insufficient credits. Please add more credits to continue.",
         )
 
+    validate_outbound_call_limit(
+        db=db,
+        organization_id=organization_id,
+        calls_needed=calls_needed,
+    )
+
     agent = db.query(CallingAgent).filter(CallingAgent.id == data.agent_id).first()
 
     unique_campaign_code = f"ORG{org.id}CAM{uuid4().hex[:5]}".upper()
@@ -735,6 +744,32 @@ def update_campaign(
         .filter(Organization.id == campaign.organization_id)
         .first()
     )
+
+    contacts_count = len(data.contacts or [])
+    retries = data.max_retry_attempts or 0
+    new_calls_needed = contacts_count * (1 + retries)
+
+    existing_contacts = (
+        db.query(CampaignContact)
+        .filter(CampaignContact.campaign_id == campaign_id)
+        .count()
+    )
+
+    existing_retries = (
+        campaign.schedule.max_retry_attempts
+        if campaign.schedule and campaign.schedule.max_retry_attempts
+        else 0
+    )
+
+    existing_calls_needed = existing_contacts * (1 + existing_retries)
+    additional_calls_needed = max(0, new_calls_needed - existing_calls_needed)
+
+    if additional_calls_needed:
+        validate_outbound_call_limit(
+            db,
+            campaign.organization_id,
+            new_calls_needed,
+        )
 
     update_data = data.dict(exclude_unset=True)
 
