@@ -98,6 +98,7 @@ FEATURE_MAP = {
     "email": FeatureCodes.CMP_EMAIL_SEND,
     "whatsapp": FeatureCodes.CMP_WA_CONVERSATION,
 }
+DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 logger = logging.getLogger(__name__)
 
@@ -2752,7 +2753,7 @@ def sync_echoleads_bookings(
         timezone = (
             campaign.schedule.timezone
             if campaign and campaign.schedule
-            else (org.timezone or "UTC")
+            else (org.timezone or DEFAULT_APPOINTMENT_TIMEZONE)
         )
 
         # Create appointment
