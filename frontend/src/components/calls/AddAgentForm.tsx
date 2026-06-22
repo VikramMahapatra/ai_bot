@@ -39,6 +39,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Grid from "@mui/material/Grid";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import { useAuth } from '../../context/AuthContext';
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -299,8 +300,10 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const [speakFirstExpanded, setSpeakFirstExpanded] = useState(false);
     const [additionalSettingExpanded, setAdditionalSettingExpanded] = useState(false);
     const [analysisOptionExpanded, setAnalysisOptionExpanded] = useState(false);
+    const { featureFlags } = useAuth();
 
-
+    const callForwardingEnabled =
+        featureFlags?.call_forwarding_enabled ?? false;
 
     useEffect(() => {
         const defaults = agentType === "inbound"
@@ -1964,68 +1967,70 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
                                         </>
                                     )}
-                                    <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
+                                    {callForwardingEnabled && (
+                                        <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
 
-                                        <Typography variant="h6" fontSize={16} fontWeight={600}>
-                                            Call Forwarding
-                                        </Typography>
+                                            <Typography variant="h6" fontSize={16} fontWeight={600}>
+                                                Call Forwarding
+                                            </Typography>
 
-                                        <Typography variant="body2" color="text.secondary" mb={2}>
-                                            Configure where calls should be forwarded when required.
-                                        </Typography>
+                                            <Typography variant="body2" color="text.secondary" mb={2}>
+                                                Configure where calls should be forwarded when required.
+                                            </Typography>
 
-                                        <Stack spacing={2}>
-                                            <FormControlLabel
-                                                control={
-                                                    <Switch
-                                                        checked={formData.enable_call_forwarding}
-                                                        onChange={(e) =>
-                                                            setFormData({
-                                                                ...formData,
-                                                                enable_call_forwarding: e.target.checked
-                                                            })
-                                                        }
-                                                    />
-                                                }
-                                                label="Enable Call Forwarding"
-                                            />
+                                            <Stack spacing={2}>
+                                                <FormControlLabel
+                                                    control={
+                                                        <Switch
+                                                            checked={formData.enable_call_forwarding}
+                                                            onChange={(e) =>
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    enable_call_forwarding: e.target.checked
+                                                                })
+                                                            }
+                                                        />
+                                                    }
+                                                    label="Enable Call Forwarding"
+                                                />
 
-                                            {formData.enable_call_forwarding && (
-                                                <Stack spacing={2}>
+                                                {formData.enable_call_forwarding && (
+                                                    <Stack spacing={2}>
 
-                                                    <TextField
-                                                        label="Forwarding Phone Number"
-                                                        name="call_forwarding_number"
-                                                        placeholder="+1234567890"
-                                                        value={formData.call_forwarding_number}
-                                                        onChange={handleInputChange}
-                                                        type="tel"
-                                                        fullWidth
-                                                        error={!!errors.call_forwarding_number}
-                                                        helperText={
-                                                            errors.call_forwarding_number
-                                                        }
-                                                    />
+                                                        <TextField
+                                                            label="Forwarding Phone Number"
+                                                            name="call_forwarding_number"
+                                                            placeholder="+1234567890"
+                                                            value={formData.call_forwarding_number}
+                                                            onChange={handleInputChange}
+                                                            type="tel"
+                                                            fullWidth
+                                                            error={!!errors.call_forwarding_number}
+                                                            helperText={
+                                                                errors.call_forwarding_number
+                                                            }
+                                                        />
 
-                                                    <TextField
-                                                        label="Message"
-                                                        name="call_forwarding_role"
-                                                        placeholder="eg. Please hold on"
-                                                        value={formData.call_forwarding_role}
-                                                        onChange={handleInputChange}
-                                                        fullWidth
-                                                        error={!!errors.call_forwarding_role}
-                                                        helperText={
-                                                            errors.call_forwarding_role
-                                                        }
-                                                    />
+                                                        <TextField
+                                                            label="Message"
+                                                            name="call_forwarding_role"
+                                                            placeholder="eg. Please hold on"
+                                                            value={formData.call_forwarding_role}
+                                                            onChange={handleInputChange}
+                                                            fullWidth
+                                                            error={!!errors.call_forwarding_role}
+                                                            helperText={
+                                                                errors.call_forwarding_role
+                                                            }
+                                                        />
 
-                                                </Stack>
-                                            )}
+                                                    </Stack>
+                                                )}
 
-                                        </Stack>
+                                            </Stack>
 
-                                    </Box>
+                                        </Box>
+                                    )}
                                     {agentType === "outbound" && (
                                         <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
                                             <Typography variant="h6" fontSize={16} fontWeight={600}>

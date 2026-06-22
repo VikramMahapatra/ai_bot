@@ -86,6 +86,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import { formatDate } from "../utils/dateUtils";
 import Field from "../components/Common/Field";
 import CloseIcon from "@mui/icons-material/Close";
+import { useAuth } from "../context/AuthContext";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -368,6 +369,7 @@ const CampaignManagementPage: React.FC = () => {
   const [c2lConversions, setC2lConversions] = useState<any[]>([]);
   const [messageTemplates, setMessageTemplates] = useState<any[]>([]);
   const formatDisplayDate = useDateFormatter();
+  const { featureFlags } = useAuth();
 
   const statusSummary = useMemo(() => {
     const ordered = [
@@ -1271,6 +1273,11 @@ const CampaignManagementPage: React.FC = () => {
       .map((p) => `<p>${p.replace(/\n/g, "<br/>")}</p>`)
       .join("");
 
+  const hasAnyCampaignType =
+    featureFlags?.email_campaign_enabled ||
+    featureFlags?.whatsapp_campaign_enabled ||
+    featureFlags?.sms_campaign_enabled;
+
   return (
     <AdminLayout>
       <Box sx={pageContainerSx}>
@@ -1820,6 +1827,11 @@ const CampaignManagementPage: React.FC = () => {
                     variant="outlined"
                   />
                 </Stack>
+                {!hasAnyCampaignType &&
+                  <Alert severity="warning" sx={{ py: 0.5 }}>
+                    No campaign channels are enabled for your organization.
+                  </Alert>
+                }
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={3}>
                     <FormControl fullWidth size="small">
@@ -1841,9 +1853,17 @@ const CampaignManagementPage: React.FC = () => {
                           setCreateMessageTemplate("");
                         }}
                       >
-                        <MenuItem value="email">Email</MenuItem>
-                        <MenuItem value="whatsapp">WhatsApp</MenuItem>
-                        <MenuItem value="sms">SMS</MenuItem>
+                        {featureFlags?.email_campaign_enabled && (
+                          <MenuItem value="email">Email</MenuItem>
+                        )}
+
+                        {featureFlags?.whatsapp_campaign_enabled && (
+                          <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                        )}
+
+                        {featureFlags?.sms_campaign_enabled && (
+                          <MenuItem value="sms">SMS</MenuItem>
+                        )}
                       </Select>
                     </FormControl>
                   </Grid>

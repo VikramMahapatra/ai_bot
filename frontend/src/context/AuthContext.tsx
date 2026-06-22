@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { User } from '../types';
+import { chatService, FeatureFlags } from '../services/chatService';
 
 export type UserRole = 'ADMIN' | 'USER' | 'USER_HANDOFF' | 'SUPERADMIN';
 
@@ -24,7 +25,12 @@ interface AuthContextType {
   login: (username: string, password: string, organizationId: number) => Promise<void>;
   superadminLogin: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  featureFlags: FeatureFlags | null;
+  isFeatureLoading: boolean;
+  refreshFeatureFlags: () => Promise<void>;
 }
+
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -36,6 +42,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [organizationId, setOrganizationId] = useState<number | null>(null);
   const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
+
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags | null>(null);
+  const [isFeatureLoading, setIsFeatureLoading] = useState(true);
 
   const syncCurrentUserFromApi = async (
     fallbackRole: UserRole | null,
@@ -110,6 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedRole !== 'SUPERADMIN') {
           await syncCurrentUserFromApi(storedRole, storedOrgId, storedUserId);
         }
+
+        await loadFeatureFlags();
       } else {
         // Legacy tokens without cached role: try hydrating from profile endpoint.
         const restored = await syncCurrentUserFromApi(null, storedOrgId, storedUserId);
@@ -188,6 +199,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserId(null);
     localStorage.removeItem('username');
     localStorage.removeItem('user_email');
+    setFeatureFlags(null);
+  };
+
+  const loadFeatureFlags = async () => {
+    try {
+      const flags = await chatService.getFeatureFlags();
+      setFeatureFlags(flags);
+    } catch (err) {
+      console.error("Failed to load feature flags", err);
+    } finally {
+      setIsFeatureLoading(false);
+    }
   };
   return (
     <AuthContext.Provider
@@ -204,6 +227,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         superadminLogin,
         logout,
+        featureFlags,
+        isFeatureLoading,
+        refreshFeatureFlags: loadFeatureFlags,
       }}
     >
       {children}

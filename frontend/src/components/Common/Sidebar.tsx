@@ -64,7 +64,7 @@ interface MenuItem {
   | 'module_users_enabled'
   | 'human_handoff_enabled'
   | 'module_contact_book_enabled'
-  | 'module_workflows_enabled'
+  | 'module_followup_workflow_enabled'
   | 'module_message_templates_enabled';
 }
 
@@ -81,7 +81,7 @@ export const allMenuItems: MenuItem[] = [
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN', featureKey: 'module_campaigns_enabled' },
   { text: 'Message Templates', icon: <DescriptionIcon />, path: '/templates', requiredRole: 'ADMIN', featureKey: 'module_message_templates_enabled' },
-  { text: 'Follow-Up Workflows', icon: <AutoModeIcon />, path: '/follow-up-workflow', requiredRole: 'ADMIN', featureKey: 'module_workflows_enabled' },
+  { text: 'Follow-Up Workflows', icon: <AutoModeIcon />, path: '/follow-up-workflow', requiredRole: 'ADMIN', featureKey: 'module_followup_workflow_enabled' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },
   { text: 'Human Handoff', icon: <SupportAgentIcon />, path: '/handoff', requiredRole: 'ADMIN_OR_HANDOFF', featureKey: 'human_handoff_enabled' },
   { text: 'Product Management', icon: <Inventory2Icon />, path: '/products', requiredRole: 'ADMIN', featureKey: 'module_products_enabled' },
@@ -401,7 +401,8 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
         open={mobileOpen}
         onClose={onMobileClose}
         ModalProps={{
-          keepMounted: true, // Better open performance on mobile
+          keepMounted: true,
+          disableScrollLock: true,
         }}
         sx={{
           display: { xs: 'block', md: 'none' },

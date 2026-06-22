@@ -453,13 +453,21 @@ const ProtectedRoute: React.FC<{
 
   React.useEffect(() => {
     const checkAccess = async () => {
-      if (userRole === "SUPERADMIN" || !userRole) {
+      console.log("checkAccess started");
+      if (!userRole) {
+        // Still waiting for role
+        return;
+      }
+
+
+      if (userRole === "SUPERADMIN") {
         setLoading(false);
         return;
       }
 
       try {
         const response = await organizationService.checkFeatureAccess(pathname);
+        console.log(`Feature response : ${response}`);
         setAccess(response);
       } catch (err: any) {
         const isNetworkError = !err.response && err.code !== "ECONNABORTED";
@@ -485,7 +493,7 @@ const ProtectedRoute: React.FC<{
     };
 
     checkAccess();
-  }, [pathname]);
+  }, [pathname, userRole]);
 
   if (isAuthLoading) {
     return (

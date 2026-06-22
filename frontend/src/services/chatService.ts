@@ -15,6 +15,44 @@ export interface ChatHandoffStatus {
   updated_at?: string | null;
 }
 
+export interface FeatureFlags {
+  subscription_active: boolean;
+  days_left: number | null;
+
+  lead_generation_enabled?: boolean;
+  voice_chat_enabled?: boolean;
+  multilingual_text_enabled?: boolean;
+  whatsapp_enabled?: boolean;
+  human_handoff_enabled?: boolean;
+  email_campaign_enabled?: boolean;
+  sms_campaign_enabled?: boolean;
+
+  module_knowledge_enabled?: boolean;
+  module_leads_enabled?: boolean;
+  module_analytics_enabled?: boolean;
+  module_advanced_analytics_enabled?: boolean;
+  module_reports_enabled?: boolean;
+  module_campaigns_enabled?: boolean;
+  module_appointments_enabled?: boolean;
+  module_products_enabled?: boolean;
+  module_users_enabled?: boolean;
+  module_followup_workflow_enabled?: boolean;
+
+  instagram_chat_enabled?: boolean;
+  facebook_messenger_enabled?: boolean;
+  whatsapp_campaign_enabled?: boolean;
+  ai_assistant_campaign_enabled?: boolean;
+
+  inbound_voice_enabled?: boolean;
+  outbound_voice_enabled?: boolean;
+  call_forwarding_enabled?: boolean;
+
+  outbound_call_billing_model?: string;
+  max_outbound_voice_agents?: number;
+  max_inbound_voice_agents?: number;
+  max_outbound_calls?: number;
+}
+
 export const chatService = {
   async sendMessage(message: ChatMessage): Promise<ChatResponse> {
     const response = await api.post<ChatResponse>('/api/chat', message);
@@ -97,25 +135,7 @@ export const chatService = {
     return response.data;
   },
 
-  async getFeatureFlags(): Promise<{
-    subscription_active: boolean;
-    days_left: number;
-    voice_chat_enabled: boolean;
-    multilingual_text_enabled: boolean;
-    human_handoff_enabled?: boolean;
-    whatsapp_enabled?: boolean;
-    email_campaign_enabled?: boolean;
-    sms_campaign_enabled?: boolean;
-    module_knowledge_enabled?: boolean;
-    module_leads_enabled?: boolean;
-    module_analytics_enabled?: boolean;
-    module_advanced_analytics_enabled?: boolean;
-    module_reports_enabled?: boolean;
-    module_campaigns_enabled?: boolean;
-    module_appointments_enabled?: boolean;
-    module_products_enabled?: boolean;
-    module_users_enabled?: boolean;
-  }> {
+  async getFeatureFlags(): Promise<FeatureFlags> {
     const response = await api.get('/api/admin/features');
     return response.data;
   },
@@ -156,7 +176,7 @@ export const chatService = {
     return response.data;
   },
 
-   async isChannelAvailable(): Promise<boolean> {
+  async isChannelAvailable(): Promise<boolean> {
     const response = await api.get(`/api/admin/validate-channel-available`);
     return response.data;
   },

@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from app.models.user import Organization, OrganizationStatus
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -89,10 +90,37 @@ def get_current_user(
             detail="User not found or inactive",
         )
         
-    set_org_id(user.organization_id)
-    
-    return user
+    org = (
+        db.query(Organization)
+        .filter(Organization.id == user.organization_id)
+        .first()
+    )
 
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Organization not found",
+        )
+
+    is_org_active = (
+        org.status == OrganizationStatus.ACTIVE
+        or (
+            org.status == OrganizationStatus.TRIAL
+            and org.trial_end_date
+            and org.trial_end_date >= datetime.now(timezone.utc)
+        )
+    )
+
+    if not is_org_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization is inactive or trial expired",
+        )
+
+    set_org_id(org.id)
+
+    return user
+        
 
 def get_current_user_optional(
     request: Request,

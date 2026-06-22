@@ -55,6 +55,7 @@ import { useCredits } from "../../context/CreditsContext";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../../types/creditModules";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import { chatService } from "../../services/chatService";
+import { useAuth } from "../../context/AuthContext";
 
 export const CallingAgentTab: React.FC = () => {
   const theme = useTheme();
@@ -82,6 +83,16 @@ export const CallingAgentTab: React.FC = () => {
 
   const { getRequiredCredits, totalCredits, refreshCredits } = useCredits();
   const formatDisplayDate = useDateFormatter();
+  const { featureFlags } = useAuth();
+
+  const inboundEnabled = featureFlags?.inbound_voice_enabled;
+  const outboundEnabled = featureFlags?.outbound_voice_enabled;
+
+  const visibleCount =
+    Number(!!inboundEnabled) + Number(!!outboundEnabled);
+
+  const singleCard = visibleCount === 1;
+  const noAccess = visibleCount === 0;
 
   const showError = (message: string) => {
     setSuccess("");
@@ -735,77 +746,87 @@ export const CallingAgentTab: React.FC = () => {
         <DialogTitle>Select Agent Type</DialogTitle>
 
         <DialogContent>
-          <Grid container spacing={2} mt={1} alignItems="stretch">
-            {/* INBOUND */}
-            <Grid item xs={12} md={6} display="flex">
-              <Card
-                sx={{
-                  borderRadius: 2,
-                  width: "100%",
-                  display: "flex",
-                }}
+          {noAccess ? (
+            <Box py={3}>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                textAlign="center"
               >
-                <CardActionArea
-                  sx={{ flex: 1 }}
-                  onClick={() =>
-                    handleAgentTypeSelect(
-                      "inbound",
-                      FEATURE_CODES.CORE_CALL_AGENT_IN,
-                    )
-                  }
-                >
-                  <CardContent>
-                    <Stack spacing={1} alignItems="center" textAlign="center">
-                      <CallReceivedIcon
-                        sx={{ fontSize: 40, color: "success.main" }}
-                      />
+                No voice agent types are enabled for your organization.
+              </Typography>
+            </Box>
+          ) : (
+            <Grid container spacing={2} mt={1} alignItems="stretch" justifyContent={singleCard ? "center" : "flex-start"}>
+              {inboundEnabled && (
+                <Grid item xs={12} md={6} display="flex">
+                  <Card
+                    sx={{
+                      borderRadius: 2,
+                      width: "100%",
+                      display: "flex",
+                    }}
+                  >
+                    <CardActionArea
+                      sx={{ flex: 1 }}
+                      onClick={() =>
+                        handleAgentTypeSelect(
+                          "inbound",
+                          FEATURE_CODES.CORE_CALL_AGENT_IN
+                        )
+                      }
+                    >
+                      <CardContent>
+                        <Stack spacing={1} alignItems="center" textAlign="center">
+                          <CallReceivedIcon
+                            sx={{ fontSize: 40, color: "success.main" }}
+                          />
+                          <Typography variant="h6">Inbound Agent</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Handles incoming calls from customers
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                    </CardActionArea>
+                  </Card>
+                </Grid>
+              )}
 
-                      <Typography variant="h6">Inbound Agent</Typography>
-
-                      <Typography variant="body2" color="text.secondary">
-                        Handles incoming calls from customers
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
+              {outboundEnabled && (
+                <Grid item xs={12} md={6} display="flex">
+                  <Card
+                    sx={{
+                      borderRadius: 2,
+                      width: "100%",
+                      display: "flex",
+                    }}
+                  >
+                    <CardActionArea
+                      sx={{ flex: 1 }}
+                      onClick={() =>
+                        handleAgentTypeSelect(
+                          "outbound",
+                          FEATURE_CODES.CORE_CALL_AGENT_OUT
+                        )
+                      }
+                    >
+                      <CardContent>
+                        <Stack spacing={1} alignItems="center" textAlign="center">
+                          <CallMadeIcon
+                            sx={{ fontSize: 40, color: "primary.main" }}
+                          />
+                          <Typography variant="h6">Outbound Agent</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Makes calls to leads or customers
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                    </CardActionArea>
+                  </Card>
+                </Grid>
+              )}
             </Grid>
-
-            {/* OUTBOUND */}
-            <Grid item xs={12} md={6} display="flex">
-              <Card
-                sx={{
-                  borderRadius: 2,
-                  width: "100%",
-                  display: "flex",
-                }}
-              >
-                <CardActionArea
-                  sx={{ flex: 1 }}
-                  onClick={() =>
-                    handleAgentTypeSelect(
-                      "outbound",
-                      FEATURE_CODES.CORE_CALL_AGENT_OUT,
-                    )
-                  }
-                >
-                  <CardContent>
-                    <Stack spacing={1} alignItems="center" textAlign="center">
-                      <CallMadeIcon
-                        sx={{ fontSize: 40, color: "primary.main" }}
-                      />
-
-                      <Typography variant="h6">Outbound Agent</Typography>
-
-                      <Typography variant="body2" color="text.secondary">
-                        Makes calls to leads or customers
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
-            </Grid>
-          </Grid>
+          )}
         </DialogContent>
 
         <DialogActions>

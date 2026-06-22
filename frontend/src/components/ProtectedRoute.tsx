@@ -32,6 +32,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
       try {
         const response = await organizationService.checkFeatureAccess(pathname);
+        console.log(`Feature response : ${response}`);
         setAccess(response);
       } catch {
         setAccess({ allowed: false, module: "" });
