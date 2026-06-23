@@ -19,13 +19,13 @@ import {
 } from "../../services/callingAgentService";
 import { Product, productService } from "../../services/productService";
 import { CallingNumberType, callService } from "../../services/callService";
-import { CallingNumber } from "../../types";
 
 import SmsIcon from "@mui/icons-material/Sms";
 import EmailIcon from "@mui/icons-material/Email";
 import { messageTemplateService } from "../../services/messageTemplateService";
 import { WorkflowLookupItem, workflowService } from "../../services/workflowService";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import { useAuth } from "../../context/AuthContext";
 
 interface CampaignInfoProps {
   form: any;
@@ -75,7 +75,8 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowLookupItem[]>([]);
-  const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([]);
+  const [callingNumbers, setCallingNumbers] = useState<any[]>([]);
+  const { featureFlags } = useAuth();
 
   const loadAgentLookup = async () => {
     const data = await callingAgentService.agentLookup();
@@ -191,6 +192,8 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
     }
   };
 
+  const workflowModuleEnabled = featureFlags?.module_followup_workflow_enabled;
+
   return (
     <Grid container spacing={3}>
       <Grid item xs={12}>
@@ -259,7 +262,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         </TextField>
       </Grid>
 
-      <Grid item xs={12} sm={4}>
+      <Grid item xs={12} sm={workflowModuleEnabled ? 4 : 6}>
         <TextField
           label="Product"
           select
@@ -276,25 +279,26 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
         </TextField>
       </Grid>
 
-      <Grid item xs={4}>
-        <TextField
-          label="Workflow"
-          select
-          fullWidth
-          name="workflow_id"
-          value={form.workflow_id}
-          onChange={(e) => setForm({ ...form, workflow_id: e.target.value })}
-        >
-          {workflows.map((w) => (
-            <MenuItem key={w.id} value={w.id}>
-              {w.name}
-            </MenuItem>
-          ))}
-        </TextField>
-      </Grid>
+      {workflowModuleEnabled &&
+        <Grid item xs={4}>
+          <TextField
+            label="Workflow"
+            select
+            fullWidth
+            name="workflow_id"
+            value={form.workflow_id}
+            onChange={(e) => setForm({ ...form, workflow_id: e.target.value })}
+          >
+            {workflows.map((w) => (
+              <MenuItem key={w.id} value={w.id}>
+                {w.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Grid>
+      }
 
-
-      <Grid item xs={12} sm={4}>
+      <Grid item xs={12} sm={workflowModuleEnabled ? 4 : 6}>
         <TextField
           label="Category"
           select

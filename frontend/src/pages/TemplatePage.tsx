@@ -30,6 +30,7 @@ import {
   InputAdornment,
   Tooltip,
   Snackbar,
+  TablePagination,
 } from "@mui/material";
 
 import { alpha, useTheme } from "@mui/material/styles";
@@ -748,6 +749,18 @@ function TemplateList() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={templateTotal}
+            page={templatePage}
+            onPageChange={(_, value) => setTemplatePage(value)}
+            rowsPerPage={templateRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setTemplateRowsPerPage(parseInt(event.target.value, 10));
+              setTemplatePage(0);
+            }}
+            rowsPerPageOptions={[10, 25, 50]}
+          />
         </TableContainer>
 
         {/* CREATE / EDIT MODAL */}

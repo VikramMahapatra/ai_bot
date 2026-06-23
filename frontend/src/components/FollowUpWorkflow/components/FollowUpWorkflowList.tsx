@@ -19,6 +19,7 @@ import {
     InputAdornment,
     Stack,
     Tooltip,
+    TablePagination,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import {
@@ -381,6 +382,18 @@ function WorkflowList({ onCreate, onEdit }: WorkflowListProps) {
                         ))}
                     </TableBody>
                 </Table>
+                <TablePagination
+                    component="div"
+                    count={workflowTotal}
+                    page={workflowPage}
+                    onPageChange={(_, value) => setWorkflowPage(value)}
+                    rowsPerPage={workflowRowsPerPage}
+                    onRowsPerPageChange={(event) => {
+                        setWorkflowRowsPerPage(parseInt(event.target.value, 10));
+                        setWorkflowPage(0);
+                    }}
+                    rowsPerPageOptions={[10, 25, 50]}
+                />
             </TableContainer>
             <ConfirmDialog
                 open={Boolean(workflowStatusToUpdate)}
