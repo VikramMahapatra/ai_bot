@@ -27,7 +27,7 @@ interface AuthContextType {
   logout: () => void;
   featureFlags: FeatureFlags | null;
   isFeatureLoading: boolean;
-  refreshFeatureFlags: () => Promise<void>;
+  refreshFeatureFlags: (role?: any) => Promise<void>;
 }
 
 
@@ -120,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await syncCurrentUserFromApi(storedRole, storedOrgId, storedUserId);
         }
 
-        await loadFeatureFlags();
+        await loadFeatureFlags(storedRole);
       } else {
         // Legacy tokens without cached role: try hydrating from profile endpoint.
         const restored = await syncCurrentUserFromApi(null, storedOrgId, storedUserId);
@@ -202,12 +202,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFeatureFlags(null);
   };
 
-  const loadFeatureFlags = async () => {
+  const loadFeatureFlags = async (role?: any) => {
     try {
-      console.log("userRole :", userRole)
       if (
-        userRole &&
-        ['ADMIN', 'USER', 'USER_HANDOFF'].includes(userRole)
+        role &&
+        ['ADMIN', 'USER', 'USER_HANDOFF'].includes(role)
       ) {
         const flags = await chatService.getFeatureFlags();
         setFeatureFlags(flags);
