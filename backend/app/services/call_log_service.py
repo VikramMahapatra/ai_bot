@@ -2750,11 +2750,15 @@ def sync_echoleads_bookings(
                 .first()
             )
 
-        timezone = (
-            campaign.schedule.timezone
-            if campaign and campaign.schedule
-            else (org.timezone or DEFAULT_APPOINTMENT_TIMEZONE)
-        )
+        timezone = agent.prompt_timezone or DEFAULT_APPOINTMENT_TIMEZONE
+        dt = parser.parse(booking["start_date"])
+
+        # Remove fake UTC
+        dt = dt.replace(tzinfo=None)
+        # Apply actual timezone
+        dt = dt.replace(tzinfo=ZoneInfo(agent.prompt_timezone))
+        # Convert to UTC
+        appointment_at = dt.astimezone(timezone.utc)
 
         # Create appointment
         appointment = Appointment(
@@ -2763,7 +2767,7 @@ def sync_echoleads_bookings(
             widget_id=agent.widget_id if agent else None,
             name=contact.name if contact else "Unknown",
             phone=call_log.phone,
-            appointment_at=parser.parse(booking.get("start_date")),
+            appointment_at=appointment_at,
             status="booked",
             email=None,
             notes=None,

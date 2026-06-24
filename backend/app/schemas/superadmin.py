@@ -544,3 +544,8 @@ class BillingInvoiceMarkPaidResponse(BaseModel):
     partial_invoice: Optional[BillingInvoiceResponse] = None
     credit_note: Optional[float] = None
     credit_applied: Optional[float] = None
+
+
+class RepublishAgentRequest(BaseModel):
+    external_agent_name: Optional[str] = None
+    organization_id: Optional[int] = None
