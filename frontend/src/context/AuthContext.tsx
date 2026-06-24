@@ -204,8 +204,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadFeatureFlags = async () => {
     try {
-      const flags = await chatService.getFeatureFlags();
-      setFeatureFlags(flags);
+      console.log("userRole :", userRole)
+      if (
+        userRole &&
+        ['ADMIN', 'USER', 'USER_HANDOFF'].includes(userRole)
+      ) {
+        const flags = await chatService.getFeatureFlags();
+        setFeatureFlags(flags);
+      }
     } catch (err) {
       console.error("Failed to load feature flags", err);
     } finally {

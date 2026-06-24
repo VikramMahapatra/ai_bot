@@ -406,13 +406,13 @@ const SuperAdminCallingNumberPage: React.FC = () => {
               }
               value={
                 allCountries.find(
-                  (c: any) => c.iso2.toUpperCase() === formData.country_code,
+                  (c: any) => `+${c.dialCode}` === formData.country_code,
                 ) || null
               }
               onChange={(event, newValue: any) => {
                 setFormData({
                   ...formData,
-                  country_code: newValue?.iso2?.toUpperCase() || "",
+                  country_code: newValue ? `+${newValue.dialCode}` : "",
                 })
               }}
               renderOption={(props, option: any) => (

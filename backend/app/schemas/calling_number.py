@@ -18,7 +18,6 @@ class CallingNumberUpdate(CallingNumberCreate):
 class CallingNumberResponse(BaseModel):
     id: int
     phone_number: str
-    type: str
     country_code: str
     provider: Optional[str] = None
     is_active: bool
