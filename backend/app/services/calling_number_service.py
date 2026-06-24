@@ -101,7 +101,7 @@ def get_all(
     return {
         "items": [
             {
-                "idd": row.id,
+                "id": row.id,
                 "phone_number": row.phone_number,
                 "country_code": row.country_code,
                 "type": row.type,

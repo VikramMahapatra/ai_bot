@@ -61,6 +61,7 @@ export const callingNumberService = {
     const response = await api.post<CallingNumberUpdateResponse>(
       "/api/superadmin/calling-numbers/create",
       {
+        type: data.type,
         country_code: data.country_code,
         phone_number: data.phone_number,
         provider: data.provider,
@@ -81,6 +82,7 @@ export const callingNumberService = {
         phone_number: data.phone_number,
         provider: data.provider,
         is_active: data.is_active,
+        type: data.type,
       }
     );
     return response.data;
