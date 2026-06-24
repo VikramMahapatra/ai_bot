@@ -15,16 +15,20 @@ import {
     CircularProgress,
     TablePagination,
     TextField,
-    InputAdornment
+    InputAdornment,
+    Snackbar,
+    Alert,
+    Button
 } from "@mui/material";
 
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import { OrganizationReport } from "../types";
+import { OrganizationReport, SuperAdminOrganization } from "../types";
 import { superadminService } from "../services/superadminService";
 import SuperAdminLayout from "../components/Layout/SuperAdminLayout";
 import { alpha, useTheme } from '@mui/material/styles';
 import SearchIcon from "@mui/icons-material/Search";
+import RepublishAgentDialog, { RepublishPayload } from "../components/SuperAdmin/RepublishAgentDialog";
 
 
 export default function SuperAdminOrgCallAnalyticsReport() {
@@ -37,7 +41,11 @@ export default function SuperAdminOrgCallAnalyticsReport() {
     const [organizationTotal, setOrganizationTotal] = useState(0);
     const [organizationPage, setOrganizationPage] = useState(0);
     const [organizationRowsPerPage, setOrganizationRowsPerPage] = useState(10);
-
+    const [republishOpen, setRepublishOpen] = useState(false);
+    const [republishLoading, setRepublishLoading] = useState(false);
+    const [organizations, setOrganizations] = useState<SuperAdminOrganization[]>([],);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
 
     const loadData = async () => {
         try {
@@ -53,11 +61,40 @@ export default function SuperAdminOrgCallAnalyticsReport() {
         }
     };
 
+    const loadOrganizations = async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const orgRows = await superadminService.listOrganizations();
+            setOrganizations(orgRows);
+        } catch (err: any) {
+            setError("Failed to load the organizations");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
         loadData();
     }, [search, organizationPage, organizationRowsPerPage]);
 
+    useEffect(() => {
+        loadOrganizations();
+    }, [])
+
+    const handleRepublish = async (payload: RepublishPayload) => {
+        try {
+
+            setRepublishLoading(true);
+            const response = await superadminService.republishAgent(payload);
+            setSuccess(`Successfully republished ${response.success_count} agent(s)`);
+
+        } catch (error: any) {
+            setError(error?.response?.data?.message || error?.detail || "Failed to republish agents");
+        } finally {
+            setRepublishLoading(false);
+        }
+    };
 
     if (loading)
         return (
@@ -69,6 +106,35 @@ export default function SuperAdminOrgCallAnalyticsReport() {
 
     return (
         <SuperAdminLayout>
+            <Snackbar
+                open={Boolean(success || error)}
+                autoHideDuration={4000}
+                onClose={() => {
+                    setError("");
+                    setSuccess("");
+                }}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                sx={{
+                    zIndex: 999999999,
+                }}
+            >
+                <Alert
+                    severity={error ? "error" : "success"}
+                    onClose={() => {
+                        setError("");
+                        setSuccess("");
+                    }}
+                    sx={{
+                        borderRadius: "14px",
+                        boxShadow: (theme) =>
+                            `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+                            }20`,
+                        zIndex: 999999999,
+                    }}
+                >
+                    {error || success}
+                </Alert>
+            </Snackbar>
             <Box>
                 <Paper
                     elevation={0}
@@ -102,22 +168,29 @@ export default function SuperAdminOrgCallAnalyticsReport() {
                             Call Analytics (All Organizations)
                         </Typography>
 
-
-                        <TextField
-                            size="small"
-                            label="Search Organization"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            sx={{ width: 260, background: "white", borderRadius: 2 }}
-                            InputProps={{
-                                endAdornment: (
-                                    <InputAdornment position="end">
-                                        <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                ),
-                            }}
-                        />
-
+                        <Box display="flex" gap={2}>
+                            <TextField
+                                size="small"
+                                label="Search Organization"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                sx={{ width: 260, background: "white", borderRadius: 2 }}
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <SearchIcon fontSize="small" />
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={() => setRepublishOpen(true)}
+                            >
+                                Republish Agents
+                            </Button>
+                        </Box>
                     </Box>
 
                 </Paper>
@@ -274,6 +347,13 @@ export default function SuperAdminOrgCallAnalyticsReport() {
                 </Paper>
 
             </Box>
+            <RepublishAgentDialog
+                open={republishOpen}
+                onClose={() => setRepublishOpen(false)}
+                organizations={organizations}
+                loading={republishLoading}
+                onPublish={handleRepublish}
+            />
         </SuperAdminLayout>
     );
 }

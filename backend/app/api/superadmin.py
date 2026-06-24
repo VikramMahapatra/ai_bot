@@ -1,3 +1,4 @@
+from app.utils.echoleads_client import EcholeadsClient
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union
@@ -35,6 +36,7 @@ from app.schemas.superadmin import (
     CallingNumberUpdate,
     OrganizationChannelCreate,
     OrganizationChannelUpdate,
+    RepublishAgentRequest,
     SuperAdminLoginRequest,
     SuperAdminLoginResponse,
     SuperAdminBootstrapRequest,
@@ -3382,6 +3384,97 @@ def delete_calling_number(id: int, db: Session = Depends(get_db)):
 
 
 ### REPORTS ####
+@router.post("/org/republish-agent")
+def republish_agents(
+    request: RepublishAgentRequest,
+    db: Session = Depends(get_db),
+):
+    if not request.external_agent_name and not request.organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Either external_agent_name or organization_id is required",
+        )
+
+    query = db.query(CallingAgent)
+
+    if request.external_agent_name:
+        agents = query.filter(
+            CallingAgent.external_agent_name == request.external_agent_name,
+            CallingAgent.status == "active",
+        ).all()
+
+        action_message = (
+            f"Agent '{request.external_agent_name}' republished successfully"
+        )
+
+    else:
+        agents = query.filter(
+            CallingAgent.organization_id == request.organization_id,
+            CallingAgent.status == "active",
+        ).all()
+
+        action_message = f"{len(agents)} agents republished successfully"
+
+    if not agents:
+        raise HTTPException(
+            status_code=404,
+            detail="No matching agents found",
+        )
+
+    results = []
+
+    for agent in agents:
+
+        if not agent.external_agent_id:
+            continue
+
+        echoleads = EcholeadsClient(agent.organization_id)
+
+        payload = {
+            "agent_id": agent.external_agent_id,
+            "user_id": 42,
+            "plan_id": 18 if agent.type == "outbound" else 16,
+        }
+
+        try:
+
+            echoleads.publish_agent(payload)
+
+            agent.status = "active"
+
+            results.append(
+                {
+                    "agent_id": agent.id,
+                    "external_agent_name": agent.external_agent_name,
+                    "success": True,
+                }
+            )
+
+        except Exception as ex:
+
+            results.append(
+                {
+                    "agent_id": agent.id,
+                    "external_agent_name": agent.external_agent_name,
+                    "success": False,
+                    "error": str(ex),
+                }
+            )
+
+    db.commit()
+
+    success_count = len([x for x in results if x["success"]])
+
+    failed_count = len([x for x in results if not x["success"]])
+
+    return {
+        "success": failed_count == 0,
+        "message": action_message,
+        "total": len(results),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": results,
+    }
 
 
 @router.get("/org/organization-calling-report")

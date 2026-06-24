@@ -38,6 +38,7 @@ import {
 } from '../types';
 import { OrgCreditAdminMonthSummary } from '../types/orgCreditBilling';
 import { CallingNumber } from './callingNumberService';
+import { RepublishAgentResponse, RepublishPayload } from '../components/SuperAdmin/RepublishAgentDialog';
 
 export interface CreditUsageFilters {
   organization_id?: number,
@@ -216,6 +217,10 @@ export const superadminService = {
     return response.data;
   },
   /////
+  async republishAgent(payload: RepublishPayload): Promise<RepublishAgentResponse> {
+    const response = await api.post<RepublishAgentResponse>('/api/superadmin/org/republish-agent', payload);
+    return response.data;
+  },
 
   async getOrganizationReport(params: { search?: string; skip?: number; limit?: number } = {}): Promise<OrganizationReportResponse> {
     const response = await api.get<OrganizationReportResponse>(`/api/superadmin/org/organization-calling-report`, { params });
