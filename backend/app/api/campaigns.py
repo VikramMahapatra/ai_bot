@@ -769,6 +769,7 @@ def run_campaign_background(
             .filter(
                 Campaign.id == campaign_id,
                 Campaign.organization_id == organization_id,
+                Campaign.is_deleted == False,
             )
             .first()
         )
@@ -1191,7 +1192,10 @@ async def get_campaign_reports_summary(
 
     campaign_rows = (
         db.query(Campaign.id, Campaign.campaign_name, Campaign.campaign_type)
-        .filter(Campaign.organization_id == current_user.organization_id)
+        .filter(
+            Campaign.organization_id == current_user.organization_id,
+            Campaign.is_deleted == False,
+        )
         .all()
     )
     campaign_meta = {
@@ -1683,7 +1687,7 @@ async def campaign_dashboard_stats(
             func.coalesce(func.sum(Campaign.number_sent), 0).label("total_sent"),
             func.coalesce(func.sum(Campaign.number_failed), 0).label("total_failed"),
         )
-        .filter(Campaign.organization_id == org_id)
+        .filter(Campaign.organization_id == org_id, Campaign.is_deleted == False)
         .first()
     )
 
@@ -1692,14 +1696,14 @@ async def campaign_dashboard_stats(
             Campaign.status,
             func.count(Campaign.id).label("count"),
         )
-        .filter(Campaign.organization_id == org_id)
+        .filter(Campaign.organization_id == org_id, Campaign.is_deleted == False)
         .group_by(Campaign.status)
         .all()
     )
 
     recent_campaigns = (
         db.query(Campaign)
-        .filter(Campaign.organization_id == org_id)
+        .filter(Campaign.organization_id == org_id, Campaign.is_deleted == False)
         .order_by(Campaign.created_at.desc())
         .limit(5)
         .all()
@@ -2426,6 +2430,154 @@ async def create_campaign(
     )
 
 
+@router.put("/{campaign_id}")
+async def update_campaign(
+    campaign_id: int,
+    payload: CampaignCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    campaign = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+            Campaign.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status not in {"draft", "scheduled"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only draft and scheduled campaigns can be edited",
+        )
+
+    campaign_name = payload.campaign_name.strip()
+    if not campaign_name:
+        raise HTTPException(
+            status_code=400,
+            detail="campaign_name is required",
+        )
+
+    campaign_type = payload.campaign_type.strip().lower()
+    if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="campaign_type must be email, whatsapp, or sms",
+        )
+
+    _ensure_campaign_access(
+        db,
+        current_user.organization_id,
+        campaign_type,
+    )
+
+    message_template = payload.message_template.strip()
+    if not message_template and campaign_type != "email":
+        raise HTTPException(
+            status_code=400,
+            detail="message_template is required",
+        )
+
+    status_value = (payload.status or "draft").strip().lower()
+    if status_value not in {"draft", "scheduled"}:
+        raise HTTPException(
+            status_code=400,
+            detail="status must be draft or scheduled",
+        )
+
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == payload.contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+
+    if not contact_list:
+        raise HTTPException(
+            status_code=404,
+            detail="contact_list_id not found",
+        )
+
+    if campaign_type == "email" and not (payload.email_subject or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="email_subject is required for email campaigns",
+        )
+
+    if payload.scheduled_time:
+        compare_now = datetime.utcnow()
+
+        if payload.scheduled_time.tzinfo is not None:
+            compare_now = datetime.now(payload.scheduled_time.tzinfo)
+    else:
+        compare_now = None
+
+    if (
+        payload.scheduled_time
+        and compare_now
+        and payload.scheduled_time > compare_now
+        and status_value == "draft"
+    ):
+        status_value = "scheduled"
+
+    product_name = None
+
+    if payload.product_id:
+        product = (
+            db.query(Product)
+            .filter(
+                Product.id == payload.product_id,
+                Product.organization_id == current_user.organization_id,
+                Product.is_deleted == False,
+            )
+            .first()
+        )
+
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="product_id not found",
+            )
+
+        product_name = product.name
+
+    if campaign_type == "email":
+        message_template = _build_email_template_payload(
+            campaign_name=campaign_name,
+            message_template=message_template,
+            payload=payload,
+        )
+
+    campaign.campaign_name = campaign_name
+    campaign.campaign_type = campaign_type
+    campaign.message_template_id = payload.message_template_id
+    campaign.message_template = message_template
+    campaign.contact_list_id = payload.contact_list_id
+    campaign.product_id = payload.product_id
+    campaign.category = payload.category
+    campaign.scheduled_time = payload.scheduled_time
+    campaign.open_tracking_enabled = payload.open_tracking_enabled
+    campaign.click_tracking_enabled = payload.click_tracking_enabled
+    campaign.footer_display_enabled = payload.footer_display_enabled
+    campaign.status = status_value
+
+    db.commit()
+    db.refresh(campaign)
+
+    return _serialize_campaign(
+        campaign,
+        contact_list_name=contact_list.list_name,
+        product_name=product_name,
+    )
+
+
 @router.get("")
 async def list_campaigns(
     search: Optional[str] = None,
@@ -2445,7 +2597,8 @@ async def list_campaigns(
     limit = max(1, min(limit, 200))
 
     query = db.query(Campaign).filter(
-        Campaign.organization_id == current_user.organization_id
+        Campaign.organization_id == current_user.organization_id,
+        Campaign.is_deleted == False,
     )
 
     if search:
@@ -2541,6 +2694,41 @@ async def list_campaigns(
     }
 
 
+@router.get("/campaign-lookup")
+async def all_campaigns(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    query = db.query(Campaign).filter(
+        Campaign.organization_id == current_user.organization_id,
+        Campaign.is_deleted == False,
+    )
+
+    rows = query.order_by(Campaign.created_at.desc()).all()
+
+    contact_list_ids = [row.contact_list_id for row in rows]
+    product_ids = [row.product_id for row in rows if row.product_id]
+    contact_list_map = {}
+    product_map = {}
+    if contact_list_ids:
+        contact_lists = (
+            db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
+        )
+        contact_list_map = {item.id: item.list_name for item in contact_lists}
+    if product_ids:
+        products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+        product_map = {item.id: item.name for item in products}
+
+    return [
+        _serialize_campaign(
+            row,
+            contact_list_map.get(row.contact_list_id),
+            product_map.get(row.product_id),
+        )
+        for row in rows
+    ]
+
+
 @router.get("/{campaign_id}")
 async def get_campaign(
     campaign_id: int,
@@ -2625,6 +2813,36 @@ async def pause_campaign(
         )
 
     row.status = "paused"
+    db.commit()
+    db.refresh(row)
+
+    return {"id": row.id, "status": row.status}
+
+
+@router.post("/{campaign_id}/delete")
+async def delete_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    row = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+            Campaign.is_deleted == False,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if row.status in ["completed", "running"]:
+        raise HTTPException(
+            status_code=400, detail="Completed/Running campaigns cannot be deleted"
+        )
+
+    row.is_deleted = True
     db.commit()
     db.refresh(row)
 

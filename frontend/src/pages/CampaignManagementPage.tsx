@@ -40,6 +40,8 @@ import {
   IconButton,
   Card,
   CardContent,
+  Menu,
+  ListItemIcon,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -48,7 +50,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import AddIcon from "@mui/icons-material/Add";
-import DeleteIcon from "@mui/icons-material/Delete";
+import SettingsIcon from "@mui/icons-material/Settings";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import CodeIcon from "@mui/icons-material/Code";
@@ -70,6 +72,7 @@ import {
   ContactListItem,
   CampaignReportsSummary,
   DashboardStats,
+  CreateCampaignPayload,
 } from "../services/campaignService";
 import { Product, productService } from "../services/productService";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
@@ -87,6 +90,10 @@ import { formatDate } from "../utils/dateUtils";
 import Field from "../components/Common/Field";
 import CloseIcon from "@mui/icons-material/Close";
 import { useAuth } from "../context/AuthContext";
+import DeleteIcon from "@mui/icons-material/Delete";
+import dayjs from "dayjs";
+import SaveIcon from "@mui/icons-material/Save";
+import EditIcon from "@mui/icons-material/Edit";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -137,6 +144,10 @@ const statusColor = (status: string) => {
 
 const isPlayDisabled = (status: string) => {
   return status === "completed" || status === "running";
+};
+
+const isDeleteDisabled = (status?: string) => {
+  return status === "running" || status === "completed";
 };
 
 const isPauseDisabled = (status: string) => {
@@ -245,6 +256,7 @@ const CampaignManagementPage: React.FC = () => {
   });
 
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
+  const [allCampaigns, setAllCampaigns] = useState<CampaignItem[]>([]);
   const [campaignTotal, setCampaignTotal] = useState(0);
   const [campaignPage, setCampaignPage] = useState(0);
   const [campaignRowsPerPage, setCampaignRowsPerPage] = useState(10);
@@ -370,6 +382,23 @@ const CampaignManagementPage: React.FC = () => {
   const [messageTemplates, setMessageTemplates] = useState<any[]>([]);
   const formatDisplayDate = useDateFormatter();
   const { featureFlags } = useAuth();
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<CampaignItem | null>(null);
+  const [busyAction, setBusyAction] = useState(false);
+  const [editingCampaignId, setEditingCampaignId] =
+    useState<number | null>(null);
+
+  const isEditMode = editingCampaignId !== null;
+
+  const handleActionClick = (event: any, item: any) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedCampaign(item);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+    setSelectedCampaign(null);
+  };
 
   const statusSummary = useMemo(() => {
     const ordered = [
@@ -518,6 +547,11 @@ const CampaignManagementPage: React.FC = () => {
     setCampaignTotal(data.pagination?.total || 0);
   };
 
+  const loadCampaignLookup = async () => {
+    const data = await campaignService.getCampaignLookup();
+    setAllCampaigns(data || []);
+  };
+
   const loadContactLists = async () => {
     const data = await campaignService.listContactLists({
       search: contactListSearch || undefined,
@@ -599,6 +633,7 @@ const CampaignManagementPage: React.FC = () => {
       await Promise.all([
         loadDashboard(),
         loadCampaigns(),
+        loadCampaignLookup(),
         loadContactLists(),
         loadProducts(),
         loadTemplateLookup(),
@@ -1002,132 +1037,176 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
-  const handleCreateCampaign = async () => {
+  const getCampaignPayload = (): CreateCampaignPayload => ({
+    campaign_name: createCampaignName,
+    campaign_type: createCampaignType,
+    message_template_id: selectedTemplate
+      ? Number(selectedTemplate.id)
+      : undefined,
+
+    message_template:
+      createCampaignType === "email"
+        ? emailContentMode === "prompt"
+          ? generatedBodies[0] ||
+          createMessageTemplate ||
+          "Generated campaign body"
+          : createMessageTemplate
+        : createMessageTemplate,
+
+    scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
+
+    contact_list_id: Number(createContactListId),
+
+    product_id: createProductId
+      ? Number(createProductId)
+      : undefined,
+
+    category: createCategory || undefined,
+
+    open_tracking_enabled: openTrackingEnabled,
+    click_tracking_enabled: clickTrackingEnabled,
+    footer_display_enabled: footerDisplayEnabled,
+
+    status: createScheduledTime
+      ? "scheduled"
+      : "draft",
+
+    email_content_mode:
+      createCampaignType === "email"
+        ? emailContentMode
+        : undefined,
+
+    email_subject:
+      createCampaignType === "email"
+        ? emailSubject || createCampaignName
+        : undefined,
+
+    email_prompt_context:
+      createCampaignType === "email" &&
+        emailContentMode === "prompt"
+        ? emailPromptContext
+        : undefined,
+
+    email_subject_variants:
+      createCampaignType === "email" &&
+        emailContentMode === "prompt"
+        ? generatedSubjects
+        : undefined,
+
+    email_body_variants:
+      createCampaignType === "email" &&
+        emailContentMode === "prompt"
+        ? generatedBodies
+        : undefined,
+  });
+
+  const validateCampaign = () => {
     const nextErrors: CreateCampaignFieldErrors = {
       campaignName: !createCampaignName.trim(),
       emailSubject:
-        createCampaignType === "email" ? !emailSubject.trim() : false,
+        createCampaignType === "email"
+          ? !emailSubject.trim()
+          : false,
+
       emailBody:
-        createCampaignType === "email" && emailContentMode === "manual"
+        createCampaignType === "email" &&
+          emailContentMode === "manual"
           ? !createMessageTemplate.trim()
           : createCampaignType !== "email"
             ? !createMessageTemplate.trim()
             : false,
+
       promptContext:
-        createCampaignType === "email" && emailContentMode === "prompt"
+        createCampaignType === "email" &&
+          emailContentMode === "prompt"
           ? !emailPromptContext.trim()
           : false,
+
       contactList: !createContactListId,
     };
 
     setCreateCampaignErrors(nextErrors);
 
-    const missing: string[] = [];
-    if (nextErrors.campaignName) missing.push("Campaign Name");
-    if (nextErrors.emailSubject) missing.push("Email Subject");
-    if (nextErrors.contactList) missing.push("Contact List");
-    if (nextErrors.emailBody)
-      missing.push(
-        createCampaignType === "email" ? "Email Body" : "Message Template",
-      );
-    if (nextErrors.promptContext) missing.push("Prompt Context");
+    return !Object.values(nextErrors).some(Boolean);
+  };
 
-    if (missing.length > 0) {
-      showError(`Please fill required fields: ${missing.join(", ")}`);
-      return;
-    }
-
-    if (createCampaignType === "email" && emailContentMode === "prompt") {
-      const subjects = ensureFive(generatedSubjects)
-        .map((item) => item.trim())
-        .filter(Boolean);
-      const bodies = ensureFive(generatedBodies)
-        .map((item) => item.trim())
-        .filter(Boolean);
-      if (subjects.length < 5 || bodies.length < 5) {
-        showError(
-          "Generate all 5 subjects and 5 bodies in prompt mode before creating campaign",
-        );
-        return;
-      }
-    }
-
-    const quantity = previewContacts.length || 1;
-    if (
-      !validateCreditsForGeneration(
-        getFeatureCodeForCampaignType(createCampaignType),
-        quantity,
-      )
-    ) {
+  const handleCreateCampaign = async () => {
+    if (!validateCampaign()) {
       return;
     }
 
     setLoading(true);
+
     try {
-      await campaignService.createCampaign({
-        campaign_name: createCampaignName,
-        campaign_type: createCampaignType,
-        message_template_id: selectedTemplate
-          ? Number(selectedTemplate.id)
-          : undefined,
-        message_template:
-          createCampaignType === "email"
-            ? emailContentMode === "prompt"
-              ? generatedBodies[0] ||
-              createMessageTemplate ||
-              "Generated campaign body"
-              : createMessageTemplate
-            : createMessageTemplate,
-        scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
-        contact_list_id: Number(createContactListId),
-        product_id: createProductId ? Number(createProductId) : undefined,
-        category: createCategory || undefined,
-        open_tracking_enabled: openTrackingEnabled,
-        click_tracking_enabled: clickTrackingEnabled,
-        footer_display_enabled: footerDisplayEnabled,
-        status: createScheduledTime ? "scheduled" : "draft",
-        email_content_mode:
-          createCampaignType === "email" ? emailContentMode : undefined,
-        email_subject:
-          createCampaignType === "email"
-            ? emailSubject || createCampaignName
-            : undefined,
-        email_prompt_context:
-          createCampaignType === "email" && emailContentMode === "prompt"
-            ? emailPromptContext
-            : undefined,
-        email_subject_variants:
-          createCampaignType === "email" && emailContentMode === "prompt"
-            ? generatedSubjects
-            : undefined,
-        email_body_variants:
-          createCampaignType === "email" && emailContentMode === "prompt"
-            ? generatedBodies
-            : undefined,
-      });
-      setCreateCampaignName("");
-      setCreateMessageTemplate("");
-      setEmailSubject("");
-      setEmailPromptContext("");
-      setGeneratedSubjects([]);
-      setGeneratedBodies([]);
-      setEmailContentMode("manual");
-      setCreateScheduledTime("");
-      setCreateProductId("");
-      setSpamScoreResult(null);
-      setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
+      await campaignService.createCampaign(
+        getCampaignPayload()
+      );
+
+      resetCampaignForm();
+
       showSuccess("Campaign created");
-      await Promise.all([loadCampaigns(), loadDashboard()]);
+
+      await Promise.all([
+        loadCampaigns(),
+        loadCampaignLookup(),
+        loadDashboard(),
+      ]);
+
       setTab(2);
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
     } catch (err: any) {
-      showError(err?.response?.data?.detail || "Failed to create campaign");
+      showError(
+        err?.response?.data?.detail ||
+        "Failed to create campaign"
+      );
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpdateCampaign = async () => {
+    if (!editingCampaignId) {
+      return;
+    }
+
+    if (!validateCampaign()) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await campaignService.updateCampaign(
+        editingCampaignId,
+        getCampaignPayload()
+      );
+
+      setEditingCampaignId(null);
+
+      resetCampaignForm();
+
+      showSuccess("Campaign updated");
+
+      await Promise.all([
+        loadCampaigns(),
+        loadCampaignLookup(),
+        loadDashboard(),
+      ]);
+
+      setTab(2);
+    } catch (err: any) {
+      showError(
+        err?.response?.data?.detail ||
+        "Failed to update campaign"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCampaignId(null);
+    resetCampaignForm();
+    setTab(2);
   };
 
   const handleRunCampaign = async (campaignId: number) => {
@@ -1161,6 +1240,77 @@ const CampaignManagementPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetCampaignForm = () => {
+    setEditingCampaignId(null);
+
+    // Reset form
+    setCreateCampaignName("");
+    setCreateMessageTemplate("");
+    setEmailSubject("");
+    setEmailPromptContext("");
+    setGeneratedSubjects([]);
+    setGeneratedBodies([]);
+    setEmailContentMode("manual");
+    setCreateScheduledTime("");
+    setCreateProductId("");
+    setCreateCategory("");
+    setCreateContactListId("");
+    setSpamScoreResult(null);
+    setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleEditCampaign = async (id: number) => {
+    const response = await campaignService.getCampaign(id);
+
+    const campaign = response;
+
+    setEditingCampaignId(campaign.id);
+
+    setCreateCampaignName(campaign.campaign_name);
+    setCreateCampaignType(campaign.campaign_type);
+
+    setCreateContactListId(campaign.contact_list_id);
+    setCreateProductId(campaign.product_id || "");
+    setCreateCategory(campaign.category || "");
+
+    setCreateScheduledTime(
+      campaign.scheduled_time
+        ? dayjs(campaign.scheduled_time).format("YYYY-MM-DDTHH:mm")
+        : ""
+    );
+
+    // Template
+    setSelectedTemplateId(campaign.message_template_id || "");
+
+    if (campaign.campaign_type === "email") {
+      const template =
+        typeof campaign.message_template === "string"
+          ? JSON.parse(campaign.message_template)
+          : campaign.message_template;
+
+      setEmailContentMode(template.mode ?? "manual");
+
+      setEmailSubject(template.default_subject ?? "");
+
+      if (template.mode === "manual") {
+        setCreateMessageTemplate(template.default_body ?? "");
+        setEmailPromptContext("");
+        setGeneratedSubjects([]);
+        setGeneratedBodies([]);
+      } else {
+        setEmailPromptContext(template.prompt_context ?? "");
+        setGeneratedSubjects(template.subjects ?? []);
+        setGeneratedBodies(template.bodies ?? []);
+        setCreateMessageTemplate(template.default_body ?? "");
+      }
+    }
+
+    // Switch to Create/Edit tab
+    setTab(1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleRunDueCampaigns = async () => {
@@ -1216,6 +1366,21 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
+  const handleDeleteCampaign = async (campaignId: number) => {
+
+    setLoading(true);
+    try {
+      await campaignService.deleteCampaign(campaignId);
+      showSuccess("Campaign deleted");
+      await Promise.all([loadCampaigns(), loadCampaignLookup()]);
+    } catch (err: any) {
+      showError(err?.response?.data?.detail || "Failed to delete the campaign");
+    } finally {
+      setLoading(false);
+    }
+
+  };
+
   const handleApplyLogsFilter = async () => {
     if (!selectedCampaignId) {
       showError("Select a campaign to view logs");
@@ -1235,11 +1400,11 @@ const CampaignManagementPage: React.FC = () => {
 
   const campaignOptions = useMemo(
     () =>
-      campaigns.map((item) => ({
+      allCampaigns.map((item) => ({
         id: item.id,
         label: `${item.campaign_name} (#${item.id})`,
       })),
-    [campaigns],
+    [allCampaigns],
   );
 
   useEffect(() => {
@@ -1396,6 +1561,7 @@ const CampaignManagementPage: React.FC = () => {
           {error && (
             <Alert
               severity="error"
+              onClose={() => setError("")}
               sx={{
                 borderRadius: "14px",
                 boxShadow: `0 10px 18px ${alpha(theme.palette.error.dark, 0.12)}`,
@@ -1407,6 +1573,7 @@ const CampaignManagementPage: React.FC = () => {
           {success && (
             <Alert
               severity="success"
+              onClose={() => setSuccess("")}
               sx={{
                 borderRadius: "14px",
                 boxShadow: `0 10px 18px ${alpha(theme.palette.success.dark, 0.12)}`,
@@ -1432,8 +1599,8 @@ const CampaignManagementPage: React.FC = () => {
                 iconPosition="start"
               />
               <Tab
-                label="Create Campaign"
-                icon={<AddIcon />}
+                label={isEditMode ? "Edit Campaign" : "Create Campaign"}
+                icon={isEditMode ? <EditIcon /> : <AddIcon />}
                 iconPosition="start"
               />
               <Tab
@@ -3034,11 +3201,22 @@ const CampaignManagementPage: React.FC = () => {
                         size="small"
                         sx={compactButtonSx}
                         variant="contained"
-                        onClick={handleCreateCampaign}
-                        startIcon={<AddIcon />}
+                        onClick={isEditMode ? handleUpdateCampaign : handleCreateCampaign}
+                        startIcon={isEditMode ? <SaveIcon /> : <AddIcon />}
                       >
-                        Create Campaign
+                        {isEditMode ? "Update Campaign" : "Create Campaign"}
                       </Button>
+                      {isEditMode && (
+                        <Button
+                          size="small"
+                          sx={compactButtonSx}
+                          variant="outlined"
+                          color="error"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </Stack>
                   </Grid>
 
@@ -3458,7 +3636,20 @@ const CampaignManagementPage: React.FC = () => {
                             {formatDisplayDate(item.created_at)}
                           </TableCell>
                           <TableCell>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<SettingsIcon fontSize="small" />}
+                              onClick={(e) => handleActionClick(e, item)}
+                              disabled={busyAction}
+                              sx={{ textTransform: "none", fontWeight: 600 }}
+                            >
+                              Actions
+                            </Button>
+                          </TableCell>
+                          {/* <TableCell>
                             <Stack direction="row" spacing={1}>
+
                               <Button
                                 size="small"
                                 startIcon={<PlayArrowIcon />}
@@ -3489,7 +3680,7 @@ const CampaignManagementPage: React.FC = () => {
                                 View
                               </Button>
                             </Stack>
-                          </TableCell>
+                          </TableCell> */}
                         </TableRow>
                       ))
                     ) : (
@@ -3514,6 +3705,91 @@ const CampaignManagementPage: React.FC = () => {
                 }}
                 rowsPerPageOptions={[10, 25, 50]}
               />
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleClose}
+              >
+                <MenuItem
+                  disabled={!selectedCampaign || isPlayDisabled(selectedCampaign.status)}
+                  onClick={() => {
+                    if (!selectedCampaign) return;
+
+                    setRunConfirmCampaign({
+                      id: selectedCampaign.id,
+                      name: selectedCampaign.campaign_name,
+                    });
+
+                    handleClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <PlayArrowIcon fontSize="small" />
+                  </ListItemIcon>
+                  Run
+                </MenuItem>
+
+                <MenuItem
+                  disabled={!selectedCampaign || isPauseDisabled(selectedCampaign.status)}
+                  onClick={() => {
+                    if (!selectedCampaign) return;
+
+                    handlePauseCampaign(selectedCampaign.id);
+                    handleClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <PauseIcon fontSize="small" />
+                  </ListItemIcon>
+                  Pause
+                </MenuItem>
+                <MenuItem
+                  disabled={
+                    !selectedCampaign ||
+                    !["draft", "scheduled"].includes(selectedCampaign.status)
+                  }
+                  onClick={() => {
+                    if (!selectedCampaign) return;
+
+                    handleEditCampaign(selectedCampaign.id);
+                    handleClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <EditIcon fontSize="small" />
+                  </ListItemIcon>
+                  Edit
+                </MenuItem>
+
+                <MenuItem
+                  disabled={!selectedCampaign}
+                  onClick={() => {
+                    if (!selectedCampaign) return;
+
+                    handleViewLogs(selectedCampaign.id);
+                    handleClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <VisibilityIcon fontSize="small" />
+                  </ListItemIcon>
+                  View
+                </MenuItem>
+                <MenuItem
+                  disabled={!selectedCampaign || isDeleteDisabled(selectedCampaign.status)}
+                  onClick={() => {
+                    if (!selectedCampaign) return;
+
+                    handleDeleteCampaign(selectedCampaign.id);
+                    handleClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <DeleteIcon fontSize="small" color="error" />
+                  </ListItemIcon>
+                  Delete
+                </MenuItem>
+              </Menu>
             </Paper>
           )}
 
