@@ -186,6 +186,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       setNewListDescription("");
       showSuccess("Contact list updated successfully");
       await loadContactLists();
+      await loadContactListLookup();
     } catch (err: any) {
       showError(err?.response?.data?.detail || "Failed to update contact list");
     } finally {
@@ -229,6 +230,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     setContactLists(data.items || []);
     setContactListTotal(data.pagination?.total || 0);
   };
+
+  useEffect(() => {
+    loadContactListLookup();
+  }, []);
 
   useEffect(() => {
     loadContactLists();
@@ -1410,7 +1415,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     label="Target Contact List"
                     onChange={(e) => setUploadListId(Number(e.target.value))}
                   >
-                    {contactLists.map((list) => (
+                    {contactListLookupItems.map((list) => (
                       <MenuItem key={list.id} value={list.id}>
                         {getContactListLabel(list)}
                       </MenuItem>
@@ -1872,7 +1877,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                 error={!!errors.contact_list_id}
                 helperText={errors.contact_list_id}
               >
-                {contactLists.map((list) => (
+                {contactListLookupItems.map((list) => (
                   <MenuItem key={list.id} value={list.id}>
                     {list.list_name}
                   </MenuItem>
