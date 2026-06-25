@@ -13,6 +13,7 @@ export interface CampaignItem {
   id: number;
   campaign_name: string;
   campaign_type: CampaignType;
+  category?: string;
   message_template: string;
   contact_list_id: number;
   contact_list_name?: string;
@@ -22,6 +23,8 @@ export interface CampaignItem {
   status: CampaignStatus;
   number_sent: number;
   number_failed: number;
+  email_subject?: string;
+  message_template_id?: string;
   created_at: string;
 }
 
@@ -380,8 +383,23 @@ export const campaignService = {
     return response.data;
   },
 
+  async getCampaignLookup(): Promise<CampaignItem[]> {
+    const response = await api.get("/api/admin/campaigns/campaign-lookup");
+    return response.data;
+  },
+
+  async getCampaign(campaignId: number): Promise<CampaignItem> {
+    const response = await api.get(`/api/admin/campaigns/${campaignId}`);
+    return response.data;
+  },
+
   async createCampaign(payload: CreateCampaignPayload): Promise<CampaignItem> {
     const response = await api.post("/api/admin/campaigns", payload);
+    return response.data;
+  },
+
+  async updateCampaign(campaignId: number, payload: CreateCampaignPayload): Promise<CampaignItem> {
+    const response = await api.put(`/api/admin/campaigns/${campaignId}`, payload);
     return response.data;
   },
 
@@ -426,6 +444,11 @@ export const campaignService = {
 
   async pauseCampaign(campaignId: number): Promise<{ status: string }> {
     const response = await api.post(`/api/admin/campaigns/${campaignId}/pause`);
+    return response.data;
+  },
+
+  async deleteCampaign(campaignId: number): Promise<{ status: string }> {
+    const response = await api.post(`/api/admin/campaigns/${campaignId}/delete`);
     return response.data;
   },
 

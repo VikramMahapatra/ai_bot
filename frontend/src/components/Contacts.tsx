@@ -238,7 +238,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   useEffect(() => {
     loadAllContacts();
     setUploadResult(null);
-  }, [allContactSearch, allContactPage, allContactRowsPerPage,sortBy]);
+  }, [allContactSearch, allContactPage, allContactRowsPerPage, sortBy]);
 
   /* ---------------------------
     Search Filter
@@ -360,7 +360,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       showError(err?.response?.data?.detail || "Failed to delete contact");
     } finally {
       setLoading(false);
-      window.scrollTo({ top: 0, behavior: "auto" });
     }
   };
 
@@ -689,8 +688,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
           sx={{
             borderRadius: "14px",
             boxShadow: (theme) =>
-              `0 10px 18px ${
-                error ? theme.palette.error.dark : theme.palette.success.dark
+              `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
               }20`,
           }}
         >
@@ -756,11 +754,11 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                 label="Sort By"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-               // sx={{ flex: 1 }} // take 1/4 of the row
-               sx={{
-    minWidth: 180, // prevents shrinking
-    width: 180,
-  }}
+                // sx={{ flex: 1 }} // take 1/4 of the row
+                sx={{
+                  minWidth: 180, // prevents shrinking
+                  width: 180,
+                }}
               >
                 <MenuItem value="name">Name</MenuItem>
                 <MenuItem value="newest">Newest</MenuItem>
@@ -1327,7 +1325,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                   </Typography>
                                 ) : null}
                                 {!contact.email?.trim() &&
-                                !contact.phone?.trim() ? (
+                                  !contact.phone?.trim() ? (
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
@@ -1840,7 +1838,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
         <Dialog
           open={openForm}
           onClose={() => setOpenForm(false)}
-          maxWidth="sm"
+          maxWidth="lg"
           fullWidth
         >
           <DialogTitle>
@@ -1848,7 +1846,17 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
           </DialogTitle>
 
           <DialogContent>
-            <Box display="flex" flexDirection="column" gap={2} mt={1}>
+            <Box
+              mt={1}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  md: "repeat(3, 1fr)",
+                },
+                gap: 2,
+              }}
+            >
               <TextField
                 select
                 required
@@ -1939,7 +1947,8 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               <Box>
                 <PhoneInput
                   placeholder="Enter whatsapp number"
-                  country={"in"}
+                  country="in"
+                  specialLabel="WhatsApp Number"
                   value={form.whatsapp_number}
                   onChange={(phone) =>
                     setForm({
@@ -1956,7 +1965,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   }}
                 />
               </Box>
-
               <TextField
                 label="Item Name"
                 value={form.item_name}
