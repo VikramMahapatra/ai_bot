@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { alpha, useTheme } from "@mui/material/styles";
-import PhoneInput from "react-phone-input-2";
+import PhoneInput, { CountryData } from "react-phone-input-2";
 import "react-phone-input-2/lib/material.css";
 import { allCountries } from "country-telephone-data";
 import {
@@ -1900,14 +1900,24 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
               <Box>
                 <PhoneInput
                   placeholder="Enter phone number"
-                  country={"in"}
+                  country="in"
                   value={form.phone}
-                  onChange={(phone) =>
-                    setForm({
-                      ...form,
-                      phone: `+${phone}`,
-                    })
-                  }
+                  onChange={(phone, country) => {
+                    const dialCode = (country as CountryData)?.dialCode;
+
+                    const formattedPhone =
+                      phone === dialCode
+                        ? ""
+                        : `+${phone}`;
+
+                    setForm((prev) => ({
+                      ...prev,
+                      phone: formattedPhone,
+
+                      // Auto-fill WhatsApp only if it's empty
+                      whatsapp_number: prev.whatsapp_number || formattedPhone,
+                    }));
+                  }}
                   inputStyle={{
                     width: "100%",
                     height: "56px",
@@ -1950,12 +1960,16 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   country="in"
                   specialLabel="WhatsApp Number"
                   value={form.whatsapp_number}
-                  onChange={(phone) =>
+                  onChange={(phone, country) => {
+                    const dialCode = (country as CountryData)?.dialCode;
                     setForm({
                       ...form,
-                      whatsapp_number: `+${phone}`,
-                    })
-                  }
+                      whatsapp_number:
+                        phone === dialCode
+                          ? ""
+                          : `+${phone}`,
+                    });
+                  }}
                   inputStyle={{
                     width: "100%",
                     height: "56px",

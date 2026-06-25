@@ -1281,14 +1281,25 @@ def get_contact_lists(db: Session, organization_id: int):
 
 
 def create_contact(db: Session, data: ContactCreate):
-    existing = (
-        db.query(Contact)
-        .filter(
-            Contact.contact_list_id == data.contact_list_id,
-            or_(Contact.phone == data.phone, Contact.email == data.email),
+    filters = []
+
+    if data.phone:
+        filters.append(Contact.phone == data.phone)
+
+    if data.email:
+        filters.append(Contact.email == data.email)
+
+    existing = None
+
+    if filters:
+        existing = (
+            db.query(Contact)
+            .filter(
+                Contact.contact_list_id == data.contact_list_id,
+                or_(*filters),
+            )
+            .first()
         )
-        .first()
-    )
 
     if existing:
         raise HTTPException(
