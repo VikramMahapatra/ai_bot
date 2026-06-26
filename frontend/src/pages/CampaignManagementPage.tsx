@@ -1258,6 +1258,7 @@ const CampaignManagementPage: React.FC = () => {
     setCreateCategory("");
     setCreateContactListId("");
     setSpamScoreResult(null);
+    setSelectedTemplateId("");
     setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1443,6 +1444,18 @@ const CampaignManagementPage: React.FC = () => {
     featureFlags?.whatsapp_campaign_enabled ||
     featureFlags?.sms_campaign_enabled;
 
+  const handleTabChange = (_: React.SyntheticEvent, value: number) => {
+    // Leaving Edit Campaign tab
+    if (isEditMode && value !== 1) {
+      setEditingCampaignId(null);
+
+      // Reset form if needed
+      resetCampaignForm(); // or setForm(initialFormState)
+    }
+
+    setTab(value);
+  };
+
   return (
     <AdminLayout>
       <Box sx={pageContainerSx}>
@@ -1586,7 +1599,7 @@ const CampaignManagementPage: React.FC = () => {
           <Paper sx={{ ...sectionPanelSx, borderRadius: "16px" }}>
             <Tabs
               value={tab}
-              onChange={(_, value) => setTab(value)}
+              onChange={handleTabChange}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
@@ -3746,7 +3759,7 @@ const CampaignManagementPage: React.FC = () => {
                 <MenuItem
                   disabled={
                     !selectedCampaign ||
-                    !["draft", "scheduled"].includes(selectedCampaign.status)
+                    !["draft", "scheduled", "paused"].includes(selectedCampaign.status)
                   }
                   onClick={() => {
                     if (!selectedCampaign) return;

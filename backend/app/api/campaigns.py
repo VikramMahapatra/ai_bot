@@ -336,6 +336,8 @@ def _serialize_campaign(
         "contact_list_name": contact_list_name,
         "product_id": campaign.product_id,
         "product_name": product_name,
+        "category": campaign.category,
+        "message_template_id": campaign.message_template_id,
         "scheduled_time": campaign.scheduled_time,
         "status": campaign.status,
         "number_sent": campaign.number_sent,
@@ -2484,7 +2486,7 @@ async def update_campaign(
         )
 
     status_value = (payload.status or "draft").strip().lower()
-    if status_value not in {"draft", "scheduled"}:
+    if status_value not in {"draft", "scheduled", "paused"}:
         raise HTTPException(
             status_code=400,
             detail="status must be draft or scheduled",
