@@ -72,6 +72,7 @@ export interface CampaignLogItem {
   last_event_at?: string;
   error_message?: string;
   created_at: string;
+  from_email?: string;
 }
 
 export interface CampaignLogResponse {
@@ -457,6 +458,7 @@ export const campaignService = {
     params: {
       status?: string;
       run_sequence?: number;
+      search?: string;
       skip?: number;
       limit?: number;
     } = {},
@@ -542,6 +544,11 @@ export const campaignService = {
     const response = await api.get("/api/admin/campaigns/contact-lists", {
       params,
     });
+    return response.data;
+  },
+
+  async exportContactList(contactListId: number): Promise<ContactListItem[]> {
+    const response = await api.get(`/api/admin/campaigns/contact-lists/${contactListId}/export`);
     return response.data;
   },
 
