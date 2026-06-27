@@ -3,6 +3,8 @@ import { alpha, useTheme } from "@mui/material/styles";
 import PhoneInput, { CountryData } from "react-phone-input-2";
 import "react-phone-input-2/lib/material.css";
 import { allCountries } from "country-telephone-data";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import {
   Box,
   Paper,
@@ -35,6 +37,8 @@ import {
   Autocomplete,
   Drawer,
   Snackbar,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
@@ -63,6 +67,8 @@ import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import Field from "./Common/Field";
 import { formatDate, formatDateTime } from "../utils/dateUtils";
+import DownloadIcon from "@mui/icons-material/Download";
+import { ConfirmDialog } from "./Common/ConfirmDialog";
 
 type ContactForm = Omit<ContactItem, "id" | "created_at">;
 
@@ -151,6 +157,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const secondSectionRef = useRef<HTMLDivElement | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "newest" | "oldest">("name");
+  const [sameAsPhone, setSameAsPhone] = useState(true);
+  const [contactToDelete, setContactToDelete] = useState<ContactItem | null>(null);
+  const [contactListToDelete, setContactListToDelete] = useState<ContactListItem | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const handleView = (contact: any) => {
     setSelectedContact(contact);
@@ -204,6 +214,35 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       handleSaveList();
     } else {
       handleCreateList();
+    }
+  };
+
+  const handleExportContacts = async (contactListId: number, listName: string,) => {
+    try {
+      const exportData = await campaignService.exportContactList(contactListId);
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts");
+
+      const excelBuffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array"
+      });
+
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
+      });
+
+      const safeFileName = listName.replace(
+        /[<>:"/\\|?*]/g,
+        "_",
+      );
+
+      saveAs(blob, `${safeFileName}.xlsx`);
+    } catch (error) {
+      showError("Failed to export contacts");
     }
   };
 
@@ -348,38 +387,34 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       lifecycle_stage: contact.lifecycle_stage,
       tags: contact.tags,
     });
+    setSameAsPhone(
+      contact.phone === contact.whatsapp_number
+    );
 
     setOpenForm(true);
   };
 
-  const handleDeleteContact = async (id: number) => {
-    if (!selectedListId) return;
+  const handleDeleteContact = async () => {
+    if (!contactToDelete?.id) return;
+    setDeleteSubmitting(true);
     setLoading(true);
     try {
-      await campaignService.deleteContact(id);
+      await campaignService.deleteContact(contactToDelete?.id);
       showSuccess("Contact deleted");
-      await loadContacts(Number(selectedListId));
+      setContactToDelete(null);
+
+      if (!selectedListId)
+        await loadContacts(Number(selectedListId));
       await loadContactLists();
       await loadAllContacts();
     } catch (err: any) {
-      showError(err?.response?.data?.detail || "Failed to delete contact");
+      showError(err?.response?.data?.detail || err?.detail || "Failed to delete contact");
     } finally {
       setLoading(false);
+      setDeleteSubmitting(false);
     }
   };
 
-  const handleDeleteContactFromAllContacts = async (id: number) => {
-    setLoading(true);
-    try {
-      await campaignService.deleteContact(id);
-      showSuccess("Contact deleted");
-      await loadAllContacts();
-    } catch (err: any) {
-      showError(err?.response?.data?.detail || "Failed to delete contact");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   /* ---------------------------
         Save Contact
@@ -483,28 +518,30 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     }
   };
 
-  const handleDeleteList = async (id: number) => {
-    if (!window.confirm("Delete this contact list?")) return;
-
+  const handleDeleteList = async () => {
+    if (!contactListToDelete?.id) return;
+    setDeleteSubmitting(true);
     setLoading(true);
     try {
-      await campaignService.deleteContactList(id);
-      if (selectedListId === id) {
+      await campaignService.deleteContactList(contactListToDelete.id);
+      if (selectedListId === contactListToDelete.id) {
         setSelectedListId("");
         setContacts([]);
       }
-      if (uploadListId === id) {
+      if (uploadListId === contactListToDelete.id) {
         setUploadListId("");
       }
-      if (createContactListId === id) {
+      if (createContactListId === contactListToDelete.id) {
         setCreateContactListId("");
       }
       showSuccess("Contact list deleted");
+      setContactListToDelete(null);
       await loadContactLists();
     } catch (err: any) {
       showError(err?.response?.data?.detail || "Failed to delete contact list");
     } finally {
       setLoading(false);
+      setDeleteSubmitting(false);
     }
   };
 
@@ -942,7 +979,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                             color="error"
                             startIcon={<DeleteIcon />}
                             onClick={() =>
-                              handleDeleteContactFromAllContacts(contact.id)
+                              setContactToDelete(contact)
                             }
                           >
                             Delete
@@ -1076,7 +1113,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   >
                     <TableCell>List Name</TableCell>
                     <TableCell>Description</TableCell>
-                    <TableCell>Created</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -1124,6 +1160,9 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                   {list.contact_count}
                                 </Typography>
                               </Stack>
+                              <Typography variant="caption" color="text.secondary">
+                                Created {formatDate(list.created_at)}
+                              </Typography>
 
                               {/* Auto-created Chip */}
                               {list.is_agent_auto_list && (
@@ -1142,7 +1181,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                             value={getContactListDescription(list)}
                           />
                         </TableCell>
-                        <TableCell>{formatDate(list.created_at)}</TableCell>
                         <TableCell>
                           <Stack direction="row" spacing={1}>
                             <Button
@@ -1156,6 +1194,15 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                             </Button>
                             <Button
                               size="small"
+                              color="success"
+                              startIcon={<DownloadIcon />}
+                              onClick={() => handleExportContacts(list.id, list.list_name)}
+                            >
+                              Export
+                            </Button>
+
+                            <Button
+                              size="small"
                               color="primary"
                               startIcon={<EditIcon />}
                               onClick={() => handleEditList(list)}
@@ -1166,7 +1213,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                               size="small"
                               color="error"
                               startIcon={<DeleteIcon />}
-                              onClick={() => handleDeleteList(list.id)}
+                              onClick={() => setContactListToDelete(list)}
                             >
                               Delete
                             </Button>
@@ -1176,7 +1223,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
+                      <TableCell colSpan={3} align="center">
                         No contact lists found.
                       </TableCell>
                     </TableRow>
@@ -1366,7 +1413,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                 size="small"
                                 color="error"
                                 startIcon={<DeleteIcon />}
-                                onClick={() => handleDeleteContact(contact.id)}
+                                onClick={() => setContactToDelete(contact)}
                               >
                                 Delete
                               </Button>
@@ -1918,9 +1965,9 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                     setForm((prev) => ({
                       ...prev,
                       phone: formattedPhone,
-
-                      // Auto-fill WhatsApp only if it's empty
-                      whatsapp_number: prev.whatsapp_number || formattedPhone,
+                      whatsapp_number: sameAsPhone
+                        ? formattedPhone
+                        : prev.whatsapp_number,
                     }));
                   }}
                   inputStyle={{
@@ -1938,27 +1985,6 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   </Typography>
                 )}
               </Box>
-
-              <TextField
-                label="Company"
-                value={form.company}
-                onChange={(e) => setForm({ ...form, company: e.target.value })}
-              />
-
-              <TextField
-                label="Designation"
-                value={form.designation}
-                onChange={(e) =>
-                  setForm({ ...form, designation: e.target.value })
-                }
-              />
-
-              <TextField
-                label="Gender"
-                value={form.gender}
-                onChange={(e) => setForm({ ...form, gender: e.target.value })}
-              />
-
               <Box>
                 <PhoneInput
                   placeholder="Enter whatsapp number"
@@ -1984,6 +2010,48 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   }}
                 />
               </Box>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={sameAsPhone}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+
+                      setSameAsPhone(checked);
+
+                      if (checked) {
+                        setForm((prev) => ({
+                          ...prev,
+                          whatsapp_number: prev.phone,
+                        }));
+                      }
+                    }}
+                  />
+                }
+                label="Same as phone number"
+                sx={{ mb: 1 }}
+              />
+              <TextField
+                label="Company"
+                value={form.company}
+                onChange={(e) => setForm({ ...form, company: e.target.value })}
+              />
+
+              <TextField
+                label="Designation"
+                value={form.designation}
+                onChange={(e) =>
+                  setForm({ ...form, designation: e.target.value })
+                }
+              />
+
+              <TextField
+                label="Gender"
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              />
+
+
               <TextField
                 label="Item Name"
                 value={form.item_name}
@@ -2235,6 +2303,37 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
           )}
         </Box>
       </Drawer>
+      <ConfirmDialog
+        open={Boolean(contactListToDelete)}
+        title="Delete contact list?"
+        description={
+          contactListToDelete
+            ? `This will permanently remove "${contactListToDelete.list_name}". This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setContactListToDelete(null)}
+        onConfirm={handleDeleteList}
+      />
+
+      <ConfirmDialog
+        open={Boolean(contactToDelete)}
+        title="Delete contact?"
+        description={
+          contactToDelete
+            ? `This will permanently remove "${contactToDelete?.name}". This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setContactToDelete(null)}
+        onConfirm={handleDeleteContact}
+      />
     </>
   );
 };

@@ -42,6 +42,7 @@ import {
   CardContent,
   Menu,
   ListItemIcon,
+  Tooltip,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -94,6 +95,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import dayjs from "dayjs";
 import SaveIcon from "@mui/icons-material/Save";
 import EditIcon from "@mui/icons-material/Edit";
+import { ConfirmDialog } from "../components/Common/ConfirmDialog";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -387,7 +389,9 @@ const CampaignManagementPage: React.FC = () => {
   const [busyAction, setBusyAction] = useState(false);
   const [editingCampaignId, setEditingCampaignId] =
     useState<number | null>(null);
-
+  const [logSearchText, setLogSearchText] = useState("");
+  const [campaignToDelete, setCampaignToDelete] = useState<CampaignItem | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const isEditMode = editingCampaignId !== null;
 
   const handleActionClick = (event: any, item: any) => {
@@ -597,6 +601,7 @@ const CampaignManagementPage: React.FC = () => {
     const data = await campaignService.listCampaignLogs(campaignId, {
       status: logStatusFilter || undefined,
       run_sequence: logRunSequence === "" ? undefined : Number(logRunSequence),
+      search: logSearchText,
       skip: logPage * logRowsPerPage,
       limit: logRowsPerPage,
     });
@@ -1258,6 +1263,7 @@ const CampaignManagementPage: React.FC = () => {
     setCreateCategory("");
     setCreateContactListId("");
     setSpamScoreResult(null);
+    setSelectedTemplateId("");
     setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1366,20 +1372,24 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
-  const handleDeleteCampaign = async (campaignId: number) => {
-
+  const handleDeleteCampaign = async () => {
+    if (!campaignToDelete?.id) return;
+    setDeleteSubmitting(true);
     setLoading(true);
     try {
-      await campaignService.deleteCampaign(campaignId);
+      await campaignService.deleteCampaign(campaignToDelete.id);
       showSuccess("Campaign deleted");
+      setCampaignToDelete(null);
       await Promise.all([loadCampaigns(), loadCampaignLookup()]);
     } catch (err: any) {
       showError(err?.response?.data?.detail || "Failed to delete the campaign");
     } finally {
       setLoading(false);
+      setDeleteSubmitting(false);
     }
 
   };
+
 
   const handleApplyLogsFilter = async () => {
     if (!selectedCampaignId) {
@@ -1442,6 +1452,19 @@ const CampaignManagementPage: React.FC = () => {
     featureFlags?.email_campaign_enabled ||
     featureFlags?.whatsapp_campaign_enabled ||
     featureFlags?.sms_campaign_enabled;
+
+  const handleTabChange = (_: React.SyntheticEvent, value: number) => {
+    // Leaving Edit Campaign tab
+    if (isEditMode && value !== 1) {
+      setEditingCampaignId(null);
+
+      // Reset form if needed
+      resetCampaignForm(); // or setForm(initialFormState)
+    }
+
+    setTab(value);
+  };
+
 
   return (
     <AdminLayout>
@@ -1586,7 +1609,7 @@ const CampaignManagementPage: React.FC = () => {
           <Paper sx={{ ...sectionPanelSx, borderRadius: "16px" }}>
             <Tabs
               value={tab}
-              onChange={(_, value) => setTab(value)}
+              onChange={handleTabChange}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
@@ -3746,7 +3769,7 @@ const CampaignManagementPage: React.FC = () => {
                 <MenuItem
                   disabled={
                     !selectedCampaign ||
-                    !["draft", "scheduled"].includes(selectedCampaign.status)
+                    !["draft", "scheduled", "paused"].includes(selectedCampaign.status)
                   }
                   onClick={() => {
                     if (!selectedCampaign) return;
@@ -3779,9 +3802,7 @@ const CampaignManagementPage: React.FC = () => {
                   disabled={!selectedCampaign || isDeleteDisabled(selectedCampaign.status)}
                   onClick={() => {
                     if (!selectedCampaign) return;
-
-                    handleDeleteCampaign(selectedCampaign.id);
-                    handleClose();
+                    setCampaignToDelete(selectedCampaign);
                   }}
                 >
                   <ListItemIcon>
@@ -3800,7 +3821,7 @@ const CampaignManagementPage: React.FC = () => {
               </Typography>
 
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Campaign</InputLabel>
                     <Select
@@ -3818,7 +3839,24 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="Search"
+                    placeholder="Search by name, email, phone  .."
+                    value={logSearchText}
+                    onChange={(e) => setLogSearchText(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={2}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
                     <Select
@@ -3840,22 +3878,7 @@ const CampaignManagementPage: React.FC = () => {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={2}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    type="number"
-                    label="Run #"
-                    value={logRunSequence}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setLogRunSequence(
-                        value === "" ? "" : Math.max(1, Number(value)),
-                      );
-                    }}
-                    inputProps={{ min: 1 }}
-                  />
-                </Grid>
+
                 <Grid item xs={12} md={1}>
                   <Button
                     variant="outlined"
@@ -3891,11 +3914,9 @@ const CampaignManagementPage: React.FC = () => {
                         background: `linear-gradient(110deg, ${alpha("#e7f0ff", 0.8)} 0%, ${alpha("#d8e9ff", 0.68)} 100%)`,
                       }}
                     >
-                      <TableCell>Run</TableCell>
                       <TableCell>Contact</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Phone</TableCell>
                       <TableCell>Status</TableCell>
+                      <TableCell>From Email</TableCell>
                       <TableCell>Delivered</TableCell>
                       <TableCell>Opened / Read</TableCell>
                       <TableCell>Clicks</TableCell>
@@ -3919,22 +3940,24 @@ const CampaignManagementPage: React.FC = () => {
                           }}
                         >
                           <TableCell>
-                            <Typography
-                              variant="caption"
-                              sx={{ display: "block" }}
-                            >
-                              #{item.run_sequence || 1}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              sx={{ display: "block" }}
-                            >
-                              {formatDisplayDate(item.run_started_at)}
-                            </Typography>
+                            <Box>
+                              <Typography fontWeight={600}>
+                                {item.contact_name || "-"}
+                              </Typography>
+
+                              {item.email && (
+                                <Typography variant="caption" display="block">
+                                  {item.email}
+                                </Typography>
+                              )}
+
+                              {item.phone && (
+                                <Typography variant="caption" display="block">
+                                  {item.phone}
+                                </Typography>
+                              )}
+                            </Box>
                           </TableCell>
-                          <TableCell>{item.contact_name || "-"}</TableCell>
-                          <TableCell>{item.email || "-"}</TableCell>
-                          <TableCell>{item.phone || "-"}</TableCell>
                           <TableCell>
                             <Chip
                               size="small"
@@ -3943,6 +3966,7 @@ const CampaignManagementPage: React.FC = () => {
                               variant="outlined"
                             />
                           </TableCell>
+                          <TableCell>{item.from_email || "-"}</TableCell>
                           <TableCell>
                             {formatDisplayDate(
                               item.delivered_at ||
@@ -3992,12 +4016,23 @@ const CampaignManagementPage: React.FC = () => {
                               {formatDisplayDate(item.last_event_at)}
                             </Typography>
                           </TableCell>
-                          <TableCell>{item.error_message || "-"}</TableCell>
+                          <TableCell>
+                            {item.error_message ? (
+                              <Tooltip title={item.error_message} arrow>
+                                <ErrorOutlineIcon
+                                  color="error"
+                                  sx={{ cursor: "pointer" }}
+                                />
+                              </Tooltip>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={10} align="center">
+                        <TableCell colSpan={8} align="center">
                           No logs found.
                         </TableCell>
                       </TableRow>
@@ -5361,6 +5396,21 @@ const CampaignManagementPage: React.FC = () => {
           </Drawer>
         </Stack>
       </Box>
+      <ConfirmDialog
+        open={Boolean(campaignToDelete)}
+        title="Delete campaign?"
+        description={
+          campaignToDelete
+            ? `This will permanently remove "${campaignToDelete.campaign_name}". This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmColor="error"
+        loading={deleteSubmitting}
+        onCancel={() => !deleteSubmitting && setCampaignToDelete(null)}
+        onConfirm={handleDeleteCampaign}
+      />
     </AdminLayout>
   );
 };

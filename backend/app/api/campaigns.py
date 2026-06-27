@@ -336,6 +336,8 @@ def _serialize_campaign(
         "contact_list_name": contact_list_name,
         "product_id": campaign.product_id,
         "product_name": product_name,
+        "category": campaign.category,
+        "message_template_id": campaign.message_template_id,
         "scheduled_time": campaign.scheduled_time,
         "status": campaign.status,
         "number_sent": campaign.number_sent,
@@ -572,6 +574,7 @@ def _serialize_campaign_log(row: CampaignLog, contact: Optional[Contact]) -> dic
         "email": contact.email if contact else None,
         "phone": contact.phone if contact else None,
         "status": row.status,
+        "from_email": row.from_email,
         "sent_at": row.sent_at,
         "delivered_at": row.delivered_at,
         "opened_at": row.opened_at,
@@ -1842,6 +1845,55 @@ async def list_contact_lists(
     }
 
 
+@router.get("/contact-lists/{contact_list_id}/export")
+async def export_contact_list(
+    contact_list_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == contact_list_id,
+            ContactList.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+    if not contact_list:
+        raise HTTPException(status_code=404, detail="Contact list not found")
+
+    # Build query
+    query = db.query(Contact).filter(Contact.contact_list_id == contact_list_id)
+
+    rows = query.order_by(Contact.created_at.desc()).all()
+
+    # Return all fields
+    return [
+        {
+            "name": row.name,
+            "email": row.email,
+            "phone": row.phone,
+            "whatsapp_number": row.whatsapp_number,
+            "gender": row.gender,
+            "company": row.company,
+            "designation": row.designation,
+            "item_name": row.item_name,
+            "item_type": row.item_type,
+            "interest_stage": row.interest_stage,
+            "item_category": row.item_category,
+            "amount": row.amount,
+            "offer_value": row.offer_value,
+            "city": row.city,
+            "state": row.state,
+            "country": row.country,
+            "source": row.source,
+            "lifecycle_stage": row.lifecycle_stage,
+            "tags": row.tags,
+        }
+        for row in rows
+    ]
+
+
 @router.delete("/contact-lists/{contact_list_id}")
 async def delete_contact_list(
     contact_list_id: int,
@@ -2288,6 +2340,16 @@ async def delete_contact(
             status_code=400, detail="Cannot delete contact: linked to existing lead"
         )
 
+    campaign_log_exists = (
+        db.query(CampaignLog.id).filter(CampaignLog.contact_id == contact_id).first()
+    )
+
+    if campaign_log_exists:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete contact: campaign history exists for this contact",
+        )
+
     db.delete(contact)
     db.commit()
 
@@ -2484,7 +2546,7 @@ async def update_campaign(
         )
 
     status_value = (payload.status or "draft").strip().lower()
-    if status_value not in {"draft", "scheduled"}:
+    if status_value not in {"draft", "scheduled", "paused"}:
         raise HTTPException(
             status_code=400,
             detail="status must be draft or scheduled",
@@ -2933,6 +2995,7 @@ async def run_campaign(
 @router.get("/{campaign_id}/logs")
 async def get_campaign_logs(
     campaign_id: int,
+    search: Optional[str] = None,
     status: Optional[str] = None,
     run_sequence: Optional[int] = None,
     skip: int = 0,
@@ -2953,7 +3016,11 @@ async def get_campaign_logs(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    query = db.query(CampaignLog).filter(CampaignLog.campaign_id == campaign_id)
+    query = (
+        db.query(CampaignLog)
+        .join(Contact, CampaignLog.contact_id == Contact.id)
+        .filter(CampaignLog.campaign_id == campaign_id)
+    )
 
     if status:
         status_value = status.strip().lower()
@@ -2967,6 +3034,17 @@ async def get_campaign_logs(
                 status_code=400, detail="run_sequence must be greater than 0"
             )
         query = query.filter(CampaignLog.run_sequence == run_sequence)
+
+    if search:
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Contact.name.ilike(search_term),
+                Contact.email.ilike(search_term),
+                Contact.phone.ilike(search_term),
+                CampaignLog.from_email.ilike(search_term),
+            )
+        )
 
     total = query.count()
     rows = query.order_by(CampaignLog.created_at.desc()).offset(skip).limit(limit).all()

@@ -1320,18 +1320,30 @@ def create_contact(db: Session, data: ContactCreate):
 
 def update_contact(db: Session, contact_id: int, data: ContactCreate):
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
+
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    existing = (
-        db.query(Contact)
-        .filter(
-            Contact.contact_list_id == data.contact_list_id,
-            Contact.id != contact_id,
-            or_(Contact.phone == data.phone, Contact.email == data.email),
+    filters = []
+
+    if data.phone:
+        filters.append(Contact.phone == data.phone)
+
+    if data.email:
+        filters.append(Contact.email == data.email)
+
+    existing = None
+
+    if filters:
+        existing = (
+            db.query(Contact)
+            .filter(
+                Contact.contact_list_id == data.contact_list_id,
+                Contact.id != contact_id,
+                or_(*filters),
+            )
+            .first()
         )
-        .first()
-    )
 
     if existing:
         raise HTTPException(
@@ -1345,7 +1357,11 @@ def update_contact(db: Session, contact_id: int, data: ContactCreate):
 
     db.commit()
     db.refresh(contact)
-    return contact
+
+    return {
+        **contact.__dict__,
+        "label": f"{contact.contact_list.list_name} - {contact.name} ({contact.phone})",
+    }
 
 
 def update_campaign_status(
