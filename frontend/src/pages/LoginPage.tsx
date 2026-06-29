@@ -16,7 +16,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  CircularProgress
+  CircularProgress,
+  Grid
 } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
@@ -30,6 +31,17 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { Organization } from '../types';
 import logo from '../assets/Logo-02.png';
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import CallIcon from "@mui/icons-material/Call";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import SmsOutlinedIcon from "@mui/icons-material/SmsOutlined";
+import Divider from "@mui/material/Divider";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import CloudDoneIcon from "@mui/icons-material/CloudDone";
+import TrackChangesIcon from "@mui/icons-material/TrackChanges";
+import LinkIcon from "@mui/icons-material/Link";
+import BarChartIcon from "@mui/icons-material/BarChart";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -45,6 +57,70 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
+
+const channels = [
+  {
+    title: "Chat",
+    subtitle: "AI Agent",
+    icon: <ChatBubbleOutlineIcon />,
+    color: "#3b82f6",
+  },
+  {
+    title: "WhatsApp",
+    subtitle: "AI Agent",
+    icon: <WhatsAppIcon />,
+    color: "#22c55e",
+  },
+  {
+    title: "Voice",
+    subtitle: "AI Agent",
+    icon: <CallIcon />,
+    color: "#8b5cf6",
+  },
+  {
+    title: "Email",
+    subtitle: "Automation",
+    icon: <EmailOutlinedIcon />,
+    color: "#ec4899",
+  },
+  {
+    title: "SMS",
+    subtitle: "Automation",
+    icon: <SmsOutlinedIcon />,
+    color: "#f59e0b",
+  },
+];
+
+const highlights = [
+  {
+    title: "AI Agents",
+    description:
+      "Intelligent chat, voice & messaging agents that engage and convert.",
+    icon: <SmartToyIcon />,
+    color: "#3b82f6",
+  },
+  {
+    title: "Campaign Automation",
+    description:
+      "Automate outreach, follow-ups, nurturing and appointment bookings.",
+    icon: <TrackChangesIcon />,
+    color: "#22c55e",
+  },
+  {
+    title: "CRM Integrations",
+    description:
+      "Seamless sync with leading CRMs and business tools you already use.",
+    icon: <LinkIcon />,
+    color: "#8b5cf6",
+  },
+  {
+    title: "Analytics & Insights",
+    description:
+      "Real-time analytics to track performance and drive better outcomes.",
+    icon: <BarChartIcon />,
+    color: "#f59e0b",
+  },
+];
 
 const LoginPage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -162,7 +238,7 @@ const LoginPage: React.FC = () => {
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
-        py: { xs: 3, md: 6 },
+        py: { xs: 1, md: 2 },
         background:
           'radial-gradient(circle at 11% 14%, rgba(93,203,255,0.25) 0%, transparent 42%), radial-gradient(circle at 87% 12%, rgba(50,111,245,0.25) 0%, transparent 38%), linear-gradient(160deg, #eaf3ff 0%, #e0edff 44%, #edf5ff 100%)',
         '&::before': {
@@ -246,7 +322,7 @@ const LoginPage: React.FC = () => {
                 }}
               />
 
-              <Stack spacing={2.3} sx={{ position: 'relative', zIndex: 1 }}>
+              <Stack spacing={1.75} sx={{ position: 'relative', zIndex: 1 }}>
                 <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.2 }}>
                   <Avatar
                     sx={{
@@ -260,7 +336,7 @@ const LoginPage: React.FC = () => {
                   </Avatar>
                   <Box>
                     <Typography sx={{ fontSize: 12, letterSpacing: 1.6, fontWeight: 800, opacity: 0.84 }}>
-                      ZENTRIXEL CONVERSATIONAL AI PLATFORM
+                      ZENTRIXEL ENTERPRISE AI ENGAGEMENT PLATFORM
                     </Typography>
                     <Typography sx={{ fontSize: 14, opacity: 0.88 }}>
                       Enterprise Conversational Suite
@@ -273,43 +349,200 @@ const LoginPage: React.FC = () => {
                   sx={{
                     fontWeight: 850,
                     lineHeight: 1.14,
-                    maxWidth: 430,
+                    maxWidth: 440,
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  Build trusted AI conversations that convert, support, and scale.
+                  Automate every customer interaction with intelligent AI agents.
                 </Typography>
 
-                <Typography sx={{ fontSize: 15.5, color: 'rgba(238,245,255,0.9)', maxWidth: 460 }}>
-                  Zentrixel AI is the base company behind this product, delivering secure chat intelligence,
-                  lead capture workflows, and measurable automation for modern teams.
+                <Typography sx={{ fontSize: 13, color: 'rgba(238,245,255,0.9)', maxWidth: 460 }}>
+                  Deploy AI agents across chat, voice, WhatsApp, email, and SMS. Qualify leads, automate follow-ups,
+                  book appointments, orchestrate workflows, and seamlessly hand conversations to your team—all
+                  from one enterprise platform.
                 </Typography>
+                {/* Channels */}
+                <Box
+                  sx={{
+                    mt: 1.5,
+                    p: 1.25,
+                    borderRadius: "14px",
+                    background: "rgba(255,255,255,0.05)",
+                    backdropFilter: "blur(20px)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between">
+                    {channels.map((item, index) => (
+                      <React.Fragment key={item.title}>
+                        <Box
+                          sx={{
+                            flex: 1,
+                            textAlign: "center",
+                            px: 1,
+                          }}
+                        >
+                          <Avatar
+                            sx={{
+                              width: 38,
+                              height: 38,
+                              mx: "auto",
+                              mb: 0.8,
+                              background: item.color,
+                              boxShadow: `0 6px 16px ${item.color}55`,
+                            }}
+                          >
+                            {React.cloneElement(item.icon, {
+                              sx: { fontSize: 18 },
+                            })}
+                          </Avatar>
 
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
-                  <Box sx={{ px: 1.5, py: 1, borderRadius: 2, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' }}>
-                    <Typography sx={{ fontSize: 11, opacity: 0.82 }}>Average resolution</Typography>
-                    <Typography sx={{ fontWeight: 800, fontSize: 17 }}>45% faster</Typography>
-                  </Box>
-                  <Box sx={{ px: 1.5, py: 1, borderRadius: 2, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' }}>
-                    <Typography sx={{ fontSize: 11, opacity: 0.82 }}>Operational uptime</Typography>
-                    <Typography sx={{ fontWeight: 800, fontSize: 17 }}>99.95%</Typography>
-                  </Box>
-                </Stack>
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: "#fff",
+                            }}
+                          >
+                            {item.title}
+                          </Typography>
 
-                <Stack spacing={1.1} sx={{ pt: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <InsightsIcon sx={{ fontSize: 19, color: '#7fe0ff' }} />
-                    <Typography sx={{ fontSize: 14.4 }}>Actionable analytics with source-level visibility</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <SecurityIcon sx={{ fontSize: 19, color: '#7fe0ff' }} />
-                    <Typography sx={{ fontSize: 14.4 }}>Role-based controls and audited access patterns</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <BoltIcon sx={{ fontSize: 19, color: '#7fe0ff' }} />
-                    <Typography sx={{ fontSize: 14.4 }}>Fast deployment with widget-driven integrations</Typography>
-                  </Box>
-                </Stack>
+                          <Typography
+                            sx={{
+                              fontSize: 11,
+                              color: "rgba(255,255,255,0.7)",
+                            }}
+                          >
+                            {item.subtitle}
+                          </Typography>
+                        </Box>
+
+                        {index !== channels.length - 1 && (
+                          <Divider
+                            orientation="vertical"
+                            flexItem
+                            sx={{
+                              borderColor: "rgba(255,255,255,0.08)",
+                            }}
+                          />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </Stack>
+                </Box>
+                {/* Highlights */}
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      color: "#3b9cff",
+                      fontSize: 17,
+                      mb: 1,
+                    }}
+                  >
+                    Platform Highlights
+                  </Typography>
+
+                  <Grid container spacing={1}>
+                    {highlights.map((item) => (
+                      <Grid item xs={12} sm={6} key={item.title}>
+                        <Box
+                          sx={{
+                            p: 1.25,
+                            height: "100%",
+                            borderRadius: "18px",
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            backdropFilter: "blur(20px)",
+                            transition: "all 0.2s",
+
+                            "&:hover": {
+                              background: "rgba(255,255,255,0.07)",
+                              transform: "translateY(-2px)",
+                            },
+                          }}
+                        >
+                          <Stack direction="row" spacing={2}>
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                mt: 0.25,
+                                background: item.color,
+                                boxShadow: `0 8px 20px ${item.color}55`,
+                              }}
+                            >
+                              {React.cloneElement(item.icon, {
+                                sx: { fontSize: 18 },
+                              })}
+                            </Avatar>
+
+                            <Box>
+                              <Typography
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: 14,
+                                  color: "#fff",
+                                  mb: 0,
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                {item.title}
+                              </Typography>
+
+                              <Typography
+                                sx={{
+                                  fontSize: 11.5,
+                                  lineHeight: 1.3,
+                                  color: "rgba(255,255,255,0.75)",
+                                }}
+                              >
+                                {item.description}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+                {/* Stats Bar */}
+                <Box
+                  sx={{
+                    mt: 1.5,
+                    p: 1.2,
+                    borderRadius: "16px",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    justifyContent="space-around"
+                    divider={
+                      <Divider
+                        orientation="vertical"
+                        flexItem
+                        sx={{ borderColor: "rgba(255,255,255,0.08)" }}
+                      />
+                    }
+                  >
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <SecurityIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
+                      <Typography sx={{ fontSize: 13 }}>Enterprise Security</Typography>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <AdminPanelSettingsIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
+                      <Typography sx={{ fontSize: 13 }}>Role-Based Access</Typography>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CloudDoneIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
+                      <Typography sx={{ fontSize: 13 }}>99.9% Platform Reliability</Typography>
+                    </Stack>
+                  </Stack>
+                </Box>
               </Stack>
             </Box>
 
@@ -559,19 +792,47 @@ const LoginPage: React.FC = () => {
                 </form>
               </TabPanel>
               <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  © Zentrixel, {new Date().getFullYear()}. All rights reserved. Powered by{" "}
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                  }}
+                >
+                  © Zentrixel, {new Date().getFullYear()}. All rights reserved.
+
+                  <span>•</span>
+
                   <a
-                    href="https://zentrixel.com/"
+                    href="https://zentrixel.com/privacy"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      color: '#2d7df6',
-                      textDecoration: 'none',
-                      fontWeight: 600
+                      color: "#2d7df6",
+                      textDecoration: "none",
+                      fontWeight: 600,
                     }}
                   >
-                    Zentrixel.com
+                    Privacy Policy
+                  </a>
+
+                  <span>•</span>
+
+                  <a
+                    href="https://zentrixel.com/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: "#2d7df6",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Terms of Service
                   </a>
                 </Typography>
               </Box>
