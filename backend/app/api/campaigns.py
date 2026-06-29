@@ -1277,6 +1277,8 @@ async def get_campaign_reports_summary(
         .all()
     )
 
+    active_campaign_ids = {log.campaign_id for log in logs}
+
     def _pct(numerator: int, denominator: int) -> float:
         if denominator <= 0:
             return 0.0
@@ -1457,7 +1459,7 @@ async def get_campaign_reports_summary(
         "generated_at": datetime.utcnow(),
         "window_days": window_days,
         "overview": {
-            "campaign_count": len(campaign_ids),
+            "campaign_count": len(active_campaign_ids),
             "run_count": len(run_set),
             "message_count": len(logs),
             "sent_count": sent_count,
