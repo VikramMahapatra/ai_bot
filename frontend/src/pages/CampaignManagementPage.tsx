@@ -49,6 +49,7 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import CampaignIcon from "@mui/icons-material/Campaign";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -721,7 +722,7 @@ const CampaignManagementPage: React.FC = () => {
   }, [selectedCampaignId, logPage, logRowsPerPage]);
 
   useEffect(() => {
-    if (tab !== 6) return;
+    if (tab !== 4) return;
     const run = async () => {
       try {
         await loadReports();
@@ -1264,6 +1265,9 @@ const CampaignManagementPage: React.FC = () => {
     setCreateContactListId("");
     setSpamScoreResult(null);
     setSelectedTemplateId("");
+    setOpenTrackingEnabled(false);
+    setClickTrackingEnabled(false);
+    setFooterDisplayEnabled(false);
     setCreateCampaignErrors(EMPTY_CREATE_CAMPAIGN_ERRORS);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1554,8 +1558,8 @@ const CampaignManagementPage: React.FC = () => {
                   />
                   <Chip
                     size="small"
-                    icon={<UploadFileIcon />}
-                    label="Upload Contacts"
+                    icon={<CampaignIcon />}
+                    label="Create Campaigns"
                     variant="outlined"
                   />
                   <Chip
@@ -3203,23 +3207,6 @@ const CampaignManagementPage: React.FC = () => {
 
                   <Grid item xs={12} md={8}>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                      <Button
-                        size="small"
-                        sx={compactButtonSx}
-                        variant="outlined"
-                        component="label"
-                        startIcon={<UploadFileIcon />}
-                      >
-                        Upload Template File
-                        <input
-                          hidden
-                          type="file"
-                          accept=".txt,.md,.html"
-                          onChange={(e) =>
-                            handleTemplateFileUpload(e.target.files?.[0] || null)
-                          }
-                        />
-                      </Button>
                       <Button
                         size="small"
                         sx={compactButtonSx}
