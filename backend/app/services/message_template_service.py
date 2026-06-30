@@ -2,7 +2,7 @@ import re
 from typing import Optional
 
 import requests
-from sqlalchemy import String, and_, cast, or_
+from sqlalchemy import String, and_, cast, or_, text
 from sqlalchemy.orm import Session
 from app.models.message_templates import MessageTemplate, TemplateStatus, TemplateType
 from app.schemas.message_template import TemplateCreate, TemplateUpdate
@@ -310,6 +310,33 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
         for k, v in update_data.items():
             setattr(template, k, v)
 
+        db.flush()
+
+        if data.update_linked_campaigns:
+            db.execute(
+                text("""
+                    UPDATE campaigns c
+                    SET message_template =
+                        jsonb_set(
+                            jsonb_set(
+                                c.message_template::jsonb,
+                                '{default_subject}',
+                                to_jsonb(m.subject),
+                                true
+                            ),
+                            '{default_body}',
+                            to_jsonb(m.content),
+                            true
+                        )::text
+                    FROM message_templates m
+                    WHERE c.message_template_id = m.id
+                    AND c.message_template_id = :template_id
+                    AND c.campaign_type = 'email'
+                    AND c.status IN ('draft', 'scheduled')
+                """),
+                {"template_id": template.id},
+            )
+
         db.commit()
         db.refresh(template)
 
@@ -409,9 +436,7 @@ def update_template(db: Session, template_id: int, data: TemplateUpdate):
     new_template = MessageTemplate(**new_template_data)
 
     db.add(new_template)
-
     db.commit()
-
     db.refresh(new_template)
 
     return {

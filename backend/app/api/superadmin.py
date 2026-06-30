@@ -3461,7 +3461,7 @@ def republish_agents(
                 }
             )
 
-    db.commit()
+        db.commit()
 
     success_count = len([x for x in results if x["success"]])
 
