@@ -31,6 +31,7 @@ class TemplateUpdate(BaseModel):
     category: Optional[str] = None
     language: Optional[str] = None
     variable_mappings: Optional[dict] = None
+    update_linked_campaigns: bool = False
 
 
 class TemplateRequest(BaseModel):

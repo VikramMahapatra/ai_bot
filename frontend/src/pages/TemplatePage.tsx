@@ -32,7 +32,8 @@ import {
   Snackbar,
   TablePagination,
 } from "@mui/material";
-
+import CampaignIcon from "@mui/icons-material/Campaign";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { alpha, useTheme } from "@mui/material/styles";
 import { Add, Edit, Visibility } from "@mui/icons-material";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -152,6 +153,8 @@ function TemplateList() {
   const [form, setForm] = useState<TemplateForm>(emptyTemplateForm);
   const [type, setType] = useState("all");
   const [syncing, setSyncing] = useState(false);
+  const [showUpdateCampaignDialog, setShowUpdateCampaignDialog] = useState(false);
+  const [pendingForm, setPendingForm] = useState<TemplateForm | null>(null);
 
   const formatTemplateName = (name: string) => {
     return name
@@ -236,7 +239,11 @@ function TemplateList() {
     if (!validateForm()) return;
     setLoading(true);
     try {
-      const response = await messageTemplateService.createTemplate(form);
+      const payload = {
+        ...form,
+        update_linked_campaigns: false,
+      };
+      const response = await messageTemplateService.createTemplate(payload);
       if (response.success) {
         fetchTemplates();
         handleCloseDialog();
@@ -255,15 +262,38 @@ function TemplateList() {
 
     if (!validateForm()) return;
 
+    if (editItem && form.type === "email") {
+      setPendingForm(form);
+      setShowUpdateCampaignDialog(true);
+      return;
+    }
+
+    saveTemplate(form, false);
+  };
+
+  const saveTemplate = async (
+    data: TemplateForm,
+    updateLinkedCampaigns: boolean
+  ) => {
+    if (!editItem) return;
+
+    const payload = {
+      ...data,
+      update_linked_campaigns: updateLinkedCampaigns,
+    };
+
     setLoading(true);
     try {
       const response = await messageTemplateService.updateTemplate(
         editItem.id,
-        form,
+        payload,
       );
       if (response.success) {
         fetchTemplates();
         handleCloseDialog();
+        setSuccess(
+          response.message || "Template saved successfully",
+        );
       } else {
         setTemplateError(response.message);
       }
@@ -271,6 +301,7 @@ function TemplateList() {
       setTemplateError("Failed to update template");
     } finally {
       setLoading(false);
+      setShowUpdateCampaignDialog(false);
     }
   };
 
@@ -1133,7 +1164,65 @@ function TemplateList() {
           </DialogActions>
         </Dialog>
       </Box>
+      <Dialog
+        open={showUpdateCampaignDialog}
+        onClose={() => setShowUpdateCampaignDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            pb: 1,
+          }}
+        >
+          <CampaignIcon color="primary" />
+          Update Existing Campaigns?
+        </DialogTitle>
 
+        <DialogContent>
+          <Alert
+            icon={<InfoOutlinedIcon />}
+            severity="info"
+            sx={{ mb: 3, borderRadius: 2 }}
+          >
+            If this template is being used by any <b>draft</b> or <b>scheduled </b>
+            campaigns, those campaigns can be updated automatically with the latest
+            email content.
+          </Alert>
+
+          <Typography variant="body1">
+            Would you like to apply these changes to existing campaigns as well?
+          </Typography>
+
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 1 }}
+          >
+            If no campaigns are using this template, only the template itself will be
+            updated.
+          </Typography>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button
+            color="inherit"
+            onClick={() => saveTemplate(pendingForm!, false)}
+          >
+            Update Template Only
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={() => saveTemplate(pendingForm!, true)}
+          >
+            Update Campaigns Too
+          </Button>
+        </DialogActions>
+      </Dialog>
       <ConfirmDialog
         open={Boolean(templateStatusToUpdate)}
         title={`${actionLabel} template?`}

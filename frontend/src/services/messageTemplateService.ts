@@ -81,6 +81,7 @@ type TemplatePayload = {
   category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
   language?: string;
   variable_mappings?: Record<string, VariableMapping>;
+  update_linked_campaigns: boolean;
 };
 
 const buildPayload = (data: TemplatePayload) => {
@@ -89,6 +90,7 @@ const buildPayload = (data: TemplatePayload) => {
     type: data.type,
     subject: data.subject,
     content: data.content,
+    update_linked_campaigns: data.update_linked_campaigns
   };
 
   if (data.type === "whatsapp") {

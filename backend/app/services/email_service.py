@@ -336,9 +336,20 @@ def _looks_like_full_email_html(content: str) -> bool:
 
 
 def _preserve_html_line_breaks(content: str) -> str:
-    paragraphs = re.split(r"\r?\n\s*\r?\n", content.strip())
+    content = content.strip()
 
-    return "".join(f"<p>{p.replace(chr(10), '<br>')}</p>" for p in paragraphs)
+    if re.search(r"</?(p|div|br)\b", content, re.IGNORECASE):
+        return content
+
+    paragraphs = re.split(r"\r?\n\s*\r?\n", content)
+
+    html_parts = []
+
+    for p in paragraphs:
+        p = p.replace("\n", "<br>")
+        html_parts.append(f"<p>{p}</p>")
+
+    return "".join(html_parts)
 
 
 def _sanitize_email_html(content: str) -> str:
@@ -458,7 +469,7 @@ def _render_campaign_wrapper(
                 <div style="padding:10px 26px 26px 26px;">
                     {greeting_html}
 
-                    <div style="font-size:15px; line-height:1.72;">
+                    <div style="font-size:15px; line-height:1.45;">
                         {body_html}
                     </div>
 
