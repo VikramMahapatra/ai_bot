@@ -3400,7 +3400,7 @@ def republish_agents(
     if request.external_agent_name:
         agents = query.filter(
             CallingAgent.external_agent_name == request.external_agent_name,
-            CallingAgent.status == "active",
+            CallingAgent.status.in_(["active", "subscription_expired"]),
         ).all()
 
         action_message = (
@@ -3410,7 +3410,7 @@ def republish_agents(
     else:
         agents = query.filter(
             CallingAgent.organization_id == request.organization_id,
-            CallingAgent.status == "active",
+            CallingAgent.status.in_(["active", "subscription_expired"]),
         ).all()
 
         action_message = f"{len(agents)} agents republished successfully"
