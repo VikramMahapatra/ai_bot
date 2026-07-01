@@ -3116,6 +3116,28 @@ def format_phone_number(
         raise ValueError(f"Invalid phone number: {phone_raw}")
 
 
+def get_campaign_contacts(db: Session, campaign: Campaign) -> List[Contact]:
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.id == campaign.contact_list_id,
+            ContactList.organization_id == campaign.organization_id,
+        )
+        .first()
+    )
+
+    if not contact_list:
+        raise ValueError(
+            f"Contact list {campaign.contact_list_id} not found for campaign {campaign.id}"
+        )
+
+    contacts = (
+        db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    )
+
+    return contacts
+
+
 def process_due_campaigns(
     db,
     batch_size: int,
@@ -3129,6 +3151,65 @@ def process_due_campaigns(
 
     now = datetime.utcnow()
 
+    now = datetime.utcnow()
+
+    # Check running campaigns first
+    running_query = db.query(Campaign).filter(Campaign.status == "running")
+
+    if organization_id is not None:
+        running_query = running_query.filter(
+            Campaign.organization_id == organization_id
+        )
+
+    running_campaigns = running_query.all()
+
+    for campaign in running_campaigns:
+        try:
+            total_contacts = len(get_campaign_contacts(db, campaign))
+
+            processed_count = (
+                db.query(func.count(CampaignLog.id))
+                .filter(CampaignLog.campaign_id == campaign.id)
+                .scalar()
+            )
+
+            if processed_count >= total_contacts:
+                campaign.number_sent = (
+                    db.query(func.count(CampaignLog.id))
+                    .filter(
+                        CampaignLog.campaign_id == campaign.id,
+                        CampaignLog.status == "delivered",
+                    )
+                    .scalar()
+                )
+
+                campaign.number_failed = (
+                    db.query(func.count(CampaignLog.id))
+                    .filter(
+                        CampaignLog.campaign_id == campaign.id,
+                        CampaignLog.status == "failed",
+                    )
+                    .scalar()
+                )
+
+                campaign.status = "completed" if campaign.number_sent > 0 else "failed"
+
+                db.commit()
+
+                logger.info(
+                    "Campaign %s auto-marked as %s",
+                    campaign.id,
+                    campaign.status,
+                )
+
+        except Exception:
+            logger.exception(
+                "Failed to verify running campaign %s",
+                campaign.id,
+            )
+            db.rollback()
+
+    # Existing scheduled campaign logic
     query = db.query(Campaign).filter(
         Campaign.status == "scheduled",
         Campaign.scheduled_time.isnot(None),
