@@ -77,6 +77,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timezone: resolvedTimezone
       });
       setIsAuthenticated(true);
+      await loadFeatureFlags(fallbackRole);
+
       return true;
     } catch {
       // Keep fallback state when profile endpoint is temporarily unavailable.
@@ -120,7 +122,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await syncCurrentUserFromApi(storedRole, storedOrgId, storedUserId);
         }
 
-        await loadFeatureFlags(storedRole);
       } else {
         // Legacy tokens without cached role: try hydrating from profile endpoint.
         const restored = await syncCurrentUserFromApi(null, storedOrgId, storedUserId);
