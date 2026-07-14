@@ -192,6 +192,7 @@ const getLanguages = (provider: "azure" | "deepgram") => {
 };
 
 const INCOMING_DEFAULTS = {
+    server_location: "IN",
     greeting: "Hello! Thank you for calling. How can I assist you today?",
     prompt: `You are a helpful and professional AI support agent handling incoming calls.
 
@@ -206,9 +207,11 @@ const INCOMING_DEFAULTS = {
 
         Always begin with the greeting provided.`,
     end_call_message: "Thank you for taking the time to discuss your needs with me today. Our team will be in touch with more information soon. Have a great day!"
+
 };
 
 const OUTGOING_DEFAULTS = {
+    server_location: "US",
     greeting: "Hello! This is a quick call regarding an update. Is this a good time to talk?",
     prompt: `You are a professional AI calling agent making outgoing calls.
 
@@ -231,7 +234,7 @@ const emptyFormData = {
     greeting: OUTGOING_DEFAULTS.greeting,
     prompt: OUTGOING_DEFAULTS.prompt,
     destination: [],
-    server_location: "US",
+    server_location: OUTGOING_DEFAULTS.server_location,
 
     gender: "Male",
     language: "",
@@ -315,7 +318,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             greeting: agent?.greeting || defaults.greeting,
             prompt: agent?.prompt || defaults.prompt,
             destination: agent?.destination || [],
-            server_location: agent?.server_location || "US",
+            server_location: agent?.server_location || defaults.server_location,
 
             gender: agent?.gender || "Male",
             language: agent?.language || "",

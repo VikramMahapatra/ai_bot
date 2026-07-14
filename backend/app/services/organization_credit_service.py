@@ -92,6 +92,7 @@ def get_credit_summary(
         .scalar()
     )
 
+    display_remaining = max(0, total_remaining - reserved)
     # -------------------------
     # Feature Summary
     # -------------------------
@@ -234,7 +235,7 @@ def get_credit_summary(
             "allocated": total_allocated,
             "reserved": reserved,
             "used": total_used,
-            "remaining": total_remaining,
+            "remaining": display_remaining,
         },
         "price_matrix": [
             {
@@ -357,11 +358,27 @@ def validate_credits(
     if not balance:
         return False, "No credit balance found"
 
+    cycle_start = balance.billing_start_date if balance else None
+    cycle_end = balance.billing_end_date if balance else None
+
+    reserved_credits = (
+        db.query(func.coalesce(func.sum(OrganizationCreditUsage.credits_used), 0))
+        .filter(
+            OrganizationCreditUsage.organization_id == organization_id,
+            OrganizationCreditUsage.status == "reserved",
+            OrganizationCreditUsage.created_at >= cycle_start,
+            OrganizationCreditUsage.created_at < cycle_end + timedelta(days=1),
+        )
+        .scalar()
+    )
+
+    available_credits = balance.remaining_credit - reserved_credits
+
     # Validate remaining credits
-    if balance.remaining_credit < required_credits:
+    if available_credits < required_credits:
         return False, "Insufficient credits"
 
-    return True, balance.remaining_credit
+    return True, available_credits
 
 
 def deduct_credits(
