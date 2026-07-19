@@ -1040,6 +1040,7 @@ def all_agent_lookup(db: Session, organization_id: int, search: Optional[str] = 
     query = db.query(CallingAgent.id, CallingAgent.name).filter(
         CallingAgent.organization_id == organization_id,
         CallingAgent.is_deleted == False,
+        CallingAgent.status == "active",
     )
 
     if search:
