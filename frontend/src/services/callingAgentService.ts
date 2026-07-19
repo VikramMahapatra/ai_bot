@@ -45,6 +45,8 @@ export interface CallingAgent {
 
     // Call Behaviour
     silence_timeout?: number
+    call_silence_warning_message?: string
+    call_silence_grace_period?: number
     talking_speed?: number
     max_call_duration?: number
     calendar_sync?: boolean

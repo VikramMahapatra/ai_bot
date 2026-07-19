@@ -252,6 +252,8 @@ const emptyFormData = {
     call_forwarding_action_desc: "",
 
     silence_timeout: 10,
+    call_silence_warning_message: "I haven't heard anything from you. If you're still on the line, please let me know how I can assist you.",
+    call_silence_grace_period: 5,
     talking_speed: 1.0,
     max_call_duration: 120,
     calendar_sync: false,
@@ -338,6 +340,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             call_forwarding_action_desc: agent?.call_forwarding_action_desc || "",
 
             silence_timeout: agent?.silence_timeout || 10,
+            call_silence_warning_message: agent?.call_silence_warning_message || "I haven't heard anything from you. If you're still on the line, please let me know how I can assist you.",
+            call_silence_grace_period: agent?.call_silence_grace_period || 5,
             talking_speed: agent?.talking_speed || 1.0,
             max_call_duration: agent?.max_call_duration || 120,
             calendar_sync: agent?.calendar_sync || false,
@@ -1383,149 +1387,152 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                         <AccordionDetails>
                             <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                                 <Stack spacing={2}>
-                                    {agentType === "outbound" &&
-                                        <>
-                                            <Box
-                                                sx={{
-                                                    p: 2,
-                                                    bgcolor: "#eff6ff",
-                                                    border: "1px solid #dbeafe",
-                                                    borderRadius: 2,
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "space-between",
-                                                }}
-                                            >
-                                                <Stack direction="row" spacing={1.5} alignItems="center">
-                                                    <Box
+                                    <>
+                                        <Box
+                                            sx={{
+                                                p: 2,
+                                                bgcolor: "#eff6ff",
+                                                border: "1px solid #dbeafe",
+                                                borderRadius: 2,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "space-between",
+                                            }}
+                                        >
+                                            <Stack direction="row" spacing={1.5} alignItems="center">
+                                                <Box
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        borderRadius: "50%",
+                                                        bgcolor: "#dbeafe",
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                    }}
+                                                >
+                                                    <CalendarMonthIcon
                                                         sx={{
-                                                            width: 40,
-                                                            height: 40,
-                                                            borderRadius: "50%",
-                                                            bgcolor: "#dbeafe",
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "center",
+                                                            color: "#2563eb",
+                                                            fontSize: 20,
                                                         }}
+                                                    />
+                                                </Box>
+
+                                                <Box>
+                                                    <Typography
+                                                        variant="subtitle2"
+                                                        fontWeight={600}
+                                                        color="text.primary"
                                                     >
-                                                        <CalendarMonthIcon
-                                                            sx={{
-                                                                color: "#2563eb",
-                                                                fontSize: 20,
-                                                            }}
-                                                        />
-                                                    </Box>
+                                                        Calendar Sync
+                                                    </Typography>
 
-                                                    <Box>
-                                                        <Typography
-                                                            variant="subtitle2"
-                                                            fontWeight={600}
-                                                            color="text.primary"
-                                                        >
-                                                            Calendar Sync
-                                                        </Typography>
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Integrate with calendar for scheduling.
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
 
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            Integrate with calendar for scheduling.
-                                                        </Typography>
-                                                    </Box>
-                                                </Stack>
-
-                                                <Switch
-                                                    checked={formData.calendar_sync}
-                                                    onChange={(e) =>
-                                                        setFormData({
-                                                            ...formData,
-                                                            calendar_sync: e.target.checked
-                                                        })
-                                                    }
-                                                />
-                                            </Box>
-                                            <Box
-                                                sx={{
-                                                    p: 2,
-                                                    bgcolor: "#eff6ff",
-                                                    border: "1px solid #dbeafe",
-                                                    borderRadius: 2,
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "space-between",
-                                                }}
-                                            >
-                                                {/* LEFT SIDE */}
-                                                <Stack direction="row" spacing={1.5} alignItems="center">
-                                                    {/* ICON BOX */}
-                                                    <Box
+                                            <Switch
+                                                checked={formData.calendar_sync}
+                                                onChange={(e) =>
+                                                    setFormData({
+                                                        ...formData,
+                                                        calendar_sync: e.target.checked
+                                                    })
+                                                }
+                                            />
+                                        </Box>
+                                        <Box
+                                            sx={{
+                                                p: 2,
+                                                bgcolor: "#eff6ff",
+                                                border: "1px solid #dbeafe",
+                                                borderRadius: 2,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "space-between",
+                                            }}
+                                        >
+                                            {/* LEFT SIDE */}
+                                            <Stack direction="row" spacing={1.5} alignItems="center">
+                                                {/* ICON BOX */}
+                                                <Box
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        borderRadius: "50%",
+                                                        bgcolor: "#dbeafe",
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                    }}
+                                                >
+                                                    <VolumeUpIcon
                                                         sx={{
-                                                            width: 40,
-                                                            height: 40,
-                                                            borderRadius: "50%",
-                                                            bgcolor: "#dbeafe",
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "center",
+                                                            color: "#2563eb",
+                                                            fontSize: 20,
                                                         }}
-                                                    >
-                                                        <VolumeUpIcon
-                                                            sx={{
-                                                                color: "#2563eb",
-                                                                fontSize: 20,
-                                                            }}
-                                                        />
-                                                    </Box>
+                                                    />
+                                                </Box>
 
-                                                    {/* TEXT */}
-                                                    <Box>
-                                                        <Typography variant="subtitle2" fontWeight={600} color="text.primary">
-                                                            Background Denoising
-                                                        </Typography>
+                                                {/* TEXT */}
+                                                <Box>
+                                                    <Typography variant="subtitle2" fontWeight={600} color="text.primary">
+                                                        {agentType?.toLowerCase() === "inbound"
+                                                            ? "Input Noise Cancellation"
+                                                            : "Background Denoising"}
+                                                    </Typography>
 
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            Filter background noise while the user is talking.
-                                                        </Typography>
-                                                    </Box>
-                                                </Stack>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {agentType?.toLowerCase() === "inbound"
+                                                            ? "Reduces background noise during the call."
+                                                            : "Filter background noise while the user is talking."}
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
 
-                                                {/* RIGHT SIDE - SWITCH */}
-                                                <Switch
-                                                    checked={formData.background_denoising_filter_enabled}
-                                                    onChange={(e) =>
-                                                        setFormData({
-                                                            ...formData,
-                                                            background_denoising_filter_enabled: e.target.checked,
-                                                        })
-                                                    }
-                                                />
-                                            </Box>
-                                            <Box sx={{ px: 0.5 }}>
-                                                <Typography fontWeight={500} mb={1}>
-                                                    Temperature
-                                                </Typography>
+                                            {/* RIGHT SIDE - SWITCH */}
+                                            <Switch
+                                                checked={formData.background_denoising_filter_enabled}
+                                                onChange={(e) =>
+                                                    setFormData({
+                                                        ...formData,
+                                                        background_denoising_filter_enabled: e.target.checked,
+                                                    })
+                                                }
+                                            />
+                                        </Box>
+                                        <Box sx={{ px: 0.5 }}>
+                                            <Typography fontWeight={500} mb={1}>
+                                                Temperature
+                                            </Typography>
 
-                                                <Typography variant="body2">
-                                                    Creativity Level: <b>{formData.temperature}</b>
-                                                </Typography>
+                                            <Typography variant="body2">
+                                                Creativity Level: <b>{formData.temperature}</b>
+                                            </Typography>
 
-                                                <Slider
-                                                    value={formData.temperature}
-                                                    min={0}
-                                                    max={2}
-                                                    step={0.01}
-                                                    onChange={(e, value) =>
-                                                        setFormData({ ...formData, temperature: value as number })
-                                                    }
-                                                />
+                                            <Slider
+                                                value={formData.temperature}
+                                                min={0}
+                                                max={2}
+                                                step={0.01}
+                                                onChange={(e, value) =>
+                                                    setFormData({ ...formData, temperature: value as number })
+                                                }
+                                            />
 
-                                                <Typography variant="caption" color="text.secondary">
-                                                    Controls randomness. Typical range 0–1. Higher = more creative, lower = more deterministic.
-                                                </Typography>
-                                            </Box>
-                                        </>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Controls randomness. Typical range 0–1. Higher = more creative, lower = more deterministic.
+                                            </Typography>
+                                        </Box>
+                                    </>
 
-                                    }
+
                                     <Box sx={{ px: 0.5 }}>
                                         <Typography fontWeight={500} mb={1}>
                                             Voice Speed
@@ -1548,63 +1555,110 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                             Adjust the speaking speed of the AI agent voice
                                         </Typography>
                                     </Box>
-                                    {agentType === "outbound" &&
+
+                                    <Box sx={{ px: 0.5 }}>
+                                        <Typography fontWeight={500} mb={1}>
+                                            Timing Settings
+                                        </Typography>
+
+                                        <Typography variant="body2">
+                                            Silence Timeout: <b>{formData.silence_timeout}</b> seconds
+                                        </Typography>
+
+                                        <Slider
+                                            value={formData.silence_timeout}
+                                            min={10}
+                                            max={20}
+                                            step={1}
+                                            onChange={(e, value) =>
+                                                setFormData({ ...formData, silence_timeout: value as number })
+                                            }
+                                        />
+
+                                        <Typography variant="caption" color="text.secondary">
+                                            How long to wait before AI speaks again after silence
+                                        </Typography>
+                                    </Box>
+                                    {agentType === "inbound" &&
                                         <>
+                                            <Box>
+                                                <Typography
+                                                    variant="subtitle2"
+                                                    sx={{ mb: 0.75, fontWeight: 600 }}
+                                                >
+                                                    Call Silence Warning Message
+                                                </Typography>
+
+                                                <TextField
+                                                    fullWidth
+                                                    required
+                                                    name="call_silence_warning_message"
+                                                    value={formData.call_silence_warning_message}
+                                                    error={!!errors.call_silence_warning_message}
+                                                    helperText={errors.call_silence_warning_message}
+                                                    onChange={handleInputChange}
+                                                    placeholder="Enter call silence warning message"
+                                                />
+                                            </Box>
                                             <Box sx={{ px: 0.5 }}>
                                                 <Typography fontWeight={500} mb={1}>
-                                                    Timing Settings
+                                                    Wait Time After Warning
                                                 </Typography>
 
                                                 <Typography variant="body2">
-                                                    Silence Timeout: <b>{formData.silence_timeout}</b> seconds
+                                                    Grace Period: <b>{formData.call_silence_grace_period}</b> seconds
                                                 </Typography>
 
                                                 <Slider
-                                                    value={formData.silence_timeout}
-                                                    min={10}
-                                                    max={20}
+                                                    value={formData.call_silence_grace_period}
+                                                    min={5}
+                                                    max={30}
                                                     step={1}
                                                     onChange={(e, value) =>
-                                                        setFormData({ ...formData, silence_timeout: value as number })
+                                                        setFormData({ ...formData, call_silence_grace_period: value as number })
                                                     }
                                                 />
 
                                                 <Typography variant="caption" color="text.secondary">
-                                                    How long to wait before AI speaks again after silence
+                                                    After the agent speaks the silence warning message, how many seconds should it wait for the user to respond before ending the call?
                                                 </Typography>
                                             </Box>
+                                        </>
+                                    }
 
-                                            <Box sx={{ px: 0.5 }}>
-                                                <Typography fontWeight={500} mb={1}>
-                                                    Max Call Duration
-                                                </Typography>
+                                    <Box sx={{ px: 0.5 }}>
+                                        <Typography fontWeight={500} mb={1}>
+                                            Max Call Duration
+                                        </Typography>
 
-                                                <Typography variant="body2">
-                                                    Maximum Duration: <b>{Math.floor(formData.max_call_duration / 60)} min</b> ({formData.max_call_duration} seconds)
-                                                </Typography>
+                                        <Typography variant="body2">
+                                            Maximum Duration: <b>{Math.floor(formData.max_call_duration / 60)} min</b> ({formData.max_call_duration} seconds)
+                                        </Typography>
 
-                                                <Slider
-                                                    value={formData.max_call_duration}
-                                                    min={60}
-                                                    max={600}
-                                                    step={30}
-                                                    onChange={(e, value) =>
-                                                        setFormData({ ...formData, max_call_duration: value as number })
-                                                    }
-                                                />
+                                        <Slider
+                                            value={formData.max_call_duration}
+                                            min={60}
+                                            max={600}
+                                            step={30}
+                                            onChange={(e, value) =>
+                                                setFormData({ ...formData, max_call_duration: value as number })
+                                            }
+                                        />
 
-                                                <Stack direction="row" justifyContent="space-between">
-                                                    <Typography variant="caption">1 min</Typography>
-                                                    <Typography variant="caption">3 min</Typography>
-                                                    <Typography variant="caption">5 min</Typography>
-                                                    <Typography variant="caption">7 min</Typography>
-                                                    <Typography variant="caption">10 min</Typography>
-                                                </Stack>
+                                        <Stack direction="row" justifyContent="space-between">
+                                            <Typography variant="caption">1 min</Typography>
+                                            <Typography variant="caption">3 min</Typography>
+                                            <Typography variant="caption">5 min</Typography>
+                                            <Typography variant="caption">7 min</Typography>
+                                            <Typography variant="caption">10 min</Typography>
+                                        </Stack>
 
-                                                <Typography variant="caption" color="text.secondary">
-                                                    Maximum duration for a single call
-                                                </Typography>
-                                            </Box>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Maximum duration for a single call
+                                        </Typography>
+                                    </Box>
+                                    {agentType === "outbound" &&
+                                        <>
                                             <Box sx={{ borderTop: "1px solid #e0e0e0", mt: 3, pt: 3, px: 0.5 }}>
                                                 <Stack
                                                     direction="row"
@@ -1637,41 +1691,42 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                                 />
                                             </Box>
                                         </>
-
                                     }
-                                    <FormControl fullWidth >
-                                        <InputLabel>Background Sound</InputLabel>
-
-                                        <Select
-                                            value={formData.background_sound || ""}
-                                            label="Background Sound"
-                                            onChange={(e) =>
-                                                setFormData({ ...formData, background_sound: e.target.value })
-                                            }
-                                        >
-                                            <MenuItem value="off">Off</MenuItem>
-                                            <MenuItem value="office">Office</MenuItem>
-
-                                        </Select>
-
-                                        {errors.server_location && (
-                                            <Typography variant="caption" color="error">
-                                                {errors.server_location}
-                                            </Typography>
-                                        )}
-                                    </FormControl>
-
-                                    {/* Background Sound URL */}
-                                    <TextField
-                                        label="Background Sound URL"
-                                        name="background_sound_url"
-                                        value={formData.background_sound_url}
-                                        onChange={handleInputChange}
-                                        placeholder="https://example.com/background.mp3"
-                                        fullWidth
-                                    />
                                     {agentType === "outbound" && (
                                         <>
+                                            <FormControl fullWidth >
+                                                <InputLabel>Background Sound</InputLabel>
+
+                                                <Select
+                                                    value={formData.background_sound || ""}
+                                                    label="Background Sound"
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, background_sound: e.target.value })
+                                                    }
+                                                >
+                                                    <MenuItem value="off">Off</MenuItem>
+                                                    <MenuItem value="office">Office</MenuItem>
+
+                                                </Select>
+
+                                                {errors.server_location && (
+                                                    <Typography variant="caption" color="error">
+                                                        {errors.server_location}
+                                                    </Typography>
+                                                )}
+                                            </FormControl>
+
+                                            {/* Background Sound URL */}
+                                            <TextField
+                                                label="Background Sound URL"
+                                                name="background_sound_url"
+                                                value={formData.background_sound_url}
+                                                onChange={handleInputChange}
+                                                placeholder="https://example.com/background.mp3"
+                                                fullWidth
+                                            />
+
+
                                             {/* Start Speaking Wait Seconds */}
                                             <TextField
                                                 label="Start Speaking Wait Seconds"
@@ -1787,188 +1842,189 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                                     </Paper>
                                                 </Box>
                                             </Box>
-                                            <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
-
-                                                <Typography variant="h6" fontSize={16} fontWeight={600}>
-                                                    Transcriber
-                                                </Typography>
-
-                                                <Typography variant="body2" color="text.secondary" mb={2}>
-                                                    Configure the transcription provider and language settings.
-                                                </Typography>
-
-                                                <Grid container spacing={2}>
-
-                                                    {/* Provider */}
-                                                    <Grid item xs={12} md={4}>
-                                                        <FormControl
-                                                            fullWidth
-                                                            required
-                                                            error={!!errors.transcriber_provider}
-                                                        >
-                                                            <InputLabel>Provider</InputLabel>
-
-                                                            <Select
-                                                                value={formData.transcriber_provider}
-                                                                label="Provider"
-                                                                onChange={(e) => handleProviderChange(e.target.value)}
-                                                            >
-                                                                <MenuItem value="">Select Provider</MenuItem>
-                                                                {transcriberProviders.map((lang) => (
-                                                                    <MenuItem key={lang.value} value={lang.value}>
-                                                                        {lang.label}
-                                                                    </MenuItem>
-                                                                ))}
-                                                            </Select>
-
-                                                        </FormControl>
-                                                    </Grid>
-                                                    {/* Model (only for Deepgram) */}
-                                                    {formData.transcriber_provider === "deepgram" && (
-                                                        <Grid item xs={12} md={4}>
-                                                            <FormControl
-                                                                fullWidth
-                                                                required
-                                                                error={!!errors.transcriber_language}
-                                                            >
-                                                                <InputLabel>Model</InputLabel>
-
-                                                                <Select
-                                                                    value={formData.transcriber_model}
-                                                                    label="Model"
-                                                                    onChange={(e) =>
-                                                                        setFormData({
-                                                                            ...formData,
-                                                                            transcriber_model: e.target.value
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    <MenuItem value="">Select Model</MenuItem>
-                                                                    {transcriberModels.map((lang) => (
-                                                                        <MenuItem key={lang.value} value={lang.value}>
-                                                                            {lang.label}
-                                                                        </MenuItem>
-                                                                    ))}
-                                                                </Select>
-
-                                                            </FormControl>
-                                                        </Grid>
-                                                    )}
-
-
-                                                    {/* Language (shown for both providers) */}
-                                                    {formData.transcriber_provider && (
-                                                        <Grid item xs={12} md={4}>
-                                                            <FormControl
-                                                                fullWidth
-                                                                required
-                                                                error={!!errors.transcriber_language}
-                                                            >
-                                                                <InputLabel>Language</InputLabel>
-
-                                                                <Select
-                                                                    value={formData.transcriber_language}
-                                                                    label="Language"
-                                                                    onChange={(e) =>
-                                                                        setFormData({
-                                                                            ...formData,
-                                                                            transcriber_language: e.target.value
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    <MenuItem value="">Select Language</MenuItem>
-                                                                    {getLanguages(formData.transcriber_provider as any).map((lang) => (
-                                                                        <MenuItem key={lang.value} value={lang.value}>
-                                                                            {lang.label}
-                                                                        </MenuItem>
-                                                                    ))}
-
-                                                                </Select>
-
-                                                            </FormControl>
-                                                        </Grid>
-                                                    )}
-
-
-                                                </Grid>
-
-                                            </Box>
-                                            <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
-                                                <Typography variant="h6" fontSize={16} fontWeight={600}>
-                                                    Punctuation Boundaries
-                                                </Typography>
-
-                                                <Typography variant="body2" color="text.secondary" mb={2}>
-                                                    Select punctuation marks that should be treated as valid sentence boundaries while streaming responses.
-                                                </Typography>
-
-                                                <Grid container spacing={1}>
-                                                    {[
-                                                        ".",
-                                                        ",",
-                                                        "!",
-                                                        "?",
-                                                        ";",
-                                                        ":",
-                                                        "(",
-                                                        ")",
-                                                        "—",
-                                                        "-",
-                                                        "|",
-                                                        "||",
-                                                    ].map((punctuation) => (
-                                                        <Grid item xs={6} sm={4} md={3} key={punctuation}>
-                                                            <FormControlLabel
-                                                                control={
-                                                                    <Checkbox
-                                                                        checked={
-                                                                            formData.punctuation_boundaries?.includes(
-                                                                                punctuation
-                                                                            ) ?? false
-                                                                        }
-                                                                        onChange={(e) => {
-                                                                            const selected =
-                                                                                formData.punctuation_boundaries ?? [];
-
-                                                                            setFormData({
-                                                                                ...formData,
-                                                                                punctuation_boundaries: e.target.checked
-                                                                                    ? [...selected, punctuation]
-                                                                                    : selected.filter(
-                                                                                        (p) => p !== punctuation
-                                                                                    ),
-                                                                            });
-                                                                        }}
-                                                                    />
-                                                                }
-                                                                label={
-                                                                    <Typography
-                                                                        sx={{
-                                                                            fontFamily: "monospace",
-                                                                            fontWeight: 600,
-                                                                        }}
-                                                                    >
-                                                                        {punctuation}
-                                                                    </Typography>
-                                                                }
-                                                            />
-                                                        </Grid>
-                                                    ))}
-                                                </Grid>
-
-                                                <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ display: "block", mt: 1 }}
-                                                >
-                                                    {formData.punctuation_boundaries?.length
-                                                        ? `${formData.punctuation_boundaries.length} boundar${formData.punctuation_boundaries.length > 1 ? "ies" : "y"
-                                                        } selected`
-                                                        : "No punctuation boundaries selected"}
-                                                </Typography>
-                                            </Box>
-
                                         </>
+                                    )}
+                                    <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
+
+                                        <Typography variant="h6" fontSize={16} fontWeight={600}>
+                                            Transcriber
+                                        </Typography>
+
+                                        <Typography variant="body2" color="text.secondary" mb={2}>
+                                            Configure the transcription provider and language settings.
+                                        </Typography>
+
+                                        <Grid container spacing={2}>
+
+                                            {/* Provider */}
+                                            <Grid item xs={12} md={4}>
+                                                <FormControl
+                                                    fullWidth
+                                                    required
+                                                    error={!!errors.transcriber_provider}
+                                                >
+                                                    <InputLabel>Provider</InputLabel>
+
+                                                    <Select
+                                                        value={formData.transcriber_provider}
+                                                        label="Provider"
+                                                        onChange={(e) => handleProviderChange(e.target.value)}
+                                                    >
+                                                        <MenuItem value="">Select Provider</MenuItem>
+                                                        {transcriberProviders.map((lang) => (
+                                                            <MenuItem key={lang.value} value={lang.value}>
+                                                                {lang.label}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+
+                                                </FormControl>
+                                            </Grid>
+                                            {/* Model (only for Deepgram) */}
+                                            {formData.transcriber_provider === "deepgram" && (
+                                                <Grid item xs={12} md={4}>
+                                                    <FormControl
+                                                        fullWidth
+                                                        required
+                                                        error={!!errors.transcriber_language}
+                                                    >
+                                                        <InputLabel>Model</InputLabel>
+
+                                                        <Select
+                                                            value={formData.transcriber_model}
+                                                            label="Model"
+                                                            onChange={(e) =>
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    transcriber_model: e.target.value
+                                                                })
+                                                            }
+                                                        >
+                                                            <MenuItem value="">Select Model</MenuItem>
+                                                            {transcriberModels.map((lang) => (
+                                                                <MenuItem key={lang.value} value={lang.value}>
+                                                                    {lang.label}
+                                                                </MenuItem>
+                                                            ))}
+                                                        </Select>
+
+                                                    </FormControl>
+                                                </Grid>
+                                            )}
+
+
+                                            {/* Language (shown for both providers) */}
+                                            {formData.transcriber_provider && (
+                                                <Grid item xs={12} md={4}>
+                                                    <FormControl
+                                                        fullWidth
+                                                        required
+                                                        error={!!errors.transcriber_language}
+                                                    >
+                                                        <InputLabel>Language</InputLabel>
+
+                                                        <Select
+                                                            value={formData.transcriber_language}
+                                                            label="Language"
+                                                            onChange={(e) =>
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    transcriber_language: e.target.value
+                                                                })
+                                                            }
+                                                        >
+                                                            <MenuItem value="">Select Language</MenuItem>
+                                                            {getLanguages(formData.transcriber_provider as any).map((lang) => (
+                                                                <MenuItem key={lang.value} value={lang.value}>
+                                                                    {lang.label}
+                                                                </MenuItem>
+                                                            ))}
+
+                                                        </Select>
+
+                                                    </FormControl>
+                                                </Grid>
+                                            )}
+
+
+                                        </Grid>
+
+                                    </Box>
+                                    {agentType === "outbound" && (
+                                        <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
+                                            <Typography variant="h6" fontSize={16} fontWeight={600}>
+                                                Punctuation Boundaries
+                                            </Typography>
+
+                                            <Typography variant="body2" color="text.secondary" mb={2}>
+                                                Select punctuation marks that should be treated as valid sentence boundaries while streaming responses.
+                                            </Typography>
+
+                                            <Grid container spacing={1}>
+                                                {[
+                                                    ".",
+                                                    ",",
+                                                    "!",
+                                                    "?",
+                                                    ";",
+                                                    ":",
+                                                    "(",
+                                                    ")",
+                                                    "—",
+                                                    "-",
+                                                    "|",
+                                                    "||",
+                                                ].map((punctuation) => (
+                                                    <Grid item xs={6} sm={4} md={3} key={punctuation}>
+                                                        <FormControlLabel
+                                                            control={
+                                                                <Checkbox
+                                                                    checked={
+                                                                        formData.punctuation_boundaries?.includes(
+                                                                            punctuation
+                                                                        ) ?? false
+                                                                    }
+                                                                    onChange={(e) => {
+                                                                        const selected =
+                                                                            formData.punctuation_boundaries ?? [];
+
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            punctuation_boundaries: e.target.checked
+                                                                                ? [...selected, punctuation]
+                                                                                : selected.filter(
+                                                                                    (p) => p !== punctuation
+                                                                                ),
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            }
+                                                            label={
+                                                                <Typography
+                                                                    sx={{
+                                                                        fontFamily: "monospace",
+                                                                        fontWeight: 600,
+                                                                    }}
+                                                                >
+                                                                    {punctuation}
+                                                                </Typography>
+                                                            }
+                                                        />
+                                                    </Grid>
+                                                ))}
+                                            </Grid>
+
+                                            <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{ display: "block", mt: 1 }}
+                                            >
+                                                {formData.punctuation_boundaries?.length
+                                                    ? `${formData.punctuation_boundaries.length} boundar${formData.punctuation_boundaries.length > 1 ? "ies" : "y"
+                                                    } selected`
+                                                    : "No punctuation boundaries selected"}
+                                            </Typography>
+                                        </Box>
                                     )}
                                     {callForwardingEnabled && (
                                         <Box sx={{ borderTop: "1px solid #e0e0e0", pt: 3, mt: 3, px: 0.5 }}>
