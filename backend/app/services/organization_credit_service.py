@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import math
 from typing import Optional
+from app.enums.credit_feature_codes import FeatureCodes
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from requests import Session
 from sqlalchemy import and_, case, func
@@ -710,8 +711,27 @@ def deduct_inbound_voice_credits(
     reference_type: str | None = None,
     reference_id: str | None = None,
 ):
-    billable_minutes = math.ceil(duration_seconds / 60)
+    # Don't charge for missed/zero-duration calls
+    if not duration_seconds or duration_seconds <= 0:
+        return False
 
+    # Don't charge the same call twice
+    if reference_id:
+        existing_usage = (
+            db.query(OrganizationCreditUsage)
+            .filter(
+                OrganizationCreditUsage.organization_id == organization_id,
+                OrganizationCreditUsage.reference_type == reference_type,
+                OrganizationCreditUsage.reference_id == str(reference_id),
+                OrganizationCreditUsage.status == "consumed",
+            )
+            .first()
+        )
+
+        if existing_usage:
+            return False
+
+    billable_minutes = math.ceil(duration_seconds / 60)
     credits_required = billable_minutes * voice_price
 
     balance = get_current_org_credit_balance(
@@ -725,12 +745,25 @@ def deduct_inbound_voice_credits(
     if balance.remaining_credit < credits_required:
         raise Exception("Insufficient credits. Please add more credits to continue.")
 
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == FeatureCodes.CORE_CALL_IN_MINUTE,
+            PriceMatrixItem.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if not item:
+        raise Exception("Price matrix item not found for CORE_CALL_IN_MINUTE")
+
     usage = OrganizationCreditUsage(
         organization_id=organization_id,
+        price_matrix_item_id=item.id,
         used_quantity=billable_minutes,
         credits_used=credits_required,
         reference_type=reference_type,
-        reference_id=str(reference_id) if reference_id else None,
+        reference_id=str(reference_id),
         status="consumed",
     )
 

@@ -44,6 +44,8 @@ class CallingAgentCreate(BaseModel):
 
     # Analysis
     silence_timeout: int = 10
+    call_silence_warning_message: Optional[str] = None
+    call_silence_grace_period: int = 5
     talking_speed: float = 1.0
     max_call_duration: int = 120
     calendar_sync: bool = False
@@ -124,6 +126,8 @@ class CallingAgentUpdate(BaseModel):
     max_call_duration: Optional[int] = None
     calendar_sync: Optional[bool] = None
     background_denoising_filter_enabled: bool = False
+    call_silence_warning_message: Optional[str] = None
+    call_silence_grace_period: int = 5
 
     enable_sentiment: Optional[bool] = None
     voice_mail_detection: Optional[bool] = None

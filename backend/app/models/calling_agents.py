@@ -71,6 +71,8 @@ class CallingAgent(Base):
     call_forwarding_action_desc = Column(Text)
 
     silence_timeout = Column(Integer, nullable=False)
+    call_silence_warning_message = Column(Text, nullable=True)
+    call_silence_grace_period = Column(Integer, nullable=True)
     talking_speed = Column(Float, nullable=False)
     max_call_duration = Column(Integer, nullable=False)
     calendar_sync = Column(Boolean)

@@ -497,6 +497,18 @@ def sync_agents(db: Session, organization_id: int):
                         "ai" if echo_agent.get("agent_speaks_first") else "user",
                     )
 
+                    safe_set(
+                        db_agent,
+                        "call_silence_warning_message",
+                        echo_agent.get("call_silence_warning_message"),
+                    )
+
+                    safe_set(
+                        db_agent,
+                        "call_silence_grace_period",
+                        echo_agent.get("call_silence_grace_period"),
+                    )
+
                 else:
                     if old_status == "pending":
                         organization_credit_service.release_reserved_credits(
@@ -862,7 +874,6 @@ def build_echoleads_payload(
         "call_recording": "0",
         "automated_follow_ups": "0",
         "calendar_sync": agent.calendar_sync,
-        "backgroundVoiceFilterEnabled": agent.background_denoising_filter_enabled,
         "temperature": str(getattr(agent, "temperature", 1)),
         "agent_status": agent_status,
         "remaning_call_count": None,
@@ -871,7 +882,6 @@ def build_echoleads_payload(
         "agent_speaks_first": (agent.who_speaks_first == "ai"),
         "end_call_message": agent.end_call_message,
         "silence_timeout": str(agent.silence_timeout),
-        "voice_speed": str(agent.talking_speed),
         "max_duration_seconds": str(agent.max_call_duration),
         "voice_mail_detection": ("1" if agent.voice_mail_detection else "0"),
         "voice_mail_detection_enabled": ("1" if agent.voice_mail_detection else "0"),
@@ -921,6 +931,17 @@ def build_echoleads_payload(
     if agent.type.lower() == "inbound":
         payload["inbound_phone"] = agent.inbound_phone_number
         payload["phone"] = agent.inbound_phone_number
+        payload["enable_input_noise_cancellation "] = (
+            agent.background_denoising_filter_enabled
+        )
+        payload["tts_voice_speed "] = str(agent.talking_speed)
+        payload["call_silence_warning_message"] = agent.call_silence_warning_message
+        payload["call_silence_grace_period"] = str(agent.call_silence_grace_period)
+    else:
+        payload["backgroundVoiceFilterEnabled"] = (
+            agent.background_denoising_filter_enabled
+        )
+        payload["voice_experimental_controls"] = {"speed": agent.talking_speed}
 
     print(f"Built Echoleads payload: {payload}")
 
@@ -1019,6 +1040,7 @@ def all_agent_lookup(db: Session, organization_id: int, search: Optional[str] = 
     query = db.query(CallingAgent.id, CallingAgent.name).filter(
         CallingAgent.organization_id == organization_id,
         CallingAgent.is_deleted == False,
+        CallingAgent.status == "active",
     )
 
     if search:

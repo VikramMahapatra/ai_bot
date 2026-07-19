@@ -826,7 +826,11 @@ def process_call(call, agent):
                             .first()
                         )
 
-                        voice = db.query(Voice).filter(Voice.id == agent.voice).first()
+                        voice = (
+                            db.query(Voice)
+                            .filter(Voice.voice_id == agent.voice)
+                            .first()
+                        )
 
                         try:
                             organization_credit_service.deduct_inbound_voice_credits(
