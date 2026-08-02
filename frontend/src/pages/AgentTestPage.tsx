@@ -150,6 +150,20 @@ const APPOINTMENT_FORM_PROMPT =
 
 const IST_TIMEZONE = "Asia/Kolkata";
 
+const getIstTodayDate = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
 const getDefaultAppointmentDateTime = () => {
   const seed = new Date(Date.now() + 60 * 60 * 1000);
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -356,26 +370,96 @@ const renderInlineMarkdown = (
   text: string,
   keyPrefix = "msg",
 ): React.ReactNode[] => {
+  const lines = String(text || "").split(/\n/);
   const parts: React.ReactNode[] = [];
-  const tokens = text.split(/(\*[^*]+\*)/g);
 
-  tokens.forEach((token, index) => {
-    if (!token) return;
-    if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) {
+      parts.push(<br key={`${keyPrefix}-br-${lineIndex}`} />);
+    }
+
+    const headingMatch = line.match(/^#{1,6}\s+(.*)$/);
+    const sectionTitleMatch =
+      !headingMatch && /^[^#\n]{1,80}:\s*$/.test(line.trim());
+    const numberedMatch = line.match(/^\d+\.\s+(.*)$/);
+    let rawContent = headingMatch
+      ? headingMatch[1].replace(/\s+#+\s*$/, "").trim()
+      : numberedMatch
+        ? numberedMatch[1]
+        : line;
+    const isHeading = Boolean(headingMatch) || sectionTitleMatch;
+    const isBullet = Boolean(numberedMatch) && !isHeading;
+
+    if (!isHeading && !isBullet && !rawContent.includes("**")) {
+      const labelMatch = rawContent.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
+      if (labelMatch) {
+        rawContent = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+      }
+    }
+
+    const tokens = rawContent.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    const lineNodes: React.ReactNode[] = [];
+
+    tokens.forEach((token, index) => {
+      if (!token) return;
+      const isDoubleMarked =
+        token.startsWith("**") && token.endsWith("**") && token.length > 4;
+      const isSingleMarked =
+        !isDoubleMarked &&
+        token.startsWith("*") &&
+        token.endsWith("*") &&
+        token.length > 2;
+
+      if (isDoubleMarked || isSingleMarked) {
+        const marker = isDoubleMarked ? 2 : 1;
+        lineNodes.push(
+          <Box
+            component="strong"
+            key={`${keyPrefix}-l${lineIndex}-b-${index}`}
+            sx={{ fontWeight: 800 }}
+          >
+            {token.slice(marker, -marker)}
+          </Box>,
+        );
+        return;
+      }
+      lineNodes.push(
+        <React.Fragment key={`${keyPrefix}-l${lineIndex}-t-${index}`}>
+          {token}
+        </React.Fragment>,
+      );
+    });
+
+    if (isHeading) {
       parts.push(
         <Box
           component="strong"
-          key={`${keyPrefix}-b-${index}`}
-          sx={{ fontWeight: 700 }}
+          key={`${keyPrefix}-h-${lineIndex}`}
+          sx={{ fontWeight: 800 }}
         >
-          {token.slice(2, -2)}
+          {lineNodes}
         </Box>,
       );
       return;
     }
-    parts.push(
-      <React.Fragment key={`${keyPrefix}-t-${index}`}>{token}</React.Fragment>,
-    );
+
+    if (isBullet) {
+      parts.push(
+        <Box
+          key={`${keyPrefix}-li-${lineIndex}`}
+          component="span"
+          sx={{ display: "inline" }}
+        >
+          <Box component="strong" sx={{ fontWeight: 800, mr: 0.6 }}>
+            •
+          </Box>
+          {lineNodes}
+        </Box>,
+      );
+      return;
+    }
+
+    parts.push(...lineNodes);
   });
 
   return parts;
@@ -439,6 +523,7 @@ const AgentTestPage: React.FC = () => {
     useState(false);
   const [appointmentName, setAppointmentName] = useState("");
   const [appointmentEmail, setAppointmentEmail] = useState("");
+  const [appointmentPhone, setAppointmentPhone] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
   const [appointmentBusy, setAppointmentBusy] = useState(false);
@@ -1547,14 +1632,28 @@ const AgentTestPage: React.FC = () => {
       setAppointmentError("Please enter your email.");
       return;
     }
+    if (!appointmentPhone.trim()) {
+      setAppointmentError("Please enter your mobile number.");
+      return;
+    }
     if (!appointmentDate || !appointmentTime) {
       setAppointmentError("Please select date/time.");
+      return;
+    }
+    if (appointmentDate < getIstTodayDate()) {
+      setAppointmentError("Please select today or a future date.");
       return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(appointmentEmail.trim())) {
       setAppointmentError("Please enter a valid email.");
+      return;
+    }
+
+    const phoneDigits = appointmentPhone.replace(/\D/g, "");
+    if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+      setAppointmentError("Please enter a valid mobile number.");
       return;
     }
 
@@ -1576,6 +1675,7 @@ const AgentTestPage: React.FC = () => {
           appointment_at: dateValue.toISOString(),
           name: appointmentName.trim(),
           email: appointmentEmail.trim(),
+          phone: appointmentPhone.trim(),
           timezone: IST_TIMEZONE,
         }),
       });
@@ -2063,8 +2163,8 @@ const AgentTestPage: React.FC = () => {
           sx={{
             position: "fixed",
             ...panelPositionSx,
-            width: { xs: "calc(100vw - 32px)", sm: 420 },
-            height: { xs: "66vh", sm: 550 },
+            width: { xs: "calc(100vw - 32px)", sm: 400 },
+            height: { xs: "66vh", sm: 600 },
             borderRadius: 4,
             overflow: "hidden",
             display: "flex",
@@ -2393,12 +2493,54 @@ const AgentTestPage: React.FC = () => {
                         </Box>
                         <Box
                           sx={{
+                            position: "relative",
                             px: 1.45,
                             py: 1.05,
                             borderRadius:
                               message.role === "user"
-                                ? "16px 16px 6px 16px"
-                                : "16px 16px 16px 6px",
+                                ? "14px 14px 3px 14px"
+                                : "14px 14px 14px 3px",
+                            "&::before": {
+                              content: '""',
+                              position: "absolute",
+                              zIndex: 0,
+                              bottom: 0,
+                              width: 10,
+                              height: 12,
+                              ...(message.role === "user"
+                                ? {
+                                    right: "-6px",
+                                    background: secondaryColor,
+                                    borderBottomLeftRadius: "12px",
+                                  }
+                                : {
+                                    left: "-6px",
+                                    background: widgetLookDark
+                                      ? "#1f2937"
+                                      : "#f8fafc",
+                                    borderBottomRightRadius: "12px",
+                                  }),
+                            },
+                            "&::after": {
+                              content: '""',
+                              position: "absolute",
+                              zIndex: 1,
+                              bottom: "-0.5px",
+                              width: 10,
+                              height: 13,
+                              background: widgetLookDark
+                                ? "#0f172a"
+                                : "#eef2f7",
+                              ...(message.role === "user"
+                                ? {
+                                    right: "-10px",
+                                    borderBottomLeftRadius: "10px",
+                                  }
+                                : {
+                                    left: "-10px",
+                                    borderBottomRightRadius: "10px",
+                                  }),
+                            },
                             bgcolor:
                               message.role === "user"
                                 ? undefined
@@ -2588,7 +2730,7 @@ const AgentTestPage: React.FC = () => {
                           },
                         }}
                       />
-                      <Stack direction="row" spacing={0.75}>
+                      <Stack direction="row" spacing={0.75} sx={{ my: 0.75 }}>
                         <Button
                           variant="contained"
                           onClick={handleLeadSubmit}
@@ -2661,7 +2803,7 @@ const AgentTestPage: React.FC = () => {
                       border: "1px solid #dbeafe",
                       boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
                       width: "100%",
-                      maxWidth: 308,
+                      maxWidth: 300,
                     }}
                   >
                     <Typography
@@ -2715,6 +2857,20 @@ const AgentTestPage: React.FC = () => {
                           },
                         }}
                       />
+                      <TextField
+                        placeholder="Mobile number"
+                        type="tel"
+                        value={appointmentPhone}
+                        onChange={(e) => setAppointmentPhone(e.target.value)}
+                        size="small"
+                        fullWidth
+                        sx={{
+                          "& .MuiInputBase-input": {
+                            fontSize: "0.85rem",
+                            py: 0.9,
+                          },
+                        }}
+                      />
                       <Box
                         sx={{
                           display: "grid",
@@ -2736,6 +2892,7 @@ const AgentTestPage: React.FC = () => {
                             type="date"
                             value={appointmentDate}
                             onChange={(e) => setAppointmentDate(e.target.value)}
+                            inputProps={{ min: getIstTodayDate() }}
                             size="small"
                             fullWidth
                             sx={{
@@ -2854,14 +3011,13 @@ const AgentTestPage: React.FC = () => {
                         },
                       "&.Mui-focused": {
                         boxShadow: "none !important",
-                        outline: "none !important",
+                        outline: `1px solid ${primaryColor}`,
+                        outlineOffset: 0,
                         filter: "none",
                       },
                       "&.Mui-focused fieldset, &.Mui-focused .MuiOutlinedInput-notchedOutline":
                         {
-                          borderColor: widgetLookDark
-                            ? "#334155"
-                            : "#cbd5e1",
+                          borderColor: `${primaryColor} !important`,
                           borderWidth: "1px !important",
                           boxShadow: "none !important",
                         },
@@ -2952,10 +3108,13 @@ const AgentTestPage: React.FC = () => {
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                color: "inherit",
+                color: "#2563eb",
                 textDecoration: "none",
                 fontWeight: 600,
-                "&:hover": { textDecoration: "underline" },
+                "&:hover": {
+                  color: "#1d4ed8",
+                  textDecoration: "underline",
+                },
               }}
             >
               zentrixel.com
