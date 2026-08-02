@@ -1,33 +1,33 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true, // allows external access
-    port: 5175, // your local dev port
+    port: 5179, // your local dev port
     strictPort: true,
     allowedHosts: [
-      'localhost',
-      '127.0.0.1',
-      'thomasina-mesogleal-alarmingly.ngrok-free.dev' // <-- add your ngrok host here
-    ]
+      "localhost",
+      "127.0.0.1",
+      "thomasina-mesogleal-alarmingly.ngrok-free.dev", // <-- add your ngrok host here
+    ],
   },
   build: {
     lib: {
-      entry: './src/index.tsx',
-      name: 'AIChatbotWidget',
-      fileName: 'chatbot-widget',
-      formats: ['iife']
+      entry: "./src/index.tsx",
+      name: "AIChatbotWidget",
+      fileName: "chatbot-widget",
+      formats: ["iife"],
     },
     rollupOptions: {
       output: {
-        assetFileNames: 'chatbot-widget.[ext]'
-      }
-    }
+        assetFileNames: "chatbot-widget.[ext]",
+      },
+    },
   },
   define: {
-    'process.env.NODE_ENV': '"production"'
-  }
-})
+    "process.env.NODE_ENV": '"production"',
+  },
+});

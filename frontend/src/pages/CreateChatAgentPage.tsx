@@ -1506,8 +1506,14 @@ const CreateChatAgentPage: React.FC = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Button
                             size="small"
-                            variant="text"
+                            variant={!(widget.chat_header_font_color || '').trim() ? 'contained' : 'outlined'}
                             onClick={() => setWidget((prev) => ({ ...prev, chat_header_font_color: '' }))}
+                            sx={{
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderRadius: '10px',
+                              minHeight: 34,
+                            }}
                           >
                             Use Default Header Font
                           </Button>

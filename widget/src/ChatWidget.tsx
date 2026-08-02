@@ -1,17 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChatAPI } from './api';
-import './styles.css';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChatAPI } from "./api";
+import "./styles.css";
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
 type RichTextBlock =
-  | { type: 'paragraph'; text: string }
-  | { type: 'unordered-list'; items: string[] }
-  | { type: 'ordered-list'; items: string[] }
-  | { type: 'table'; headers: string[]; rows: string[][] };
+  | { type: "paragraph"; text: string }
+  | { type: "unordered-list"; items: string[] }
+  | { type: "ordered-list"; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] };
 
 interface WidgetConfig {
   widgetId: string;
@@ -29,58 +29,164 @@ interface WidgetConfig {
 }
 
 const BOT_ICON_GLYPHS: Record<string, string> = {
-  'bot-robot': '🤖',
-  'bot-spark': '✨',
-  'bot-brain': '🧠',
-  'bot-guide': '🛰️',
-  'bot-helper': '🧑‍🔧',
-  'bot-assistant': '🤝',
-  'bot-shield': '🛡️',
-  'bot-light': '💡',
+  "bot-robot": "🤖",
+  "bot-spark": "✨",
+  "bot-brain": "🧠",
+  "bot-guide": "🛰️",
+  "bot-helper": "🧑‍🔧",
+  "bot-assistant": "🤝",
+  "bot-shield": "🛡️",
+  "bot-light": "💡",
 };
 
 const USER_ICON_GLYPHS: Record<string, string> = {
-  'user-person': '👤',
-  'user-smile': '🙂',
-  'user-chat': '💬',
-  'user-brief': '🧑‍💼',
-  'user-student': '🧑‍🎓',
-  'user-creative': '🎨',
-  'user-tech': '🧑‍💻',
-  'user-star': '🌟',
+  "user-person": "👤",
+  "user-smile": "🙂",
+  "user-chat": "💬",
+  "user-brief": "🧑‍💼",
+  "user-student": "🧑‍🎓",
+  "user-creative": "🎨",
+  "user-tech": "🧑‍💻",
+  "user-star": "🌟",
 };
 
-const createSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+const IconSvg: React.FC<{ children: React.ReactNode; size?: number }> = ({
+  children,
+  size = 17,
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {children}
+  </svg>
+);
+
+const RefreshIcon = () => (
+  <IconSvg>
+    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+  </IconSvg>
+);
+
+// const EmailIcon = () => (
+//   <IconSvg>
+//     <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+//   </IconSvg>
+// );
+
+const CalendarIcon = () => (
+  <IconSvg>
+    <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z" />
+  </IconSvg>
+);
+
+const DarkModeIcon = () => (
+  <IconSvg>
+    <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z" />
+  </IconSvg>
+);
+
+const LightModeIcon = () => (
+  <IconSvg>
+    <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 0 0 0-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z" />
+  </IconSvg>
+);
+
+const CloseIcon = ({ size = 17 }: { size?: number }) => (
+  <IconSvg size={size}>
+    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+  </IconSvg>
+);
+
+const SendIcon = () => (
+  <IconSvg size={20}>
+    <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
+  </IconSvg>
+);
+
+const ChatBubbleIcon = () => (
+  <IconSvg size={24}>
+    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+  </IconSvg>
+);
+
+const TypingDots: React.FC = () => (
+  <span className="chatbot-typing" aria-label="Assistant is typing">
+    <span className="chatbot-typing-dot" />
+    <span className="chatbot-typing-dot" />
+    <span className="chatbot-typing-dot" />
+  </span>
+);
+
+const createSessionId = () =>
+  `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 const APPOINTMENT_FORM_PROMPT =
-  'If you would like to set a meeting, please fill this short form and I will set it up for you.';
+  "If you would like to set a meeting, please fill this short form and I will set it up for you.";
 
 const CHAT_INACTIVITY_TIMEOUT_MS = 120000;
-const CHAT_INACTIVITY_CLOSE_MESSAGE = 'Closing this chat session as no activity happened in the last 120 seconds.';
+const CHAT_INACTIVITY_CLOSE_MESSAGE =
+  "Closing this chat session as no activity happened in the last 120 seconds.";
 const STREAM_FALLBACK_TIMEOUT_MS = 12000;
 const POST_HANDOFF_FOLLOWUP_MESSAGE =
-  'Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?';
+  "Welcome back from live support. Are you satisfied with the help, or should I set up a meeting for you?";
+
+const IST_TIMEZONE = "Asia/Kolkata";
+
+const getIstTodayDate = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+};
 
 const getDefaultAppointmentDateTime = () => {
   const seed = new Date(Date.now() + 60 * 60 * 1000);
-  const local = new Date(seed.getTime() - seed.getTimezoneOffset() * 60000).toISOString();
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(seed);
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  const local = `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:00`;
   return {
     date: local.slice(0, 10),
     time: local.slice(11, 16),
   };
 };
 
+const buildIstIsoDateTime = (date: string, time: string): Date =>
+  new Date(`${date}T${time}:00+05:30`);
+
 const formatCountdownSeconds = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
   const remainder = safeSeconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 };
 
 const parseServerDateToMs = (value?: string | null): number | null => {
   if (!value) return null;
 
-  const normalized = String(value).trim().replace(' ', 'T');
+  const normalized = String(value).trim().replace(" ", "T");
   if (!normalized) return null;
 
   const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
@@ -90,22 +196,30 @@ const parseServerDateToMs = (value?: string | null): number | null => {
 };
 
 const normalizeIntentText = (value: string): string =>
-  (value || '')
+  (value || "")
     .trim()
     .toLowerCase()
     .replace(/\u2019/g, "'")
     .replace(/\u2018/g, "'")
     .replace(/\u201c|\u201d/g, '"')
-    .replace(/\u2014|\u2013/g, '-');
+    .replace(/\u2014|\u2013/g, "-");
 
 const wantsMeetingSetup = (value: string): boolean => {
   const normalized = normalizeIntentText(value);
   if (!normalized) return false;
-  const tokens = new Set((normalized.match(/[a-z0-9]+/g) || []));
-  if (tokens.has('yes') && (tokens.has('meeting') || tokens.has('appointment') || tokens.has('call'))) {
+  const tokens = new Set(normalized.match(/[a-z0-9]+/g) || []);
+  if (
+    tokens.has("yes") &&
+    (tokens.has("meeting") || tokens.has("appointment") || tokens.has("call"))
+  ) {
     return true;
   }
-  if (tokens.has('book') || tokens.has('schedule') || tokens.has('meeting') || tokens.has('appointment')) {
+  if (
+    tokens.has("book") ||
+    tokens.has("schedule") ||
+    tokens.has("meeting") ||
+    tokens.has("appointment")
+  ) {
     return true;
   }
   return false;
@@ -114,7 +228,15 @@ const wantsMeetingSetup = (value: string): boolean => {
 const isSatisfiedResponse = (value: string): boolean => {
   const normalized = normalizeIntentText(value);
   if (!normalized) return false;
-  const affirmative = ['yes', 'satisfied', 'happy', 'resolved', 'all good', 'good now', 'fine now'];
+  const affirmative = [
+    "yes",
+    "satisfied",
+    "happy",
+    "resolved",
+    "all good",
+    "good now",
+    "fine now",
+  ];
   return affirmative.some((item) => normalized.includes(item));
 };
 
@@ -122,11 +244,19 @@ const isDirectLiveAgentIntent = (value: string): boolean => {
   const normalized = normalizeIntentText(value);
   if (!normalized) return false;
 
-  if (/(live|human|real)\s+(agent|support)|support\s+agent|representative/.test(normalized)) {
+  if (
+    /(live|human|real)\s+(agent|support)|support\s+agent|representative/.test(
+      normalized,
+    )
+  ) {
     return true;
   }
 
-  if (/(connect|transfer|handoff|talk|chat|speak)\s+(me\s+)?(to\s+)?(a\s+)?(live|human|support|agent)/.test(normalized)) {
+  if (
+    /(connect|transfer|handoff|talk|chat|speak)\s+(me\s+)?(to\s+)?(a\s+)?(live|human|support|agent)/.test(
+      normalized,
+    )
+  ) {
     return true;
   }
 
@@ -138,34 +268,56 @@ const assistantMessageOffersHandoff = (value: string): boolean => {
   if (!normalized) return false;
 
   const markers = [
-    'escalation contacts',
-    'would you like me to connect you',
+    "escalation contacts",
+    "would you like me to connect you",
     "if you're interested, i can connect you",
     "if you're interested i can connect you",
-    'i can connect you',
-    'human expert',
-    'live agent',
-    'reach them',
-    'let me know',
+    "i can connect you",
+    "human expert",
+    "live agent",
+    "reach them",
+    "let me know",
   ];
 
   return markers.some((marker) => normalized.includes(marker));
 };
 
-const renderInlineRichText = (text: string, keyPrefix: string): React.ReactNode[] => {
+const renderInlineRichText = (
+  text: string,
+  keyPrefix: string,
+): React.ReactNode[] => {
   const parts: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*)/g;
-  const tokens = text.split(pattern);
+  // Bold "Label: description" industry/section labels (no # hashes shown)
+  let normalized = text;
+  const labelMatch = normalized.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
+  if (labelMatch && !normalized.includes("**")) {
+    normalized = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+  }
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  const tokens = normalized.split(pattern);
 
   tokens.forEach((token, index) => {
     if (!token) return;
-    if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
+    const isDoubleMarked =
+      token.startsWith("**") && token.endsWith("**") && token.length > 4;
+    const isSingleMarked =
+      !isDoubleMarked &&
+      token.startsWith("*") &&
+      token.endsWith("*") &&
+      token.length > 2;
+
+    if (isDoubleMarked || isSingleMarked) {
+      const marker = isDoubleMarked ? 2 : 1;
       parts.push(
-        <strong key={`${keyPrefix}-b-${index}`}>{token.slice(2, -2)}</strong>
+        <strong key={`${keyPrefix}-b-${index}`}>
+          {token.slice(marker, -marker)}
+        </strong>,
       );
       return;
     }
-    parts.push(<React.Fragment key={`${keyPrefix}-t-${index}`}>{token}</React.Fragment>);
+    parts.push(
+      <React.Fragment key={`${keyPrefix}-t-${index}`}>{token}</React.Fragment>,
+    );
   });
 
   return parts;
@@ -173,9 +325,9 @@ const renderInlineRichText = (text: string, keyPrefix: string): React.ReactNode[
 
 const parseTableRow = (line: string): string[] => {
   const trimmed = line.trim();
-  if (!trimmed.includes('|')) return [];
-  const normalized = trimmed.replace(/^\|/, '').replace(/\|$/, '');
-  return normalized.split('|').map((cell) => cell.trim());
+  if (!trimmed.includes("|")) return [];
+  const normalized = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return normalized.split("|").map((cell) => cell.trim());
 };
 
 const isTableSeparator = (line: string): boolean => {
@@ -185,7 +337,7 @@ const isTableSeparator = (line: string): boolean => {
 };
 
 const parseRichTextBlocks = (content: string): RichTextBlock[] => {
-  const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
+  const lines = (content || "").replace(/\r\n/g, "\n").split("\n");
   const blocks: RichTextBlock[] = [];
   let index = 0;
 
@@ -198,7 +350,7 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
 
     if (
       index + 1 < lines.length &&
-      lines[index].includes('|') &&
+      lines[index].includes("|") &&
       isTableSeparator(lines[index + 1])
     ) {
       const headers = parseTableRow(lines[index]);
@@ -206,32 +358,56 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
       index += 2;
       while (index < lines.length) {
         const candidate = lines[index].trim();
-        if (!candidate || !candidate.includes('|')) break;
+        if (!candidate || !candidate.includes("|")) break;
         const row = parseTableRow(lines[index]);
         if (row.length) rows.push(row);
         index += 1;
       }
-      blocks.push({ type: 'table', headers, rows });
+      blocks.push({ type: "table", headers, rows });
+      continue;
+    }
+
+    if (/^#{1,6}\s+/.test(current)) {
+      const headingText = current
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/\s+#+\s*$/, "")
+        .trim();
+      blocks.push({
+        type: "paragraph",
+        text: headingText ? `**${headingText}**` : "",
+      });
+      index += 1;
+      continue;
+    }
+
+    // Section titles like "Overview:" / "Industries Served:" → bold, same bubble
+    if (/^[^#\n]{1,80}:\s*$/.test(current)) {
+      blocks.push({
+        type: "paragraph",
+        text: `**${current.trim()}**`,
+      });
+      index += 1;
       continue;
     }
 
     if (/^[-*]\s+/.test(current)) {
       const items: string[] = [];
       while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^[-*]\s+/, ''));
+        items.push(lines[index].trim().replace(/^[-*]\s+/, ""));
         index += 1;
       }
-      blocks.push({ type: 'unordered-list', items });
+      blocks.push({ type: "unordered-list", items });
       continue;
     }
 
     if (/^\d+\.\s+/.test(current)) {
       const items: string[] = [];
       while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^\d+\.\s+/, ''));
+        items.push(lines[index].trim().replace(/^\d+\.\s+/, ""));
         index += 1;
       }
-      blocks.push({ type: 'ordered-list', items });
+      // Show numbered markdown as bold-dot bullets (not 1. 2. 3.)
+      blocks.push({ type: "unordered-list", items });
       continue;
     }
 
@@ -239,10 +415,16 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
     while (index < lines.length) {
       const candidate = lines[index].trim();
       if (!candidate) break;
-      if (/^[-*]\s+/.test(candidate) || /^\d+\.\s+/.test(candidate)) break;
+      if (
+        /^#{1,6}\s+/.test(candidate) ||
+        /^[^#\n]{1,80}:\s*$/.test(candidate) ||
+        /^[-*]\s+/.test(candidate) ||
+        /^\d+\.\s+/.test(candidate)
+      )
+        break;
       if (
         index + 1 < lines.length &&
-        lines[index].includes('|') &&
+        lines[index].includes("|") &&
         isTableSeparator(lines[index + 1])
       ) {
         break;
@@ -251,14 +433,17 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
       index += 1;
     }
     if (paragraphLines.length) {
-      blocks.push({ type: 'paragraph', text: paragraphLines.join(' ') });
+      blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
     }
   }
 
   return blocks;
 };
 
-const renderMessageContent = (content: string, keyPrefix: string): React.ReactNode => {
+const renderMessageContent = (
+  content: string,
+  keyPrefix: string,
+): React.ReactNode => {
   const blocks = parseRichTextBlocks(content);
   if (blocks.length === 0) {
     return <p>{content}</p>;
@@ -268,15 +453,15 @@ const renderMessageContent = (content: string, keyPrefix: string): React.ReactNo
     <div className="chatbot-rich-text">
       {blocks.map((block, blockIndex) => {
         const blockKey = `${keyPrefix}-block-${blockIndex}`;
-        if (block.type === 'paragraph') {
+        if (block.type === "paragraph") {
           return (
             <p key={blockKey}>{renderInlineRichText(block.text, blockKey)}</p>
           );
         }
 
-        if (block.type === 'unordered-list') {
+        if (block.type === "unordered-list") {
           return (
-            <ul key={blockKey}>
+            <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
                 <li key={`${blockKey}-item-${itemIndex}`}>
                   {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
@@ -286,15 +471,15 @@ const renderMessageContent = (content: string, keyPrefix: string): React.ReactNo
           );
         }
 
-        if (block.type === 'ordered-list') {
+        if (block.type === "ordered-list") {
           return (
-            <ol key={blockKey}>
+            <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
                 <li key={`${blockKey}-item-${itemIndex}`}>
                   {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
                 </li>
               ))}
-            </ol>
+            </ul>
           );
         }
 
@@ -305,7 +490,10 @@ const renderMessageContent = (content: string, keyPrefix: string): React.ReactNo
                 <tr>
                   {block.headers.map((header, headerIndex) => (
                     <th key={`${blockKey}-h-${headerIndex}`}>
-                      {renderInlineRichText(header, `${blockKey}-h-${headerIndex}`)}
+                      {renderInlineRichText(
+                        header,
+                        `${blockKey}-h-${headerIndex}`,
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -315,7 +503,10 @@ const renderMessageContent = (content: string, keyPrefix: string): React.ReactNo
                   <tr key={`${blockKey}-r-${rowIndex}`}>
                     {row.map((cell, cellIndex) => (
                       <td key={`${blockKey}-c-${rowIndex}-${cellIndex}`}>
-                        {renderInlineRichText(cell, `${blockKey}-c-${rowIndex}-${cellIndex}`)}
+                        {renderInlineRichText(
+                          cell,
+                          `${blockKey}-c-${rowIndex}-${cellIndex}`,
+                        )}
                       </td>
                     ))}
                   </tr>
@@ -332,63 +523,73 @@ const renderMessageContent = (content: string, keyPrefix: string): React.ReactNo
 const ChatWidget: React.FC<WidgetConfig> = ({
   widgetId,
   apiUrl,
-  name = 'AI Assistant',
-  welcomeMessage = 'Hi! How can I help you?',
-  primaryColor = '#269b9f',
-  secondaryColor = '#34d399',
+  name = "AI Assistant",
+  welcomeMessage = "Hi! How can I help you?",
+  primaryColor = "#269b9f",
+  secondaryColor = "#34d399",
   chatHeaderFontColor,
-  position = 'bottom-right',
-  botIcon = 'bot-robot',
-  userIcon = 'user-person',
+  position = "bottom-right",
+  botIcon = "bot-robot",
+  userIcon = "user-person",
   shop,
   user,
 }) => {
-  const storageKey = `chatbot_session_id_${widgetId || 'default'}`;
+  const storageKey = `chatbot_session_id_${widgetId || "default"}`;
+  const headerFontColor = (chatHeaderFontColor || "").trim() || "#f8fafc";
 
   const [darkMode, setDarkMode] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [showLauncherTeaser, setShowLauncherTeaser] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadForm, setLeadForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    company: '',
+    name: "",
+    email: "",
+    phone: "",
+    company: "",
   });
 
   const [showEmailForm, setShowEmailForm] = useState(false);
-  const [emailValue, setEmailValue] = useState('');
+  const [emailValue, setEmailValue] = useState("");
   const [emailSending, setEmailSending] = useState(false);
 
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
   const [appointmentForm, setAppointmentForm] = useState({
-    name: '',
-    email: '',
-    appointment_date: '',
-    appointment_time: '',
+    name: "",
+    email: "",
+    phone: "",
+    appointment_date: "",
+    appointment_time: "",
   });
+  const [appointmentError, setAppointmentError] = useState("");
   const [handoffActive, setHandoffActive] = useState(false);
   const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffAfterId, setHandoffAfterId] = useState(0);
-  const [handoffError, setHandoffError] = useState('');
-  const [callStatus, setCallStatus] = useState<'none' | 'requested' | 'active' | 'ended' | string>('none');
-  const [callMode, setCallMode] = useState<'video' | 'audio'>('video');
+  const [handoffError, setHandoffError] = useState("");
+  const [callStatus, setCallStatus] = useState<
+    "none" | "requested" | "active" | "ended" | string
+  >("none");
+  const [callMode, setCallMode] = useState<"video" | "audio">("video");
   const [callRoomId, setCallRoomId] = useState<string | null>(null);
   const [callBusy, setCallBusy] = useState(false);
-  const [callError, setCallError] = useState('');
+  const [callError, setCallError] = useState("");
   const [handoffWaitCycle, setHandoffWaitCycle] = useState(1);
-  const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<string | null>(null);
-  const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] = useState(120);
+  const [handoffWaitingExpiresAt, setHandoffWaitingExpiresAt] = useState<
+    string | null
+  >(null);
+  const [handoffWaitTimeoutSeconds, setHandoffWaitTimeoutSeconds] =
+    useState(120);
   const [handoffNowMs, setHandoffNowMs] = useState(Date.now());
   const [pendingHandoffAfterLead, setPendingHandoffAfterLead] = useState(false);
-  const [awaitingPostHandoffDecision, setAwaitingPostHandoffDecision] = useState(false);
+  const [awaitingPostHandoffDecision, setAwaitingPostHandoffDecision] =
+    useState(false);
   const handoffSeenIdsRef = useRef<Set<number>>(new Set());
   const handoffPromptedChatIdRef = useRef<string | null>(null);
   const lastHandoffStatusRef = useRef<string | null>(null);
@@ -396,7 +597,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [sessionEngaged, setSessionEngaged] = useState(false);
-  const [sessionClosedByInactivity, setSessionClosedByInactivity] = useState(false);
+  const [sessionClosedByInactivity, setSessionClosedByInactivity] =
+    useState(false);
   const [lastActivityAtMs, setLastActivityAtMs] = useState(Date.now());
   const [inactivityNowMs, setInactivityNowMs] = useState(Date.now());
 
@@ -409,20 +611,44 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatAPI = useRef(new ChatAPI(apiUrl));
-  const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS['bot-robot'];
-  const userIconGlyph = USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS['user-person'];
-  // const headerTextColor = (chatHeaderFontColor || '').trim() || '#ffffff';
+  const botIconGlyph = BOT_ICON_GLYPHS[botIcon] || BOT_ICON_GLYPHS["bot-robot"];
+  const userIconGlyph =
+    USER_ICON_GLYPHS[userIcon] || USER_ICON_GLYPHS["user-person"];
 
-  const getMeetingUrl = (roomId: string, mode: 'video' | 'audio') => {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleOutsideClick = (event: PointerEvent) => {
+      if (
+        chatPanelRef.current &&
+        !chatPanelRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleOutsideClick);
+    return () =>
+      document.removeEventListener("pointerdown", handleOutsideClick);
+  }, [isOpen]);
+
+  const getMeetingUrl = (roomId: string, mode: "video" | "audio") => {
     const safeRoom = encodeURIComponent(roomId);
-    const videoMuted = mode === 'audio' ? 'true' : 'false';
+    const videoMuted = mode === "audio" ? "true" : "false";
     return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
   };
 
-  const shopDomain = useMemo(() => shop?.domain || shop?.shop_domain || undefined, [shop]);
-  const customerId = useMemo(() => user?.id || user?.customer_id || undefined, [user]);
+  const shopDomain = useMemo(
+    () => shop?.domain || shop?.shop_domain || undefined,
+    [shop],
+  );
+  const customerId = useMemo(
+    () => user?.id || user?.customer_id || undefined,
+    [user],
+  );
 
   const showSuggestions =
     isOpen &&
@@ -438,11 +664,23 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       return null;
     }
     const elapsed = inactivityNowMs - lastActivityAtMs;
-    return Math.max(0, Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000));
-  }, [sessionClosedByInactivity, sessionEngaged, inactivityNowMs, lastActivityAtMs]);
+    return Math.max(
+      0,
+      Math.ceil((CHAT_INACTIVITY_TIMEOUT_MS - elapsed) / 1000),
+    );
+  }, [
+    sessionClosedByInactivity,
+    sessionEngaged,
+    inactivityNowMs,
+    lastActivityAtMs,
+  ]);
 
   const handoffRemainingSeconds = useMemo(() => {
-    if (!handoffActive || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) {
+    if (
+      !handoffActive ||
+      handoffStatus !== "waiting_for_agent" ||
+      !handoffWaitingExpiresAt
+    ) {
       return null;
     }
     const expiresAtMs = parseServerDateToMs(handoffWaitingExpiresAt);
@@ -453,21 +691,33 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   }, [handoffActive, handoffStatus, handoffWaitingExpiresAt, handoffNowMs]);
 
   const handoffCountdownText = useMemo(() => {
-    if (handoffStatus !== 'waiting_for_agent') {
+    if (handoffStatus !== "waiting_for_agent") {
       return null;
     }
     if (handoffRemainingSeconds === null) {
-      const cycleMinutes = Math.max(1, Math.round(handoffWaitTimeoutSeconds / 60));
-      return `Each wait cycle is about ${cycleMinutes} minute${cycleMinutes > 1 ? 's' : ''}.`;
+      const cycleMinutes = Math.max(
+        1,
+        Math.round(handoffWaitTimeoutSeconds / 60),
+      );
+      return `Each wait cycle is about ${cycleMinutes} minute${cycleMinutes > 1 ? "s" : ""}.`;
     }
     if (handoffRemainingSeconds <= 0) {
-      return 'Checking live user availability...';
+      return "Checking live user availability...";
     }
     return `Round ${Math.max(1, handoffWaitCycle)} time left: ${formatCountdownSeconds(handoffRemainingSeconds)}`;
-  }, [handoffStatus, handoffRemainingSeconds, handoffWaitCycle, handoffWaitTimeoutSeconds]);
+  }, [
+    handoffStatus,
+    handoffRemainingSeconds,
+    handoffWaitCycle,
+    handoffWaitTimeoutSeconds,
+  ]);
 
   const handoffProgressPercent = useMemo(() => {
-    if (handoffStatus !== 'waiting_for_agent' || handoffRemainingSeconds === null || handoffWaitTimeoutSeconds <= 0) {
+    if (
+      handoffStatus !== "waiting_for_agent" ||
+      handoffRemainingSeconds === null ||
+      handoffWaitTimeoutSeconds <= 0
+    ) {
       return null;
     }
     const ratio = handoffRemainingSeconds / handoffWaitTimeoutSeconds;
@@ -479,14 +729,14 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   }, [apiUrl]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, showAppointmentForm, loading]);
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
       setMessages([
         {
-          role: 'assistant',
+          role: "assistant",
           content: welcomeMessage,
         },
       ]);
@@ -516,26 +766,26 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setSessionId(created);
     setMessages([
       {
-        role: 'assistant',
+        role: "assistant",
         content: welcomeMessage,
       },
     ]);
-    setInput('');
+    setInput("");
     setShowLeadForm(false);
     setLeadSubmitted(false);
     setShowEmailForm(false);
-    setEmailValue('');
+    setEmailValue("");
     setShowAppointmentForm(false);
     setHandoffActive(false);
     setHandoffChatId(null);
     setHandoffStatus(null);
     setHandoffAfterId(0);
-    setHandoffError('');
-    setCallStatus('none');
-    setCallMode('video');
+    setHandoffError("");
+    setCallStatus("none");
+    setCallMode("video");
     setCallRoomId(null);
     setCallBusy(false);
-    setCallError('');
+    setCallError("");
     setHandoffWaitCycle(1);
     setHandoffWaitingExpiresAt(null);
     setHandoffWaitTimeoutSeconds(120);
@@ -549,41 +799,61 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
     setAppointmentForm({
-      name: '',
-      email: '',
-      appointment_date: '',
-      appointment_time: '',
+      name: "",
+      email: "",
+      phone: "",
+      appointment_date: "",
+      appointment_time: "",
     });
+    setAppointmentError("");
     return created;
   };
 
   const loadHandoffSession = async () => {
     if (!widgetId) return;
     try {
-      const data = await chatAPI.current.getHandoffSession(sessionId, widgetId, handoffChatId || undefined);
+      const data = await chatAPI.current.getHandoffSession(
+        sessionId,
+        widgetId,
+        handoffChatId || undefined,
+      );
       if (!data?.chat_id) return;
       const nextStatus = data.status || null;
-      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
-      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+      const wasActive =
+        lastHandoffStatusRef.current === "waiting_for_agent" ||
+        lastHandoffStatusRef.current === "assigned";
+      const isActive =
+        nextStatus === "waiting_for_agent" || nextStatus === "assigned";
 
       setHandoffChatId(data.chat_id);
       setHandoffStatus(nextStatus);
       setHandoffActive(isActive);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
-      setCallStatus(data.call_status || 'none');
-      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallStatus(data.call_status || "none");
+      setCallMode((data.call_mode as "video" | "audio") || "video");
       setCallRoomId(data.call_room_id || null);
-      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+      if (
+        typeof data.wait_timeout_seconds === "number" &&
+        data.wait_timeout_seconds > 0
+      ) {
         setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
       }
       setHandoffNowMs(Date.now());
       lastHandoffStatusRef.current = nextStatus;
 
-      if (wasActive && !isActive && data.chat_id && handoffPromptedChatIdRef.current !== data.chat_id) {
+      if (
+        wasActive &&
+        !isActive &&
+        data.chat_id &&
+        handoffPromptedChatIdRef.current !== data.chat_id
+      ) {
         handoffPromptedChatIdRef.current = data.chat_id;
         setAwaitingPostHandoffDecision(true);
-        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: POST_HANDOFF_FOLLOWUP_MESSAGE },
+        ]);
       }
       if (isActive) {
         setAwaitingPostHandoffDecision(false);
@@ -600,38 +870,62 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         handoffSeenIdsRef.current.clear();
         setHandoffAfterId(0);
       }
-      const data = await chatAPI.current.getHandoffMessages(chatId, sessionId, widgetId, reset ? 0 : handoffAfterId);
+      const data = await chatAPI.current.getHandoffMessages(
+        chatId,
+        sessionId,
+        widgetId,
+        reset ? 0 : handoffAfterId,
+      );
       if (!data) return;
 
       const nextStatus = data.status || null;
-      const wasActive = lastHandoffStatusRef.current === 'waiting_for_agent' || lastHandoffStatusRef.current === 'assigned';
-      const isActive = nextStatus === 'waiting_for_agent' || nextStatus === 'assigned';
+      const wasActive =
+        lastHandoffStatusRef.current === "waiting_for_agent" ||
+        lastHandoffStatusRef.current === "assigned";
+      const isActive =
+        nextStatus === "waiting_for_agent" || nextStatus === "assigned";
 
       setHandoffStatus(nextStatus);
       setHandoffActive(isActive);
       setHandoffWaitCycle(Math.max(1, data.wait_cycle || 1));
       setHandoffWaitingExpiresAt(data.waiting_expires_at || null);
-      setCallStatus(data.call_status || 'none');
-      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setCallStatus(data.call_status || "none");
+      setCallMode((data.call_mode as "video" | "audio") || "video");
       setCallRoomId(data.call_room_id || null);
-      if (typeof data.wait_timeout_seconds === 'number' && data.wait_timeout_seconds > 0) {
+      if (
+        typeof data.wait_timeout_seconds === "number" &&
+        data.wait_timeout_seconds > 0
+      ) {
         setHandoffWaitTimeoutSeconds(data.wait_timeout_seconds);
       }
       setHandoffNowMs(Date.now());
       lastHandoffStatusRef.current = nextStatus;
 
-      if (wasActive && !isActive && chatId && handoffPromptedChatIdRef.current !== chatId) {
+      if (
+        wasActive &&
+        !isActive &&
+        chatId &&
+        handoffPromptedChatIdRef.current !== chatId
+      ) {
         handoffPromptedChatIdRef.current = chatId;
         setAwaitingPostHandoffDecision(true);
-        setMessages((prev) => [...prev, { role: 'assistant', content: POST_HANDOFF_FOLLOWUP_MESSAGE }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: POST_HANDOFF_FOLLOWUP_MESSAGE },
+        ]);
       }
       if (isActive) {
         setAwaitingPostHandoffDecision(false);
       }
 
       const visible = (data.items || []).filter((item) => {
-        const isBotUpdate = item.sender_type === 'bot' && !reset;
-        if (item.sender_type !== 'agent' && item.sender_type !== 'system' && !isBotUpdate) return false;
+        const isBotUpdate = item.sender_type === "bot" && !reset;
+        if (
+          item.sender_type !== "agent" &&
+          item.sender_type !== "system" &&
+          !isBotUpdate
+        )
+          return false;
         if (handoffSeenIdsRef.current.has(item.id)) return false;
         handoffSeenIdsRef.current.add(item.id);
         return true;
@@ -640,17 +934,23 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       if (visible.length > 0) {
         setMessages((prev) => [
           ...prev,
-          ...visible.map((item) => ({ role: 'assistant' as const, content: item.message })),
+          ...visible.map((item) => ({
+            role: "assistant" as const,
+            content: item.message,
+          })),
         ]);
         setSessionEngaged(true);
         setLastActivityAtMs(Date.now());
       }
 
-      const maxId = (data.items || []).reduce((acc, item) => Math.max(acc, item.id), handoffAfterId);
+      const maxId = (data.items || []).reduce(
+        (acc, item) => Math.max(acc, item.id),
+        handoffAfterId,
+      );
       setHandoffAfterId(maxId);
-      setHandoffError('');
+      setHandoffError("");
     } catch {
-      setHandoffError('Live agent updates are temporarily unavailable.');
+      setHandoffError("Live agent updates are temporarily unavailable.");
     }
   };
 
@@ -660,7 +960,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   }, [isOpen, widgetId, sessionId]);
 
   useEffect(() => {
-    if (!handoffActive || handoffStatus !== 'waiting_for_agent' || !handoffWaitingExpiresAt) return;
+    if (
+      !handoffActive ||
+      handoffStatus !== "waiting_for_agent" ||
+      !handoffWaitingExpiresAt
+    )
+      return;
     setHandoffNowMs(Date.now());
     const timer = window.setInterval(() => {
       setHandoffNowMs(Date.now());
@@ -681,17 +986,24 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   }, [isOpen, handoffActive, handoffChatId, handoffAfterId]);
 
   useEffect(() => {
-    if (!isOpen || sessionClosedByInactivity || !sessionEngaged || loading) return;
+    if (!isOpen || sessionClosedByInactivity || !sessionEngaged || loading)
+      return;
 
     const timeoutId = window.setTimeout(() => {
       setMessages((prev) => {
         if (prev.length > 0) {
           const last = prev[prev.length - 1];
-          if (last.role === 'assistant' && last.content === CHAT_INACTIVITY_CLOSE_MESSAGE) {
+          if (
+            last.role === "assistant" &&
+            last.content === CHAT_INACTIVITY_CLOSE_MESSAGE
+          ) {
             return prev;
           }
         }
-        return [...prev, { role: 'assistant', content: CHAT_INACTIVITY_CLOSE_MESSAGE }];
+        return [
+          ...prev,
+          { role: "assistant", content: CHAT_INACTIVITY_CLOSE_MESSAGE },
+        ];
       });
       setSessionClosedByInactivity(true);
       setSessionEngaged(false);
@@ -699,13 +1011,19 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setHandoffChatId(null);
       setHandoffStatus(null);
       setHandoffAfterId(0);
-      setHandoffError('');
+      setHandoffError("");
       handoffSeenIdsRef.current.clear();
       setLoading(false);
     }, CHAT_INACTIVITY_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isOpen, sessionClosedByInactivity, sessionEngaged, loading, lastActivityAtMs]);
+  }, [
+    isOpen,
+    sessionClosedByInactivity,
+    sessionEngaged,
+    loading,
+    lastActivityAtMs,
+  ]);
 
   useEffect(() => {
     if (!isOpen || sessionClosedByInactivity || !sessionEngaged) return;
@@ -720,7 +1038,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const sendMessage = async (
     overrideText?: string,
-    options?: { silentUserMessage?: boolean; skipLeadCaptureCheck?: boolean; forceSessionId?: string }
+    options?: {
+      silentUserMessage?: boolean;
+      skipLeadCaptureCheck?: boolean;
+      forceSessionId?: string;
+    },
   ) => {
     const opts = options || {};
     let activeSessionId = opts.forceSessionId || sessionId;
@@ -741,17 +1063,17 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
     if (shouldForceLeadBeforeDirectHandoff) {
       if (!overrideText) {
-        setInput('');
+        setInput("");
       }
       setShowLeadForm(true);
       setPendingHandoffAfterLead(true);
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: text },
+        { role: "user", content: text },
         {
-          role: 'assistant',
+          role: "assistant",
           content:
-            'Before I transfer this handoff request to a live agent, please fill the quick contact form in chat so we can reach you if needed.',
+            "Before I transfer this handoff request to a live agent, please fill the quick contact form in chat so we can reach you if needed.",
         },
       ]);
       setSessionEngaged(true);
@@ -761,15 +1083,15 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     }
 
     if (!overrideText) {
-      setInput('');
+      setInput("");
     }
 
     if (awaitingPostHandoffDecision && !opts.silentUserMessage) {
       if (wantsMeetingSetup(text)) {
         setMessages((prev) => [
           ...prev,
-          { role: 'user', content: text },
-          { role: 'assistant', content: APPOINTMENT_FORM_PROMPT },
+          { role: "user", content: text },
+          { role: "assistant", content: APPOINTMENT_FORM_PROMPT },
         ]);
         setAwaitingPostHandoffDecision(false);
         openAppointmentForm();
@@ -778,8 +1100,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       if (isSatisfiedResponse(text)) {
         setMessages((prev) => [
           ...prev,
-          { role: 'user', content: text },
-          { role: 'assistant', content: 'Great to hear that. If you need anything else, I am here to help.' },
+          { role: "user", content: text },
+          {
+            role: "assistant",
+            content:
+              "Great to hear that. If you need anything else, I am here to help.",
+          },
         ]);
         setAwaitingPostHandoffDecision(false);
         return;
@@ -792,21 +1118,19 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setLastActivityAtMs(Date.now());
     let assistantIndex = -1;
     if (!opts.silentUserMessage) {
-      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+      setMessages((prev) => [...prev, { role: "user", content: text }]);
     }
 
     setMessages((prev) => {
       assistantIndex = prev.length;
-      return [...prev, { role: 'assistant', content: '' }];
+      return [...prev, { role: "assistant", content: "" }];
     });
 
     const replaceAssistantMessage = (content: string) => {
       setMessages((prev) =>
         prev.map((msg, index) =>
-          index === assistantIndex
-            ? { ...msg, content }
-            : msg
-        )
+          index === assistantIndex ? { ...msg, content } : msg,
+        ),
       );
     };
 
@@ -815,13 +1139,15 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         prev.map((msg, index) =>
           index === assistantIndex
             ? { ...msg, content: `${msg.content}${delta}` }
-            : msg
-        )
+            : msg,
+        ),
       );
     };
 
     const removeAssistantPlaceholder = () => {
-      setMessages((prev) => prev.filter((_, index) => index !== assistantIndex));
+      setMessages((prev) =>
+        prev.filter((_, index) => index !== assistantIndex),
+      );
     };
 
     const applyUiAction = (payload?: {
@@ -830,9 +1156,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       handoff_status?: string;
       response?: string;
     }) => {
-      const shouldOpenAppointmentForm = payload?.ui_action === 'open_appointment_form';
-      const shouldOpenHandoff = payload?.ui_action === 'open_human_handoff';
-      const shouldOpenLeadForm = payload?.ui_action === 'open_lead_form';
+      const shouldOpenAppointmentForm =
+        payload?.ui_action === "open_appointment_form";
+      const shouldOpenHandoff = payload?.ui_action === "open_human_handoff";
+      const shouldOpenLeadForm = payload?.ui_action === "open_lead_form";
 
       if (shouldOpenAppointmentForm) {
         replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
@@ -871,7 +1198,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
       try {
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), STREAM_FALLBACK_TIMEOUT_MS);
+        const timeoutId = window.setTimeout(
+          () => controller.abort(),
+          STREAM_FALLBACK_TIMEOUT_MS,
+        );
 
         const streamResponse = await chatAPI.current.sendMessageStream(
           text,
@@ -879,30 +1209,30 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           widgetId,
           shopDomain,
           customerId ? String(customerId) : undefined,
-          controller.signal
+          controller.signal,
         );
 
         const reader = streamResponse.body?.getReader();
         if (!reader) {
-          throw new Error('Streaming not supported');
+          throw new Error("Streaming not supported");
         }
 
         const decoder = new TextDecoder();
-        let buffer = '';
+        let buffer = "";
 
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() || '';
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
 
           for (const part of parts) {
-            const lines = part.split('\n');
+            const lines = part.split("\n");
             for (const line of lines) {
-              if (!line.startsWith('data:')) continue;
-              const data = line.replace(/^data:\s?/, '');
+              if (!line.startsWith("data:")) continue;
+              const data = line.replace(/^data:\s?/, "");
               if (!data) continue;
 
               let payload: any;
@@ -912,12 +1242,15 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 continue;
               }
 
-              if (payload?.type === 'ready') {
+              if (payload?.type === "ready") {
                 window.clearTimeout(timeoutId);
                 continue;
               }
 
-              if (payload?.type === 'token' && typeof payload?.text === 'string') {
+              if (
+                payload?.type === "token" &&
+                typeof payload?.text === "string"
+              ) {
                 if (!receivedToken) {
                   receivedToken = true;
                   window.clearTimeout(timeoutId);
@@ -925,7 +1258,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 appendAssistantToken(payload.text);
               }
 
-              if (payload?.type === 'done') {
+              if (payload?.type === "done") {
                 streamDonePayload = payload;
               }
             }
@@ -940,41 +1273,73 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             activeSessionId,
             widgetId,
             shopDomain,
-            customerId ? String(customerId) : undefined
+            customerId ? String(customerId) : undefined,
           );
 
-          const hasHandoffMeta = Boolean(response?.handoff_chat_id || response?.handoff_status);
-          const rawAssistantText = typeof response?.response === 'string' ? response.response.trim() : '';
+          const hasHandoffMeta = Boolean(
+            response?.handoff_chat_id || response?.handoff_status,
+          );
+          const rawAssistantText =
+            typeof response?.response === "string"
+              ? response.response.trim()
+              : "";
           if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
             removeAssistantPlaceholder();
           } else {
-            replaceAssistantMessage(rawAssistantText || 'I could not generate a response right now.');
+            replaceAssistantMessage(
+              rawAssistantText || "I could not generate a response right now.",
+            );
           }
           applyUiAction(response);
         } else if (streamError instanceof Error && streamError.message.trim()) {
-          console.warn('Streaming ended after partial response:', streamError.message);
+          console.warn(
+            "Streaming ended after partial response:",
+            streamError.message,
+          );
         }
       }
 
       applyUiAction(streamDonePayload);
 
-      const streamIndicatesHandoff = Boolean(streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status);
-      if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && streamIndicatesHandoff) {
+      const streamIndicatesHandoff = Boolean(
+        streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status,
+      );
+      if (
+        !receivedToken &&
+        streamDonePayload &&
+        !streamDonePayload?.ui_action &&
+        streamIndicatesHandoff
+      ) {
         removeAssistantPlaceholder();
-      } else if (!receivedToken && streamDonePayload && !streamDonePayload?.ui_action && !streamIndicatesHandoff) {
-        replaceAssistantMessage('I could not generate a response right now.');
+      } else if (
+        !receivedToken &&
+        streamDonePayload &&
+        !streamDonePayload?.ui_action &&
+        !streamIndicatesHandoff
+      ) {
+        replaceAssistantMessage("I could not generate a response right now.");
       }
 
       setLastActivityAtMs(Date.now());
 
       if (!opts.skipLeadCaptureCheck) {
         try {
-          const shouldCapture = await chatAPI.current.shouldCaptureLead(activeSessionId, widgetId);
-          if (shouldCapture && !leadSubmitted && !pendingHandoffAfterLead && !handoffActive) {
-            const latestAssistant = [...messages]
-              .reverse()
-              .find((item) => item.role === 'assistant')?.content || '';
-            setPendingHandoffAfterLead(assistantMessageOffersHandoff(latestAssistant));
+          const shouldCapture = await chatAPI.current.shouldCaptureLead(
+            activeSessionId,
+            widgetId,
+          );
+          if (
+            shouldCapture &&
+            !leadSubmitted &&
+            !pendingHandoffAfterLead &&
+            !handoffActive
+          ) {
+            const latestAssistant =
+              [...messages].reverse().find((item) => item.role === "assistant")
+                ?.content || "";
+            setPendingHandoffAfterLead(
+              assistantMessageOffersHandoff(latestAssistant),
+            );
             setShowLeadForm(true);
           }
         } catch {
@@ -982,9 +1347,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
       }
     } catch (error) {
-      const detail = error instanceof Error && error.message.trim()
-        ? error.message.trim()
-        : 'Sorry, something went wrong. Please try again.';
+      const detail =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : "Sorry, something went wrong. Please try again.";
       replaceAssistantMessage(detail);
       setLastActivityAtMs(Date.now());
     } finally {
@@ -1004,24 +1370,33 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     if (!hasName) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Please share your name so we can proceed with human handoff.' },
+        {
+          role: "assistant",
+          content:
+            "Please share your name so we can proceed with human handoff.",
+        },
       ]);
       return;
     }
     if (!hasContact) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Please add an email or phone number so we can follow up.' },
+        {
+          role: "assistant",
+          content: "Please add an email or phone number so we can follow up.",
+        },
       ]);
       return;
     }
 
     setLeadSubmitting(true);
     try {
-      const latestAssistant = [...messages]
-        .reverse()
-        .find((item) => item.role === 'assistant')?.content || '';
-      const shouldAutoStartHandoff = pendingHandoffAfterLead || assistantMessageOffersHandoff(latestAssistant);
+      const latestAssistant =
+        [...messages].reverse().find((item) => item.role === "assistant")
+          ?.content || "";
+      const shouldAutoStartHandoff =
+        pendingHandoffAfterLead ||
+        assistantMessageOffersHandoff(latestAssistant);
 
       await chatAPI.current.submitLead({
         session_id: sessionId,
@@ -1034,20 +1409,26 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
       setLeadSubmitted(true);
       setShowLeadForm(false);
-      setLeadForm({ name: '', email: '', phone: '', company: '' });
+      setLeadForm({ name: "", email: "", phone: "", company: "" });
 
       if (shouldAutoStartHandoff) {
         setPendingHandoffAfterLead(false);
         setHandoffActive(true);
-        setHandoffStatus('waiting_for_agent');
+        setHandoffStatus("waiting_for_agent");
         setHandoffWaitCycle(1);
-        setHandoffWaitingExpiresAt(new Date(Date.now() + (handoffWaitTimeoutSeconds * 1000)).toISOString());
+        setHandoffWaitingExpiresAt(
+          new Date(Date.now() + handoffWaitTimeoutSeconds * 1000).toISOString(),
+        );
         setHandoffNowMs(Date.now());
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: 'Thanks, your details are captured. I am now transferring your handoff request to a live agent.' },
+          {
+            role: "assistant",
+            content:
+              "Thanks, your details are captured. I am now transferring your handoff request to a live agent.",
+          },
         ]);
-        await sendMessage('yes connect me', {
+        await sendMessage("yes connect me", {
           silentUserMessage: true,
           skipLeadCaptureCheck: true,
           forceSessionId: sessionId,
@@ -1055,13 +1436,19 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: 'Thanks. Your details have been received.' },
+          {
+            role: "assistant",
+            content: "Thanks. Your details have been received.",
+          },
         ]);
       }
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Sorry, failed to submit your details. Please try again.' },
+        {
+          role: "assistant",
+          content: "Sorry, failed to submit your details. Please try again.",
+        },
       ]);
     } finally {
       setLeadSubmitting(false);
@@ -1072,17 +1459,27 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     if (!emailValue.trim() || emailSending) return;
     setEmailSending(true);
     try {
-      await chatAPI.current.emailConversation(sessionId, emailValue.trim(), widgetId);
+      await chatAPI.current.emailConversation(
+        sessionId,
+        emailValue.trim(),
+        widgetId,
+      );
       setShowEmailForm(false);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `Transcript sent to ${emailValue.trim()}.` },
+        {
+          role: "assistant",
+          content: `Transcript sent to ${emailValue.trim()}.`,
+        },
       ]);
-      setEmailValue('');
+      setEmailValue("");
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Sorry, failed to send the transcript. Please try again.' },
+        {
+          role: "assistant",
+          content: "Sorry, failed to send the transcript. Please try again.",
+        },
       ]);
     } finally {
       setEmailSending(false);
@@ -1092,48 +1489,65 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const openAppointmentForm = () => {
     const defaults = getDefaultAppointmentDateTime();
     setAppointmentForm((prev) => ({
-      name: prev.name || leadForm.name || '',
-      email: prev.email || leadForm.email || '',
+      name: prev.name || leadForm.name || "",
+      email: prev.email || leadForm.email || "",
+      phone: prev.phone || leadForm.phone || "",
       appointment_date: prev.appointment_date || defaults.date,
       appointment_time: prev.appointment_time || defaults.time,
     }));
+    setAppointmentError("");
     setShowAppointmentForm(true);
   };
 
   const handleAppointmentSubmit = async () => {
     if (appointmentSubmitting) return;
+    if (!appointmentForm.name.trim()) {
+      setAppointmentError("Please enter your name.");
+      return;
+    }
+    if (!appointmentForm.email.trim()) {
+      setAppointmentError("Please enter your email.");
+      return;
+    }
+    if (!appointmentForm.phone.trim()) {
+      setAppointmentError("Please enter your mobile number.");
+      return;
+    }
     if (
-      !appointmentForm.name.trim() ||
-      !appointmentForm.email.trim() ||
       !appointmentForm.appointment_date ||
       !appointmentForm.appointment_time
     ) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Please complete name, email, date, and time to create the meeting.' },
-      ]);
+      setAppointmentError("Please select date/time.");
+      return;
+    }
+    if (appointmentForm.appointment_date < getIstTodayDate()) {
+      setAppointmentError("Please select today or a future date.");
       return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(appointmentForm.email.trim())) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Please enter a valid email address so we can confirm the meeting.' },
-      ]);
+      setAppointmentError("Please enter a valid email.");
       return;
     }
 
-    const selectedDate = new Date(`${appointmentForm.appointment_date}T${appointmentForm.appointment_time}`);
+    const phoneDigits = appointmentForm.phone.replace(/\D/g, "");
+    if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+      setAppointmentError("Please enter a valid mobile number.");
+      return;
+    }
+
+    const selectedDate = buildIstIsoDateTime(
+      appointmentForm.appointment_date,
+      appointmentForm.appointment_time,
+    );
     if (Number.isNaN(selectedDate.getTime())) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'The selected appointment time is invalid. Please try again.' },
-      ]);
+      setAppointmentError("Invalid date/time.");
       return;
     }
 
     setAppointmentSubmitting(true);
+    setAppointmentError("");
     try {
       const result = await chatAPI.current.bookAppointment({
         session_id: sessionId,
@@ -1141,34 +1555,40 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         appointment_at: selectedDate.toISOString(),
         name: appointmentForm.name.trim(),
         email: appointmentForm.email.trim(),
-        timezone: 'Asia/Kolkata',
+        phone: appointmentForm.phone.trim(),
+        timezone: IST_TIMEZONE,
       });
 
       setShowAppointmentForm(false);
-      setAppointmentForm((prev) => ({ ...prev, appointment_date: '', appointment_time: '' }));
+      setAppointmentForm((prev) => ({
+        ...prev,
+        appointment_date: "",
+        appointment_time: "",
+      }));
+
+      const istTimeLabel = new Intl.DateTimeFormat("en-IN", {
+        timeZone: IST_TIMEZONE,
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(selectedDate);
 
       setMessages((prev) => [
         ...prev,
         {
-          role: 'assistant',
-          content: result?.message || `Appointment booked for ${selectedDate.toLocaleString()}.`,
+          role: "assistant",
+          content:
+            result?.message || `Appointment booked for ${istTimeLabel} (IST).`,
         },
       ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Sorry, we could not book your appointment right now. Please try again.',
-        },
-      ]);
+    } catch (err: any) {
+      setAppointmentError(err?.message || "Failed to book appointment");
     } finally {
       setAppointmentSubmitting(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -1177,49 +1597,54 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const handleRequestVideoCall = async () => {
     if (!widgetId || callBusy || loading) return;
     setCallBusy(true);
-    setCallError('');
+    setCallError("");
     try {
       const data = await chatAPI.current.requestVideoCall(sessionId, widgetId);
       if (!data) {
-        setCallError('Could not request video call right now.');
+        setCallError("Could not request video call right now.");
         return;
       }
 
       setHandoffChatId(data.chat_id || null);
       setHandoffStatus(data.status || null);
-      setHandoffActive(data.status === 'waiting_for_agent' || data.status === 'assigned');
-      setCallStatus(data.call_status || 'requested');
-      setCallMode((data.call_mode as 'video' | 'audio') || 'video');
+      setHandoffActive(
+        data.status === "waiting_for_agent" || data.status === "assigned",
+      );
+      setCallStatus(data.call_status || "requested");
+      setCallMode((data.call_mode as "video" | "audio") || "video");
       setCallRoomId(data.call_room_id || null);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Video call request sent. A live user will join shortly.' },
+        {
+          role: "assistant",
+          content: "Video call request sent. A live user will join shortly.",
+        },
       ]);
       if (data.chat_id) {
         await loadHandoffMessages(data.chat_id, true);
       }
     } catch {
-      setCallError('Could not request video call right now.');
+      setCallError("Could not request video call right now.");
     } finally {
       setCallBusy(false);
     }
   };
 
   const handleEndCall = async () => {
-    if (!widgetId || callBusy || callStatus === 'none') return;
+    if (!widgetId || callBusy || callStatus === "none") return;
     setCallBusy(true);
-    setCallError('');
+    setCallError("");
     try {
       const data = await chatAPI.current.endHandoffCall(sessionId, widgetId);
       if (!data) {
-        setCallError('Could not end call right now.');
+        setCallError("Could not end call right now.");
         return;
       }
-      setCallStatus(data.call_status || 'ended');
-      setCallMode((data.call_mode as 'video' | 'audio') || callMode);
+      setCallStatus(data.call_status || "ended");
+      setCallMode((data.call_mode as "video" | "audio") || callMode);
       setCallRoomId(data.call_room_id || callRoomId);
     } catch {
-      setCallError('Could not end call right now.');
+      setCallError("Could not end call right now.");
     } finally {
       setCallBusy(false);
     }
@@ -1227,125 +1652,193 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const handleJoinCall = () => {
     if (!callRoomId) return;
-    window.open(getMeetingUrl(callRoomId, callMode), '_blank', 'noopener,noreferrer');
+    window.open(
+      getMeetingUrl(callRoomId, callMode),
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const basePositionMap: Record<string, React.CSSProperties> = {
-    'bottom-left': { left: 0, bottom: 0 },
-    'bottom-right': { right: 0, bottom: 0 },
-    'top-left': { left: 0, top: 0 },
-    'top-right': { right: 0, top: 0 },
+    "bottom-left": { left: 0, bottom: 0 },
+    "bottom-right": { right: 0, bottom: 0 },
+    "top-left": { left: 0, top: 0 },
+    "top-right": { right: 0, top: 0 },
   };
   const launcherPositionSx = {
     ...basePositionMap[position],
-    bottom: position.includes('bottom') ? 16 : undefined,
-    top: position.includes('top') ? 16 : undefined,
-    left: position.includes('left') ? 16 : undefined,
-    right: position.includes('right') ? 16 : undefined,
+    bottom: position.includes("bottom") ? 24 : undefined,
+    top: position.includes("top") ? 24 : undefined,
+    left: position.includes("left") ? 24 : undefined,
+    right: position.includes("right") ? 24 : undefined,
   };
 
   const panelPositionMap: Record<string, React.CSSProperties> = {
-    'bottom-left': { left: 16, bottom: 20 },
-    'bottom-right': { right: 16, bottom: 20 },
-    'top-left': { left: 16, top: 20 },
-    'top-right': { right: 16, top: 20 },
+    "bottom-left": { left: 16, bottom: 16 },
+    "bottom-right": { right: 16, bottom: 16 },
+    "top-left": { left: 16, top: 16 },
+    "top-right": { right: 16, top: 16 },
   };
 
   const panelPositionSx =
-    panelPositionMap[position] || panelPositionMap['bottom-right'];
+    panelPositionMap[position] || panelPositionMap["bottom-right"];
+
+  const isLeftPosition = position.includes("left");
 
   return (
     <div
-      className={`chatbot-widget-container ${position}${darkMode ? ' dark' : ''}`}
-      style={{ '--primary-color': primaryColor, '--secondary-color': secondaryColor } as React.CSSProperties}
+      className={`chatbot-widget-container ${position}${darkMode ? " dark" : ""}`}
+      style={
+        {
+          "--primary-color": primaryColor,
+          "--secondary-color": secondaryColor,
+        } as React.CSSProperties
+      }
     >
       {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="chat-launcher"
+        <div
+          className="chat-launcher-wrap"
           style={{
-            position: 'fixed',
+            position: "fixed",
             ...launcherPositionSx,
-            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            flexDirection: isLeftPosition ? "row-reverse" : "row",
           }}
         >
-          <div className="icon-wrapper">
-            💬
-          </div>
-        </button>
+          {showLauncherTeaser && (
+            <div
+              className="chat-launcher-teaser"
+              onClick={() => setIsOpen(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setIsOpen(true);
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="chat-launcher-teaser-close"
+                aria-label="Dismiss greeting"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLauncherTeaser(false);
+                }}
+                style={{
+                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                  boxShadow: `0 4px 10px ${primaryColor}59`,
+                }}
+              >
+                <CloseIcon size={14} />
+              </button>
+              <div className="chat-launcher-teaser-text">
+                Hey! I am {"your AI assistant"}.
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setIsOpen(true)}
+            className="chat-launcher"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            }}
+          >
+            <div className="icon-wrapper">
+              <ChatBubbleIcon />
+              <span className="badge" style={{ color: primaryColor }}>
+                Z
+              </span>
+            </div>
+          </button>
+        </div>
       )}
 
       {isOpen && (
         <div
-          className={`chatbot-widget-window ${darkMode ? 'dark' : ''}`}
+          ref={chatPanelRef}
+          className={`chatbot-widget-window ${darkMode ? "dark" : ""}`}
           style={{
-            position: 'fixed',
+            position: "fixed",
             ...panelPositionSx,
-            width: window.innerWidth < 600 ? 'calc(100vw - 32px)' : 360,
-            height: window.innerWidth < 600 ? '66vh' : 550,
+            width: window.innerWidth < 600 ? "calc(100vw - 32px)" : 400,
+            height: window.innerWidth < 600 ? "66vh" : 600,
             borderRadius: 16,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
             zIndex: 1300,
-            backgroundColor: darkMode ? '#111827' : '#ffffff',
+            backgroundColor: darkMode ? "#111827" : "#ffffff",
             boxShadow: darkMode
-              ? '0 24px 54px rgba(2,6,23,0.5)'
-              : '0 28px 62px rgba(15,23,42,0.34)',
-            backdropFilter: 'blur(8px)',
-            fontFamily: 'inherit',
+              ? "0 24px 54px rgba(2,6,23,0.5)"
+              : "0 28px 62px rgba(15,23,42,0.34)",
+            backdropFilter: "blur(8px)",
+            fontFamily: "inherit",
             border: darkMode
-              ? '1px solid rgba(148,163,184,0.22)'
-              : '1px solid #cbd5e1',
+              ? "1px solid rgba(148,163,184,0.22)"
+              : "1px solid #cbd5e1",
           }}
         >
           <div
             className="chatbot-widget-header"
             style={{
               background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
-              color: chatHeaderFontColor,
+              color: headerFontColor,
             }}
           >
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>
-              {name}
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 14.7,
+                fontWeight: 800,
+                letterSpacing: "0.01em",
+                color: "inherit",
+              }}
+            >
+              {name} Assistant
             </h3>
             <div className="chatbot-widget-header-actions">
-              {/* <button
-                className="chatbot-widget-header-btn chatbot-widget-call-btn"
-                onClick={handleRequestVideoCall}
-                title="Request video call"
-                disabled={callBusy || loading || callStatus === 'requested' || callStatus === 'active'}
-              >
-                <span className="chatbot-header-emoji" aria-hidden="true">📹</span>
-              </button>
               <button
-                className={`chatbot-widget-header-btn chatbot-widget-call-btn ${callRoomId && callStatus === 'active' ? 'is-join-ready' : ''}`}
-                onClick={handleJoinCall}
-                title="Join live call"
-                disabled={!callRoomId || callStatus !== 'active'}
+                className="chatbot-widget-header-btn"
+                onClick={resetChat}
+                title="New chat"
+                aria-label="New chat"
               >
-                <span className="chatbot-header-emoji" aria-hidden="true">🔗</span>
+                <RefreshIcon />
               </button>
-              <button
-                className="chatbot-widget-header-btn chatbot-widget-call-btn"
-                onClick={handleEndCall}
-                title="End live call"
-                disabled={callBusy || callStatus !== 'active'}
-              >
-                <span className="chatbot-header-emoji" aria-hidden="true">📵</span>
+              {/* <button className="chatbot-widget-header-btn" onClick={() => setShowEmailForm((v) => !v)} title="Email this conversation" aria-label="Email conversation">
+                <EmailIcon />
               </button> */}
-              <button className="chatbot-widget-header-btn" onClick={resetChat} title="New chat">⟳</button>
-              <button className="chatbot-widget-header-btn" onClick={() => setShowEmailForm((v) => !v)} title="Email this conversation">✉</button>
-              <button className="chatbot-widget-header-btn" onClick={openAppointmentForm} title="Book appointment">📅</button>
+              <button
+                className="chatbot-widget-header-btn"
+                onClick={openAppointmentForm}
+                title="Book appointment"
+                aria-label="Book appointment"
+              >
+                <CalendarIcon />
+              </button>
               <button
                 className="chatbot-widget-header-btn"
                 onClick={() => setDarkMode((d) => !d)}
-                title={darkMode ? 'Light mode' : 'Dark mode'}
-                style={{ fontSize: 16 }}
+                title={darkMode ? "Light mode" : "Dark mode"}
+                aria-label={
+                  darkMode ? "Switch to light mode" : "Switch to dark mode"
+                }
               >
-                {darkMode ? '🌙' : '☀'}
+                {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
               </button>
-              <button className="chatbot-widget-close" onClick={() => setIsOpen(false)}>×</button>
+              <button
+                className="chatbot-widget-header-btn"
+                onClick={() => setIsOpen(false)}
+                title="Minimize chat"
+                aria-label="Minimize chat"
+              >
+                <CloseIcon />
+              </button>
             </div>
           </div>
 
@@ -1353,31 +1846,51 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             {handoffActive && (
               <div className="chatbot-handoff-banner chatbot-fade-in">
                 <div className="chatbot-handoff-title-row">
-                  <span className="chatbot-handoff-title">Human handoff in progress</span>
-                  <span className={`chatbot-handoff-chip ${handoffStatus === 'assigned' ? 'assigned' : 'waiting'}`}>
-                    {handoffStatus === 'assigned' ? 'Agent assigned' : 'Waiting for agent'}
+                  <span className="chatbot-handoff-title">
+                    Human handoff in progress
+                  </span>
+                  <span
+                    className={`chatbot-handoff-chip ${handoffStatus === "assigned" ? "assigned" : "waiting"}`}
+                  >
+                    {handoffStatus === "assigned"
+                      ? "Agent assigned"
+                      : "Waiting for agent"}
                   </span>
                 </div>
                 <div className="chatbot-handoff-subtitle">
-                  Keep chatting here. Your messages are routed to live support while handoff is active.
+                  Keep chatting here. Your messages are routed to live support
+                  while handoff is active.
                 </div>
                 {handoffCountdownText ? (
-                  <div className="chatbot-handoff-countdown">{handoffCountdownText}</div>
+                  <div className="chatbot-handoff-countdown">
+                    {handoffCountdownText}
+                  </div>
                 ) : null}
-                {handoffStatus === 'waiting_for_agent' && typeof handoffProgressPercent === 'number' ? (
+                {handoffStatus === "waiting_for_agent" &&
+                typeof handoffProgressPercent === "number" ? (
                   <div className="chatbot-handoff-timer-graphic">
                     <div className="chatbot-handoff-timer-row">
-                      <span className="chatbot-handoff-timer-seconds">{Math.max(0, handoffRemainingSeconds ?? handoffWaitTimeoutSeconds)} sec</span>
+                      <span className="chatbot-handoff-timer-seconds">
+                        {Math.max(
+                          0,
+                          handoffRemainingSeconds ?? handoffWaitTimeoutSeconds,
+                        )}{" "}
+                        sec
+                      </span>
                       <span className="chatbot-handoff-timer-scale">{`${handoffWaitTimeoutSeconds} sec -> 0 sec`}</span>
                     </div>
                     <div className="chatbot-handoff-progress-track">
-                      <div className="chatbot-handoff-progress-fill" style={{ width: `${handoffProgressPercent}%` }} />
+                      <div
+                        className="chatbot-handoff-progress-fill"
+                        style={{ width: `${handoffProgressPercent}%` }}
+                      />
                     </div>
                   </div>
                 ) : null}
                 <div className="chatbot-handoff-actions">
                   <span className="chatbot-handoff-call-chip">
-                    Call: {callStatus}{callStatus === 'active' ? ` (${callMode})` : ''}
+                    Call: {callStatus}
+                    {callStatus === "active" ? ` (${callMode})` : ""}
                   </span>
                   <button
                     className="chatbot-inline-button secondary"
@@ -1390,99 +1903,195 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   >
                     Refresh status
                   </button>
-                  {handoffError ? <span className="chatbot-handoff-error">{handoffError}</span> : null}
-                  {callError ? <span className="chatbot-handoff-error">{callError}</span> : null}
+                  {handoffError ? (
+                    <span className="chatbot-handoff-error">
+                      {handoffError}
+                    </span>
+                  ) : null}
+                  {callError ? (
+                    <span className="chatbot-handoff-error">{callError}</span>
+                  ) : null}
                 </div>
               </div>
             )}
 
-            {showSuggestions && (suggestionsLoading || suggestedQuestions.length > 0) && (
-              <div className="chatbot-suggestions">
-                <div className="chatbot-suggestions-title">Try asking</div>
-                <div className="chatbot-suggestions-list">
-                  {suggestionsLoading && <div className="chatbot-suggestions-loading">Loading suggestions...</div>}
-                  {!suggestionsLoading && suggestedQuestions.map((question, index) => (
-                    <button
-                      key={`${question}-${index}`}
-                      className="chatbot-suggestion-chip"
-                      onClick={() => sendMessage(question)}
-                    >
-                      {question}
-                    </button>
-                  ))}
+            {showSuggestions &&
+              (suggestionsLoading || suggestedQuestions.length > 0) && (
+                <div className="chatbot-suggestions">
+                  <div className="chatbot-suggestions-title">Try asking</div>
+                  <div className="chatbot-suggestions-list">
+                    {suggestionsLoading && (
+                      <div className="chatbot-suggestions-loading">
+                        Loading suggestions...
+                      </div>
+                    )}
+                    {!suggestionsLoading &&
+                      suggestedQuestions.map((question, index) => (
+                        <button
+                          key={`${question}-${index}`}
+                          className="chatbot-suggestion-chip"
+                          onClick={() => sendMessage(question)}
+                        >
+                          {question}
+                        </button>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {messages.map((message, index) => (
-              <div key={index} className={`chatbot-message ${message.role} chatbot-fade-in`}>
-                {message.role === 'assistant' && <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>}
-                <div className="chatbot-message-bubble">{renderMessageContent(message.content, `msg-${index}`)}</div>
-                {message.role === 'user' && <div className="chatbot-message-avatar user">{userIconGlyph}</div>}
-              </div>
-            ))}
+            {messages.map((message, index) => {
+              const isPendingAssistantMessage =
+                message.role === "assistant" &&
+                loading &&
+                index === messages.length - 1 &&
+                !message.content.trim();
+
+              return (
+                <div
+                  key={index}
+                  className={`chatbot-message ${message.role} chatbot-fade-in`}
+                >
+                  {message.role === "assistant" && (
+                    <div className="chatbot-message-avatar assistant">
+                      {botIconGlyph}
+                    </div>
+                  )}
+                  <div
+                    className={`chatbot-message-bubble${isPendingAssistantMessage ? " chatbot-typing-bubble" : ""}`}
+                  >
+                    {isPendingAssistantMessage ? (
+                      <TypingDots />
+                    ) : (
+                      renderMessageContent(message.content, `msg-${index}`)
+                    )}
+                  </div>
+                  {message.role === "user" && (
+                    <div className="chatbot-message-avatar user">
+                      {userIconGlyph}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {showAppointmentForm && (
               <div className="chatbot-message assistant chatbot-fade-in">
-                <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
+                <div className="chatbot-message-avatar assistant">
+                  {botIconGlyph}
+                </div>
                 <div className="chatbot-message-bubble chatbot-appointment-bubble">
-                  <div className="chatbot-appointment-title">Set up your meeting</div>
-                  <div className="chatbot-appointment-subtitle">Please fill this short form and I will set the meeting for you.</div>
-
-                  <input
-                    type="text"
-                    className="chatbot-inline-input chatbot-appointment-input"
-                    placeholder="Full name"
-                    value={appointmentForm.name}
-                    onChange={(e) => setAppointmentForm((prev) => ({ ...prev, name: e.target.value }))}
-                  />
-
-                  <input
-                    type="email"
-                    className="chatbot-inline-input chatbot-appointment-input"
-                    placeholder="Email address"
-                    value={appointmentForm.email}
-                    onChange={(e) => setAppointmentForm((prev) => ({ ...prev, email: e.target.value }))}
-                  />
-
-                  <div className="chatbot-appointment-grid">
-                    <label className="chatbot-appointment-field">
-                      <span className="chatbot-appointment-label">📅 Date</span>
-                      <input
-                        type="date"
-                        className="chatbot-inline-input chatbot-appointment-input"
-                        value={appointmentForm.appointment_date}
-                        onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_date: e.target.value }))}
-                      />
-                    </label>
-
-                    <label className="chatbot-appointment-field">
-                      <span className="chatbot-appointment-label">⏰ Time</span>
-                      <input
-                        type="time"
-                        className="chatbot-inline-input chatbot-appointment-input"
-                        value={appointmentForm.appointment_time}
-                        onChange={(e) => setAppointmentForm((prev) => ({ ...prev, appointment_time: e.target.value }))}
-                      />
-                    </label>
+                  <div className="chatbot-appointment-title">
+                    Set up your meeting
+                  </div>
+                  <div className="chatbot-appointment-subtitle">
+                    Please fill this short form and I will set the meeting for
+                    you.
                   </div>
 
-                  <div className="chatbot-inline-actions chatbot-appointment-actions">
-                    <button
-                      className="chatbot-inline-button"
-                      onClick={handleAppointmentSubmit}
-                      disabled={appointmentSubmitting}
-                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-                    >
-                      {appointmentSubmitting ? 'Creating...' : 'Create meeting'}
-                    </button>
-                    <button
-                      className="chatbot-inline-button secondary"
-                      onClick={() => setShowAppointmentForm(false)}
-                      disabled={appointmentSubmitting}
-                    >
-                      Not now
-                    </button>
+                  {appointmentError && (
+                    <div className="chatbot-appointment-error" role="alert">
+                      {appointmentError}
+                    </div>
+                  )}
+
+                  <div className="chatbot-appointment-fields">
+                    <input
+                      type="text"
+                      className="chatbot-appointment-input"
+                      placeholder="Full name"
+                      value={appointmentForm.name}
+                      onChange={(e) =>
+                        setAppointmentForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                    />
+
+                    <input
+                      type="email"
+                      className="chatbot-appointment-input"
+                      placeholder="Email address"
+                      value={appointmentForm.email}
+                      onChange={(e) =>
+                        setAppointmentForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                    />
+
+                    <input
+                      type="tel"
+                      className="chatbot-appointment-input"
+                      placeholder="Mobile number"
+                      value={appointmentForm.phone}
+                      onChange={(e) =>
+                        setAppointmentForm((prev) => ({
+                          ...prev,
+                          phone: e.target.value,
+                        }))
+                      }
+                    />
+
+                    <div className="chatbot-appointment-grid">
+                      <label className="chatbot-appointment-field">
+                        <span className="chatbot-appointment-label">
+                          Date (IST)
+                        </span>
+                        <input
+                          type="date"
+                          className="chatbot-appointment-input"
+                          min={getIstTodayDate()}
+                          value={appointmentForm.appointment_date}
+                          onChange={(e) =>
+                            setAppointmentForm((prev) => ({
+                              ...prev,
+                              appointment_date: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <label className="chatbot-appointment-field">
+                        <span className="chatbot-appointment-label">
+                          Time (IST)
+                        </span>
+                        <input
+                          type="time"
+                          className="chatbot-appointment-input"
+                          value={appointmentForm.appointment_time}
+                          onChange={(e) =>
+                            setAppointmentForm((prev) => ({
+                              ...prev,
+                              appointment_time: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <div className="chatbot-appointment-actions">
+                      <button
+                        className="chatbot-appointment-button primary"
+                        onClick={handleAppointmentSubmit}
+                        disabled={appointmentSubmitting}
+                        style={{
+                          background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                        }}
+                      >
+                        {appointmentSubmitting
+                          ? "Creating..."
+                          : "Create meeting"}
+                      </button>
+                      <button
+                        className="chatbot-appointment-button outlined"
+                        onClick={() => setShowAppointmentForm(false)}
+                        disabled={appointmentSubmitting}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1490,46 +2099,72 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
             {showLeadForm && (
               <div className="chatbot-message assistant chatbot-fade-in">
-                <div className="chatbot-message-avatar assistant">{botIconGlyph}</div>
+                <div className="chatbot-message-avatar assistant">
+                  {botIconGlyph}
+                </div>
                 <div className="chatbot-message-bubble chatbot-lead-bubble">
-                  <div className="chatbot-inline-title chatbot-lead-title">Quick contact form</div>
-                  <div className="chatbot-lead-subtitle">Small details now help us connect you faster with live support.</div>
+                  <div className="chatbot-inline-title chatbot-lead-title">
+                    Quick contact form
+                  </div>
+                  <div className="chatbot-lead-subtitle">
+                    Small details now help us connect you faster with live
+                    support.
+                  </div>
                   <input
                     type="text"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Name"
                     value={leadForm.name}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) =>
+                      setLeadForm((prev) => ({ ...prev, name: e.target.value }))
+                    }
                   />
                   <input
                     type="email"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Email"
                     value={leadForm.email}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))}
+                    onChange={(e) =>
+                      setLeadForm((prev) => ({
+                        ...prev,
+                        email: e.target.value,
+                      }))
+                    }
                   />
                   <input
                     type="tel"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Phone"
                     value={leadForm.phone}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                    onChange={(e) =>
+                      setLeadForm((prev) => ({
+                        ...prev,
+                        phone: e.target.value,
+                      }))
+                    }
                   />
                   <input
                     type="text"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Company"
                     value={leadForm.company}
-                    onChange={(e) => setLeadForm((prev) => ({ ...prev, company: e.target.value }))}
+                    onChange={(e) =>
+                      setLeadForm((prev) => ({
+                        ...prev,
+                        company: e.target.value,
+                      }))
+                    }
                   />
                   <div className="chatbot-inline-actions">
                     <button
                       className="chatbot-inline-button"
                       onClick={handleLeadSubmit}
                       disabled={leadSubmitting}
-                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                      style={{
+                        background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
+                      }}
                     >
-                      {leadSubmitting ? 'Submitting...' : 'Submit'}
+                      {leadSubmitting ? "Submitting..." : "Submit"}
                     </button>
                     <button
                       className="chatbot-inline-button secondary"
@@ -1549,41 +2184,50 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           {!showLeadForm && (
             <>
               <div className="chatbot-widget-input-container">
-                <input
-                  type="text"
-                  className="chatbot-widget-input"
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    setLastActivityAtMs(Date.now());
-                  }}
-                  onKeyDown={handleKeyPress}
-                  placeholder={
-                    sessionClosedByInactivity
-                      ? 'Session closed due to inactivity. Type a message to start a new session...'
-                      : 'Type your message...'
-                  }
-                  disabled={loading}
-                  ref={inputRef}
-                />
+                <div className="chatbot-widget-input-shell">
+                  <input
+                    type="text"
+                    className="chatbot-widget-input"
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      setLastActivityAtMs(Date.now());
+                    }}
+                    onKeyDown={handleKeyPress}
+                    placeholder={
+                      sessionClosedByInactivity
+                        ? "Session closed due to inactivity. Type a message to start a new session..."
+                        : "Type your message..."
+                    }
+                    disabled={loading}
+                    ref={inputRef}
+                  />
+                </div>
                 <button
                   className="chatbot-widget-send"
                   onClick={handleSend}
                   disabled={loading || !input.trim()}
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                  aria-label="Send message"
+                  style={{
+                    background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
+                  }}
                 >
-                  Send
+                  <SendIcon />
                 </button>
               </div>
-              {typeof inactivityRemainingSeconds === 'number' ? (
-                <div className={`chatbot-inactivity-countdown${inactivityRemainingSeconds <= 15 ? ' warning' : ''}`}>
-                  Session auto-closes in {formatCountdownSeconds(inactivityRemainingSeconds)} if no activity.
+              {typeof inactivityRemainingSeconds === "number" ? (
+                <div
+                  className={`chatbot-inactivity-countdown${inactivityRemainingSeconds <= 15 ? " warning" : ""}`}
+                >
+                  Session auto-closes in{" "}
+                  {formatCountdownSeconds(inactivityRemainingSeconds)} if no
+                  activity.
                 </div>
               ) : null}
             </>
           )}
 
-          {showEmailForm && (
+          {/* {showEmailForm && (
             <div className="chatbot-inline-card chatbot-fade-in">
               <div className="chatbot-inline-title">Email Conversation</div>
               <input
@@ -1611,9 +2255,19 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 </button>
               </div>
             </div>
-          )}
+          )} */}
 
-          <div className="chatbot-widget-footer">Powered by Zentrixel AI</div>
+          <div className="chatbot-widget-footer">
+            Powered by{" "}
+            <a
+              href="https://zentrixel.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="chatbot-widget-footer-link"
+            >
+              zentrixel.com
+            </a>
+          </div>
         </div>
       )}
     </div>
