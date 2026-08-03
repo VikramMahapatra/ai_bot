@@ -1,6 +1,6 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import ChatWidget from './ChatWidget';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import ChatWidget from "./ChatWidget";
 
 // Define the global AIChatbot interface
 declare global {
@@ -17,6 +17,7 @@ declare global {
       botIcon?: string;
       userIcon?: string;
     };
+    __AIChatbotWidgetInitialized?: boolean;
   }
 }
 
@@ -35,11 +36,16 @@ interface IconSelection {
   chatHeaderFontColor?: string;
 }
 
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
-const loadWidgetConfig = async (apiUrl: string, widgetId: string): Promise<WidgetPublicConfig | null> => {
+const loadWidgetConfig = async (
+  apiUrl: string,
+  widgetId: string,
+): Promise<WidgetPublicConfig | null> => {
   try {
-    const response = await fetch(`${trimTrailingSlash(apiUrl)}/api/admin/widget/config/${encodeURIComponent(widgetId)}`);
+    const response = await fetch(
+      `${trimTrailingSlash(apiUrl)}/api/admin/widget/config/${encodeURIComponent(widgetId)}`,
+    );
     if (!response.ok) return null;
     return (await response.json()) as WidgetPublicConfig;
   } catch {
@@ -51,13 +57,19 @@ const parseIconSelection = (leadFieldsRaw?: string): IconSelection => {
   if (!leadFieldsRaw) return {};
   try {
     const parsed = JSON.parse(leadFieldsRaw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return {};
     }
-    const botIcon = typeof (parsed as any).bot_icon === 'string' ? (parsed as any).bot_icon : undefined;
-    const userIcon = typeof (parsed as any).user_icon === 'string' ? (parsed as any).user_icon : undefined;
+    const botIcon =
+      typeof (parsed as any).bot_icon === "string"
+        ? (parsed as any).bot_icon
+        : undefined;
+    const userIcon =
+      typeof (parsed as any).user_icon === "string"
+        ? (parsed as any).user_icon
+        : undefined;
     const chatHeaderFontColor =
-      typeof (parsed as any).chat_header_font_color === 'string'
+      typeof (parsed as any).chat_header_font_color === "string"
         ? (parsed as any).chat_header_font_color
         : undefined;
     return { botIcon, userIcon, chatHeaderFontColor };
@@ -66,12 +78,23 @@ const parseIconSelection = (leadFieldsRaw?: string): IconSelection => {
   }
 };
 
+const WIDGET_ROOT_ID = "ai-chatbot-widget-root";
+
 // Initialize the widget when the script loads
 async function initWidget() {
   if (!window.AIChatbot) {
-    console.error('AIChatbot configuration not found');
+    console.error("AIChatbot configuration not found");
     return;
   }
+
+  // Already mounted (script included twice, HMR, or re-init)
+  if (
+    window.__AIChatbotWidgetInitialized ||
+    document.getElementById(WIDGET_ROOT_ID)
+  ) {
+    return;
+  }
+  window.__AIChatbotWidgetInitialized = true;
 
   const config = window.AIChatbot;
   const remoteConfig = await loadWidgetConfig(config.apiUrl, config.widgetId);
@@ -82,12 +105,15 @@ async function initWidget() {
   const shopifyUser = globalConfig.user || null;
   const shopifyShop = globalConfig.shop || null;
 
-  // Create container for the widget
-  const container = document.createElement('div');
-  container.id = 'ai-chatbot-widget-root';
+  // Re-check after await in case another init finished first
+  if (document.getElementById(WIDGET_ROOT_ID)) {
+    return;
+  }
+
+  const container = document.createElement("div");
+  container.id = WIDGET_ROOT_ID;
   document.body.appendChild(container);
 
-  // Render the widget
   const root = ReactDOM.createRoot(container);
   root.render(
     <React.StrictMode>
@@ -98,25 +124,24 @@ async function initWidget() {
         welcomeMessage={remoteConfig?.welcome_message || config.welcomeMessage}
         primaryColor={remoteConfig?.primary_color || config.primaryColor}
         secondaryColor={remoteConfig?.secondary_color || config.secondaryColor}
-        chatHeaderFontColor={config.chatHeaderFontColor || iconSelection.chatHeaderFontColor}
+        chatHeaderFontColor={
+          config.chatHeaderFontColor || iconSelection.chatHeaderFontColor
+        }
         position={remoteConfig?.position || config.position}
         botIcon={config.botIcon || iconSelection.botIcon}
         userIcon={config.userIcon || iconSelection.userIcon}
         shop={shopifyShop}
         user={shopifyUser}
       />
-    </React.StrictMode>
+    </React.StrictMode>,
   );
 }
 
-// Wait for DOM to be ready
-if (document.readyState === 'loading') {
-  console.log('Document loading, attaching DOMContentLoaded listener');
-  document.addEventListener('DOMContentLoaded', initWidget);
+// Wait for DOM to be ready (idempotent listener)
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initWidget, { once: true });
 } else {
-  console.log('Document already loaded, calling initWidget immediately');
   initWidget();
 }
 
 export { ChatWidget };
-
