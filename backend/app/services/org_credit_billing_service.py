@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 from fastapi import HTTPException
 from numpy import extract
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -557,7 +557,7 @@ def update_org_credit_entry(
     payable_amount = None
 
     # estimator update
-    if estimator_id is not None:
+    if estimator_id is not None and credits is None:
 
         estimator = _get_estimator_or_404(db, estimator_id)
 
@@ -642,6 +642,7 @@ def update_org_credit_entry(
     if invoice:
 
         if payable_amount is not None:
+            invoice.total_credit = row.total_credit
             invoice.invoice_amount = payable_amount
 
         invoice.payment_done_flag = row.payment_status == "paid"
@@ -653,7 +654,6 @@ def update_org_credit_entry(
     )
 
     db.commit()
-
     db.refresh(row)
 
     if invoice:
@@ -1635,14 +1635,22 @@ def _build_next_cycle_if_needed(
             current = existing
             continue
 
-        if current.estimator_id:
-            estimator = _get_estimator_or_404(db, current.estimator_id)
-            total_credit, payable_amount, _ = (
-                _extract_total_credit_and_payable_from_estimator(estimator)
+        paid_credits = (
+            db.query(func.coalesce(func.sum(OrgCredit.total_credit), 0))
+            .join(
+                OrgCreditInvoice,
+                OrgCreditInvoice.org_credit_id == OrgCredit.id,
             )
-        else:
-            total_credit = current.total_credit
-            payable_amount = total_credit
+            .filter(
+                OrgCredit.organization_id == current.organization_id,
+                OrgCredit.billing_month == current.billing_month,
+                OrgCreditInvoice.payment_done_flag == True,
+            )
+            .scalar()
+        )
+
+        total_credit = paid_credits
+        payable_amount = total_credit
 
         new_row = OrgCredit(
             organization_id=current.organization_id,
