@@ -102,6 +102,16 @@ const CloseIcon = ({ size = 17 }: { size?: number }) => (
   </IconSvg>
 );
 
+const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
+  <IconSvg size={16}>
+    {expanded ? (
+      <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+    ) : (
+      <path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z" />
+    )}
+  </IconSvg>
+);
+
 const SendIcon = () => (
   <IconSvg size={20}>
     <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
@@ -282,42 +292,79 @@ const assistantMessageOffersHandoff = (value: string): boolean => {
   return markers.some((marker) => normalized.includes(marker));
 };
 
+const normalizeInlineMarkdown = (text: string): string => {
+  let normalized = String(text || "");
+  // Bold "Label: description" when no markdown markers are present
+  const labelMatch = normalized.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
+  if (labelMatch && !normalized.includes("**") && !normalized.includes("*")) {
+    normalized = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+  }
+  // Collapse malformed closings: **text**** / **text*** → **text**
+  normalized = normalized.replace(/\*\*([^*]+)\*\*(\*{1,})/g, "**$1**");
+  // Collapse duplicate openings: ****text** → **text**
+  normalized = normalized.replace(/(\*{1,})\*\*([^*]+)\*\*/g, "**$2**");
+  return normalized;
+};
+
 const renderInlineRichText = (
   text: string,
   keyPrefix: string,
 ): React.ReactNode[] => {
   const parts: React.ReactNode[] = [];
-  // Bold "Label: description" industry/section labels (no # hashes shown)
-  let normalized = text;
-  const labelMatch = normalized.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
-  if (labelMatch && !normalized.includes("**")) {
-    normalized = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+  const normalized = normalizeInlineMarkdown(text);
+  let partIndex = 0;
+
+  const pushPlain = (value: string) => {
+    const cleaned = value.replace(/\*{2,}/g, "");
+    if (!cleaned) return;
+    parts.push(
+      <React.Fragment key={`${keyPrefix}-t-${partIndex++}`}>
+        {cleaned}
+      </React.Fragment>,
+    );
+  };
+
+  if (normalized.includes("**")) {
+    let cursor = 0;
+    while (cursor < normalized.length) {
+      const openIdx = normalized.indexOf("**", cursor);
+      if (openIdx === -1) {
+        pushPlain(normalized.slice(cursor));
+        break;
+      }
+
+      if (openIdx > cursor) {
+        pushPlain(normalized.slice(cursor, openIdx));
+      }
+
+      const closeIdx = normalized.indexOf("**", openIdx + 2);
+      if (closeIdx === -1) {
+        pushPlain(normalized.slice(openIdx + 2));
+        break;
+      }
+
+      const boldText = normalized.slice(openIdx + 2, closeIdx);
+      if (boldText) {
+        parts.push(
+          <strong key={`${keyPrefix}-b-${partIndex++}`}>{boldText}</strong>,
+        );
+      }
+      cursor = closeIdx + 2;
+      while (normalized[cursor] === "*") cursor += 1;
+    }
+    return parts;
   }
-  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
-  const tokens = normalized.split(pattern);
 
-  tokens.forEach((token, index) => {
+  const singleTokens = normalized.split(/(\*[^*]+\*)/g);
+  singleTokens.forEach((token, index) => {
     if (!token) return;
-    const isDoubleMarked =
-      token.startsWith("**") && token.endsWith("**") && token.length > 4;
-    const isSingleMarked =
-      !isDoubleMarked &&
-      token.startsWith("*") &&
-      token.endsWith("*") &&
-      token.length > 2;
-
-    if (isDoubleMarked || isSingleMarked) {
-      const marker = isDoubleMarked ? 2 : 1;
+    if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
       parts.push(
-        <strong key={`${keyPrefix}-b-${index}`}>
-          {token.slice(marker, -marker)}
-        </strong>,
+        <strong key={`${keyPrefix}-s-${index}`}>{token.slice(1, -1)}</strong>,
       );
       return;
     }
-    parts.push(
-      <React.Fragment key={`${keyPrefix}-t-${index}`}>{token}</React.Fragment>,
-    );
+    pushPlain(token);
   });
 
   return parts;
@@ -400,10 +447,15 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
       continue;
     }
 
-    if (/^\d+\.\s+/.test(current)) {
+    if (/^\*{0,2}\d+\.\s+/.test(current)) {
       const items: string[] = [];
-      while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^\d+\.\s+/, ""));
+      while (index < lines.length && /^\*{0,2}\d+\.\s+/.test(lines[index].trim())) {
+        items.push(
+          lines[index]
+            .trim()
+            .replace(/^\*{0,2}\d+\.\s+/, "")
+            .replace(/\*{2,}$/g, ""),
+        );
         index += 1;
       }
       // Show numbered markdown as bold-dot bullets (not 1. 2. 3.)
@@ -419,7 +471,7 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
         /^#{1,6}\s+/.test(candidate) ||
         /^[^#\n]{1,80}:\s*$/.test(candidate) ||
         /^[-*]\s+/.test(candidate) ||
-        /^\d+\.\s+/.test(candidate)
+        /^\*{0,2}\d+\.\s+/.test(candidate)
       )
         break;
       if (
@@ -569,6 +621,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   });
   const [appointmentError, setAppointmentError] = useState("");
   const [handoffActive, setHandoffActive] = useState(false);
+  const [handoffPanelExpanded, setHandoffPanelExpanded] = useState(false);
   const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffAfterId, setHandoffAfterId] = useState(0);
@@ -973,6 +1026,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
     return () => window.clearInterval(timer);
   }, [handoffActive, handoffStatus, handoffWaitingExpiresAt]);
+
+  useEffect(() => {
+    if (!handoffActive) {
+      setHandoffPanelExpanded(false);
+    }
+  }, [handoffActive]);
 
   useEffect(() => {
     if (!isOpen || !handoffActive || !handoffChatId) return;
@@ -1842,10 +1901,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             </div>
           </div>
 
-          <div className="chatbot-widget-messages">
-            {handoffActive && (
-              <div className="chatbot-handoff-banner chatbot-fade-in">
-                <div className="chatbot-handoff-title-row">
+          {handoffActive && (
+            <div className="chatbot-handoff-slider">
+              <button
+                type="button"
+                className="chatbot-handoff-slider-toggle"
+                onClick={() => setHandoffPanelExpanded((prev) => !prev)}
+                aria-expanded={handoffPanelExpanded}
+                aria-controls="chatbot-handoff-slider-panel"
+              >
+                <span className="chatbot-handoff-slider-toggle-main">
                   <span className="chatbot-handoff-title">
                     Human handoff in progress
                   </span>
@@ -1856,65 +1921,58 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                       ? "Agent assigned"
                       : "Waiting for agent"}
                   </span>
-                </div>
-                <div className="chatbot-handoff-subtitle">
-                  Keep chatting here. Your messages are routed to live support
-                  while handoff is active.
-                </div>
-                {handoffCountdownText ? (
-                  <div className="chatbot-handoff-countdown">
-                    {handoffCountdownText}
+                </span>
+                <span className="chatbot-handoff-slider-chevron" aria-hidden="true">
+                  <ChevronIcon expanded={handoffPanelExpanded} />
+                </span>
+              </button>
+              <div
+                id="chatbot-handoff-slider-panel"
+                className={`chatbot-handoff-slider-panel${handoffPanelExpanded ? " open" : ""}`}
+              >
+                <div className="chatbot-handoff-slider-panel-inner">
+                  <div className="chatbot-handoff-subtitle">
+                    Keep chatting here. Your messages are routed to live support
+                    while handoff is active.
                   </div>
-                ) : null}
-                {handoffStatus === "waiting_for_agent" &&
-                typeof handoffProgressPercent === "number" ? (
-                  <div className="chatbot-handoff-timer-graphic">
-                    <div className="chatbot-handoff-timer-row">
-                      <span className="chatbot-handoff-timer-seconds">
-                        {Math.max(
-                          0,
-                          handoffRemainingSeconds ?? handoffWaitTimeoutSeconds,
-                        )}{" "}
-                        sec
-                      </span>
-                      <span className="chatbot-handoff-timer-scale">{`${handoffWaitTimeoutSeconds} sec -> 0 sec`}</span>
+                  {handoffCountdownText ? (
+                    <div className="chatbot-handoff-countdown">
+                      {handoffCountdownText}
                     </div>
-                    <div className="chatbot-handoff-progress-track">
-                      <div
-                        className="chatbot-handoff-progress-fill"
-                        style={{ width: `${handoffProgressPercent}%` }}
-                      />
+                  ) : null}
+                  {handoffStatus === "waiting_for_agent" &&
+                  typeof handoffProgressPercent === "number" ? (
+                    <div className="chatbot-handoff-timer-graphic">
+                      <div className="chatbot-handoff-timer-row">
+                        <span className="chatbot-handoff-timer-seconds">
+                          {Math.max(
+                            0,
+                            handoffRemainingSeconds ?? handoffWaitTimeoutSeconds,
+                          )}{" "}
+                          sec
+                        </span>
+                        <span className="chatbot-handoff-timer-scale">{`${handoffWaitTimeoutSeconds} sec -> 0 sec`}</span>
+                      </div>
+                      <div className="chatbot-handoff-progress-track">
+                        <div
+                          className="chatbot-handoff-progress-fill"
+                          style={{ width: `${handoffProgressPercent}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-                <div className="chatbot-handoff-actions">
-                  <span className="chatbot-handoff-call-chip">
-                    Call: {callStatus}
-                    {callStatus === "active" ? ` (${callMode})` : ""}
-                  </span>
-                  <button
-                    className="chatbot-inline-button secondary"
-                    onClick={() => {
-                      loadHandoffSession();
-                      if (handoffChatId) {
-                        loadHandoffMessages(handoffChatId, false);
-                      }
-                    }}
-                  >
-                    Refresh status
-                  </button>
+                  ) : null}
                   {handoffError ? (
-                    <span className="chatbot-handoff-error">
-                      {handoffError}
-                    </span>
+                    <div className="chatbot-handoff-error">{handoffError}</div>
                   ) : null}
                   {callError ? (
-                    <span className="chatbot-handoff-error">{callError}</span>
+                    <div className="chatbot-handoff-error">{callError}</div>
                   ) : null}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
+          <div className="chatbot-widget-messages">
             {showSuggestions &&
               (suggestionsLoading || suggestedQuestions.length > 0) && (
                 <div className="chatbot-suggestions">

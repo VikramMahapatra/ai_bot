@@ -1442,9 +1442,15 @@ const CreateChatAgentPage: React.FC = () => {
                         fullWidth
                         multiline
                         minRows={4}
+                        maxRows={12}
                         placeholder="Example: You are a concise sales assistant. Ask discovery questions before recommending solutions."
                         helperText="Override the default prompt for this specific agent."
-                        sx={fieldSx}
+                        sx={{
+                          ...fieldSx,
+                          '& .MuiInputBase-inputMultiline': {
+                            overflowY: 'auto !important',
+                          },
+                        }}
                       />
 
                       <TextField
