@@ -33,6 +33,7 @@ import EventAvailableRoundedIcon from "@mui/icons-material/EventAvailableRounded
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import { useParams, useSearchParams } from "react-router-dom";
 import { appEnv } from "../config/env";
 
@@ -366,6 +367,90 @@ const deliveryFlow = [
   },
 ];
 //For the bold text in the message
+const normalizeInlineMarkdown = (text: string): string => {
+  let normalized = String(text || "");
+  const labelMatch = normalized.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
+  if (labelMatch && !normalized.includes("**") && !normalized.includes("*")) {
+    normalized = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+  }
+  normalized = normalized.replace(/\*\*([^*]+)\*\*(\*{1,})/g, "**$1**");
+  normalized = normalized.replace(/(\*{1,})\*\*([^*]+)\*\*/g, "**$2**");
+  return normalized;
+};
+
+const renderInlineMarkdownTokens = (
+  text: string,
+  keyPrefix: string,
+): React.ReactNode[] => {
+  const parts: React.ReactNode[] = [];
+  const normalized = normalizeInlineMarkdown(text);
+  let partIndex = 0;
+
+  const pushPlain = (value: string) => {
+    const cleaned = value.replace(/\*{2,}/g, "");
+    if (!cleaned) return;
+    parts.push(
+      <React.Fragment key={`${keyPrefix}-t-${partIndex++}`}>
+        {cleaned}
+      </React.Fragment>,
+    );
+  };
+
+  if (normalized.includes("**")) {
+    let cursor = 0;
+    while (cursor < normalized.length) {
+      const openIdx = normalized.indexOf("**", cursor);
+      if (openIdx === -1) {
+        pushPlain(normalized.slice(cursor));
+        break;
+      }
+      if (openIdx > cursor) {
+        pushPlain(normalized.slice(cursor, openIdx));
+      }
+      const closeIdx = normalized.indexOf("**", openIdx + 2);
+      if (closeIdx === -1) {
+        pushPlain(normalized.slice(openIdx + 2));
+        break;
+      }
+      const boldText = normalized.slice(openIdx + 2, closeIdx);
+      if (boldText) {
+        parts.push(
+          <Box
+            component="strong"
+            key={`${keyPrefix}-b-${partIndex++}`}
+            sx={{ fontWeight: 800 }}
+          >
+            {boldText}
+          </Box>,
+        );
+      }
+      cursor = closeIdx + 2;
+      while (normalized[cursor] === "*") cursor += 1;
+    }
+    return parts;
+  }
+
+  const singleTokens = normalized.split(/(\*[^*]+\*)/g);
+  singleTokens.forEach((token, index) => {
+    if (!token) return;
+    if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+      parts.push(
+        <Box
+          component="strong"
+          key={`${keyPrefix}-s-${index}`}
+          sx={{ fontWeight: 800 }}
+        >
+          {token.slice(1, -1)}
+        </Box>,
+      );
+      return;
+    }
+    pushPlain(token);
+  });
+
+  return parts;
+};
+
 const renderInlineMarkdown = (
   text: string,
   keyPrefix = "msg",
@@ -381,11 +466,12 @@ const renderInlineMarkdown = (
     const headingMatch = line.match(/^#{1,6}\s+(.*)$/);
     const sectionTitleMatch =
       !headingMatch && /^[^#\n]{1,80}:\s*$/.test(line.trim());
-    const numberedMatch = line.match(/^\d+\.\s+(.*)$/);
+    // Allow bold-wrapped numbered lines: **5. Title****
+    const numberedMatch = line.match(/^\*{0,2}(\d+)\.\s+(.*)$/);
     let rawContent = headingMatch
       ? headingMatch[1].replace(/\s+#+\s*$/, "").trim()
       : numberedMatch
-        ? numberedMatch[1]
+        ? numberedMatch[2]
         : line;
     const isHeading = Boolean(headingMatch) || sectionTitleMatch;
     const isBullet = Boolean(numberedMatch) && !isHeading;
@@ -397,38 +483,10 @@ const renderInlineMarkdown = (
       }
     }
 
-    const tokens = rawContent.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
-    const lineNodes: React.ReactNode[] = [];
-
-    tokens.forEach((token, index) => {
-      if (!token) return;
-      const isDoubleMarked =
-        token.startsWith("**") && token.endsWith("**") && token.length > 4;
-      const isSingleMarked =
-        !isDoubleMarked &&
-        token.startsWith("*") &&
-        token.endsWith("*") &&
-        token.length > 2;
-
-      if (isDoubleMarked || isSingleMarked) {
-        const marker = isDoubleMarked ? 2 : 1;
-        lineNodes.push(
-          <Box
-            component="strong"
-            key={`${keyPrefix}-l${lineIndex}-b-${index}`}
-            sx={{ fontWeight: 800 }}
-          >
-            {token.slice(marker, -marker)}
-          </Box>,
-        );
-        return;
-      }
-      lineNodes.push(
-        <React.Fragment key={`${keyPrefix}-l${lineIndex}-t-${index}`}>
-          {token}
-        </React.Fragment>,
-      );
-    });
+    const lineNodes = renderInlineMarkdownTokens(
+      rawContent,
+      `${keyPrefix}-l${lineIndex}`,
+    );
 
     if (isHeading) {
       parts.push(
@@ -529,6 +587,7 @@ const AgentTestPage: React.FC = () => {
   const [appointmentBusy, setAppointmentBusy] = useState(false);
   const [appointmentError, setAppointmentError] = useState("");
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffPanelExpanded, setHandoffPanelExpanded] = useState(false);
   const [handoffChatId, setHandoffChatId] = useState<string | null>(null);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [handoffPollError, setHandoffPollError] = useState("");
@@ -553,6 +612,12 @@ const AgentTestPage: React.FC = () => {
   const chatPanelRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!handoffOpen) {
+      setHandoffPanelExpanded(false);
+    }
+  }, [handoffOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2302,24 +2367,45 @@ const AgentTestPage: React.FC = () => {
           {handoffOpen && (
             <Box
               sx={{
-                px: 1.4,
-                py: 1,
                 borderBottom: "1px solid #dbeafe",
                 background: "linear-gradient(120deg, #eff6ff 0%, #f8fafc 100%)",
+                flexShrink: 0,
               }}
             >
-              <Stack spacing={0.8}>
+              <Box
+                component="button"
+                type="button"
+                onClick={() => setHandoffPanelExpanded((prev) => !prev)}
+                aria-expanded={handoffPanelExpanded}
+                sx={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  px: 1.4,
+                  py: 0.9,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  "&:hover": { backgroundColor: "rgba(37, 99, 235, 0.06)" },
+                }}
+              >
                 <Stack
                   direction="row"
                   spacing={0.8}
                   alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ minWidth: 0, flex: 1 }}
                 >
                   <Typography
                     sx={{
                       fontWeight: 700,
-                      fontSize: "0.86rem",
+                      fontSize: "0.82rem",
                       color: "#0f172a",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
                     Human handoff in progress
@@ -2334,107 +2420,98 @@ const AgentTestPage: React.FC = () => {
                     }
                   />
                 </Stack>
-                <Typography sx={{ fontSize: "0.74rem", color: "#475569" }}>
-                  Keep chatting here. Your messages are routed to live support
-                  while handoff is active.
-                </Typography>
-                {handoffCountdownText ? (
-                  <Typography
-                    sx={{
-                      fontSize: "0.72rem",
-                      color: "#1d4ed8",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {handoffCountdownText}
-                  </Typography>
-                ) : null}
-                {handoffStatus === "waiting_for_agent" &&
-                typeof handoffProgressPercent === "number" ? (
-                  <Stack spacing={0.4}>
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
+                <ExpandMoreRoundedIcon
+                  sx={{
+                    fontSize: 20,
+                    color: "#475569",
+                    transform: handoffPanelExpanded
+                      ? "rotate(180deg)"
+                      : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </Box>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateRows: handoffPanelExpanded ? "1fr" : "0fr",
+                  transition: "grid-template-rows 0.28s ease",
+                }}
+              >
+                <Box sx={{ overflow: "hidden" }}>
+                  <Stack spacing={0.7} sx={{ px: 1.4, pb: handoffPanelExpanded ? 1.1 : 0 }}>
+                    <Typography sx={{ fontSize: "0.74rem", color: "#475569" }}>
+                      Keep chatting here. Your messages are routed to live
+                      support while handoff is active.
+                    </Typography>
+                    {handoffCountdownText ? (
                       <Typography
                         sx={{
-                          fontSize: "0.68rem",
-                          color: "#334155",
+                          fontSize: "0.72rem",
+                          color: "#1d4ed8",
                           fontWeight: 600,
                         }}
                       >
-                        {Math.max(
-                          0,
-                          handoffRemainingSeconds ?? handoffWaitTimeoutSeconds,
-                        )}{" "}
-                        sec
+                        {handoffCountdownText}
                       </Typography>
-                      <Typography
-                        sx={{ fontSize: "0.68rem", color: "#475569" }}
-                      >
-                        {`${handoffWaitTimeoutSeconds} sec -> 0 sec`}
+                    ) : null}
+                    {handoffStatus === "waiting_for_agent" &&
+                    typeof handoffProgressPercent === "number" ? (
+                      <Stack spacing={0.4}>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: "0.68rem",
+                              color: "#334155",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {Math.max(
+                              0,
+                              handoffRemainingSeconds ??
+                                handoffWaitTimeoutSeconds,
+                            )}{" "}
+                            sec
+                          </Typography>
+                          <Typography
+                            sx={{ fontSize: "0.68rem", color: "#475569" }}
+                          >
+                            {`${handoffWaitTimeoutSeconds} sec -> 0 sec`}
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={handoffProgressPercent}
+                          sx={{
+                            height: 7,
+                            borderRadius: 999,
+                            backgroundColor: "rgba(37, 99, 235, 0.16)",
+                            "& .MuiLinearProgress-bar": {
+                              borderRadius: 999,
+                              background:
+                                "linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)",
+                            },
+                          }}
+                        />
+                      </Stack>
+                    ) : null}
+                    {handoffPollError ? (
+                      <Typography sx={{ fontSize: "0.72rem", color: "#dc2626" }}>
+                        {handoffPollError}
                       </Typography>
-                    </Stack>
-                    <LinearProgress
-                      variant="determinate"
-                      value={handoffProgressPercent}
-                      sx={{
-                        height: 7,
-                        borderRadius: 999,
-                        backgroundColor: "rgba(37, 99, 235, 0.16)",
-                        "& .MuiLinearProgress-bar": {
-                          borderRadius: 999,
-                          background:
-                            "linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)",
-                        },
-                      }}
-                    />
+                    ) : null}
+                    {callError ? (
+                      <Typography sx={{ fontSize: "0.72rem", color: "#dc2626" }}>
+                        {callError}
+                      </Typography>
+                    ) : null}
                   </Stack>
-                ) : null}
-                <Stack direction="row" spacing={0.8}>
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={`Call: ${callStatus}${callStatus === "active" ? ` (${callMode})` : ""}`}
-                    sx={{ fontWeight: 600 }}
-                  />
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => {
-                      loadHandoffSession();
-                      if (handoffChatId) {
-                        loadHandoffMessages(handoffChatId, false);
-                      }
-                    }}
-                  >
-                    Refresh status
-                  </Button>
-                  {handoffPollError ? (
-                    <Typography
-                      sx={{
-                        fontSize: "0.72rem",
-                        color: "#dc2626",
-                        alignSelf: "center",
-                      }}
-                    >
-                      {handoffPollError}
-                    </Typography>
-                  ) : null}
-                  {callError ? (
-                    <Typography
-                      sx={{
-                        fontSize: "0.72rem",
-                        color: "#dc2626",
-                        alignSelf: "center",
-                      }}
-                    >
-                      {callError}
-                    </Typography>
-                  ) : null}
-                </Stack>
-              </Stack>
+                </Box>
+              </Box>
             </Box>
           )}
 
