@@ -42,7 +42,7 @@ import CloudDoneIcon from "@mui/icons-material/CloudDone";
 import TrackChangesIcon from "@mui/icons-material/TrackChanges";
 import LinkIcon from "@mui/icons-material/Link";
 import BarChartIcon from "@mui/icons-material/BarChart";
-
+import companyLogo from '../assets/zentrixel-logo-white.png';
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -135,6 +135,7 @@ const LoginPage: React.FC = () => {
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+
 
   const sharedFieldSx = {
     '& .MuiOutlinedInput-root': {
@@ -251,7 +252,7 @@ const LoginPage: React.FC = () => {
         },
       }}
     >
-      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
+      <Container maxWidth={false} sx={{ position: 'relative', zIndex: 1, width: '90%', maxWidth: '1600px' }}>
         <Paper
           sx={{
             borderRadius: { xs: 3.2, md: 5 },
@@ -270,7 +271,7 @@ const LoginPage: React.FC = () => {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: '1.03fr 0.97fr' },
+              gridTemplateColumns: { xs: '1fr', md: '1.9fr 1.1fr' },
               minHeight: { md: 620 },
             }}
           >
@@ -282,9 +283,9 @@ const LoginPage: React.FC = () => {
                 color: '#ffffff',
 
                 // 👇 FORCE all text inside to be white
-                '& .MuiTypography-root': {
-                  color: '#ffffff',
-                },
+                // '& .MuiTypography-root': {
+                //   color: '#ffffff',
+                // },
 
                 '& .MuiTypography-colorTextSecondary': {
                   color: 'rgba(255,255,255,0.75)',
@@ -323,40 +324,46 @@ const LoginPage: React.FC = () => {
               />
 
               <Stack spacing={1.75} sx={{ position: 'relative', zIndex: 1 }}>
-                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.2 }}>
-                  <Avatar
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
+                  <Box
+                    component="img"
+                    src={companyLogo}
+                    alt="Zentrixel Logo"
                     sx={{
-                      width: 46,
-                      height: 46,
-                      background: 'linear-gradient(145deg, #2f8fff 0%, #57c7ff 100%)',
-                      boxShadow: '0 10px 26px rgba(59,168,255,0.38)',
+                      width: 24,
+                      height: 24,
+                      objectFit: 'contain',
                     }}
-                  >
-                    <SmartToyIcon />
-                  </Avatar>
+                  />
+
                   <Box>
-                    <Typography sx={{ fontSize: 12, letterSpacing: 1.6, fontWeight: 800, opacity: 0.84 }}>
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        letterSpacing: 1.6,
+                        fontWeight: 800,
+                        opacity: 0.84,
+                        color: '#ffffff',
+                      }}
+                    >
                       ZENTRIXEL ENTERPRISE AI ENGAGEMENT PLATFORM
-                    </Typography>
-                    <Typography sx={{ fontSize: 14, opacity: 0.88 }}>
-                      Enterprise Conversational Suite
                     </Typography>
                   </Box>
                 </Box>
-
                 <Typography
                   variant="h3"
                   sx={{
                     fontWeight: 850,
                     lineHeight: 1.14,
-                    maxWidth: 440,
                     letterSpacing: '-0.02em',
+                    my: '20px',
+                    color: '#2a9aa8',
                   }}
                 >
                   Automate every customer interaction with intelligent AI agents.
                 </Typography>
 
-                <Typography sx={{ fontSize: 13, color: 'rgba(238,245,255,0.9)', maxWidth: 460 }}>
+                <Typography sx={{ fontSize: 13, color: 'rgba(238,245,255,0.9)' }}>
                   Deploy AI agents across chat, voice, WhatsApp, email, and SMS. Qualify leads, automate follow-ups,
                   book appointments, orchestrate workflows, and seamlessly hand conversations to your team—all
                   from one enterprise platform.
@@ -364,7 +371,7 @@ const LoginPage: React.FC = () => {
                 {/* Channels */}
                 <Box
                   sx={{
-                    mt: 1.5,
+                    mt: '35px !important',
                     p: 1.25,
                     borderRadius: "14px",
                     background: "rgba(255,255,255,0.05)",
@@ -431,7 +438,7 @@ const LoginPage: React.FC = () => {
                   </Stack>
                 </Box>
                 {/* Highlights */}
-                <Box sx={{ mt: 1.5 }}>
+                <Box sx={{ mt: '35px !important' }}>
                   <Typography
                     sx={{
                       fontWeight: 700,
@@ -509,7 +516,7 @@ const LoginPage: React.FC = () => {
                 {/* Stats Bar */}
                 <Box
                   sx={{
-                    mt: 1.5,
+                    mt: '25px !important',
                     p: 1.2,
                     borderRadius: "16px",
                     background: "rgba(255,255,255,0.04)",
@@ -523,23 +530,23 @@ const LoginPage: React.FC = () => {
                       <Divider
                         orientation="vertical"
                         flexItem
-                        sx={{ borderColor: "rgba(255,255,255,0.08)" }}
+                        sx={{ borderColor: "rgba(255,255,255,0.08)", }}
                       />
                     }
                   >
                     <Stack direction="row" spacing={1} alignItems="center">
                       <SecurityIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
-                      <Typography sx={{ fontSize: 13 }}>Enterprise Security</Typography>
+                      <Typography sx={{ fontSize: 13, color: "#ffffff" }}>Enterprise Security</Typography>
                     </Stack>
 
                     <Stack direction="row" spacing={1} alignItems="center">
                       <AdminPanelSettingsIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
-                      <Typography sx={{ fontSize: 13 }}>Role-Based Access</Typography>
+                      <Typography sx={{ fontSize: 13, color: "#ffffff" }}>Role-Based Access</Typography>
                     </Stack>
 
                     <Stack direction="row" spacing={1} alignItems="center">
                       <CloudDoneIcon sx={{ fontSize: 18, color: "#7fe0ff" }} />
-                      <Typography sx={{ fontSize: 13 }}>99.9% Platform Reliability</Typography>
+                      <Typography sx={{ fontSize: 13, color: "#ffffff" }}>99.9% Platform Reliability</Typography>
                     </Stack>
                   </Stack>
                 </Box>
@@ -551,7 +558,7 @@ const LoginPage: React.FC = () => {
                 p: { xs: 2.6, sm: 3.2, md: 4.2 },
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
+                justifyContent: 'flex-start',
                 background: 'linear-gradient(180deg, rgba(255,255,255,0.9), rgba(245,250,255,0.85))',
               }}
             >
