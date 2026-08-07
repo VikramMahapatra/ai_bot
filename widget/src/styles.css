@@ -519,33 +519,83 @@
   );
 }
 
-.chatbot-handoff-banner {
-  margin: 0 0 12px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.36);
-  border-radius: 12px;
+.chatbot-handoff-slider {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
   background: linear-gradient(
     130deg,
-    rgba(239, 246, 255, 0.95),
-    rgba(248, 250, 252, 0.95)
+    rgba(239, 246, 255, 0.98),
+    rgba(248, 250, 252, 0.98)
   );
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  z-index: 6;
 }
 
-.chatbot-handoff-title-row {
+.chatbot-handoff-slider-toggle {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.chatbot-handoff-slider-toggle:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.chatbot-handoff-slider-toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chatbot-handoff-slider-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.chatbot-handoff-slider-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.chatbot-handoff-slider-panel.open {
+  grid-template-rows: 1fr;
+}
+
+.chatbot-handoff-slider-panel-inner {
+  overflow: hidden;
+  padding: 0 12px;
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    padding 0.28s ease;
+}
+
+.chatbot-handoff-slider-panel.open .chatbot-handoff-slider-panel-inner {
+  padding: 0 12px 10px;
+  opacity: 1;
 }
 
 .chatbot-handoff-title {
   font-size: 12px;
   font-weight: 700;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chatbot-handoff-chip {
@@ -554,6 +604,7 @@
   padding: 5px 8px;
   border-radius: 999px;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .chatbot-handoff-chip.waiting {
@@ -567,7 +618,7 @@
 }
 
 .chatbot-handoff-subtitle {
-  margin-top: 6px;
+  margin-top: 2px;
   font-size: 11px;
   color: #475569;
 }
@@ -616,36 +667,24 @@
   transition: width 0.9s linear;
 }
 
-.chatbot-handoff-actions {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chatbot-handoff-call-chip {
-  font-size: 10px;
-  line-height: 1;
-  padding: 5px 8px;
-  border-radius: 999px;
-  font-weight: 700;
-  background: rgba(14, 165, 233, 0.2);
-  color: #0c4a6e;
-}
-
 .chatbot-handoff-error {
+  display: block;
+  margin-top: 6px;
   font-size: 10px;
-  color: #b91c1c;
+  color: #dc2626;
 }
 
-.chatbot-widget-container.dark .chatbot-handoff-banner {
+.chatbot-widget-container.dark .chatbot-handoff-slider {
   background: linear-gradient(
     130deg,
-    rgba(30, 41, 59, 0.96),
-    rgba(39, 52, 73, 0.96)
+    rgba(30, 41, 59, 0.98),
+    rgba(15, 23, 42, 0.98)
   );
-  border-color: rgba(148, 163, 184, 0.34);
+  border-bottom-color: rgba(71, 85, 105, 0.55);
+}
+
+.chatbot-widget-container.dark .chatbot-handoff-slider-toggle:hover {
+  background: rgba(148, 163, 184, 0.1);
 }
 
 .chatbot-widget-container.dark .chatbot-handoff-title {
@@ -653,7 +692,7 @@
 }
 
 .chatbot-widget-container.dark .chatbot-handoff-subtitle {
-  color: #cbd5e1;
+  color: #94a3b8;
 }
 
 .chatbot-widget-container.dark .chatbot-handoff-countdown {
@@ -686,9 +725,8 @@
   color: #fca5a5;
 }
 
-.chatbot-widget-container.dark .chatbot-handoff-call-chip {
-  background: rgba(56, 189, 248, 0.25);
-  color: #bae6fd;
+.chatbot-widget-container.dark .chatbot-handoff-slider-chevron {
+  color: #94a3b8;
 }
 
 .chatbot-message {
