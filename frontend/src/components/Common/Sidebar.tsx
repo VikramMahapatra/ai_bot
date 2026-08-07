@@ -39,6 +39,7 @@ import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AutoModeIcon from '@mui/icons-material/AutoMode';
 import DescriptionIcon from "@mui/icons-material/Description";
+import zentrixelLogo from '../../assets/zentrixel-logo.png';
 
 const drawerWidth = 280;
 
@@ -164,25 +165,28 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onMobileClose }) => {
       py: 0,
     }}>
       {/* Logo Section */}
-      <Box sx={{ px: 2.2, pt: 2.2, pb: 1.2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Avatar
+      <Box
+        sx={{
+          px: 2.2,
+          pt: 2.2,
+          pb: 1.2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Box
+          component="img"
+          src={zentrixelLogo}
+          alt="Zentrixel"
           sx={{
-            width: 38,
-            height: 38,
-            background: 'linear-gradient(135deg, #366dff 0%, #36c4ff 100%)',
-            boxShadow: '0 10px 20px rgba(54,109,255,0.28)',
+            width: 160,
+            height: 45,
+            objectFit: 'contain',
+            objectPosition: 'left center',
+            display: 'block',
           }}
-        >
-          <SmartToyIcon fontSize="small" />
-        </Avatar>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1, fontSize: '1.04rem' }}>
-            Zentrixel
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.74rem', lineHeight: 1 }}>
-            AI Platform
-          </Typography>
-        </Box>
+        />
       </Box>
 
       <Divider />
