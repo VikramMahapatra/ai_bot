@@ -967,7 +967,8 @@ def _execute_campaign_now(
                 click_count=0,
             )
             db.add(log)
-            db.flush()
+            db.commit()
+            db.refresh(log)
 
             is_sent, error_message, provider_message_id = _send_campaign_message(
                 campaign,

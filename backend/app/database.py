@@ -14,6 +14,8 @@ logging.basicConfig(
 
 logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
+logger = logging.getLogger(__name__)
+
 # Create database engine
 # Use absolute path for SQLite to avoid working-directory issues
 database_url = settings.DATABASE_URL
@@ -56,23 +58,35 @@ Base = declarative_base()
 
 def get_db():
     db = SessionLocal()
+
     try:
         yield db
-        # Only commit when there are pending ORM changes. This avoids turning
-        # read-only requests into commit-time failures on stale connections.
-        has_pending_writes = bool(db.new or db.dirty or db.deleted)
-        if has_pending_writes:
+
+        # Commit only if there are pending ORM changes.
+        if db.new or db.dirty or db.deleted:
             db.commit()
-        elif db.in_transaction():
-            db.rollback()
-    except Exception:
+
+    except Exception as e:
+        logger.exception("Database request failed: %s", e)
+
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_error:
+            logger.warning(
+                "Database rollback failed because connection was closed: %s",
+                rollback_error,
+            )
+
         raise
+
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.warning(
+                "Database session close failed because connection was already closed: %s",
+                close_error,
+            )
 
 
 def column_exists(conn, table, column):

@@ -1309,7 +1309,7 @@ def save_transcripts(db: Session, call_log: CallLog, transcript: str):
     transcript_rows = []
 
     for line in lines:
-        if line.startswith("AI:"):
+        if line.startswith(("AI:", "Agent:")):
             speaker = "Agent"
             text = line.replace("AI:", "").strip()
             normalized_lines.append(f"AI: {text}")
