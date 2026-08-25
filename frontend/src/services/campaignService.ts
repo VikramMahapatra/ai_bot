@@ -9,6 +9,13 @@ export type CampaignStatus =
   | "paused"
   | "failed";
 
+export type CampaignSequence = {
+  id?: number;
+  sequence_order: number;
+  gap_days: number;
+  contact_list_id: number | null;
+};
+
 export interface CampaignItem {
   id: number;
   campaign_name: string;
@@ -26,6 +33,13 @@ export interface CampaignItem {
   email_subject?: string;
   message_template_id?: string;
   created_at: string;
+  open_tracking_enabled: boolean;
+  click_tracking_enabled: boolean;
+  footer_display_enabled: boolean;
+  selected_smtp_profile_ids?: number[];
+  active_days?: string[];
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface CampaignListResponse {
@@ -309,6 +323,11 @@ export interface CreateCampaignPayload {
   open_tracking_enabled?: boolean;
   click_tracking_enabled?: boolean;
   footer_display_enabled?: boolean;
+  selected_smtp_profile_ids?: number[];
+  active_days?: string[];
+  start_time?: string;
+  end_time?: string;
+  sequences?: CampaignSequence[];
 }
 
 export interface GenerateEmailVariantsPayload {
@@ -354,6 +373,8 @@ export interface CampaignFilters {
   scheduled_to?: string;
   skip?: number;
   limit?: number;
+  from_date?: string;
+  to_date?: string;
 }
 
 export interface ContactFilters {
@@ -381,6 +402,13 @@ export const campaignService = {
     filters: CampaignFilters = {},
   ): Promise<CampaignListResponse> {
     const response = await api.get("/api/admin/campaigns", { params: filters });
+    return response.data;
+  },
+
+  async listCampaignsForCalendar(
+    filters: CampaignFilters = {},
+  ): Promise<CampaignListResponse> {
+    const response = await api.get("/api/admin/campaigns/calendar", { params: filters });
     return response.data;
   },
 

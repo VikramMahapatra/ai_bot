@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict, deque
-from datetime import datetime, timezone
 from io import StringIO
 import csv
 import json
@@ -13,7 +12,16 @@ from io import BytesIO
 from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 import re
+from zoneinfo import ZoneInfo
+from app.models.campaign import CampaignSequence
+from app.models.user import Organization
 import phonenumbers
+from datetime import datetime, time as dt_time, timedelta
+from typing import Optional
+from fastapi import Depends, HTTPException
+from sqlalchemy import case
+from sqlalchemy.orm import Session
+import time
 
 from fastapi import (
     APIRouter,
@@ -234,6 +242,12 @@ class ContactManualUploadRequest(BaseModel):
     contacts: List[ContactManualEntry]
 
 
+class CampaignSequenceCreate(BaseModel):
+    sequence_order: int
+    gap_days: int = 0
+    contact_list_id: int
+
+
 class CampaignCreateRequest(BaseModel):
     campaign_name: str
     campaign_type: str
@@ -252,6 +266,17 @@ class CampaignCreateRequest(BaseModel):
     open_tracking_enabled: Optional[bool] = None
     click_tracking_enabled: Optional[bool] = None
     footer_display_enabled: Optional[bool] = None
+
+    # SMTP
+    selected_smtp_profile_ids: Optional[List[int]] = None
+
+    # Campaign Schedule
+    active_days: Optional[List[str]] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+
+    # Campaign Sequences
+    sequences: Optional[List[CampaignSequenceCreate]] = None
 
 
 class EmailVariantGenerateRequest(BaseModel):
@@ -322,6 +347,27 @@ def _parse_auto_agent_marker(description: Optional[str]) -> tuple[bool, Optional
     return True, widget_id
 
 
+def parse_time_value(value):
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, dt_time):
+        return value
+
+    value = str(value).strip()
+
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt).time()
+        except ValueError:
+            continue
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Invalid time format: {value}. Expected HH:MM or HH:MM:SS.",
+    )
+
+
 def _serialize_campaign(
     campaign: Campaign,
     contact_list_name: Optional[str] = None,
@@ -339,6 +385,10 @@ def _serialize_campaign(
         "category": campaign.category,
         "message_template_id": campaign.message_template_id,
         "scheduled_time": campaign.scheduled_time,
+        "selected_smtp_profile_ids": campaign.selected_smtp_profile_ids,
+        "active_days": campaign.active_days,
+        "start_time": campaign.start_time,
+        "end_time": campaign.end_time,
         "status": campaign.status,
         "number_sent": campaign.number_sent,
         "number_failed": campaign.number_failed,
@@ -613,6 +663,7 @@ def _send_campaign_message(
         return
 
     if campaign.campaign_type == "email":
+
         subject, body = _resolve_email_payload_for_contact(
             campaign_name=campaign.campaign_name,
             template_blob=campaign.message_template,
@@ -812,6 +863,105 @@ def run_campaign_background(
         db.close()
 
 
+def get_next_campaign_start(campaign: Campaign) -> datetime:
+    """
+    Returns the next datetime when this campaign is allowed to run.
+    Uses:
+      - active_days: ["Mon", "Tue", ...]
+      - start_time
+    """
+
+    now = datetime.utcnow()
+
+    active_days = campaign.active_days or []
+
+    # Map Python weekday() -> day name
+    day_names = [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun",
+    ]
+
+    for days_ahead in range(1, 8):
+        candidate_date = now.date() + timedelta(days=days_ahead)
+
+        day_name = day_names[candidate_date.weekday()]
+
+        if active_days and day_name not in active_days:
+            continue
+
+        start_time = campaign.start_time or time(0, 0)
+
+        return datetime.combine(candidate_date, start_time)
+
+    # Fallback: tomorrow
+    return datetime.combine(
+        now.date() + timedelta(days=1),
+        campaign.start_time or dt_time(0, 0),
+    )
+
+
+def is_campaign_within_sending_window(
+    campaign: Campaign,
+    organization: Organization,
+) -> bool:
+
+    timezone_name = organization.timezone or "Asia/Kolkata"
+
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        logger.warning(
+            "Invalid timezone '%s' for organization %s. "
+            "Falling back to Asia/Kolkata.",
+            timezone_name,
+            organization.id,
+        )
+        tz = ZoneInfo("Asia/Kolkata")
+
+    now = datetime.now(tz)
+
+    # Active days
+    active_days = campaign.active_days or []
+
+    if active_days:
+        current_day = now.strftime("%A")
+
+        if current_day not in active_days:
+            return False
+
+    # Sending time window
+    current_time = now.time().replace(microsecond=0)
+
+    if campaign.start_time and campaign.end_time:
+
+        # Normal window: 09:00 -> 18:00
+        if campaign.start_time <= campaign.end_time:
+            if not (campaign.start_time <= current_time <= campaign.end_time):
+                return False
+
+        # Overnight window: 22:00 -> 02:00
+        else:
+            if not (
+                current_time >= campaign.start_time or current_time <= campaign.end_time
+            ):
+                return False
+
+    elif campaign.start_time:
+        if current_time < campaign.start_time:
+            return False
+
+    elif campaign.end_time:
+        if current_time > campaign.end_time:
+            return False
+
+    return True
+
+
 def _execute_campaign_now(
     db: Session,
     campaign: Campaign,
@@ -842,17 +992,65 @@ def _execute_campaign_now(
     smtp_profiles = []
     smtp_profiles_by_email = {}
     previous_smtp_mapping = {}
+    daily_email_limit = 0
+
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == campaign.organization_id)
+        .first()
+    )
+
+    if not organization:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization not found",
+        )
+
+    timezone_name = organization.timezone or "Asia/Kolkata"
+
+    try:
+        organization_tz = ZoneInfo(timezone_name)
+    except Exception:
+        organization_tz = ZoneInfo("Asia/Kolkata")
+
+    now = datetime.now(organization_tz)
+
+    today_start = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    tomorrow_start = today_start + timedelta(days=1)
+    today_start_utc = today_start.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    tomorrow_start_utc = tomorrow_start.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
     if campaign.campaign_type == "email":
-        smtp_profiles = (
-            db.query(OrganizationEmailSetting)
-            .filter(
-                OrganizationEmailSetting.organization_id == campaign.organization_id,
-                OrganizationEmailSetting.is_active == True,
-            )
-            .order_by(OrganizationEmailSetting.id)
-            .all()
+
+        organization_settings = (
+            db.query(OrganizationSettings)
+            .filter(OrganizationSettings.organization_id == campaign.organization_id)
+            .first()
         )
+
+        daily_email_limit = (
+            organization_settings.daily_email_limit if organization_settings else 0
+        )
+
+        smtp_query = db.query(OrganizationEmailSetting).filter(
+            OrganizationEmailSetting.organization_id == campaign.organization_id,
+            OrganizationEmailSetting.is_active == True,
+        )
+
+        selected_smtp_profile_ids = campaign.selected_smtp_profile_ids or []
+
+        if selected_smtp_profile_ids:
+            smtp_query = smtp_query.filter(
+                OrganizationEmailSetting.id.in_(selected_smtp_profile_ids)
+            )
+
+        smtp_profiles = smtp_query.order_by(OrganizationEmailSetting.id).all()
 
         smtp_profiles_by_email = {
             profile.sender_email: profile for profile in smtp_profiles
@@ -926,9 +1124,77 @@ def _execute_campaign_now(
 
     while active_smtp_ids:
         db_campaign = db.query(Campaign).filter(Campaign.id == campaign.id).first()
+
+        if not db_campaign:
+            logger.warning(
+                "Campaign %s no longer exists.",
+                campaign.id,
+            )
+            return
+
+        # MANUAL PAUSE
         if db_campaign.status == "paused":
             logger.info("Campaign %s paused. Exiting thread.", campaign.id)
             return
+
+        # ACTIVE DAY / SENDING WINDOW
+        if not is_campaign_within_sending_window(campaign, organization):
+            campaign.status = "pending_execution"
+            db.commit()
+
+            logger.info(
+                "Campaign %s is outside its sending window. "
+                "Current IST time: %s. "
+                "Active days: %s, Start: %s, End: %s",
+                campaign.id,
+                now,
+                campaign.active_days,
+                campaign.start_time,
+                campaign.end_time,
+            )
+
+            return {
+                "campaign_id": campaign.id,
+                "status": "pending_execution",
+                "number_sent": sent_count,
+                "number_failed": failed_count,
+            }
+
+        # DAILY EMAIL LIMIT
+        if campaign.campaign_type == "email" and daily_email_limit > 0:
+
+            emails_sent_today = (
+                db.query(func.count(CampaignLog.id))
+                .join(
+                    Campaign,
+                    Campaign.id == CampaignLog.campaign_id,
+                )
+                .filter(
+                    Campaign.organization_id == campaign.organization_id,
+                    CampaignLog.status == "delivered",
+                    CampaignLog.created_at >= today_start_utc,
+                    CampaignLog.created_at < tomorrow_start_utc,
+                )
+                .scalar()
+                or 0
+            )
+
+            if emails_sent_today >= daily_email_limit:
+                campaign.status = "pending_execution"
+                db.commit()
+
+                logger.info(
+                    "Campaign %s reached daily email limit (%s). ",
+                    campaign.id,
+                    daily_email_limit,
+                )
+
+                return {
+                    "campaign_id": campaign.id,
+                    "status": "pending_execution",
+                    "number_sent": sent_count,
+                    "number_failed": failed_count,
+                }
 
         for smtp_id in active_smtp_ids[:]:
             if (
@@ -2404,21 +2670,73 @@ async def create_campaign(
             status_code=400, detail="email_subject is required for email campaigns"
         )
 
+    feature_code = get_feature_code_for_campaign_type(payload.campaign_type)
+
+    # Main campaign contact count
     contacts = (
         db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
     )
 
+    main_contact_count = len(contacts)
+
+    # Sequence contact counts
+    sequence_contact_counts = {}
+
+    total_required_credits = main_contact_count
+
+    if payload.sequences:
+        for sequence in payload.sequences:
+
+            if sequence.gap_days < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Sequence gap_days cannot be negative",
+                )
+
+            sequence_contact_list = (
+                db.query(ContactList)
+                .filter(
+                    ContactList.id == sequence.contact_list_id,
+                    ContactList.organization_id == current_user.organization_id,
+                )
+                .first()
+            )
+
+            if not sequence_contact_list:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Sequence contact_list_id "
+                        f"{sequence.contact_list_id} not found"
+                    ),
+                )
+
+            sequence_contacts = (
+                db.query(Contact)
+                .filter(Contact.contact_list_id == sequence_contact_list.id)
+                .all()
+            )
+
+            sequence_contact_counts[sequence.contact_list_id] = len(sequence_contacts)
+
+            total_required_credits += len(sequence_contacts)
+
+    # Validate TOTAL credits before creating anything
     valid = organization_credit_service.validate_feature_usage(
         db,
         current_user.organization_id,
-        get_feature_code_for_campaign_type(payload.campaign_type),
-        len(contacts),
+        feature_code,
+        total_required_credits,
     )
 
     if not valid:
         raise HTTPException(
             status_code=400,
-            detail="Insufficient credits. Please add more credits to continue.",
+            detail=(
+                f"Insufficient credits. "
+                f"This campaign requires {total_required_credits} credits "
+                f"including all sequences. Please add more credits to continue."
+            ),
         )
 
     if payload.scheduled_time:
@@ -2458,6 +2776,9 @@ async def create_campaign(
             payload=payload,
         )
 
+    start_time = parse_time_value(payload.start_time)
+    end_time = parse_time_value(payload.end_time)
+
     campaign = Campaign(
         organization_id=current_user.organization_id,
         campaign_name=campaign_name,
@@ -2471,13 +2792,16 @@ async def create_campaign(
         open_tracking_enabled=payload.open_tracking_enabled,
         click_tracking_enabled=payload.click_tracking_enabled,
         footer_display_enabled=payload.footer_display_enabled,
+        selected_smtp_profile_ids=(payload.selected_smtp_profile_ids or []),
+        active_days=payload.active_days or [],
+        start_time=start_time,
+        end_time=end_time,
         status=status_value,
         number_sent=0,
         number_failed=0,
     )
     db.add(campaign)
-    db.commit()
-    db.refresh(campaign)
+    db.flush()
 
     organization_credit_service.reserve_credits(
         db=db,
@@ -2487,6 +2811,66 @@ async def create_campaign(
         reference_type="campaign",
         reference_id=str(campaign.id),
     )
+
+    sequence_scheduled_time = payload.scheduled_time
+
+    for sequence in payload.sequences or []:
+
+        if sequence_scheduled_time:
+            sequence_scheduled_time = sequence_scheduled_time + timedelta(
+                days=sequence.gap_days
+            )
+
+        sequence_campaign = Campaign(
+            organization_id=current_user.organization_id,
+            campaign_name=(f"{campaign_name} - " f"Sequence {sequence.sequence_order}"),
+            campaign_type=campaign_type,
+            message_template_id=payload.message_template_id,
+            message_template=message_template,
+            contact_list_id=sequence.contact_list_id,
+            product_id=payload.product_id,
+            category=payload.category,
+            scheduled_time=sequence_scheduled_time,
+            open_tracking_enabled=payload.open_tracking_enabled or False,
+            click_tracking_enabled=payload.click_tracking_enabled or False,
+            footer_display_enabled=payload.footer_display_enabled or False,
+            selected_smtp_profile_ids=(payload.selected_smtp_profile_ids or []),
+            active_days=payload.active_days or [],
+            start_time=start_time,
+            end_time=end_time,
+            status="scheduled",
+            number_sent=0,
+            number_failed=0,
+        )
+
+        db.add(sequence_campaign)
+        db.flush()
+
+        # History / relationship record
+        campaign_sequence = CampaignSequence(
+            campaign_id=campaign.id,
+            sequence_campaign_id=sequence_campaign.id,
+            sequence_order=sequence.sequence_order,
+            gap_days=sequence.gap_days,
+            contact_list_id=sequence.contact_list_id,
+        )
+
+        db.add(campaign_sequence)
+
+        sequence_contact_count = sequence_contact_counts[sequence.contact_list_id]
+
+        # Reserve credits for THIS sequence campaign
+        organization_credit_service.reserve_credits(
+            db=db,
+            organization_id=current_user.organization_id,
+            feature_code=feature_code,
+            quantity=sequence_contact_count,
+            reference_type="campaign",
+            reference_id=str(sequence_campaign.id),
+        )
+
+    db.commit()
+    db.refresh(campaign)
 
     return _serialize_campaign(
         campaign,
@@ -2515,10 +2899,10 @@ async def update_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    if campaign.status not in {"draft", "scheduled"}:
+    if campaign.status not in {"draft", "scheduled", "paused"}:
         raise HTTPException(
             status_code=400,
-            detail="Only draft and scheduled campaigns can be edited",
+            detail="Only draft, scheduled, and paused campaigns can be edited",
         )
 
     campaign_name = payload.campaign_name.strip()
@@ -2620,6 +3004,9 @@ async def update_campaign(
             payload=payload,
         )
 
+    start_time = parse_time_value(payload.start_time)
+    end_time = parse_time_value(payload.end_time)
+
     campaign.campaign_name = campaign_name
     campaign.campaign_type = campaign_type
     campaign.message_template_id = payload.message_template_id
@@ -2631,6 +3018,17 @@ async def update_campaign(
     campaign.open_tracking_enabled = payload.open_tracking_enabled
     campaign.click_tracking_enabled = payload.click_tracking_enabled
     campaign.footer_display_enabled = payload.footer_display_enabled
+    campaign.status = status_value
+
+    # SMTP Profiles
+    campaign.selected_smtp_profile_ids = payload.selected_smtp_profile_ids or []
+
+    # Campaign Schedule
+    campaign.active_days = payload.active_days or []
+
+    campaign.start_time = start_time
+    campaign.end_time = end_time
+
     campaign.status = status_value
 
     db.commit()
@@ -2756,6 +3154,171 @@ async def list_campaigns(
             "skip": skip,
             "limit": limit,
         },
+    }
+
+
+@router.get("/calendar")
+async def list_campaigns_calendar(
+    search: Optional[str] = None,
+    campaign_type: Optional[str] = None,
+    status: Optional[str] = None,
+    product_id: Optional[int] = None,
+    contact_list_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    query = db.query(Campaign).filter(
+        Campaign.organization_id == current_user.organization_id,
+        Campaign.is_deleted == False,
+    )
+
+    # -------------------------
+    # Existing filters
+    # -------------------------
+
+    if search:
+        query = query.filter(Campaign.campaign_name.ilike(f"%{search.strip()}%"))
+
+    if campaign_type:
+        campaign_type_value = campaign_type.strip().lower()
+
+        if campaign_type_value not in ALLOWED_CAMPAIGN_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid campaign_type filter",
+            )
+
+        query = query.filter(Campaign.campaign_type == campaign_type_value)
+
+    if status:
+        status_value = status.strip().lower()
+
+        if status_value not in ALLOWED_CAMPAIGN_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid status filter",
+            )
+
+        query = query.filter(Campaign.status == status_value)
+
+    if product_id is not None:
+        if product_id <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid product_id filter",
+            )
+
+        query = query.filter(Campaign.product_id == product_id)
+
+    if contact_list_id is not None:
+        if contact_list_id <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid contact_list_id filter",
+            )
+
+        query = query.filter(Campaign.contact_list_id == contact_list_id)
+
+    # -------------------------
+    # Date parsing
+    # -------------------------
+
+    def _parse_iso_datetime(
+        value: Optional[str],
+        field_name: str,
+    ) -> Optional[datetime]:
+        if not value:
+            return None
+
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid {field_name}; expected ISO datetime",
+            )
+
+    from_dt = _parse_iso_datetime(from_date, "from_date")
+    to_dt = _parse_iso_datetime(to_date, "to_date")
+
+    # -------------------------
+    # Effective calendar date
+    # -------------------------
+    #
+    # Scheduled campaign:
+    #     scheduled_time
+    #
+    # Instant campaign:
+    #     created_at
+    #
+
+    calendar_date = case(
+        (
+            Campaign.scheduled_time.isnot(None),
+            Campaign.scheduled_time,
+        ),
+        else_=Campaign.created_at,
+    )
+
+    if from_dt:
+        query = query.filter(calendar_date >= from_dt)
+
+    if to_dt:
+        query = query.filter(calendar_date < to_dt)
+
+    # -------------------------
+    # Fetch all calendar events
+    # -------------------------
+
+    rows = query.order_by(calendar_date.asc()).all()
+
+    # -------------------------
+    # Related data
+    # -------------------------
+
+    contact_list_ids = [row.contact_list_id for row in rows if row.contact_list_id]
+
+    product_ids = [row.product_id for row in rows if row.product_id]
+
+    contact_list_map = {}
+    product_map = {}
+
+    if contact_list_ids:
+        contact_lists = (
+            db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
+        )
+
+        contact_list_map = {item.id: item.list_name for item in contact_lists}
+
+    if product_ids:
+        products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+
+        product_map = {item.id: item.name for item in products}
+
+    # -------------------------
+    # Response
+    # -------------------------
+
+    return {
+        "items": [
+            {
+                **_serialize_campaign(
+                    row,
+                    contact_list_map.get(row.contact_list_id),
+                    product_map.get(row.product_id),
+                ),
+                "calendar_date": (
+                    row.scheduled_time
+                    if row.scheduled_time is not None
+                    else row.created_at
+                ),
+                "is_instant": row.scheduled_time is None,
+            }
+            for row in rows
+        ],
+        "total": len(rows),
     }
 
 
@@ -3212,7 +3775,7 @@ def process_due_campaigns(
 
     # Existing scheduled campaign logic
     query = db.query(Campaign).filter(
-        Campaign.status == "scheduled",
+        Campaign.status.in_(["scheduled", "pending_execution"]),
         Campaign.scheduled_time.isnot(None),
         Campaign.scheduled_time <= now,
     )

@@ -9,10 +9,12 @@ from sqlalchemy import (
     DateTime,
     Text,
     ForeignKey,
+    Time,
 )
 from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import ARRAY
 
 
 class ContactList(Base):
@@ -112,6 +114,23 @@ class Campaign(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)
 
+    selected_smtp_profile_ids = Column(
+        ARRAY(Integer), nullable=False, default=list, server_default="{}"
+    )
+    active_days = Column(
+        ARRAY(String), nullable=False, default=list, server_default="{}"
+    )
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+
+    sequences = relationship(
+        "CampaignSequence",
+        foreign_keys="CampaignSequence.campaign_id",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        order_by="CampaignSequence.sequence_order",
+    )
+
 
 class CampaignLog(Base):
     __tablename__ = "campaign_logs"
@@ -192,3 +211,51 @@ class CampaignLeadConversion(Base):
     reason = Column(Text, nullable=True)
     details = Column(Text, nullable=True)  # JSON payload
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CampaignSequence(Base):
+    __tablename__ = "campaign_sequences"
+
+    id = Column(Integer, Identity(), primary_key=True)
+
+    campaign_id = Column(
+        Integer,
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Actual campaign created for this sequence
+    sequence_campaign_id = Column(
+        Integer,
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    sequence_order = Column(Integer, nullable=False)
+
+    gap_days = Column(Integer, nullable=False, default=0)
+
+    contact_list_id = Column(
+        Integer, ForeignKey("contact_lists.id"), nullable=False, index=True
+    )
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    campaign = relationship("Campaign", back_populates="sequences")
+
+    contact_list = relationship("ContactList")
+
+    campaign = relationship(
+        "Campaign",
+        foreign_keys=[campaign_id],
+        back_populates="sequences",
+    )
+
+    sequence_campaign = relationship(
+        "Campaign",
+        foreign_keys=[sequence_campaign_id],
+    )

@@ -25,6 +25,7 @@ class OrganizationSettingsBase(BaseModel):
     default_escalation_level_2: str | None = None
 
     expected_close_days: int | None = None
+    daily_email_limit: int = 500
 
 
 class OrganizationSettingsUpdate(OrganizationSettingsBase):
@@ -75,3 +76,7 @@ class OrganizationEmailSettingResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DailyEmailLimitUpdate(BaseModel):
+    daily_email_limit: int

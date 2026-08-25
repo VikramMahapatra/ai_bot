@@ -69,7 +69,7 @@ type TwilioFormState = {
   testMessage: string;
 };
 
-type EmailSetting = {
+export type EmailSetting = {
   // SMTP
   id?: number;
   name: string;
@@ -149,6 +149,8 @@ const SettingsPage: React.FC = () => {
     default_escalation_level_2: "",
 
     expected_close_days: 0,
+
+    daily_email_limit: 500,
   });
 
   const [orgEmailSettings, setOrgEmailSettings] = useState<EmailSetting | null>(null);
@@ -250,6 +252,23 @@ const SettingsPage: React.FC = () => {
       }
     } catch (err) {
       console.error("Failed to load WhatsApp utility templates", err);
+    }
+  };
+
+  const handleSaveDailyEmailLimit = async () => {
+    if (!orgSettings.daily_email_limit || orgSettings.daily_email_limit < 1) {
+      return;
+    }
+
+    try {
+      await organizationService.updateEmailDailyLimit({
+        daily_email_limit: orgSettings.daily_email_limit,
+      });
+
+      // optional
+      setSuccess("Daily email limit updated successfully");
+    } catch (error) {
+      setError("Failed to update daily email limit");
     }
   };
 
@@ -1114,6 +1133,7 @@ const SettingsPage: React.FC = () => {
               </Box>
             </Grid>
             <Grid item xs={12} mt={2}>
+
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
                   <Box
@@ -1137,6 +1157,63 @@ const SettingsPage: React.FC = () => {
                       Add SMTP Profile
                     </Button>
                   </Box>
+                  {/* Common Daily Email Limit */}
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      mb: 3,
+                      borderRadius: 2,
+                      bgcolor: "background.default",
+                    }}
+                  >
+                    <CardContent>
+                      <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        gap={2}
+                      >
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight={600}>
+                            Daily Email Limit
+                          </Typography>
+
+                          <Typography variant="body2" color="text.secondary">
+                            Maximum number of emails that can be sent per day across all
+                            SMTP profiles.
+                          </Typography>
+                        </Box>
+
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <TextField
+                            size="small"
+                            type="number"
+                            label="Emails / Day"
+                            value={orgSettings.daily_email_limit}
+                            onChange={(e) => {
+                              handleOrgFieldChange(
+                                "daily_email_limit",
+                                e.target.value,
+                              )
+                            }}
+                            inputProps={{
+                              min: 1,
+                            }}
+                            sx={{ width: 160 }}
+                          />
+
+                          <Button
+                            variant="outlined"
+                            onClick={handleSaveDailyEmailLimit}
+                          >
+                            Save
+                          </Button>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+
+                  {/* SMTP Profiles */}
                   {emailSettings.length === 0 ? (
                     <Box
                       sx={{
@@ -1279,65 +1356,6 @@ const SettingsPage: React.FC = () => {
                   )}
                 </CardContent>
               </Card>
-              {/* <Card sx={{ boxShadow: 2 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <MailOutlineIcon color="primary" />
-                    <Typography variant="h6" fontWeight={600}>
-                      Email SMTP Configuration
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="body2"
-                    sx={{ mb: 3, color: "text.secondary" }}
-                  >
-                    Configure SMTP settings for sending conversation transcripts
-                    via email
-                  </Typography>
-
-
-                  <Divider sx={{ my: 3 }} />
-
-                  <Box mb={2}>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      Test SMTP Configuration
-                    </Typography>
-
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Send a test email to verify your SMTP settings
-                    </Typography>
-                  </Box>
-
-                  <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} md={8}>
-                      <TextField
-                        fullWidth
-                        label="Test Email Address"
-                        size="small"
-                        value={testEmail}
-                        onChange={(e) => setTestEmail(e.target.value)}
-                      />
-                    </Grid>
-
-                    <Grid item xs={12} md={4}>
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        startIcon={<SendIcon />}
-                        onClick={handleSendTestEmail}
-                        disabled={sendingTestEmail}
-                      >
-                        {sendingTestEmail ? "Sending..." : "Send Test Email"}
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card> */}
-
             </Grid>
             <Grid item xs={12} mt={2}>
               <Card sx={{ boxShadow: 2 }}>

@@ -37,6 +37,7 @@ class OrganizationSettings(Base):
     default_escalation_level_2 = Column(String, nullable=True)
 
     expected_close_days = Column(Integer, nullable=True)
+    daily_email_limit = Column(Integer, nullable=False, default=500)
 
     organization = relationship("Organization")
 
