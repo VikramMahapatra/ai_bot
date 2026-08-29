@@ -127,13 +127,14 @@ def call_analytics(
 
     filters = [CallLog.campaign_id.in_(campaign_ids)]
 
-    if start_date:
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        filters.append(CallLog.start_time >= start_date)
+    if not campaign_id:
+        if start_date:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            filters.append(CallLog.start_time >= start_date)
 
-    if end_date:
-        end_date = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
-        filters.append(CallLog.start_time < end_date)
+        if end_date:
+            end_date = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            filters.append(CallLog.start_time < end_date)
 
     attempted_calls_data = (
         db.query(CallLog.campaign_id, func.count(CallLog.id).label("attempted_calls"))
@@ -208,13 +209,18 @@ def call_analytics(
 
     # Active campaigns
     active_campaigns = (
-        db.query(CallCampaign)
+        db.query(func.count(func.distinct(CallCampaign.id)))
+        .join(
+            CallLog,
+            CallLog.campaign_id == CallCampaign.id,
+        )
         .filter(
             CallCampaign.organization_id == org_id,
             CallCampaign.status.in_(["active", "running"]),
             CallCampaign.is_deleted == False,
+            *filters,
         )
-        .count()
+        .scalar()
     )
 
     # Recent calls
@@ -280,7 +286,10 @@ def call_analytics(
         )
         .join(CallCampaign, CallCampaign.id == CallLog.campaign_id)
         .join(CampaignSchedule, CampaignSchedule.campaign_id == CallCampaign.id)
-        .filter(*filters)
+        .filter(
+            *filters,
+            CallLog.start_time.isnot(None),
+        )
         .group_by("hour")
         .order_by("hour")
         .all()
@@ -312,7 +321,10 @@ def call_analytics(
                 )
             ).label("answered"),
         )
-        .filter(*filters)
+        .filter(
+            *filters,
+            CallLog.start_time.isnot(None),
+        )
         .group_by("weekday")
         .order_by("weekday")
         .all()
@@ -392,8 +404,7 @@ def call_analytics(
         for r in lead_outcome_distribution
     ]
 
-    # --- Return ---
-    return {
+    summary_data = {
         "summary": {
             "total_calls": total_calls,
             "attempted_calls": total_attempted_calls,
@@ -411,6 +422,11 @@ def call_analytics(
             "lead_outcome_data": lead_outcome_data,
         },
     }
+
+    print("Summary Data:", summary_data)  # Debugging statement
+
+    # --- Return ---
+    return summary_data
 
 
 @router.post("/sync-bookings")

@@ -1273,11 +1273,39 @@ def get_contacts_lookup(db: Session, organization_id: int):
 
 
 def get_contact_lists(db: Session, organization_id: int):
-    return (
+    rows = (
         db.query(ContactList)
         .filter(ContactList.organization_id == organization_id)
         .all()
     )
+
+    list_ids = [row.id for row in rows]
+
+    counts = {}
+
+    if list_ids:
+        count_rows = (
+            db.query(
+                Contact.contact_list_id,
+                func.count(Contact.id),
+            )
+            .filter(Contact.contact_list_id.in_(list_ids))
+            .group_by(Contact.contact_list_id)
+            .all()
+        )
+
+        counts = {contact_list_id: count for contact_list_id, count in count_rows}
+
+    return [
+        {
+            "id": row.id,
+            "list_name": row.list_name,
+            "description": row.description,
+            "created_at": row.created_at,
+            "contact_count": int(counts.get(row.id, 0)),
+        }
+        for row in rows
+    ]
 
 
 def create_contact(db: Session, data: ContactCreate):

@@ -270,6 +270,8 @@ interface SourceProps {
     selected?: boolean;
     onClick?: () => void;
     height?: number;
+    fontSize?: number | string;
+    fontWeight?: number | string;
 }
 
 export const SourceChip = ({
@@ -277,6 +279,8 @@ export const SourceChip = ({
     selected = false,
     onClick,
     height,
+    fontSize,
+    fontWeight,
 }: SourceProps) => {
     const tint = LEAD_SOURCE_FILTER_TINTS[value] || "#9e9e9e";
 
@@ -289,7 +293,8 @@ export const SourceChip = ({
             variant="outlined"
             sx={{
                 ...(height && { height }),
-
+                ...(fontSize && { fontSize }),
+                ...(fontWeight && { fontWeight }),
                 borderColor: tint,
                 color: selected ? "#fff" : tint,
                 backgroundColor: selected ? tint : "transparent",

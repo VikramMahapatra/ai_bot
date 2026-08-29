@@ -200,5 +200,14 @@ export const organizationService = {
 
   async deleteEmailSetting(id: number): Promise<void> {
     return api.delete(`/api/organization-settings/email-settings/${id}`);
+  },
+
+  async updateEmailDailyLimit(data: { daily_email_limit: number; }) {
+    const response = await api.put(
+      "/api/organization-settings/daily-email-limit",
+      data
+    );
+
+    return response.data;
   }
 };

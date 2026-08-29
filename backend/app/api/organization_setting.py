@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.organization_setting import (
+    DailyEmailLimitUpdate,
     OrganizationEmailSettingResponse,
     OrganizationEmailSettingUpdate,
     OrganizationSettingsResponse,
@@ -191,3 +192,35 @@ def delete_email_setting(
     db.commit()
 
     return {"message": "Email setting deleted successfully"}
+
+
+@router.put("/daily-email-limit")
+def update_email_daily_limit(
+    payload: DailyEmailLimitUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    organization_id = current_user.organization_id
+
+    settings = (
+        db.query(OrganizationSettings)
+        .filter(OrganizationSettings.organization_id == organization_id)
+        .first()
+    )
+
+    if not settings:
+        raise HTTPException(
+            status_code=404,
+            detail="Organization settings not found",
+        )
+
+    settings.daily_email_limit = payload.daily_email_limit
+
+    db.commit()
+    db.refresh(settings)
+
+    return {
+        "success": True,
+        "message": "Daily email limit updated successfully",
+        "daily_email_limit": settings.daily_email_limit,
+    }
