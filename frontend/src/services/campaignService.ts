@@ -24,6 +24,7 @@ export interface CampaignItem {
   message_template: string;
   contact_list_id: number;
   contact_list_name?: string;
+  contact_count: number;
   product_id?: number | null;
   product_name?: string | null;
   scheduled_time?: string;

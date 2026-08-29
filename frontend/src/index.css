@@ -605,9 +605,15 @@ label {
 }
 
 .fc .fc-daygrid-event {
-  max-width: 100% !important;
-  width: 100% !important;
-  box-sizing: border-box;
+  border: 1px solid var(--campaign-status-color) !important;
+  border-left-width: 4px !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  margin-right: 4px !important;
+}
+
+.fc .fc-daygrid-event:focus {
+  outline: none !important;
 }
 
 .fc .fc-event-main {

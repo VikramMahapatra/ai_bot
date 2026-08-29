@@ -47,7 +47,9 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Snackbar,
+  FormHelperText,
 } from "@mui/material";
+import GroupIcon from "@mui/icons-material/Group";
 import { alpha, useTheme } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -253,6 +255,7 @@ type CreateCampaignFieldErrors = {
   startTime: boolean;
   endTime: boolean;
   sequences: boolean;
+  scheduleDate: boolean;
 };
 
 const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
@@ -264,7 +267,8 @@ const EMPTY_CREATE_CAMPAIGN_ERRORS: CreateCampaignFieldErrors = {
   activeDays: false,
   startTime: false,
   endTime: false,
-  sequences: false
+  sequences: false,
+  scheduleDate: false
 };
 
 const DEFAULT_SCHEDULE_DETAILS = {
@@ -842,7 +846,14 @@ const CampaignManagementPage: React.FC = () => {
       setLoading(true);
 
       if (campaignView === "calendar") {
-        await calendarRef.current?.getApi().refetchEvents();
+        const calendarApi = calendarRef.current?.getApi();
+
+        if (calendarApi) {
+          const currentStart = calendarApi.view.currentStart;
+          const currentEnd = calendarApi.view.currentEnd;
+
+          await fetchCalendarCampaigns(currentStart, currentEnd);
+        }
       } else {
         await loadCampaigns();
       }
@@ -1136,86 +1147,104 @@ const CampaignManagementPage: React.FC = () => {
     }
   };
 
-  const getCampaignPayload = (): CreateCampaignPayload => ({
-    campaign_name: createCampaignName,
-    campaign_type: createCampaignType,
-    message_template_id: selectedTemplate
-      ? Number(selectedTemplate.id)
-      : undefined,
+  const getCampaignPayload = (): CreateCampaignPayload => {
+    const configuredSequences = campaignSequences.filter(
+      (sequence) =>
+        sequence.contact_list_id !== null &&
+        sequence.contact_list_id !== undefined &&
+        Number(sequence.contact_list_id) > 0
+    );
 
-    message_template:
-      createCampaignType === "email"
-        ? emailContentMode === "prompt"
-          ? generatedBodies[0] ||
-          createMessageTemplate ||
-          "Generated campaign body"
-          : createMessageTemplate
-        : createMessageTemplate,
-
-    scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
-
-    contact_list_id: Number(createContactListId),
-
-    product_id: createProductId
-      ? Number(createProductId)
-      : undefined,
-
-    category: createCategory || undefined,
-
-    open_tracking_enabled: openTrackingEnabled,
-    click_tracking_enabled: clickTrackingEnabled,
-    footer_display_enabled: footerDisplayEnabled,
-
-    selected_smtp_profile_ids:
-      createCampaignType === "email" && selectedSmtpProfileIds.length > 0
-        ? selectedSmtpProfileIds
-        : undefined,
-    active_days: activeDays ?? undefined,
-    start_time: startTime ?? undefined,
-    end_time: endTime ?? undefined,
-
-    status: createScheduledTime
-      ? "scheduled"
-      : "draft",
-
-    email_content_mode:
-      createCampaignType === "email"
-        ? emailContentMode
+    return {
+      campaign_name: createCampaignName,
+      campaign_type: createCampaignType,
+      message_template_id: selectedTemplate
+        ? Number(selectedTemplate.id)
         : undefined,
 
-    email_subject:
-      createCampaignType === "email"
-        ? emailSubject || createCampaignName
+      message_template:
+        createCampaignType === "email"
+          ? emailContentMode === "prompt"
+            ? generatedBodies[0] ||
+            createMessageTemplate ||
+            "Generated campaign body"
+            : createMessageTemplate
+          : createMessageTemplate,
+
+      scheduled_time: convertIstLocalInputToUtcIso(createScheduledTime),
+
+      contact_list_id: Number(createContactListId),
+
+      product_id: createProductId
+        ? Number(createProductId)
         : undefined,
 
-    email_prompt_context:
-      createCampaignType === "email" &&
-        emailContentMode === "prompt"
-        ? emailPromptContext
-        : undefined,
+      category: createCategory || undefined,
 
-    email_subject_variants:
-      createCampaignType === "email" &&
-        emailContentMode === "prompt"
-        ? generatedSubjects
-        : undefined,
+      open_tracking_enabled: openTrackingEnabled,
+      click_tracking_enabled: clickTrackingEnabled,
+      footer_display_enabled: footerDisplayEnabled,
 
-    email_body_variants:
-      createCampaignType === "email" &&
-        emailContentMode === "prompt"
-        ? generatedBodies
-        : undefined,
-    sequences:
-      !isEditMode && campaignSequences.length > 0
-        ? campaignSequences.map((sequence) => ({
-          sequence_order: sequence.sequence_order,
-          gap_days: sequence.gap_days,
-          contact_list_id: Number(sequence.contact_list_id),
-        }))
-        : undefined,
-  });
+      selected_smtp_profile_ids:
+        createCampaignType === "email" && selectedSmtpProfileIds.length > 0
+          ? selectedSmtpProfileIds
+          : undefined,
+      active_days: activeDays ?? undefined,
+      start_time: startTime ?? undefined,
+      end_time: endTime ?? undefined,
+
+      status: createScheduledTime
+        ? "scheduled"
+        : "draft",
+
+      email_content_mode:
+        createCampaignType === "email"
+          ? emailContentMode
+          : undefined,
+
+      email_subject:
+        createCampaignType === "email"
+          ? emailSubject || createCampaignName
+          : undefined,
+
+      email_prompt_context:
+        createCampaignType === "email" &&
+          emailContentMode === "prompt"
+          ? emailPromptContext
+          : undefined,
+
+      email_subject_variants:
+        createCampaignType === "email" &&
+          emailContentMode === "prompt"
+          ? generatedSubjects
+          : undefined,
+
+      email_body_variants:
+        createCampaignType === "email" &&
+          emailContentMode === "prompt"
+          ? generatedBodies
+          : undefined,
+      sequences:
+        !isEditMode && configuredSequences.length > 0
+          ? configuredSequences.map((sequence) => ({
+            sequence_order: sequence.sequence_order,
+            gap_days: sequence.gap_days,
+            contact_list_id: Number(sequence.contact_list_id),
+          }))
+          : undefined
+    }
+  };
 
   const validateCampaign = () => {
+    const configuredSequences = campaignSequences.filter(
+      (sequence) =>
+        sequence.contact_list_id !== null &&
+        sequence.contact_list_id !== undefined &&
+        Number(sequence.contact_list_id) > 0
+    );
+
+    const hasSequences = !isEditMode && configuredSequences.length > 0;
+
     const nextErrors: CreateCampaignFieldErrors = {
       campaignName: !createCampaignName.trim(),
       emailSubject:
@@ -1242,7 +1271,10 @@ const CampaignManagementPage: React.FC = () => {
       activeDays: activeDays.length === 0,
       startTime: !startTime,
       endTime: !endTime,
-      sequences: false
+      sequences: false,
+      scheduleDate: hasSequences
+        ? !createScheduledTime
+        : false,
     };
 
 
@@ -1253,10 +1285,11 @@ const CampaignManagementPage: React.FC = () => {
       }
     }
 
-    if (campaignSequences.length > 0 && !isEditMode) {
+
+    if (configuredSequences.length > 0 && !isEditMode) {
       const sequenceOrders = new Set<number>();
 
-      for (const sequence of campaignSequences) {
+      for (const sequence of configuredSequences) {
 
         // sequence order
         if (
@@ -1278,7 +1311,7 @@ const CampaignManagementPage: React.FC = () => {
         // gap days
         if (
           !Number.isInteger(sequence.gap_days) ||
-          sequence.gap_days < 0
+          sequence.gap_days <= 0
         ) {
           nextErrors.sequences = true;
           break;
@@ -1710,7 +1743,7 @@ const CampaignManagementPage: React.FC = () => {
       color: "primary",
     },
     pending_execution: {
-      label: "Pending",
+      label: "In Progress",
       color: "warning",
     },
   };
@@ -1722,6 +1755,17 @@ const CampaignManagementPage: React.FC = () => {
         color: "default" as const,
       }
     );
+  };
+
+  const statusBorderColors: Record<
+    "success" | "primary" | "error" | "warning" | "default",
+    string
+  > = {
+    success: theme.palette.success.main,
+    primary: theme.palette.primary.main,
+    error: theme.palette.error.main,
+    warning: theme.palette.warning.main,
+    default: theme.palette.grey[400],
   };
 
   return (
@@ -3529,193 +3573,7 @@ const CampaignManagementPage: React.FC = () => {
                       </Paper>
                     </Grid>
                   )}
-                  {!isEditMode && (
-                    <Grid item xs={12}>
-                      <Box
-                        sx={{
-                          border: "1px solid",
-                          borderColor: "divider",
-                          borderRadius: 2,
-                          p: 2,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            mb: 2,
-                          }}
-                        >
-                          <Box>
-                            <Typography variant="subtitle2" fontWeight={700}>
-                              Campaign Sequence
-                            </Typography>
 
-                            <Typography variant="caption" color="text.secondary">
-                              Create follow-up sequences using different contact lists
-                              and configurable day gaps.
-                            </Typography>
-                          </Box>
-
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<AddIcon />}
-                            onClick={() => {
-                              setCampaignSequences((prev) => [
-                                ...prev,
-                                {
-                                  sequence_order: prev.length + 1,
-                                  gap_days: 0,
-                                  contact_list_id: null,
-                                },
-                              ]);
-                            }}
-                          >
-                            Add Sequence
-                          </Button>
-                        </Box>
-
-                        <Stack spacing={1.5}>
-                          {campaignSequences.map((sequence, index) => (
-                            <Box
-                              key={sequence.id ?? index}
-                              sx={{
-                                border: "1px solid",
-                                borderColor: "divider",
-                                borderRadius: 2,
-                                p: 1.5,
-                              }}
-                            >
-                              <Stack
-                                direction="row"
-                                alignItems="center"
-                                justifyContent="space-between"
-                                mb={1.5}
-                              >
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={700}
-                                >
-                                  {getSequenceCampaignName(index)}
-                                </Typography>
-
-                                {campaignSequences.length > 1 && (
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => {
-                                      setCampaignSequences((prev) =>
-                                        prev
-                                          .filter((_, i) => i !== index)
-                                          .map((item, i) => ({
-                                            ...item,
-                                            sequence_order: i + 1,
-                                          }))
-                                      );
-                                    }}
-                                  >
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                )}
-                              </Stack>
-
-                              <Grid container spacing={2}>
-                                <Grid item xs={12} sm={4}>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    type="number"
-                                    label="Gap (Days)"
-                                    value={sequence.gap_days}
-                                    inputProps={{ min: 0 }}
-                                    onChange={(e) => {
-                                      const value = Math.max(
-                                        0,
-                                        Number(e.target.value)
-                                      );
-
-                                      setCampaignSequences((prev) =>
-                                        prev.map((item, i) =>
-                                          i === index
-                                            ? {
-                                              ...item,
-                                              gap_days: value,
-                                            }
-                                            : item
-                                        )
-                                      );
-                                    }}
-                                  />
-                                </Grid>
-
-                                <Grid item xs={12} sm={8}>
-                                  <Stack direction="row" spacing={2} alignItems="center">
-                                    <FormControl fullWidth size="small">
-                                      <InputLabel>Contact List</InputLabel>
-
-                                      <Select
-                                        value={sequence.contact_list_id ?? ""}
-                                        label="Contact List"
-                                        onChange={(e) => {
-                                          const value = e.target.value;
-
-                                          setCampaignSequences((prev) =>
-                                            prev.map((item, i) =>
-                                              i === index
-                                                ? {
-                                                  ...item,
-                                                  contact_list_id:
-                                                    value === "" ? null : Number(value),
-                                                }
-                                                : item
-                                            )
-                                          );
-                                        }}
-                                      >
-                                        {contactLists.map((list) => (
-                                          <MenuItem key={list.id} value={list.id}>
-                                            {getContactListLabel(list)}
-                                          </MenuItem>
-                                        ))}
-                                      </Select>
-                                    </FormControl>
-
-                                    <Button
-                                      variant="outlined"
-                                      startIcon={<VisibilityIcon />}
-                                      onClick={() =>
-                                        handlePreviewContacts(sequence.contact_list_id)
-                                      }
-                                      disabled={!sequence.contact_list_id}
-                                      sx={{
-                                        height: "40px",
-                                        minWidth: "140px",
-                                        borderRadius: "12px",
-                                        textTransform: "none",
-                                        fontWeight: 600,
-                                        fontSize: "14px",
-                                        borderColor: "#7BAAF7",
-                                        color: "#3B82F6",
-                                        whiteSpace: "nowrap",
-                                        "&:hover": {
-                                          borderColor: "#3B82F6",
-                                          backgroundColor: "#F5F9FF",
-                                        },
-                                      }}
-                                    >
-                                      View Contacts
-                                    </Button>
-                                  </Stack>
-                                </Grid>
-                              </Grid>
-                            </Box>
-                          ))}
-                        </Stack>
-                      </Box>
-                    </Grid>
-                  )}
 
                   <Grid item xs={12}>
                     <Box
@@ -3857,13 +3715,25 @@ const CampaignManagementPage: React.FC = () => {
                             sx={compactInputSx}
                             fullWidth
                             type="datetime-local"
-                            label="Campaign Start Date (Optional)"
-                            value={createScheduledTime}
-                            onChange={(e) =>
-                              setCreateScheduledTime(e.target.value)
+                            label={
+                              !isEditMode && campaignSequences.some(
+                                (sequence) =>
+                                  sequence.contact_list_id !== null &&
+                                  sequence.contact_list_id !== undefined &&
+                                  Number(sequence.contact_list_id) > 0
+                              )
+                                ? "Campaign Start Date"
+                                : "Campaign Start Date (Optional)"
                             }
+                            value={createScheduledTime}
+                            onChange={(e) => setCreateScheduledTime(e.target.value)}
                             InputLabelProps={{ shrink: true }}
-                            helperText="Campaign will not run before this date and time."
+                            error={createCampaignErrors.scheduleDate}
+                            helperText={
+                              createCampaignErrors.scheduleDate
+                                ? "Campaign start date is required when a sequence is added."
+                                : "Campaign will not run before this date and time."
+                            }
                           />
                         </Grid>
 
@@ -3911,7 +3781,229 @@ const CampaignManagementPage: React.FC = () => {
                       </Grid>
                     </Box>
                   </Grid>
+                  {!isEditMode && (
+                    <Grid item xs={12}>
+                      <Box
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "divider",
+                          borderRadius: 2,
+                          p: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            mb: 2,
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight={700}>
+                              Campaign Sequence
+                            </Typography>
 
+                            <Typography variant="caption" color="text.secondary">
+                              Create follow-up sequences using different contact lists
+                              and configurable day gaps.
+                            </Typography>
+                          </Box>
+
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<AddIcon />}
+                            onClick={() => {
+                              setCampaignSequences((prev) => [
+                                ...prev,
+                                {
+                                  sequence_order: prev.length + 1,
+                                  gap_days: 0,
+                                  contact_list_id: null,
+                                },
+                              ]);
+                            }}
+                          >
+                            Add Sequence
+                          </Button>
+                        </Box>
+
+                        <Stack spacing={1.5}>
+                          {campaignSequences.map((sequence, index) => (
+                            <Box
+                              key={sequence.id ?? index}
+                              sx={{
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderRadius: 2,
+                                p: 1.5,
+                              }}
+                            >
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                justifyContent="space-between"
+                                mb={1.5}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={700}
+                                >
+                                  {getSequenceCampaignName(index)}
+                                </Typography>
+
+                                {campaignSequences.length > 1 && (
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => {
+                                      setCampaignSequences((prev) =>
+                                        prev
+                                          .filter((_, i) => i !== index)
+                                          .map((item, i) => ({
+                                            ...item,
+                                            sequence_order: i + 1,
+                                          }))
+                                      );
+                                    }}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                              </Stack>
+
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} sm={4}>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    type="number"
+                                    label="Gap (Days)"
+                                    value={sequence.gap_days}
+                                    inputProps={{ min: 0 }}
+                                    error={
+                                      createCampaignErrors.sequences &&
+                                      Number(sequence.gap_days) <= 0
+                                    }
+                                    helperText={
+                                      createCampaignErrors.sequences &&
+                                        Number(sequence.gap_days) <= 0
+                                        ? "Gap must be greater than 0."
+                                        : ""
+                                    }
+                                    onChange={(e) => {
+                                      const value = Math.max(
+                                        0,
+                                        Number(e.target.value)
+                                      );
+
+                                      setCampaignSequences((prev) =>
+                                        prev.map((item, i) =>
+                                          i === index
+                                            ? {
+                                              ...item,
+                                              gap_days: value,
+                                            }
+                                            : item
+                                        )
+                                      );
+                                    }}
+                                  />
+                                </Grid>
+
+                                <Grid item xs={12} sm={8}>
+                                  <Stack direction="row" spacing={2} alignItems="center">
+                                    <FormControl
+                                      fullWidth
+                                      size="small"
+                                      error={
+                                        createCampaignErrors.sequences &&
+                                        !sequence.contact_list_id
+                                      }
+                                    >
+                                      <InputLabel>Contact List</InputLabel>
+
+                                      <Select
+                                        value={sequence.contact_list_id ?? ""}
+                                        label="Contact List"
+                                        onChange={(e) => {
+                                          const value = e.target.value;
+
+                                          setCampaignSequences((prev) =>
+                                            prev.map((item, i) =>
+                                              i === index
+                                                ? {
+                                                  ...item,
+                                                  contact_list_id:
+                                                    value === "" ? null : Number(value),
+                                                }
+                                                : item
+                                            )
+                                          );
+                                        }}
+                                      >
+                                        {contactLists.map((list) => (
+                                          <MenuItem key={list.id} value={list.id}>
+                                            {getContactListLabel(list)}
+                                          </MenuItem>
+                                        ))}
+                                      </Select>
+                                      {createCampaignErrors.sequences &&
+                                        !sequence.contact_list_id && (
+                                          <FormHelperText>
+                                            Contact List is required.
+                                          </FormHelperText>
+                                        )}
+                                    </FormControl>
+
+                                    <Button
+                                      variant="outlined"
+                                      startIcon={<VisibilityIcon />}
+                                      onClick={() =>
+                                        handlePreviewContacts(sequence.contact_list_id)
+                                      }
+                                      disabled={!sequence.contact_list_id}
+                                      sx={{
+                                        height: "40px",
+                                        minWidth: "140px",
+                                        borderRadius: "12px",
+                                        textTransform: "none",
+                                        fontWeight: 600,
+                                        fontSize: "14px",
+                                        borderColor: "#7BAAF7",
+                                        color: "#3B82F6",
+                                        whiteSpace: "nowrap",
+                                        "&:hover": {
+                                          borderColor: "#3B82F6",
+                                          backgroundColor: "#F5F9FF",
+                                        },
+                                      }}
+                                    >
+                                      View Contacts
+                                    </Button>
+                                  </Stack>
+                                </Grid>
+                              </Grid>
+                            </Box>
+                          ))}
+                        </Stack>
+                        {createCampaignErrors.sequences && (
+                          <Typography
+                            variant="caption"
+                            color="error"
+                            sx={{
+                              display: "block",
+                              mt: 1.5,
+                              fontWeight: 500,
+                            }}
+                          >
+                            Please correct the sequence details before continuing.
+                          </Typography>
+                        )}
+                      </Box>
+                    </Grid>
+                  )}
                   {/* Actions */}
                   <Grid item xs={12}>
                     <Stack
@@ -4423,6 +4515,85 @@ const CampaignManagementPage: React.FC = () => {
                     backgroundColor: "#fff",
                   }}
                 >
+                  {/* Custom Calendar Header */}
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", md: "center" }}
+                    sx={{ mb: 1.5 }}
+                  >
+                    {/* Calendar Legend */}
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      flexWrap="wrap"
+                      useFlexGap
+                      sx={{
+                        px: 1.5,
+                        py: 0.75,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        backgroundColor: "background.paper",
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "text.secondary",
+                          mr: 0.5,
+                        }}
+                      >
+                        Status
+                      </Typography>
+
+                      {Object.entries(statusConfig).map(([status, config]) => {
+                        const borderColor = statusBorderColors[config.color];
+
+                        return (
+                          <Stack
+                            key={status}
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.6}
+                            sx={{
+                              px: 1,
+                              py: 0.35,
+                              borderRadius: 1.5,
+                              border: "1px solid",
+                              borderColor: `${borderColor}40`,
+                              backgroundColor: `${borderColor}08`,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                backgroundColor: borderColor,
+                                flexShrink: 0,
+                              }}
+                            />
+
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                color: "text.secondary",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {config.label}
+                            </Typography>
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Stack>
                   <FullCalendar
                     ref={calendarRef}
                     plugins={[dayGridPlugin, interactionPlugin]}
@@ -4433,7 +4604,7 @@ const CampaignManagementPage: React.FC = () => {
                         dateInfo.view.currentEnd
                       );
                     }}
-                    timeZone="UTC"
+                    timeZone="local"
                     height="auto"
                     events={calendarEvents}
                     headerToolbar={{
@@ -4444,6 +4615,9 @@ const CampaignManagementPage: React.FC = () => {
                     eventDisplay="block"
                     dayMaxEvents={2}
                     eventClick={(info) => {
+                      info.jsEvent.preventDefault();
+                      info.jsEvent.stopPropagation();
+
                       const campaign = info.event.extendedProps?.campaign;
 
                       if (!campaign) return;
@@ -4458,15 +4632,16 @@ const CampaignManagementPage: React.FC = () => {
                       let x = info.jsEvent.clientX + 8;
                       let y = info.jsEvent.clientY + 8;
 
-                      // Prevent going beyond right edge
                       if (x + menuWidth > window.innerWidth - padding) {
                         x = info.jsEvent.clientX - menuWidth - 8;
                       }
 
-                      // Prevent going beyond bottom edge
                       if (y + menuHeight > window.innerHeight - padding) {
                         y = info.jsEvent.clientY - menuHeight - 8;
                       }
+
+                      x = Math.max(padding, x);
+                      y = Math.max(padding, y);
 
                       setEventMenu({
                         open: true,
@@ -4476,18 +4651,22 @@ const CampaignManagementPage: React.FC = () => {
                       });
                     }}
                     eventDidMount={(info) => {
+                      const campaign = info.event.extendedProps?.campaign;
+
+                      if (!campaign) return;
+
+                      const config = getStatusConfig(campaign.status);
+                      const borderColor = statusBorderColors[config.color];
+
+                      info.el.style.setProperty("--campaign-status-color", borderColor);
+
                       info.el.style.cursor = "pointer";
-                      info.el.style.maxWidth = "100%";
+                      info.el.setAttribute("tabindex", "-1");
                     }}
                     eventContent={(eventInfo) => {
                       const campaign = eventInfo.event.extendedProps?.campaign;
 
                       if (!campaign) return null;
-
-                      const config = statusConfig[campaign.status] ?? {
-                        label: campaign.status || "Unknown",
-                        color: "default" as const,
-                      };
 
                       const eventDate = eventInfo.event.start;
 
@@ -4548,24 +4727,19 @@ const CampaignManagementPage: React.FC = () => {
                                 fontWeight={600}
                               />
 
-                              <Chip
-                                label={config.label}
-                                size="small"
-                                color={config.color}
-                                variant="outlined"
-                                sx={{
-                                  height: 19,
-                                  fontSize: "10px",
-                                  fontWeight: 600,
-                                  backgroundColor: "rgba(255,255,255,0.55)",
-                                  maxWidth: "90px",
-                                  "& .MuiChip-label": {
-                                    px: 0.7,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  },
-                                }}
-                              />
+                              <Stack
+                                direction="row"
+                                spacing={0.5}
+                                alignItems="center"
+                              >
+                                <GroupIcon fontSize="small" color="primary" />
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {campaign.contact_count}
+                                </Typography>
+                              </Stack>
                             </Box>
                           </Box>
                         </Tooltip>
@@ -4616,16 +4790,62 @@ const CampaignManagementPage: React.FC = () => {
                                 }}
                               >
                                 <TableCell>
-                                  <Typography sx={{ fontWeight: 600 }}>
+                                  <Typography
+                                    sx={{
+                                      fontWeight: 600,
+                                      fontSize: "0.9rem",
+                                      lineHeight: 1.3,
+                                      mb: 0.6,
+                                    }}
+                                  >
                                     {item.campaign_name}
                                   </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
+
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.75}
+                                    alignItems="center"
+                                    flexWrap="wrap"
+                                    useFlexGap
                                   >
-                                    List:{" "}
-                                    {item.contact_list_name || item.contact_list_id}
-                                  </Typography>
+                                    {/* Contact List */}
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 0.4,
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      List:
+                                      <Box
+                                        component="span"
+                                        sx={{
+                                          color: "text.primary",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {item.contact_list_name || `#${item.contact_list_id}`}
+                                      </Box>
+                                    </Typography>
+
+                                    {/* Contact Count */}
+                                    <Stack
+                                      direction="row"
+                                      spacing={0.5}
+                                      alignItems="center"
+                                    >
+                                      <GroupIcon fontSize="small" color="primary" />
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        {item.contact_count}
+                                      </Typography>
+                                    </Stack>
+                                  </Stack>
                                 </TableCell>
                                 <TableCell>{item.campaign_type}</TableCell>
                                 <TableCell>{item.product_name || "-"}</TableCell>
@@ -4747,6 +4967,7 @@ const CampaignManagementPage: React.FC = () => {
                   vertical: "top",
                   horizontal: "left",
                 }}
+                disableAutoFocusItem
               >
                 <MenuItem
                   disabled={!selectedCampaign || isPlayDisabled(selectedCampaign.status)}

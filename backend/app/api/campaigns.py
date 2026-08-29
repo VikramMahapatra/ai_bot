@@ -372,6 +372,7 @@ def _serialize_campaign(
     campaign: Campaign,
     contact_list_name: Optional[str] = None,
     product_name: Optional[str] = None,
+    contact_count: int = 0,
 ) -> dict:
     return {
         "id": campaign.id,
@@ -380,6 +381,7 @@ def _serialize_campaign(
         "message_template": campaign.message_template,
         "contact_list_id": campaign.contact_list_id,
         "contact_list_name": contact_list_name,
+        "contact_count": contact_count,
         "product_id": campaign.product_id,
         "product_name": product_name,
         "category": campaign.category,
@@ -3131,11 +3133,27 @@ async def list_campaigns(
     product_ids = [row.product_id for row in rows if row.product_id]
     contact_list_map = {}
     product_map = {}
+    contact_count_map = {}
+
     if contact_list_ids:
         contact_lists = (
             db.query(ContactList).filter(ContactList.id.in_(contact_list_ids)).all()
         )
         contact_list_map = {item.id: item.list_name for item in contact_lists}
+
+        count_rows = (
+            db.query(
+                Contact.contact_list_id,
+                func.count(Contact.id),
+            )
+            .filter(Contact.contact_list_id.in_(contact_list_ids))
+            .group_by(Contact.contact_list_id)
+            .all()
+        )
+
+        contact_count_map = {
+            contact_list_id: count for contact_list_id, count in count_rows
+        }
     if product_ids:
         products = db.query(Product).filter(Product.id.in_(product_ids)).all()
         product_map = {item.id: item.name for item in products}
@@ -3146,6 +3164,7 @@ async def list_campaigns(
                 row,
                 contact_list_map.get(row.contact_list_id),
                 product_map.get(row.product_id),
+                int(contact_count_map.get(row.contact_list_id, 0)),
             )
             for row in rows
         ],
@@ -3284,6 +3303,7 @@ async def list_campaigns_calendar(
 
     contact_list_map = {}
     product_map = {}
+    contact_count_map = {}
 
     if contact_list_ids:
         contact_lists = (
@@ -3291,6 +3311,20 @@ async def list_campaigns_calendar(
         )
 
         contact_list_map = {item.id: item.list_name for item in contact_lists}
+
+        count_rows = (
+            db.query(
+                Contact.contact_list_id,
+                func.count(Contact.id),
+            )
+            .filter(Contact.contact_list_id.in_(contact_list_ids))
+            .group_by(Contact.contact_list_id)
+            .all()
+        )
+
+        contact_count_map = {
+            contact_list_id: count for contact_list_id, count in count_rows
+        }
 
     if product_ids:
         products = db.query(Product).filter(Product.id.in_(product_ids)).all()
@@ -3308,6 +3342,7 @@ async def list_campaigns_calendar(
                     row,
                     contact_list_map.get(row.contact_list_id),
                     product_map.get(row.product_id),
+                    int(contact_count_map.get(row.contact_list_id, 0)),
                 ),
                 "calendar_date": (
                     row.scheduled_time
