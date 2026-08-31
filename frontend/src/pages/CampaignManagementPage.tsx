@@ -371,7 +371,7 @@ const CampaignManagementPage: React.FC = () => {
     {
       sequence_order: 1,
       gap_days: 0,
-      contact_list_id: null,
+      template_id: null,
     },
   ]);
 
@@ -435,6 +435,8 @@ const CampaignManagementPage: React.FC = () => {
   const [campaignToDelete, setCampaignToDelete] = useState<CampaignItem | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [smtpProfiles, setSmtpProfiles] = useState<EmailSetting[]>([]);
+  const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
+  const [selectedPreviewTemplate, setSelectedPreviewTemplate] = useState<any>(null);
   const [campaignView, setCampaignView] = useState<"table" | "calendar">("table");
   const [eventMenu, setEventMenu] = useState<{
     open: boolean;
@@ -682,6 +684,19 @@ const CampaignManagementPage: React.FC = () => {
     });
     setPreviewContacts(data.items || []);
     setPreviewContactTotal(data.pagination?.total || 0);
+  };
+
+  const handlePreviewTemplate = (templateId: number | null) => {
+    if (!templateId) return;
+
+    const template = messageTemplates?.find(
+      (template) => Number(template.id) === Number(templateId)
+    );
+
+    if (!template) return;
+
+    setSelectedPreviewTemplate(template);
+    setTemplatePreviewOpen(true);
   };
 
   const loadLogs = async (campaignId: number) => {
@@ -1150,9 +1165,9 @@ const CampaignManagementPage: React.FC = () => {
   const getCampaignPayload = (): CreateCampaignPayload => {
     const configuredSequences = campaignSequences.filter(
       (sequence) =>
-        sequence.contact_list_id !== null &&
-        sequence.contact_list_id !== undefined &&
-        Number(sequence.contact_list_id) > 0
+        Number(sequence.gap_days) > 0 || (sequence.template_id !== null &&
+          sequence.template_id !== undefined &&
+          Number(sequence.template_id) > 0)
     );
 
     return {
@@ -1227,20 +1242,20 @@ const CampaignManagementPage: React.FC = () => {
       sequences:
         !isEditMode && configuredSequences.length > 0
           ? configuredSequences.map((sequence) => ({
-            sequence_order: sequence.sequence_order,
-            gap_days: sequence.gap_days,
-            contact_list_id: Number(sequence.contact_list_id),
+            sequence_order: Number(sequence.sequence_order),
+            gap_days: Number(sequence.gap_days),
+            template_id: Number(sequence.template_id),
           }))
-          : undefined
+          : undefined,
     }
   };
 
   const validateCampaign = () => {
     const configuredSequences = campaignSequences.filter(
       (sequence) =>
-        sequence.contact_list_id !== null &&
-        sequence.contact_list_id !== undefined &&
-        Number(sequence.contact_list_id) > 0
+        Number(sequence.gap_days) > 0 || (sequence.template_id !== null &&
+          sequence.template_id !== undefined &&
+          Number(sequence.template_id) > 0)
     );
 
     const hasSequences = !isEditMode && configuredSequences.length > 0;
@@ -1317,11 +1332,9 @@ const CampaignManagementPage: React.FC = () => {
           break;
         }
 
-        // contact list
         if (
-          sequence.contact_list_id === null ||
-          sequence.contact_list_id === undefined ||
-          sequence.contact_list_id <= 0
+          !Number.isInteger(Number(sequence.template_id)) ||
+          Number(sequence.template_id) <= 0
         ) {
           nextErrors.sequences = true;
           break;
@@ -1479,7 +1492,7 @@ const CampaignManagementPage: React.FC = () => {
       {
         sequence_order: 1,
         gap_days: 0,
-        contact_list_id: null,
+        template_id: null,
       },
     ]);
 
@@ -3718,9 +3731,9 @@ const CampaignManagementPage: React.FC = () => {
                             label={
                               !isEditMode && campaignSequences.some(
                                 (sequence) =>
-                                  sequence.contact_list_id !== null &&
-                                  sequence.contact_list_id !== undefined &&
-                                  Number(sequence.contact_list_id) > 0
+                                  sequence.template_id !== null &&
+                                  sequence.template_id !== undefined &&
+                                  Number(sequence.template_id) > 0
                               )
                                 ? "Campaign Start Date"
                                 : "Campaign Start Date (Optional)"
@@ -3820,7 +3833,7 @@ const CampaignManagementPage: React.FC = () => {
                                 {
                                   sequence_order: prev.length + 1,
                                   gap_days: 0,
-                                  contact_list_id: null,
+                                  template_id: null,
                                 },
                               ]);
                             }}
@@ -3919,14 +3932,14 @@ const CampaignManagementPage: React.FC = () => {
                                       size="small"
                                       error={
                                         createCampaignErrors.sequences &&
-                                        !sequence.contact_list_id
+                                        !sequence.template_id
                                       }
                                     >
-                                      <InputLabel>Contact List</InputLabel>
+                                      <InputLabel>Template</InputLabel>
 
                                       <Select
-                                        value={sequence.contact_list_id ?? ""}
-                                        label="Contact List"
+                                        value={sequence.template_id ?? ""}
+                                        label="Template"
                                         onChange={(e) => {
                                           const value = e.target.value;
 
@@ -3935,7 +3948,7 @@ const CampaignManagementPage: React.FC = () => {
                                               i === index
                                                 ? {
                                                   ...item,
-                                                  contact_list_id:
+                                                  template_id:
                                                     value === "" ? null : Number(value),
                                                 }
                                                 : item
@@ -3943,16 +3956,19 @@ const CampaignManagementPage: React.FC = () => {
                                           );
                                         }}
                                       >
-                                        {contactLists.map((list) => (
-                                          <MenuItem key={list.id} value={list.id}>
-                                            {getContactListLabel(list)}
-                                          </MenuItem>
-                                        ))}
+
+                                        {messageTemplates
+                                          ?.filter((t) => t.type === createCampaignType)
+                                          .map((template) => (
+                                            <MenuItem key={template.id} value={template.id}>
+                                              {template.name}
+                                            </MenuItem>
+                                          ))}
                                       </Select>
                                       {createCampaignErrors.sequences &&
-                                        !sequence.contact_list_id && (
+                                        !sequence.template_id && (
                                           <FormHelperText>
-                                            Contact List is required.
+                                            Template is required.
                                           </FormHelperText>
                                         )}
                                     </FormControl>
@@ -3960,10 +3976,8 @@ const CampaignManagementPage: React.FC = () => {
                                     <Button
                                       variant="outlined"
                                       startIcon={<VisibilityIcon />}
-                                      onClick={() =>
-                                        handlePreviewContacts(sequence.contact_list_id)
-                                      }
-                                      disabled={!sequence.contact_list_id}
+                                      onClick={() => handlePreviewTemplate(sequence.template_id)}
+                                      disabled={!sequence.template_id}
                                       sx={{
                                         height: "40px",
                                         minWidth: "140px",
@@ -3980,7 +3994,7 @@ const CampaignManagementPage: React.FC = () => {
                                         },
                                       }}
                                     >
-                                      View Contacts
+                                      Preview
                                     </Button>
                                   </Stack>
                                 </Grid>
@@ -4324,6 +4338,203 @@ const CampaignManagementPage: React.FC = () => {
                   </Paper>
                 </div>
               )}
+
+              <Dialog
+                open={templatePreviewOpen}
+                onClose={() => setTemplatePreviewOpen(false)}
+                fullWidth
+                maxWidth="md"
+              >
+                <DialogTitle
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Box>
+                    <Typography variant="h6" fontWeight={700}>
+                      Template Preview
+                    </Typography>
+
+                    {selectedPreviewTemplate?.name && (
+                      <Typography variant="caption" color="text.secondary">
+                        {selectedPreviewTemplate.name}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <IconButton onClick={() => setTemplatePreviewOpen(false)}>
+                    <CloseIcon />
+                  </IconButton>
+                </DialogTitle>
+
+                <DialogContent dividers>
+                  {/* EMAIL */}
+                  {createCampaignType === "email" && (
+                    <Box>
+                      {/* Subject */}
+                      <Box
+                        sx={{
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                          pb: 2,
+                          mb: 2,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          fontWeight={600}
+                        >
+                          Subject
+                        </Typography>
+
+                        <Typography variant="body1" sx={{ mt: 0.5 }}>
+                          {selectedPreviewTemplate?.subject || "No subject"}
+                        </Typography>
+                      </Box>
+
+                      {/* Email body */}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        fontWeight={600}
+                      >
+                        Email Content
+                      </Typography>
+                      <Box
+                        sx={{
+                          "& h1, & h2, & h3": { mt: 0 },
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.7
+                        }}
+                        dangerouslySetInnerHTML={{
+                          __html: formatEmailPreview(
+                            (selectedPreviewTemplate?.content ||
+                              selectedPreviewTemplate?.message_template || "")) ||
+                            '<p style="color:#64748b;">No HTML content yet.</p>',
+                        }}
+                      />
+
+                    </Box>
+                  )}
+
+                  {/* SMS */}
+                  {createCampaignType === "sms" && (
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        fontWeight={600}
+                      >
+                        SMS Preview
+                      </Typography>
+
+                      <Box
+                        sx={{
+                          mt: 2,
+                          display: "flex",
+                          justifyContent: "flex-start",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            maxWidth: "75%",
+                            backgroundColor: "#f1f1f1",
+                            borderRadius: "16px",
+                            borderBottomLeftRadius: "4px",
+                            px: 2,
+                            py: 1.5,
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {selectedPreviewTemplate?.content ||
+                              selectedPreviewTemplate?.message_template ||
+                              ""}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* WHATSAPP */}
+                  {createCampaignType === "whatsapp" && (
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        fontWeight={600}
+                      >
+                        WhatsApp Preview
+                      </Typography>
+
+                      <Box
+                        sx={{
+                          mt: 2,
+                          borderRadius: 2,
+                          p: 3,
+                          backgroundColor: "#e5ddd5",
+                          minHeight: 350,
+                          display: "flex",
+                          alignItems: "flex-end",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            maxWidth: "75%",
+                            backgroundColor: "#ffffff",
+                            borderRadius: "8px",
+                            borderTopLeftRadius: "2px",
+                            px: 2,
+                            py: 1.5,
+                            boxShadow: "0 1px 1px rgba(0,0,0,0.1)",
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {selectedPreviewTemplate?.content ||
+                              selectedPreviewTemplate?.message_template ||
+                              ""}
+                          </Typography>
+
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              display: "block",
+                              textAlign: "right",
+                              mt: 0.5,
+                            }}
+                          >
+                            12:00 PM
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  )}
+                </DialogContent>
+
+                <DialogActions>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setTemplatePreviewOpen(false)}
+                  >
+                    Close
+                  </Button>
+                </DialogActions>
+              </Dialog>
             </Stack>
 
           )}

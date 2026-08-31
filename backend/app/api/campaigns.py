@@ -245,7 +245,7 @@ class ContactManualUploadRequest(BaseModel):
 class CampaignSequenceCreate(BaseModel):
     sequence_order: int
     gap_days: int = 0
-    contact_list_id: int
+    template_id: int
 
 
 class CampaignCreateRequest(BaseModel):
@@ -2634,24 +2634,46 @@ async def create_campaign(
     current_user: User = Depends(require_admin),
 ):
     campaign_name = payload.campaign_name.strip()
-    if not campaign_name:
-        raise HTTPException(status_code=400, detail="campaign_name is required")
 
-    campaign_type = payload.campaign_type.strip().lower()
-    if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
+    if not campaign_name:
         raise HTTPException(
-            status_code=400, detail="campaign_type must be email, whatsapp, or sms"
+            status_code=400,
+            detail="campaign_name is required",
         )
 
-    _ensure_campaign_access(db, current_user.organization_id, campaign_type)
+    campaign_type = payload.campaign_type.strip().lower()
+
+    if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="campaign_type must be email, whatsapp, or sms",
+        )
+
+    _ensure_campaign_access(
+        db,
+        current_user.organization_id,
+        campaign_type,
+    )
 
     message_template = payload.message_template.strip()
+
     if not message_template and campaign_type != "email":
-        raise HTTPException(status_code=400, detail="message_template is required")
+        raise HTTPException(
+            status_code=400,
+            detail="message_template is required",
+        )
 
     status_value = (payload.status or "draft").strip().lower()
+
     if status_value not in {"draft", "scheduled"}:
-        raise HTTPException(status_code=400, detail="status must be draft or scheduled")
+        raise HTTPException(
+            status_code=400,
+            detail="status must be draft or scheduled",
+        )
+
+    # ---------------------------------------------------------
+    # Main campaign contact list
+    # ---------------------------------------------------------
 
     contact_list = (
         db.query(ContactList)
@@ -2661,69 +2683,124 @@ async def create_campaign(
         )
         .first()
     )
-    if not contact_list:
-        raise HTTPException(status_code=404, detail="contact_list_id not found")
 
-    # if not payload.product_id:
-    #     raise HTTPException(status_code=400, detail="product_id is required")
+    if not contact_list:
+        raise HTTPException(
+            status_code=404,
+            detail="contact_list_id not found",
+        )
+
+    # ---------------------------------------------------------
+    # Email validation
+    # ---------------------------------------------------------
 
     if campaign_type == "email" and not (payload.email_subject or "").strip():
         raise HTTPException(
-            status_code=400, detail="email_subject is required for email campaigns"
+            status_code=400,
+            detail="email_subject is required for email campaigns",
         )
 
     feature_code = get_feature_code_for_campaign_type(payload.campaign_type)
 
-    # Main campaign contact count
+    # ---------------------------------------------------------
+    # Main campaign contacts
+    # ---------------------------------------------------------
+
     contacts = (
         db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
     )
 
     main_contact_count = len(contacts)
 
-    # Sequence contact counts
-    sequence_contact_counts = {}
+    # ---------------------------------------------------------
+    # Validate sequences
+    #
+    # Every sequence uses the MAIN campaign contact list.
+    # Each sequence only has its own template_id and gap_days.
+    # ---------------------------------------------------------
 
     total_required_credits = main_contact_count
 
     if payload.sequences:
+
+        sequence_orders = set()
+
         for sequence in payload.sequences:
 
-            if sequence.gap_days < 0:
+            # Sequence order
+            if (
+                not isinstance(sequence.sequence_order, int)
+                or sequence.sequence_order <= 0
+            ):
                 raise HTTPException(
                     status_code=400,
-                    detail="Sequence gap_days cannot be negative",
+                    detail=("Sequence sequence_order " "must be greater than 0"),
                 )
 
-            sequence_contact_list = (
-                db.query(ContactList)
+            # Duplicate sequence order
+            if sequence.sequence_order in sequence_orders:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(f"Duplicate sequence_order: " f"{sequence.sequence_order}"),
+                )
+
+            sequence_orders.add(sequence.sequence_order)
+
+            # Gap must be greater than 0
+            if sequence.gap_days <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Sequence {sequence.sequence_order} "
+                        "gap_days must be greater than 0"
+                    ),
+                )
+
+            # Template is required
+            if not sequence.template_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"template_id is required for "
+                        f"Sequence {sequence.sequence_order}"
+                    ),
+                )
+
+            # -------------------------------------------------
+            # Validate sequence template
+            # -------------------------------------------------
+
+            sequence_template = (
+                db.query(MessageTemplate)
                 .filter(
-                    ContactList.id == sequence.contact_list_id,
-                    ContactList.organization_id == current_user.organization_id,
+                    MessageTemplate.id == sequence.template_id,
+                    MessageTemplate.organization_id == current_user.organization_id,
                 )
                 .first()
             )
 
-            if not sequence_contact_list:
+            if not sequence_template:
                 raise HTTPException(
                     status_code=404,
                     detail=(
-                        f"Sequence contact_list_id "
-                        f"{sequence.contact_list_id} not found"
+                        f"Sequence template_id " f"{sequence.template_id} not found"
                     ),
                 )
 
-            sequence_contacts = (
-                db.query(Contact)
-                .filter(Contact.contact_list_id == sequence_contact_list.id)
-                .all()
-            )
+            # -------------------------------------------------
+            # IMPORTANT:
+            # Sequence uses the SAME main contact list.
+            #
+            # Therefore every sequence has the same number
+            # of contacts as the main campaign.
+            # -------------------------------------------------
 
-            sequence_contact_counts[sequence.contact_list_id] = len(sequence_contacts)
+            total_required_credits += main_contact_count
 
-            total_required_credits += len(sequence_contacts)
+    # ---------------------------------------------------------
+    # Validate total credits
+    # ---------------------------------------------------------
 
-    # Validate TOTAL credits before creating anything
     valid = organization_credit_service.validate_feature_usage(
         db,
         current_user.organization_id,
@@ -2736,13 +2813,19 @@ async def create_campaign(
             status_code=400,
             detail=(
                 f"Insufficient credits. "
-                f"This campaign requires {total_required_credits} credits "
-                f"including all sequences. Please add more credits to continue."
+                f"This campaign requires {total_required_credits} "
+                f"credits including all sequences. "
+                f"Please add more credits to continue."
             ),
         )
 
+    # ---------------------------------------------------------
+    # Schedule validation
+    # ---------------------------------------------------------
+
     if payload.scheduled_time:
         compare_now = datetime.utcnow()
+
         if payload.scheduled_time.tzinfo is not None:
             compare_now = datetime.now(payload.scheduled_time.tzinfo)
     else:
@@ -2756,7 +2839,12 @@ async def create_campaign(
     ):
         status_value = "scheduled"
 
+    # ---------------------------------------------------------
+    # Product
+    # ---------------------------------------------------------
+
     product_name = None
+
     if payload.product_id:
         product = (
             db.query(Product)
@@ -2767,9 +2855,18 @@ async def create_campaign(
             )
             .first()
         )
+
         if not product:
-            raise HTTPException(status_code=404, detail="product_id not found")
+            raise HTTPException(
+                status_code=404,
+                detail="product_id not found",
+            )
+
         product_name = product.name
+
+    # ---------------------------------------------------------
+    # Build main email template
+    # ---------------------------------------------------------
 
     if campaign_type == "email":
         message_template = _build_email_template_payload(
@@ -2778,8 +2875,16 @@ async def create_campaign(
             payload=payload,
         )
 
+    # ---------------------------------------------------------
+    # Time settings
+    # ---------------------------------------------------------
+
     start_time = parse_time_value(payload.start_time)
     end_time = parse_time_value(payload.end_time)
+
+    # ---------------------------------------------------------
+    # Create MAIN campaign
+    # ---------------------------------------------------------
 
     campaign = Campaign(
         organization_id=current_user.organization_id,
@@ -2802,40 +2907,83 @@ async def create_campaign(
         number_sent=0,
         number_failed=0,
     )
+
     db.add(campaign)
     db.flush()
+
+    # ---------------------------------------------------------
+    # Reserve credits for MAIN campaign
+    # ---------------------------------------------------------
 
     organization_credit_service.reserve_credits(
         db=db,
         organization_id=current_user.organization_id,
-        feature_code=get_feature_code_for_campaign_type(payload.campaign_type),
-        quantity=len(contacts),
+        feature_code=feature_code,
+        quantity=main_contact_count,
         reference_type="campaign",
         reference_id=str(campaign.id),
     )
 
+    # ---------------------------------------------------------
+    # Create sequence campaigns
+    # ---------------------------------------------------------
+
     sequence_scheduled_time = payload.scheduled_time
 
     for sequence in payload.sequences or []:
+
+        # -----------------------------------------------------
+        # Add sequence gap to previous campaign date
+        # -----------------------------------------------------
 
         if sequence_scheduled_time:
             sequence_scheduled_time = sequence_scheduled_time + timedelta(
                 days=sequence.gap_days
             )
 
+        # -----------------------------------------------------
+        # Get sequence template
+        # -----------------------------------------------------
+
+        sequence_template = (
+            db.query(MessageTemplate)
+            .filter(
+                MessageTemplate.id == sequence.template_id,
+                MessageTemplate.organization_id == current_user.organization_id,
+            )
+            .first()
+        )
+
+        if not sequence_template:
+            raise HTTPException(
+                status_code=404,
+                detail=(f"Sequence template_id " f"{sequence.template_id} not found"),
+            )
+
+        # -----------------------------------------------------
+        # Create actual Campaign for sequence
+        #
+        # IMPORTANT:
+        # contact_list_id = MAIN campaign contact list
+        # message_template_id = SEQUENCE template
+        # -----------------------------------------------------
+
         sequence_campaign = Campaign(
             organization_id=current_user.organization_id,
-            campaign_name=(f"{campaign_name} - " f"Sequence {sequence.sequence_order}"),
+            campaign_name=(f"{campaign_name} - " f"SQ{sequence.sequence_order}"),
             campaign_type=campaign_type,
-            message_template_id=payload.message_template_id,
-            message_template=message_template,
-            contact_list_id=sequence.contact_list_id,
+            # Sequence-specific template
+            message_template_id=sequence.template_id,
+            # Use the sequence template content
+            message_template=sequence_template.content,
+            # IMPORTANT: inherit main campaign contact list
+            contact_list_id=campaign.contact_list_id,
             product_id=payload.product_id,
             category=payload.category,
             scheduled_time=sequence_scheduled_time,
-            open_tracking_enabled=payload.open_tracking_enabled or False,
-            click_tracking_enabled=payload.click_tracking_enabled or False,
-            footer_display_enabled=payload.footer_display_enabled or False,
+            open_tracking_enabled=(payload.open_tracking_enabled or False),
+            click_tracking_enabled=(payload.click_tracking_enabled or False),
+            footer_display_enabled=(payload.footer_display_enabled or False),
             selected_smtp_profile_ids=(payload.selected_smtp_profile_ids or []),
             active_days=payload.active_days or [],
             start_time=start_time,
@@ -2848,25 +2996,32 @@ async def create_campaign(
         db.add(sequence_campaign)
         db.flush()
 
+        # -----------------------------------------------------
         # History / relationship record
+        # -----------------------------------------------------
+
         campaign_sequence = CampaignSequence(
             campaign_id=campaign.id,
             sequence_campaign_id=sequence_campaign.id,
             sequence_order=sequence.sequence_order,
             gap_days=sequence.gap_days,
-            contact_list_id=sequence.contact_list_id,
+            # NEW
+            template_id=sequence.template_id,
         )
 
         db.add(campaign_sequence)
 
-        sequence_contact_count = sequence_contact_counts[sequence.contact_list_id]
-
+        # -----------------------------------------------------
         # Reserve credits for THIS sequence campaign
+        #
+        # Same main contact list => same contact count
+        # -----------------------------------------------------
+
         organization_credit_service.reserve_credits(
             db=db,
             organization_id=current_user.organization_id,
             feature_code=feature_code,
-            quantity=sequence_contact_count,
+            quantity=main_contact_count,
             reference_type="campaign",
             reference_id=str(sequence_campaign.id),
         )
