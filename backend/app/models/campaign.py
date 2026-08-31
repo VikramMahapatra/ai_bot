@@ -237,8 +237,11 @@ class CampaignSequence(Base):
 
     gap_days = Column(Integer, nullable=False, default=0)
 
-    contact_list_id = Column(
-        Integer, ForeignKey("contact_lists.id"), nullable=False, index=True
+    template_id = Column(
+        Integer,
+        ForeignKey("message_templates.id"),
+        nullable=False,
+        index=True,
     )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -246,8 +249,6 @@ class CampaignSequence(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     campaign = relationship("Campaign", back_populates="sequences")
-
-    contact_list = relationship("ContactList")
 
     campaign = relationship(
         "Campaign",
@@ -258,4 +259,9 @@ class CampaignSequence(Base):
     sequence_campaign = relationship(
         "Campaign",
         foreign_keys=[sequence_campaign_id],
+    )
+
+    template = relationship(
+        "MessageTemplate",
+        foreign_keys=[template_id],
     )

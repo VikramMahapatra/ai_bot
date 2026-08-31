@@ -13,7 +13,7 @@ export type CampaignSequence = {
   id?: number;
   sequence_order: number;
   gap_days: number;
-  contact_list_id: number | null;
+  template_id: number | null;
 };
 
 export interface CampaignItem {
