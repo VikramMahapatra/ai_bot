@@ -280,6 +280,7 @@ export interface OrganizationLimits {
   inbound_voice_enabled?: boolean;
   outbound_voice_enabled?: boolean;
   call_forwarding_enabled?: boolean;
+  module_chat_agents_enabled?: boolean;
   module_followup_workflow_enabled?: boolean;
   module_knowledge_enabled?: boolean;
   module_leads_enabled?: boolean;

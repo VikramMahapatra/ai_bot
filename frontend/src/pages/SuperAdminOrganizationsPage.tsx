@@ -70,6 +70,27 @@ import { CallingNumber } from "../services/callingNumberService";
 
 
 const limitToggleFields: LimitToggleField[] = [
+  // AI & Automation
+  {
+    key: "module_chat_agents_enabled",
+    label: "Chat Agents",
+    visible: true,
+    category: "AI & Automation",
+  },
+
+  {
+    key: "human_handoff_enabled",
+    label: "Human Handoff",
+    visible: true,
+    category: "AI & Automation",
+  },
+  {
+    key: "module_followup_workflow_enabled",
+    label: "Follow-up Workflow",
+    visible: true,
+    category: "AI & Automation",
+  },
+
   // Communication Channels
   {
     key: "whatsapp_enabled",
@@ -89,26 +110,14 @@ const limitToggleFields: LimitToggleField[] = [
     visible: true,
     category: "Communication Channels",
   },
-
-  // AI & Automation
   {
     key: "voice_chat_enabled",
     label: "Voice Chatbot",
     visible: true,
     category: "Communication Channels",
   },
-  {
-    key: "human_handoff_enabled",
-    label: "Human Handoff",
-    visible: true,
-    category: "AI & Automation",
-  },
-  {
-    key: "module_followup_workflow_enabled",
-    label: "Follow-up Workflow",
-    visible: true,
-    category: "AI & Automation",
-  },
+
+
 
   // Campaigns
   {

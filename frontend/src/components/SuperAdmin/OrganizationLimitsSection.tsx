@@ -40,6 +40,32 @@ export default function OrganizationLimitsSection({
     resetButtonText = "Apply Default Limits",
 }: Props) {
 
+    const chatAgentChannelKeys = [
+        "whatsapp_enabled",
+        "instagram_chat_enabled",
+        "facebook_messenger_enabled",
+        "voice_chat_enabled",
+    ];
+
+    const handleChatAgentsToggle = (enabled: boolean) => {
+        setLimits((prev) => ({
+            ...prev,
+            module_chat_agents_enabled: enabled,
+
+            ...(enabled
+                ? {}
+                : chatAgentChannelKeys.reduce(
+                    (acc, key) => {
+                        acc[key] = false;
+                        return acc;
+                    },
+                    {} as Record<string, boolean>
+                )),
+        }));
+    };
+
+    const chatAgentsEnabled = Boolean(limits.module_chat_agents_enabled);
+
     const groupedFields = limitToggleFields
         .filter((field) => field.visible)
         .reduce(
@@ -109,6 +135,17 @@ export default function OrganizationLimitsSection({
                             {fields.map((field) => {
                                 const enabled = Boolean(limits[field.key]);
 
+                                const isChatAgentChannel =
+                                    chatAgentChannelKeys.includes(
+                                        field.key as OrganizationLimitKey
+                                    );
+
+                                const isChatAgentToggle =
+                                    field.key === "module_chat_agents_enabled";
+
+                                const isDisabled =
+                                    isChatAgentChannel && !chatAgentsEnabled;
+
                                 return (
                                     <Grid
                                         item
@@ -129,6 +166,7 @@ export default function OrganizationLimitsSection({
                                                         theme.palette.secondary.main,
                                                         0.24
                                                     ),
+                                                transition: "all 0.2s ease",
                                             }}
                                         >
                                             <Stack
@@ -140,44 +178,64 @@ export default function OrganizationLimitsSection({
                                                 <Typography
                                                     variant="body2"
                                                     fontWeight={600}
+                                                    color={
+                                                        isDisabled
+                                                            ? "text.secondary"
+                                                            : "text.primary"
+                                                    }
                                                 >
                                                     {field.label}
                                                 </Typography>
 
                                                 <Chip
                                                     size="small"
-                                                    label={
-                                                        enabled
-                                                            ? "Enabled"
-                                                            : "Disabled"
-                                                    }
-                                                    color={
-                                                        enabled
-                                                            ? "success"
-                                                            : "default"
-                                                    }
+                                                    label={enabled ? "Enabled" : "Disabled"}
+                                                    color={enabled ? "success" : "default"}
                                                     variant="outlined"
                                                 />
                                             </Stack>
 
                                             <FormControlLabel
-                                                sx={{ m: 0 }}
+                                                sx={{
+                                                    m: 0,
+                                                    "& .MuiFormControlLabel-label": {
+                                                        fontSize: "0.8rem",
+                                                        color: "text.secondary",
+                                                    },
+                                                }}
                                                 control={
                                                     <Switch
-                                                        checked={enabled}
-                                                        onChange={(e) =>
+                                                        checked={
+                                                            isChatAgentChannel
+                                                                ? chatAgentsEnabled && enabled
+                                                                : enabled
+                                                        }
+                                                        onChange={(e) => {
+                                                            const checked = e.target.checked;
+
+                                                            // Prevent enabling when Chat Agents are required
+                                                            if (isDisabled && checked) {
+                                                                return;
+                                                            }
+
+                                                            if (isChatAgentToggle) {
+                                                                handleChatAgentsToggle(checked);
+                                                                return;
+                                                            }
+
                                                             setLimits((prev) => ({
                                                                 ...prev,
-                                                                [field.key]:
-                                                                    e.target.checked,
-                                                            }))
-                                                        }
+                                                                [field.key]: checked,
+                                                            }));
+                                                        }}
                                                     />
                                                 }
                                                 label={
-                                                    enabled
-                                                        ? "Enabled"
-                                                        : "Disabled"
+                                                    isDisabled
+                                                        ? "Requires Chat Agents"
+                                                        : enabled
+                                                            ? "Enabled"
+                                                            : "Disabled"
                                                 }
                                             />
                                         </Paper>

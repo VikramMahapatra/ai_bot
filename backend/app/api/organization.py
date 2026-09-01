@@ -54,6 +54,7 @@ ROUTE_MODULE_MAP = {
     "/follow-up-workflow": "module_followup_workflow_enabled",
     "/handoff": "human_handoff_enabled",
     "/knowledge": "module_knowledge_enabled",
+    "/widgets": "module_chat_agents_enabled",
 }
 
 

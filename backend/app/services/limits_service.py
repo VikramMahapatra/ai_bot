@@ -20,6 +20,7 @@ DEFAULT_LIMITS = {
     "email_campaign_enabled": True,
     "sms_campaign_enabled": True,
     "module_knowledge_enabled": True,
+    "module_chat_agents_enabled": True,
     "module_leads_enabled": True,
     "module_analytics_enabled": True,
     "module_advanced_analytics_enabled": True,
@@ -123,6 +124,11 @@ def _build_effective_limits(limits: OrganizationLimits) -> dict:
             limits.sms_campaign_enabled
             if limits.sms_campaign_enabled is not None
             else DEFAULT_LIMITS["sms_campaign_enabled"]
+        ),
+        "module_chat_agents_enabled": (
+            limits.module_chat_agents_enabled
+            if limits.module_chat_agents_enabled is not None
+            else DEFAULT_LIMITS["module_chat_agents_enabled"]
         ),
         "module_knowledge_enabled": (
             limits.module_knowledge_enabled
