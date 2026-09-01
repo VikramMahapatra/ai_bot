@@ -18,7 +18,7 @@ class OrganizationLimits(Base):
     human_handoff_enabled = Column(Boolean, nullable=True)
     email_campaign_enabled = Column(Boolean, nullable=True)
     sms_campaign_enabled = Column(Boolean, nullable=True)
-
+    module_chat_agents_enabled = Column(Boolean, nullable=True)
     module_knowledge_enabled = Column(Boolean, nullable=True)
     module_leads_enabled = Column(Boolean, nullable=True)
     module_analytics_enabled = Column(Boolean, nullable=True)

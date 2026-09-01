@@ -40,7 +40,7 @@ class OrganizationLimitsBase(BaseModel):
     module_appointments_enabled: Optional[bool] = None
     module_products_enabled: Optional[bool] = None
     module_users_enabled: Optional[bool] = None
-
+    module_chat_agents_enabled: Optional[bool] = None
     instagram_chat_enabled: Optional[bool] = None
     facebook_messenger_enabled: Optional[bool] = None
     whatsapp_campaign_enabled: Optional[bool] = None
@@ -64,6 +64,7 @@ class OrganizationLimitsUpdate(BaseModel):
     human_handoff_enabled: Optional[bool] = None
     email_campaign_enabled: Optional[bool] = None
     sms_campaign_enabled: Optional[bool] = None
+    module_chat_agents_enabled: Optional[bool] = None
     module_knowledge_enabled: Optional[bool] = None
     module_leads_enabled: Optional[bool] = None
     module_analytics_enabled: Optional[bool] = None
