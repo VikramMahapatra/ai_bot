@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.models.call_logs import CallLog
 from fastapi import HTTPException
 from openai import OpenAI
 from sqlalchemy import and_, exists, or_
@@ -313,8 +314,41 @@ def process_pending_session_outcomes(
             transcript = _build_transcript(rows)
             classification = _classify_outcome_with_llm(transcript)
             outcome = classification["outcome"]
-            whether_lead = classification["whether_lead"]
-            is_lead_value = 1 if whether_lead == "lead" else 0
+
+            source = (rows[0].source or "").lower()
+
+            if source == "voice":
+                call_log = (
+                    db.query(CallLog)
+                    .filter(
+                        CallLog.call_session_id == session_id,
+                        CallLog.organization_id == org_id,
+                    )
+                    .order_by(CallLog.created_at.desc())
+                    .first()
+                )
+
+                lead_info = call_log.lead_info if call_log else {}
+
+                if isinstance(lead_info, str):
+                    try:
+                        lead_info = json.loads(lead_info)
+                    except (json.JSONDecodeError, TypeError):
+                        lead_info = {}
+
+                lead_quality = lead_info.get("lead_quality") or {}
+
+                rate = lead_quality.get("rate", 0)
+                try:
+                    rate = float(rate or 0)
+                except (TypeError, ValueError):
+                    rate = 0
+
+                is_lead_value = 1 if rate > 0 else 0
+                whether_lead = "lead" if is_lead_value else "not_lead"
+            else:
+                whether_lead = classification["whether_lead"]
+                is_lead_value = 1 if whether_lead == "lead" else 0
 
             if transcript.strip():
                 organization_credit_service.deduct_credits(

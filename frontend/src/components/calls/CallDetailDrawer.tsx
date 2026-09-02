@@ -270,21 +270,72 @@ const CallDetailDrawer: React.FC<CallDetailDrawerProps> = ({ open, selectedCall,
                                     Conversion Outcome:
                                 </Typography>
 
-                                <Typography
-                                    variant="body2"
-                                    fontWeight={600}
-                                    color={
-                                        selectedCall?.lead_qualified_status === "positive"
-                                            ? "success"
-                                            : selectedCall?.lead_qualified_status === "negative"
-                                                ? "error"
-                                                : "text.primary"
-                                    }
-                                >
-                                    {selectedCall?.lead_qualified_status
-                                        ? titleCase(selectedCall.lead_qualified_status)
-                                        : "N/A"}
-                                </Typography>
+                                <Stack direction="row" spacing={0.5}>
+                                    {selectedCall?.lead_qualified_status ? (
+                                        selectedCall.lead_qualified_status.toLowerCase().startsWith("positive - ") ? (
+                                            <>
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={600}
+                                                    color="success.main"
+                                                >
+                                                    Positive
+                                                </Typography>
+
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={600}
+                                                    color="text.secondary"
+                                                >
+                                                    -
+                                                </Typography>
+
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={600}
+                                                    color={
+                                                        selectedCall.lead_qualified_status
+                                                            .toLowerCase()
+                                                            .endsWith("hot")
+                                                            ? "error.main"
+                                                            : selectedCall.lead_qualified_status
+                                                                .toLowerCase()
+                                                                .endsWith("warm")
+                                                                ? "warning.main"
+                                                                : "info.main"
+                                                    }
+                                                >
+                                                    {titleCase(
+                                                        selectedCall.lead_qualified_status
+                                                            .split(" - ")[1]
+                                                    )}
+                                                </Typography>
+                                            </>
+                                        ) : (
+                                            <Typography
+                                                variant="body2"
+                                                fontWeight={600}
+                                                color={
+                                                    selectedCall.lead_qualified_status === "negative"
+                                                        ? "error.main"
+                                                        : selectedCall.lead_qualified_status === "pending"
+                                                            ? "warning.main"
+                                                            : "text.primary"
+                                                }
+                                            >
+                                                {titleCase(selectedCall.lead_qualified_status)}
+                                            </Typography>
+                                        )
+                                    ) : (
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={600}
+                                            color="text.primary"
+                                        >
+                                            N/A
+                                        </Typography>
+                                    )}
+                                </Stack>
                             </Box>
                             <Box display="flex" alignItems="center" gap={1}>
                                 {getSourceIcon(selectedCall.source)}

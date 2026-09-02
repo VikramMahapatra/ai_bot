@@ -102,6 +102,38 @@ DEFAULT_APPOINTMENT_TIMEZONE = "Asia/Kolkata"
 
 logger = logging.getLogger(__name__)
 
+LEAD_QUALIFIED_RANGES = {
+    "hot": (70, 100),
+    "warm": (40, 69),
+    "cold": (1, 39),
+}
+
+
+def get_lead_qualified_status(lead_info, is_lead, campaign_name, lead_outcome):
+    # No lead evaluation yet
+    if is_lead is None:
+        return "pending" if campaign_name and lead_outcome else ""
+
+    # Not a lead
+    if not is_lead:
+        return "negative"
+
+    # Positive lead - determine quality from rate
+    lead_quality = (lead_info or {}).get("lead_quality") or {}
+    rate = lead_quality.get("rate", 0)
+
+    try:
+        rate = float(rate or 0)
+    except (TypeError, ValueError):
+        rate = 0
+
+    if rate >= 70:
+        return "positive - hot"
+    elif rate >= 40:
+        return "positive - warm"
+    else:
+        return "positive - cold"
+
 
 def get_call_logs(
     background_tasks: BackgroundTasks,
@@ -310,10 +342,17 @@ def get_call_logs(
             .scalar()
         )
 
-        lead_status = {
-            True: "positive",
-            False: "negative",
-        }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
+        # lead_status = {
+        #     True: "positive",
+        #     False: "negative",
+        # }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
+
+        lead_status = get_lead_qualified_status(
+            log.lead_info,
+            is_lead,
+            campaign_name,
+            lead_outcome,
+        )
 
         instant_log = (
             db.query(InstantReplyLog)
@@ -2299,7 +2338,11 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
 
 
 def get_call_result(call):
-    from app.services.conversation_outcome_service import _classify_outcome_with_llm
+    import json
+
+    from app.services.conversation_outcome_service import (
+        _classify_outcome_with_llm,
+    )
 
     transcript = call.get("transcript")
     has_transcript = transcript is not None and str(transcript).strip() != ""
@@ -2309,16 +2352,42 @@ def get_call_result(call):
     else:
         call_status = "not_connected"
 
-    # outcome from API / AI / call data
-    transcript = _build_transcript(call.get("transcript"))
-    classification = _classify_outcome_with_llm(transcript)
-    whether_lead = classification["whether_lead"]
+    # Use lead_info if available
+    lead_info = call.get("lead_info")
 
-    # fallback outcomes
-    if not whether_lead:
-        outcome = "negative"
+    if isinstance(lead_info, str):
+        try:
+            lead_info = json.loads(lead_info)
+        except (json.JSONDecodeError, TypeError):
+            lead_info = {}
+
+    if not isinstance(lead_info, dict):
+        lead_info = {}
+
+    lead_quality = lead_info.get("lead_quality") or {}
+    rate = lead_quality.get("rate", 0)
+
+    try:
+        rate = float(rate or 0)
+    except (TypeError, ValueError):
+        rate = 0
+
+    # lead_quality.rate > 0 means positive/lead
+    if rate > 0:
+        outcome = "positive"
     else:
-        outcome = "positive" if whether_lead == "lead" else "negative"
+        outcome = "negative"
+
+    # outcome from API / AI / call data
+    # transcript = _build_transcript(call.get("transcript"))
+    # classification = _classify_outcome_with_llm(transcript)
+    # whether_lead = classification["whether_lead"]
+
+    # # fallback outcomes
+    # if not whether_lead:
+    #     outcome = "negative"
+    # else:
+    #     outcome = "positive" if whether_lead == "lead" else "negative"
 
     return call_status, outcome
 

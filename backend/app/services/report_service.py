@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import String, and_, case, cast, func
+from sqlalchemy import String, and_, case, cast, func, Float
 from app.models import ConversationMetrics, Conversation, Lead
 from app.models.call_campaigns import CallCampaign
 from app.models.calling_agents import CallingAgent
@@ -218,6 +218,28 @@ def get_session_conversations_report(
         .subquery()
     )
 
+    call_log_subquery = (
+        db.query(
+            CallLog.call_session_id.label("session_id"),
+            func.max(
+                cast(
+                    func.json_extract_path_text(
+                        CallLog.lead_info,
+                        "lead_quality",
+                        "rate",
+                    ),
+                    Float,
+                )
+            ).label("lead_quality_rate"),
+        )
+        .filter(
+            CallLog.organization_id == organization_id,
+            CallLog.call_session_id.isnot(None),
+        )
+        .group_by(CallLog.call_session_id)
+        .subquery()
+    )
+
     query = (
         db.query(
             sessions_subquery.c.id.label("id"),
@@ -246,8 +268,44 @@ def get_session_conversations_report(
                 "contact_name"
             ),
             case(
-                (sessions_subquery.c.is_lead == True, "positive"),
-                (sessions_subquery.c.is_lead == False, "negative"),
+                # Voice + positive + hot
+                (
+                    and_(
+                        func.lower(sessions_subquery.c.source) == "voice",
+                        sessions_subquery.c.is_lead == True,
+                        call_log_subquery.c.lead_quality_rate >= 70,
+                    ),
+                    "positive - hot",
+                ),
+                # Voice + positive + warm
+                (
+                    and_(
+                        func.lower(sessions_subquery.c.source) == "voice",
+                        sessions_subquery.c.is_lead == True,
+                        call_log_subquery.c.lead_quality_rate >= 40,
+                    ),
+                    "positive - warm",
+                ),
+                # Voice + positive + cold
+                (
+                    and_(
+                        func.lower(sessions_subquery.c.source) == "voice",
+                        sessions_subquery.c.is_lead == True,
+                        call_log_subquery.c.lead_quality_rate > 0,
+                    ),
+                    "positive - cold",
+                ),
+                # Non-Voice + positive
+                (
+                    sessions_subquery.c.is_lead == True,
+                    "positive",
+                ),
+                # Negative
+                (
+                    sessions_subquery.c.is_lead == False,
+                    "negative",
+                ),
+                # Pending
                 else_="pending",
             ).label("lead_conversion"),
         )
@@ -263,6 +321,10 @@ def get_session_conversations_report(
         .outerjoin(
             contact_subquery,
             contact_subquery.c.session_id == sessions_subquery.c.session_id,
+        )
+        .outerjoin(
+            call_log_subquery,
+            call_log_subquery.c.session_id == sessions_subquery.c.session_id,
         )
     )
 
