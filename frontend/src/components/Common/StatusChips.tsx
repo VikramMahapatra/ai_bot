@@ -1,4 +1,4 @@
-import { Chip } from "@mui/material";
+import { Chip, Stack } from "@mui/material";
 import { FunnelCategory } from "../../types";
 import { LEAD_SOURCE_FILTER_TINTS } from "../../constants/leadFilterChartColors";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -226,20 +226,23 @@ export const StageChip = ({
         />
     );
 };
-
 export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
-    if (!value || !value.trim()) return <Chip
-        label="N/A"
-        size="small"
-        variant="outlined"
-        sx={{
-            color: "#9e9e9e",
-            borderColor: "#e0e0e0",
-            backgroundColor: "#fafafa",
-        }}
-    />;
+    if (!value || !value.trim()) {
+        return (
+            <Chip
+                label="N/A"
+                size="small"
+                variant="outlined"
+                sx={{
+                    color: "#9e9e9e",
+                    borderColor: "#e0e0e0",
+                    backgroundColor: "#fafafa",
+                }}
+            />
+        );
+    }
 
-    const normalized = value?.toLowerCase().trim();
+    const normalized = value.toLowerCase().trim();
 
     const colorMap: Record<string, any> = {
         positive: "success",
@@ -248,18 +251,42 @@ export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
         neutral: "warning",
         unresolved: "default",
         pending: "warning",
+        hot: "error",
+        warm: "warning",
+        cold: "info",
     };
 
-    const label = normalized
-        ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
-        : "Pending";
+    // Handle "positive - hot", "positive - warm", "positive - cold"
+    if (normalized.startsWith("positive - ")) {
+        const [, quality] = normalized.split(" - ");
+
+        return (
+            <Stack direction="row" spacing={0.5}>
+                <Chip
+                    label="Positive"
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                />
+                <Chip
+                    label={quality.charAt(0).toUpperCase() + quality.slice(1)}
+                    size="small"
+                    variant="outlined"
+                    color={colorMap[quality] || "default"}
+                />
+            </Stack>
+        );
+    }
+
+    const label =
+        normalized.charAt(0).toUpperCase() + normalized.slice(1);
 
     return (
         <Chip
             label={label}
             size="small"
             variant="outlined"
-            color={colorMap[normalized || "pending"] || "default"}
+            color={colorMap[normalized] || "default"}
         />
     );
 };
