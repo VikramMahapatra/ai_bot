@@ -259,7 +259,11 @@ def init_db():
         # contacts
         # ----------------------------
         try:
-            columns = {"external_contact_id": "INTEGER", "company": "TEXT"}
+            columns = {
+                "external_contact_id": "INTEGER",
+                "company": "TEXT",
+                "custom_fields": "TEXT",
+            }
 
             for col, col_type in columns.items():
                 if not column_exists(conn, "contacts", col):

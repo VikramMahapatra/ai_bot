@@ -13,6 +13,13 @@ type RichTextBlock =
   | { type: "ordered-list"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] };
 
+interface ContactFieldDefinition {
+  key: string;
+  label: string;
+  type?: "text" | "email" | "tel" | "number" | "date";
+  required?: boolean;
+}
+
 interface WidgetConfig {
   widgetId: string;
   apiUrl: string;
@@ -24,6 +31,7 @@ interface WidgetConfig {
   position?: string;
   botIcon?: string;
   userIcon?: string;
+  contactFields?: ContactFieldDefinition[];
   shop?: any;
   user?: any;
 }
@@ -583,6 +591,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   position = "bottom-right",
   botIcon = "bot-robot",
   userIcon = "user-person",
+  contactFields = [],
   shop,
   user,
 }) => {
@@ -605,6 +614,15 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     phone: "",
     company: "",
   });
+  const [leadCustomFields, setLeadCustomFields] = useState<Record<string, string>>({});
+
+  const extraContactFields = useMemo(
+    () =>
+      contactFields.filter(
+        (field) => field.key && field.label && !["name", "email", "phone", "company"].includes(field.key),
+      ),
+    [contactFields],
+  );
 
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailValue, setEmailValue] = useState("");
@@ -1448,6 +1466,29 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       return;
     }
 
+    const missingRequiredField = extraContactFields.find(
+      (field) => field.required && !String(leadCustomFields[field.key] || "").trim(),
+    );
+    if (missingRequiredField) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Please add ${missingRequiredField.label} so we can follow up properly.`,
+        },
+      ]);
+      return;
+    }
+
+    const customFields = extraContactFields.reduce<Record<string, string>>(
+      (fields, field) => {
+        const value = String(leadCustomFields[field.key] || "").trim();
+        if (value) fields[field.key] = value;
+        return fields;
+      },
+      {},
+    );
+
     setLeadSubmitting(true);
     try {
       const latestAssistant =
@@ -1464,11 +1505,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         email: leadForm.email.trim() || undefined,
         phone: leadForm.phone.trim() || undefined,
         company: leadForm.company.trim() || undefined,
+        custom_fields:
+          Object.keys(customFields).length > 0
+            ? JSON.stringify(customFields)
+            : undefined,
       });
 
       setLeadSubmitted(true);
       setShowLeadForm(false);
       setLeadForm({ name: "", email: "", phone: "", company: "" });
+      setLeadCustomFields({});
 
       if (shouldAutoStartHandoff) {
         setPendingHandoffAfterLead(false);
@@ -2213,6 +2259,21 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                       }))
                     }
                   />
+                  {extraContactFields.map((field) => (
+                    <input
+                      key={field.key}
+                      type={field.type || "text"}
+                      className="chatbot-inline-input chatbot-lead-input"
+                      placeholder={`${field.label}${field.required ? " *" : ""}`}
+                      value={leadCustomFields[field.key] || ""}
+                      onChange={(e) =>
+                        setLeadCustomFields((prev) => ({
+                          ...prev,
+                          [field.key]: e.target.value,
+                        }))
+                      }
+                    />
+                  ))}
                   <div className="chatbot-inline-actions">
                     <button
                       className="chatbot-inline-button"

@@ -266,6 +266,7 @@ export interface ContactItem {
   company?: string | null;
   contact_list_id: number | null;
   contact_list_name?: string | null;
+  session_id?: string | null;
   created_at: string;
 
   // Additional fields
@@ -287,6 +288,7 @@ export interface ContactItem {
   source?: string | null;
   lifecycle_stage?: string | null;
   tags?: string | null;
+  custom_fields?: string | null;
 }
 
 export interface ContactResponse {

@@ -70,6 +70,7 @@ class Contact(Base):
 
     # Tags
     tags = Column(String, nullable=True)  # comma separated OR JSON
+    custom_fields = Column(Text, nullable=True)
 
     # System Fields
     session_id = Column(String, index=True, nullable=True)  # for chat's contact sync

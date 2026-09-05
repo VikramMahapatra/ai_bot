@@ -72,6 +72,25 @@ import { ConfirmDialog } from "./Common/ConfirmDialog";
 
 type ContactForm = Omit<ContactItem, "id" | "created_at">;
 
+const parseCustomFields = (raw?: string | null): Record<string, unknown> => {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const formatCustomFieldLabel = (key: string) =>
+  key
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
 interface ContactsProps {
   tab: number;
   setTab: (value: number) => void;
@@ -162,10 +181,32 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   const [contactListToDelete, setContactListToDelete] = useState<ContactListItem | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
-  const handleView = (contact: any) => {
+  const handleView = async (contact: ContactItem) => {
     setSelectedContact(contact);
     setDrawerOpen(true);
+    if (!contact.id) return;
+
+    try {
+      const data = await callCampaignService.allContacts({
+        search: contact.email || contact.phone || contact.name || undefined,
+        limit: 50,
+      });
+      const freshContact = data.items.find((item) => item.id === contact.id);
+      if (!freshContact) return;
+      setSelectedContact((current) =>
+        current?.id === contact.id ? { ...current, ...freshContact } : current,
+      );
+    } catch {
+      // Keep the drawer open with the table row data if refresh fails.
+    }
   };
+
+  const contactCustomFieldEntries = Object.entries(
+    parseCustomFields(selectedContact?.custom_fields),
+  ).filter(
+    ([, value]) =>
+      value !== undefined && value !== null && String(value).trim() !== "",
+  );
 
   const handleCloseDrawer = () => {
     setDrawerOpen(false);
@@ -2223,6 +2264,28 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                   />
                 </Grid>
               </Grid>
+
+              {contactCustomFieldEntries.length > 0 && (
+                <>
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    sx={{ borderBottom: "1px solid #d0d0d0", pb: 1 }}
+                  >
+                    Additional Info
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {contactCustomFieldEntries.map(([key, value]) => (
+                      <Grid item xs={6} key={key}>
+                        <Field
+                          label={formatCustomFieldLabel(key)}
+                          value={String(value)}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </>
+              )}
 
               {/* --- Product Info --- */}
               <Typography

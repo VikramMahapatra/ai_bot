@@ -132,12 +132,18 @@ def _sync_lead_contact_to_agent_list(
         existing_phone_normalized = _normalize_phone((existing.phone or "").strip())
 
         if cleaned_email and existing_email and existing_email == cleaned_email:
+            if lead.custom_fields:
+                existing.custom_fields = lead.custom_fields
+                db.flush()
             return
         if (
             normalized_phone
             and existing_phone_normalized
             and existing_phone_normalized == normalized_phone
         ):
+            if lead.custom_fields:
+                existing.custom_fields = lead.custom_fields
+                db.flush()
             return
 
     cleaned_name = (lead.name or "").strip() or None
@@ -148,6 +154,7 @@ def _sync_lead_contact_to_agent_list(
         email=cleaned_email or None,
         phone=cleaned_phone or None,
         session_id=lead.session_id if lead and lead.session_id else None,
+        custom_fields=lead.custom_fields,
     )
     db.add(contact)
     db.flush()

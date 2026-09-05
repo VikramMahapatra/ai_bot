@@ -137,6 +137,36 @@ const normalizeHexColor = (value?: string) => {
   const trimmed = value.trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : fallback;
 };
+const parseCustomFields = (raw?: string | null): Record<string, unknown> => {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const formatCustomFieldLabel = (key: string) =>
+  key
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const fixedLeadCustomFieldKeys = new Set([
+  "whatsapp_number",
+  "gender",
+  "designation",
+  "source",
+  "city",
+  "state",
+  "country",
+  "session_id",
+  "widget_id",
+]);
 
 type LeadManagerProps = {
   openFunnelCatDialog: boolean;
@@ -1162,9 +1192,14 @@ const LeadManager = ({
     </>
   );
 
-  const customFields = selectedLead?.custom_fields
-    ? JSON.parse(selectedLead.custom_fields)
-    : {};
+  const customFields = parseCustomFields(selectedLead?.custom_fields);
+  const dynamicCustomFieldEntries = Object.entries(customFields).filter(
+    ([key, value]) =>
+      !fixedLeadCustomFieldKeys.has(key) &&
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== "",
+  );
 
   return (
     <Box>
@@ -1627,27 +1662,39 @@ const LeadManager = ({
                 <Grid item xs={6}>
                   <Field
                     label="Whatsapp Number:"
-                    value={customFields?.whatsapp_number || "-"}
+                    value={String(customFields.whatsapp_number || "-")}
                   />
-                  <Field label="Gender:" value={customFields?.gender || "-"} />
+                  <Field label="Gender:" value={String(customFields.gender || "-")} />
                   <Field
                     label="Designation:"
-                    value={customFields?.designation || "-"}
+                    value={String(customFields.designation || "-")}
                   />
-                  <Field label="Source:" value={customFields?.source || ""} />
+                  <Field label="Source:" value={String(customFields.source || "")} />
                 </Grid>
                 <Grid item xs={6}>
-                  <Field label="City:" value={customFields?.city || "-"} />
+                  <Field label="City:" value={String(customFields.city || "-")} />
                   <Field
                     label="State:"
-                    value={customFields?.session_id || "-"}
+                    value={String(customFields.state || "-")}
                   />
                   <Field
                     label="Country:"
-                    value={customFields?.widget_id || "-"}
+                    value={String(customFields.country || "-")}
                   />
                 </Grid>
               </Grid>
+              {dynamicCustomFieldEntries.length > 0 && (
+                <Grid container spacing={4}>
+                  {dynamicCustomFieldEntries.map(([key, value]) => (
+                    <Grid item xs={6} key={key}>
+                      <Field
+                        label={`${formatCustomFieldLabel(key)}:`}
+                        value={String(value)}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
             </Stack>
           )}
         </DialogContent>

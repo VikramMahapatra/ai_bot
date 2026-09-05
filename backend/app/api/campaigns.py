@@ -52,6 +52,7 @@ from app.models import (
     CampaignLeadRule,
     CampaignLeadConversion,
     TwilioSmsChannel,
+    Lead,
 )
 from app.models.products import Product
 from app.services.email_service import send_campaign_email
@@ -2239,6 +2240,20 @@ async def list_contacts(
 
     total = query.count()
     rows = query.order_by(Contact.created_at.desc()).offset(skip).limit(limit).all()
+    session_ids = [row.session_id for row in rows if row.session_id]
+    lead_custom_fields_by_session = {}
+    if session_ids:
+        for session_id, custom_fields in (
+            db.query(Lead.session_id, Lead.custom_fields)
+            .filter(
+                Lead.organization_id == current_user.organization_id,
+                Lead.session_id.in_(session_ids),
+                Lead.custom_fields.isnot(None),
+            )
+            .order_by(Lead.created_at.desc())
+            .all()
+        ):
+            lead_custom_fields_by_session.setdefault(session_id, custom_fields)
 
     # Return all fields
     return {
@@ -2266,6 +2281,7 @@ async def list_contacts(
                 "source": row.source,
                 "lifecycle_stage": row.lifecycle_stage,
                 "tags": row.tags,
+                "custom_fields": row.custom_fields or lead_custom_fields_by_session.get(row.session_id),
                 "created_at": row.created_at,
             }
             for row in rows

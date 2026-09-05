@@ -105,6 +105,15 @@ def get_contacts(
     )
 
 
+@router.get("/contacts/{contact_id:int}")
+def get_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.get_contact(db, current_user.organization_id, contact_id)
+
+
 @router.get("/contacts/lookup")
 def contacts_lookup(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)

@@ -21,6 +21,7 @@ from app.schemas.call_campaign import (
     ContactCreate,
 )
 from app.models.campaign import Contact, ContactList
+from app.models.lead import Lead
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.calling_agents import CallingAgent
 from app.models.call_logs import CallLog, CallTranscript
@@ -49,6 +50,64 @@ STALE_MINUTES = 1
 SYNC_STATUSES = ["draft", "active", "running", "pending", "scheduled"]
 
 logger = logging.getLogger(__name__)
+
+
+def _lead_custom_fields_by_session(
+    db: Session, organization_id: int, session_ids: list[str]
+) -> dict[str, str]:
+    if not session_ids:
+        return {}
+
+    custom_fields_by_session: dict[str, str] = {}
+    for session_id, custom_fields in (
+        db.query(Lead.session_id, Lead.custom_fields)
+        .filter(
+            Lead.organization_id == organization_id,
+            Lead.session_id.in_(session_ids),
+            Lead.custom_fields.isnot(None),
+        )
+        .order_by(Lead.created_at.desc())
+        .all()
+    ):
+        custom_fields_by_session.setdefault(session_id, custom_fields)
+    return custom_fields_by_session
+
+
+def _serialize_contact(
+    row: Contact, custom_fields_by_session: Optional[dict[str, str]] = None
+) -> dict:
+    custom_fields_by_session = custom_fields_by_session or {}
+    return {
+        "id": row.id,
+        "contact_list_id": row.contact_list_id,
+        "contact_list_name": row.contact_list.list_name if row.contact_list else None,
+        "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})"
+        if row.contact_list
+        else f"{row.name} ({row.phone})",
+        "name": row.name,
+        "email": row.email,
+        "phone": row.phone,
+        "whatsapp_number": row.whatsapp_number,
+        "gender": row.gender,
+        "company": row.company,
+        "designation": row.designation,
+        "item_name": row.item_name,
+        "item_type": row.item_type,
+        "interest_stage": row.interest_stage,
+        "item_category": row.item_category,
+        "amount": row.amount,
+        "offer_value": row.offer_value,
+        "city": row.city,
+        "state": row.state,
+        "country": row.country,
+        "source": row.source,
+        "lifecycle_stage": row.lifecycle_stage,
+        "tags": row.tags,
+        "session_id": row.session_id,
+        "custom_fields": row.custom_fields
+        or custom_fields_by_session.get(row.session_id),
+        "created_at": row.created_at,
+    }
 
 
 def should_sync(campaign):
@@ -1199,40 +1258,17 @@ def get_contacts(
     # Pagination
     # ---------------------------
     rows = query.offset(skip).limit(limit).all()
+    session_ids = [row.session_id for row in rows if row.session_id]
+    lead_custom_fields_by_session = _lead_custom_fields_by_session(
+        db, organization_id, session_ids
+    )
 
     # ---------------------------
     # Response
     # ---------------------------
     return {
         "items": [
-            {
-                "id": row.id,
-                "contact_list_id": row.contact_list_id,
-                "contact_list_name": (
-                    row.contact_list.list_name if row.contact_list else None
-                ),
-                "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})",
-                "name": row.name,
-                "email": row.email,
-                "phone": row.phone,
-                "whatsapp_number": row.whatsapp_number,
-                "gender": row.gender,
-                "company": row.company,
-                "designation": row.designation,
-                "item_name": row.item_name,
-                "item_type": row.item_type,
-                "interest_stage": row.interest_stage,
-                "item_category": row.item_category,
-                "amount": row.amount,
-                "offer_value": row.offer_value,
-                "city": row.city,
-                "state": row.state,
-                "country": row.country,
-                "source": row.source,
-                "lifecycle_stage": row.lifecycle_stage,
-                "tags": row.tags,
-                "created_at": row.created_at,
-            }
+            _serialize_contact(row, lead_custom_fields_by_session)
             for row in rows
         ],
         "pagination": {
@@ -1241,6 +1277,22 @@ def get_contacts(
             "limit": limit,
         },
     }
+
+
+def get_contact(db: Session, organization_id: int, contact_id: int):
+    row = (
+        db.query(Contact)
+        .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(Contact.id == contact_id, ContactList.organization_id == organization_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    lead_custom_fields = _lead_custom_fields_by_session(
+        db, organization_id, [row.session_id] if row.session_id else []
+    )
+    return _serialize_contact(row, lead_custom_fields)
 
 
 def get_contacts_lookup(db: Session, organization_id: int):

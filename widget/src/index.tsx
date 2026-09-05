@@ -16,9 +16,17 @@ declare global {
       position?: string;
       botIcon?: string;
       userIcon?: string;
+      contactFields?: ContactFieldDefinition[];
     };
     __AIChatbotWidgetInitialized?: boolean;
   }
+}
+
+interface ContactFieldDefinition {
+  key: string;
+  label: string;
+  type?: "text" | "email" | "tel" | "number" | "date";
+  required?: boolean;
 }
 
 interface WidgetPublicConfig {
@@ -35,6 +43,14 @@ interface IconSelection {
   userIcon?: string;
   chatHeaderFontColor?: string;
 }
+
+const normalizeContactFieldKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -78,6 +94,26 @@ const parseIconSelection = (leadFieldsRaw?: string): IconSelection => {
   }
 };
 
+const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
+  if (!leadFieldsRaw) return [];
+  try {
+    const parsed = JSON.parse(leadFieldsRaw);
+    const fields = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as any).fields : undefined;
+    if (!Array.isArray(fields)) return [];
+    return fields
+      .map((field: any): ContactFieldDefinition | null => {
+        const label = typeof field?.label === "string" ? field.label.trim() : "";
+        const key = normalizeContactFieldKey(typeof field?.key === "string" ? field.key : label);
+        const type = ["text", "email", "tel", "number", "date"].includes(field?.type) ? field.type : "text";
+        if (!label || !key) return null;
+        return { key, label, type, required: Boolean(field?.required) };
+      })
+      .filter((field): field is ContactFieldDefinition => Boolean(field));
+  } catch {
+    return [];
+  }
+};
+
 const WIDGET_ROOT_ID = "ai-chatbot-widget-root";
 
 // Initialize the widget when the script loads
@@ -99,6 +135,7 @@ async function initWidget() {
   const config = window.AIChatbot;
   const remoteConfig = await loadWidgetConfig(config.apiUrl, config.widgetId);
   const iconSelection = parseIconSelection(remoteConfig?.lead_fields);
+  const remoteContactFields = parseContactFields(remoteConfig?.lead_fields);
 
   const globalConfig = (window as any).AIChatbot || {};
 
@@ -130,6 +167,7 @@ async function initWidget() {
         position={remoteConfig?.position || config.position}
         botIcon={config.botIcon || iconSelection.botIcon}
         userIcon={config.userIcon || iconSelection.userIcon}
+        contactFields={config.contactFields || remoteContactFields}
         shop={shopifyShop}
         user={shopifyUser}
       />

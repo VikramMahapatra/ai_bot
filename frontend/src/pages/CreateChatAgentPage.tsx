@@ -80,6 +80,13 @@ interface IconOption {
   glyph: string;
 }
 
+interface ContactFieldDefinition {
+  key: string;
+  label: string;
+  type: 'text' | 'email' | 'tel' | 'number' | 'date';
+  required: boolean;
+}
+
 interface CrawlPreviewItem {
   url: string;
   depth: number;
@@ -120,6 +127,36 @@ const USER_ICON_OPTIONS: IconOption[] = [
 const getIconGlyph = (iconId: string, role: 'bot' | 'user'): string => {
   const source = role === 'bot' ? BOT_ICON_OPTIONS : USER_ICON_OPTIONS;
   return source.find((item) => item.id === iconId)?.glyph || source[0].glyph;
+};
+
+const BUILT_IN_CONTACT_FIELD_KEYS = new Set(['name', 'email', 'phone', 'company']);
+
+const normalizeContactFieldKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+
+const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
+  if (!leadFieldsRaw) return [];
+  try {
+    const parsed = JSON.parse(leadFieldsRaw);
+    const fields = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as any).fields : undefined;
+    if (!Array.isArray(fields)) return [];
+    return fields
+      .map((field: any): ContactFieldDefinition | null => {
+        const label = typeof field?.label === 'string' ? field.label.trim() : '';
+        const key = normalizeContactFieldKey(typeof field?.key === 'string' ? field.key : label);
+        const type = ['text', 'email', 'tel', 'number', 'date'].includes(field?.type) ? field.type : 'text';
+        if (!label || !key) return null;
+        return { key, label, type, required: Boolean(field?.required) };
+      })
+      .filter((field): field is ContactFieldDefinition => Boolean(field));
+  } catch {
+    return [];
+  }
 };
 
 const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIcon?: string; chatHeaderFontColor?: string } => {
@@ -202,6 +239,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [showWidgetPreview, setShowWidgetPreview] = useState(true);
   const [botIcon, setBotIcon] = useState('bot-robot');
   const [userIcon, setUserIcon] = useState('user-person');
+  const [contactFields, setContactFields] = useState<ContactFieldDefinition[]>([]);
   const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
   const formatDisplayDate = useDateFormatter()
 
@@ -469,6 +507,7 @@ const CreateChatAgentPage: React.FC = () => {
         if (styleSelection.chatHeaderFontColor) {
           setWidget((prev) => ({ ...prev, chat_header_font_color: styleSelection.chatHeaderFontColor }));
         }
+        setContactFields(parseContactFields(typeof config.lead_fields === 'string' ? config.lead_fields : undefined));
 
         setCreatedWidgetId(loadedWidgetId);
         setSuccess('Loaded existing agent configuration for editing.');
@@ -847,6 +886,13 @@ const CreateChatAgentPage: React.FC = () => {
       widget_id: widget.widget_id || `widget_${Date.now()}`,
       lead_fields: JSON.stringify({
         ...leadFieldMetadata,
+        fields: contactFields
+          .map((field) => ({
+            ...field,
+            key: normalizeContactFieldKey(field.key || field.label),
+            label: field.label.trim(),
+          }))
+          .filter((field) => field.key && field.label),
         bot_icon: botIcon,
         user_icon: userIcon,
         ...(widget.chat_header_font_color?.trim()
@@ -867,6 +913,27 @@ const CreateChatAgentPage: React.FC = () => {
       setErrors(newErrors);
       return;
     }
+
+    const normalizedContactFields = contactFields
+      .map((field) => ({
+        ...field,
+        key: normalizeContactFieldKey(field.key || field.label),
+        label: field.label.trim(),
+      }))
+      .filter((field) => field.key && field.label);
+    const duplicateField = normalizedContactFields.find(
+      (field, index) => normalizedContactFields.findIndex((item) => item.key === field.key) !== index
+    );
+    if (duplicateField) {
+      setError(`Additional contact field "${duplicateField.label}" has a duplicate key. Please rename it.`);
+      return;
+    }
+    const reservedField = normalizedContactFields.find((field) => BUILT_IN_CONTACT_FIELD_KEYS.has(field.key));
+    if (reservedField) {
+      setError(`Additional contact field "${reservedField.label}" uses a built-in key. Name, email, phone, and company are already included.`);
+      return;
+    }
+    setContactFields(normalizedContactFields);
 
     try {
       setBusy(true);
@@ -1472,6 +1539,138 @@ const CreateChatAgentPage: React.FC = () => {
                         helperText="Fallback contact shown after Level 1 for escalated conversations."
                         sx={fieldSx}
                       />
+
+                      <Box sx={accentPanelSx}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                              Additional Quick Contact Fields
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Name, email, phone, and company remain included. Add any agent-specific fields here.
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() =>
+                              setContactFields((prev) => [
+                                ...prev,
+                                { key: '', label: '', type: 'text', required: false },
+                              ])
+                            }
+                            sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Add Field
+                          </Button>
+                        </Stack>
+                        {contactFields.length === 0 ? (
+                          <Typography variant="caption" color="text.secondary">
+                            No additional fields added.
+                          </Typography>
+                        ) : (
+                          <Stack spacing={1.2}>
+                            {contactFields.map((field, index) => (
+                              <Box
+                                key={`${field.key || 'field'}-${index}`}
+                                sx={{
+                                  display: 'grid',
+                                  gridTemplateColumns: { xs: '1fr', md: '1.25fr 1fr 0.8fr auto auto' },
+                                  gap: 1,
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <TextField
+                                  size="small"
+                                  label="Field Label"
+                                  value={field.label}
+                                  onChange={(e) =>
+                                    setContactFields((prev) =>
+                                      prev.map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? (() => {
+                                            const nextLabel = e.target.value;
+                                            const previousAutoKey = normalizeContactFieldKey(item.label);
+                                            const shouldUpdateKey = !item.key || item.key === previousAutoKey;
+                                            return {
+                                              ...item,
+                                              label: nextLabel,
+                                              key: shouldUpdateKey ? normalizeContactFieldKey(nextLabel) : item.key,
+                                            };
+                                          })()
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  sx={fieldSx}
+                                />
+                                <TextField
+                                  size="small"
+                                  label="JSON Key"
+                                  value={field.key}
+                                  onChange={(e) =>
+                                    setContactFields((prev) =>
+                                      prev.map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, key: normalizeContactFieldKey(e.target.value) }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  sx={fieldSx}
+                                />
+                                <TextField
+                                  size="small"
+                                  label="Type"
+                                  value={field.type}
+                                  onChange={(e) =>
+                                    setContactFields((prev) =>
+                                      prev.map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, type: e.target.value as ContactFieldDefinition['type'] }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                  select
+                                  SelectProps={{ native: true }}
+                                  sx={fieldSx}
+                                >
+                                  <option value="text">Text</option>
+                                  <option value="email">Email</option>
+                                  <option value="tel">Phone</option>
+                                  <option value="number">Number</option>
+                                  <option value="date">Date</option>
+                                </TextField>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                  <Checkbox
+                                    checked={field.required}
+                                    onChange={(e) =>
+                                      setContactFields((prev) =>
+                                        prev.map((item, itemIndex) =>
+                                          itemIndex === index ? { ...item, required: e.target.checked } : item
+                                        )
+                                      )
+                                    }
+                                  />
+                                  <Typography variant="caption" color="text.secondary">
+                                    Required
+                                  </Typography>
+                                </Stack>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  variant="text"
+                                  onClick={() => setContactFields((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                                >
+                                  Remove
+                                </Button>
+                              </Box>
+                            ))}
+                          </Stack>
+                        )}
+                      </Box>
 
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
                         <TextField
