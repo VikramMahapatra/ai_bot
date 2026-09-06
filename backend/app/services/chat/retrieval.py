@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from sqlalchemy.orm import Session
 
-from app.models import KnowledgeSource
+from app.models import KnowledgeSource, WidgetConfig
 from app.services.chat.cache_service import build_cache_key, chat_cache
 from app.services.chat.reranker import build_hybrid_result, rerank_candidates
 from app.services.chat.types import HybridRetrievalResult, RerankedChunk, VectorStoreClient
@@ -450,59 +450,47 @@ def retrieve_hybrid_result(
     return result
 
 
-def get_suggested_questions(widget_id: str, organization_id: int, db: Session, limit: int = 6) -> List[str]:
-    cache_key = build_cache_key("suggested_questions", organization_id, widget_id, int(limit))
+def get_suggested_questions(widget_id: str, organization_id: int, db: Session, limit: int = 6) -> List[Dict[str, str]]:
+    cache_key = build_cache_key("suggested_questions_v2", organization_id, widget_id, int(limit))
     cached = chat_cache.get(cache_key)
     if isinstance(cached, list):
         return list(cached)
 
-    suggestions: List[str] = []
+    suggestions: List[Dict[str, str]] = []
     used = set()
 
-    def add(question: Optional[str]) -> None:
-        if not question:
-            return
-        key = question.strip().lower()
-        if not key or key in used:
-            return
-        used.add(key)
-        suggestions.append(question.strip())
-
-    sources = db.query(KnowledgeSource).filter(
-        KnowledgeSource.organization_id == organization_id,
-        KnowledgeSource.widget_id == widget_id,
-        KnowledgeSource.status == "active",
-    ).order_by(KnowledgeSource.created_at.desc()).limit(12).all()
-
-    for source in sources:
-        for label in _iter_source_labels(source):
-            add(_question_from_label(label))
-            if len(suggestions) >= limit:
-                chat_cache.set(cache_key, suggestions[:limit], ttl_seconds=120)
-                return suggestions[:limit]
+    widget_config = db.query(WidgetConfig).filter(
+        WidgetConfig.widget_id == widget_id,
+        WidgetConfig.organization_id == organization_id,
+    ).first()
+    if not widget_config or not widget_config.lead_fields:
+        return []
 
     try:
-        from app.services.rag import chroma_client
+        metadata = json.loads(widget_config.lead_fields)
+    except (TypeError, json.JSONDecodeError):
+        return []
 
-        chroma_docs = chroma_client.get_documents(organization_id=organization_id, widget_id=widget_id, include_documents=False, limit=120)
-        for label in _labels_from_chroma_metadatas(chroma_docs.get("metadatas")):
-            add(_question_from_label(label))
-            if len(suggestions) >= limit:
-                chat_cache.set(cache_key, suggestions[:limit], ttl_seconds=120)
-                return suggestions[:limit]
-    except Exception:
-        pass
+    configured_questions = metadata.get("quick_questions") if isinstance(metadata, dict) else None
+    if not isinstance(configured_questions, list):
+        return []
 
-    for _, question in _SUGGESTION_PATTERNS:
-        add(question)
+    def add(item: Any) -> None:
+        question = item.get("question") if isinstance(item, dict) else None
+        answer = item.get("answer") if isinstance(item, dict) else None
+        if not isinstance(question, str) or not isinstance(answer, str):
+            return
+        question = question.strip()
+        answer = answer.strip()
+        key = question.lower()
+        if not question or not answer or key in used:
+            return
+        used.add(key)
+        suggestions.append({"question": question, "answer": answer})
+
+    for item in configured_questions:
+        add(item)
         if len(suggestions) >= limit:
-            chat_cache.set(cache_key, suggestions[:limit], ttl_seconds=120)
-            return suggestions[:limit]
-
-    for question in ["What products or services do you offer?", "How do I get support?", "What are your business hours?"]:
-        add(question)
-        if len(suggestions) >= limit:
-            chat_cache.set(cache_key, suggestions[:limit], ttl_seconds=120)
             return suggestions[:limit]
 
     chat_cache.set(cache_key, suggestions[:limit], ttl_seconds=120)

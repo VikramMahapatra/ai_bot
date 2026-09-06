@@ -134,7 +134,7 @@ const ChatInterface: React.FC = () => {
   const [limitDialogMessage, setLimitDialogMessage] = useState('');
   const [limitDialogTokensUsed, setLimitDialogTokensUsed] = useState<number | null>(null);
   const [limitDialogTokenLimit, setLimitDialogTokenLimit] = useState<number | null>(null);
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<Array<{ question: string; answer: string }>>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState('');
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
@@ -272,6 +272,12 @@ const ChatInterface: React.FC = () => {
     setSessionEngaged(false);
     setLastActivityAtMs(Date.now());
     return nextSession;
+  };
+
+  const handleQuickQuestion = (item: { question: string; answer: string }) => {
+    setMessages((prev) => [...prev, { role: 'user', content: item.question }, { role: 'assistant', content: item.answer }]);
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
   };
 
   useEffect(() => {
@@ -1294,11 +1300,11 @@ const ChatInterface: React.FC = () => {
               )}
               {!suggestionsLoading && suggestedQuestions.length > 0 && (
                 <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {suggestedQuestions.map((question, idx) => (
+                  {suggestedQuestions.map((item, idx) => (
                     <Chip
-                      key={`${question}-${idx}`}
-                      label={question}
-                      onClick={() => handleSend(question)}
+                      key={`${item.question}-${idx}`}
+                      label={item.question}
+                      onClick={() => handleQuickQuestion(item)}
                       sx={(theme) => ({
                         fontSize: '0.77rem',
                         borderRadius: '999px',

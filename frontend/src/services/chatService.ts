@@ -123,8 +123,8 @@ export const chatService = {
     return response.data;
   },
 
-  async getSuggestedQuestions(widgetId: string): Promise<string[]> {
-    const response = await api.get<{ questions: string[] }>('/api/chat/suggested-questions', {
+  async getSuggestedQuestions(widgetId: string): Promise<Array<{ question: string; answer: string }>> {
+    const response = await api.get<{ questions: Array<{ question: string; answer: string }> }>('/api/chat/suggested-questions', {
       params: { widget_id: widgetId },
     });
     return Array.isArray(response.data.questions) ? response.data.questions : [];

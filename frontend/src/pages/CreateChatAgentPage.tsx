@@ -81,10 +81,17 @@ interface IconOption {
 }
 
 interface ContactFieldDefinition {
+  id: string;
   key: string;
   label: string;
   type: 'text' | 'email' | 'tel' | 'number' | 'date';
   required: boolean;
+}
+
+interface QuickQuestionDefinition {
+  id: string;
+  question: string;
+  answer: string;
 }
 
 interface CrawlPreviewItem {
@@ -139,6 +146,14 @@ const normalizeContactFieldKey = (value: string): string =>
     .replace(/^_+|_+$/g, '')
     .slice(0, 48);
 
+  let nextContactFieldId = 0;
+
+  const createContactFieldId = (): string => `contact-field-${nextContactFieldId++}`;
+
+  let nextQuickQuestionId = 0;
+
+  const createQuickQuestionId = (): string => `quick-question-${nextQuickQuestionId++}`;
+
 const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
   if (!leadFieldsRaw) return [];
   try {
@@ -151,9 +166,26 @@ const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] =>
         const key = normalizeContactFieldKey(typeof field?.key === 'string' ? field.key : label);
         const type = ['text', 'email', 'tel', 'number', 'date'].includes(field?.type) ? field.type : 'text';
         if (!label || !key) return null;
-        return { key, label, type, required: Boolean(field?.required) };
+        return { id: createContactFieldId(), key, label, type, required: Boolean(field?.required) };
       })
       .filter((field): field is ContactFieldDefinition => Boolean(field));
+  } catch {
+    return [];
+  }
+};
+
+const parseQuickQuestions = (leadFieldsRaw?: string): QuickQuestionDefinition[] => {
+  if (!leadFieldsRaw) return [];
+  try {
+    const parsed = JSON.parse(leadFieldsRaw);
+    if (!Array.isArray(parsed?.quick_questions)) return [];
+    return parsed.quick_questions
+      .map((item: any): QuickQuestionDefinition | null => {
+        const question = typeof item?.question === 'string' ? item.question.trim() : '';
+        const answer = typeof item?.answer === 'string' ? item.answer.trim() : '';
+        return question && answer ? { id: createQuickQuestionId(), question, answer } : null;
+      })
+      .filter((item): item is QuickQuestionDefinition => Boolean(item));
   } catch {
     return [];
   }
@@ -240,6 +272,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [botIcon, setBotIcon] = useState('bot-robot');
   const [userIcon, setUserIcon] = useState('user-person');
   const [contactFields, setContactFields] = useState<ContactFieldDefinition[]>([]);
+  const [quickQuestions, setQuickQuestions] = useState<QuickQuestionDefinition[]>([]);
   const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
   const formatDisplayDate = useDateFormatter()
 
@@ -508,6 +541,7 @@ const CreateChatAgentPage: React.FC = () => {
           setWidget((prev) => ({ ...prev, chat_header_font_color: styleSelection.chatHeaderFontColor }));
         }
         setContactFields(parseContactFields(typeof config.lead_fields === 'string' ? config.lead_fields : undefined));
+        setQuickQuestions(parseQuickQuestions(typeof config.lead_fields === 'string' ? config.lead_fields : undefined));
 
         setCreatedWidgetId(loadedWidgetId);
         setSuccess('Loaded existing agent configuration for editing.');
@@ -888,11 +922,15 @@ const CreateChatAgentPage: React.FC = () => {
         ...leadFieldMetadata,
         fields: contactFields
           .map((field) => ({
-            ...field,
             key: normalizeContactFieldKey(field.key || field.label),
             label: field.label.trim(),
+            type: field.type,
+            required: field.required,
           }))
           .filter((field) => field.key && field.label),
+        quick_questions: quickQuestions
+          .map(({ question, answer }) => ({ question: question.trim(), answer: answer.trim() }))
+          .filter((item) => item.question && item.answer),
         bot_icon: botIcon,
         user_icon: userIcon,
         ...(widget.chat_header_font_color?.trim()
@@ -916,9 +954,11 @@ const CreateChatAgentPage: React.FC = () => {
 
     const normalizedContactFields = contactFields
       .map((field) => ({
-        ...field,
+        id: field.id,
         key: normalizeContactFieldKey(field.key || field.label),
         label: field.label.trim(),
+        type: field.type,
+        required: field.required,
       }))
       .filter((field) => field.key && field.label);
     const duplicateField = normalizedContactFields.find(
@@ -1556,7 +1596,7 @@ const CreateChatAgentPage: React.FC = () => {
                             onClick={() =>
                               setContactFields((prev) => [
                                 ...prev,
-                                { key: '', label: '', type: 'text', required: false },
+                                { id: createContactFieldId(), key: '', label: '', type: 'text', required: false },
                               ])
                             }
                             sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, textTransform: 'none', fontWeight: 700 }}
@@ -1572,7 +1612,7 @@ const CreateChatAgentPage: React.FC = () => {
                           <Stack spacing={1.2}>
                             {contactFields.map((field, index) => (
                               <Box
-                                key={`${field.key || 'field'}-${index}`}
+                                key={field.id}
                                 sx={{
                                   display: 'grid',
                                   gridTemplateColumns: { xs: '1fr', md: '1.25fr 1fr 0.8fr auto auto' },
@@ -1662,6 +1702,65 @@ const CreateChatAgentPage: React.FC = () => {
                                   color="error"
                                   variant="text"
                                   onClick={() => setContactFields((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                                >
+                                  Remove
+                                </Button>
+                              </Box>
+                            ))}
+                          </Stack>
+                        )}
+                      </Box>
+
+                      <Box sx={accentPanelSx}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                              Quick Questions and Answers
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Add up to six questions to show when the chat opens. Clicking one displays its saved answer.
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            disabled={quickQuestions.length >= 6}
+                            onClick={() => setQuickQuestions((prev) => [...prev, { id: createQuickQuestionId(), question: '', answer: '' }])}
+                            sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Add Question
+                          </Button>
+                        </Stack>
+                        {quickQuestions.length === 0 ? (
+                          <Typography variant="caption" color="text.secondary">
+                            No quick questions added.
+                          </Typography>
+                        ) : (
+                          <Stack spacing={1.2}>
+                            {quickQuestions.map((item, index) => (
+                              <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1, alignItems: 'start' }}>
+                                <TextField
+                                  size="small"
+                                  label={`Question ${index + 1}`}
+                                  value={item.question}
+                                  onChange={(e) => setQuickQuestions((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, question: e.target.value } : entry))}
+                                  sx={fieldSx}
+                                />
+                                <TextField
+                                  size="small"
+                                  label="Answer"
+                                  value={item.answer}
+                                  onChange={(e) => setQuickQuestions((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, answer: e.target.value } : entry))}
+                                  multiline
+                                  minRows={2}
+                                  sx={fieldSx}
+                                />
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  variant="text"
+                                  onClick={() => setQuickQuestions((prev) => prev.filter((entry) => entry.id !== item.id))}
                                   sx={{ textTransform: 'none', fontWeight: 700 }}
                                 >
                                   Remove

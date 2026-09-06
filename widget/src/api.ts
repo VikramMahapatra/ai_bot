@@ -51,7 +51,7 @@ interface HandoffMessagesResponse {
 }
 
 interface SuggestedQuestionsResponse {
-  questions: string[];
+  questions: Array<{ question: string; answer: string }>;
 }
 
 interface AppointmentBookingRequest {
@@ -203,7 +203,7 @@ export class ChatAPI {
     }
   }
 
-  async getSuggestedQuestions(widgetId?: string): Promise<string[]> {
+  async getSuggestedQuestions(widgetId?: string): Promise<Array<{ question: string; answer: string }>> {
     const url = new URL(`${this.baseURL}/api/chat/suggested-questions`);
     if (widgetId) {
       url.searchParams.set('widget_id', widgetId);

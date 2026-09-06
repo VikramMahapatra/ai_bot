@@ -96,6 +96,11 @@ interface WidgetPublicConfig {
   lead_fields?: string;
 }
 
+interface QuickQuestionDefinition {
+  question: string;
+  answer: string;
+}
+
 const BOT_ICON_GLYPHS: Record<string, string> = {
   "bot-robot": "🤖",
   "bot-spark": "✨",
@@ -561,6 +566,7 @@ const AgentTestPage: React.FC = () => {
   const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(
     null,
   );
+  const [quickQuestions, setQuickQuestions] = useState<QuickQuestionDefinition[]>([]);
   const [accessError, setAccessError] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "Hi! How can I help you today?" },
@@ -821,6 +827,19 @@ const AgentTestPage: React.FC = () => {
         setAccessError("");
         const config = (await response.json()) as WidgetPublicConfig;
         setWidgetConfig(config);
+        try {
+          const metadata = config.lead_fields ? JSON.parse(config.lead_fields) : null;
+          const configuredQuestions = Array.isArray(metadata?.quick_questions)
+            ? metadata.quick_questions
+                .filter((item: any) => typeof item?.question === "string" && typeof item?.answer === "string")
+                .map((item: any) => ({ question: item.question.trim(), answer: item.answer.trim() }))
+                .filter((item: QuickQuestionDefinition) => item.question && item.answer)
+                .slice(0, 6)
+            : [];
+          setQuickQuestions(configuredQuestions);
+        } catch {
+          setQuickQuestions([]);
+        }
         setMessages((prev) => {
           if (prev.length === 1 && prev[0]?.role === "assistant") {
             const resolvedWelcome =
@@ -886,6 +905,14 @@ const AgentTestPage: React.FC = () => {
     setSessionEngaged(false);
     setLastActivityAtMs(Date.now());
     return created;
+  };
+
+  const handleQuickQuestion = (item: QuickQuestionDefinition) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: item.question },
+      { role: "assistant", content: item.answer },
+    ]);
   };
 
   useEffect(() => {
@@ -2525,6 +2552,18 @@ const AgentTestPage: React.FC = () => {
             }}
           >
             <Stack spacing={0.95}>
+              {messages.length === 1 && quickQuestions.length > 0 && (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.8, mb: 0.5 }}>
+                  {quickQuestions.map((item, index) => (
+                    <Chip
+                      key={`${item.question}-${index}`}
+                      label={item.question}
+                      onClick={() => handleQuickQuestion(item)}
+                      sx={{ cursor: "pointer", fontSize: "0.77rem", fontWeight: 600 }}
+                    />
+                  ))}
+                </Box>
+              )}
               {messages.map((message, index) => (
                 <Box
                   key={`${message.role}-${index}`}

@@ -30,8 +30,13 @@ class ChatResponse(BaseModel):
     handoff_status: Optional[str] = None
 
 
+class QuickQuestion(BaseModel):
+    question: str
+    answer: str
+
+
 class SuggestedQuestionsResponse(BaseModel):
-    questions: List[str] = []
+    questions: List[QuickQuestion] = []
 
 
 class ConversationHistoryItem(BaseModel):

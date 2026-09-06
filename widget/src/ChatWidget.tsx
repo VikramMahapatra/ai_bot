@@ -665,7 +665,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const handoffPromptedChatIdRef = useRef<string | null>(null);
   const lastHandoffStatusRef = useRef<string | null>(null);
 
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<Array<{ question: string; answer: string }>>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [sessionEngaged, setSessionEngaged] = useState(false);
   const [sessionClosedByInactivity, setSessionClosedByInactivity] =
@@ -878,6 +878,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     });
     setAppointmentError("");
     return created;
+  };
+
+  const handleQuickQuestion = (item: { question: string; answer: string }) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: item.question },
+      { role: "assistant", content: item.answer },
+    ]);
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
   };
 
   const loadHandoffSession = async () => {
@@ -2030,13 +2040,14 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                       </div>
                     )}
                     {!suggestionsLoading &&
-                      suggestedQuestions.map((question, index) => (
+                      suggestedQuestions.map((item, index) => (
                         <button
-                          key={`${question}-${index}`}
+                          key={`${item.question}-${index}`}
+                          type="button"
                           className="chatbot-suggestion-chip"
-                          onClick={() => sendMessage(question)}
+                          onClick={() => handleQuickQuestion(item)}
                         >
-                          {question}
+                          {item.question}
                         </button>
                       ))}
                   </div>
