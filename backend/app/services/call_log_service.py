@@ -127,12 +127,16 @@ def get_lead_qualified_status(lead_info, is_lead, campaign_name, lead_outcome):
     except (TypeError, ValueError):
         rate = 0
 
-    if rate >= 70:
+    if rate >= 90:
+        return "positive - very hot"
+    elif rate >= 70:
         return "positive - hot"
-    elif rate >= 40:
+    elif rate >= 50:
         return "positive - warm"
-    else:
+    elif rate >= 20:
         return "positive - cold"
+    else:
+        return "negative"
 
 
 def get_call_logs(
@@ -288,9 +292,12 @@ def get_call_logs(
         func.count(distinct(case((CallLog.campaign_id != None, CallLog.id)))).label(
             "campaign_calls"
         ),
-        func.count(distinct(case((CallLog.campaign_id == None, CallLog.id)))).label(
+        func.count(distinct(case((CallLog.source == "test_call", CallLog.id)))).label(
             "test_calls"
         ),
+        func.count(
+            distinct(case((CallLog.source == "inbound_call", CallLog.id)))
+        ).label("inbound_calls"),
         func.count(distinct(case((transcript_exists, CallLog.id)))).label(
             "successful_calls"
         ),
@@ -438,6 +445,7 @@ def get_call_logs(
             "campaign_calls": summary.campaign_calls or 0,
             "test_calls": summary.test_calls or 0,
             "successful_calls": summary.successful_calls or 0,
+            "inbound_calls": summary.inbound_calls or 0,
         },
         "pagination": {
             "total": summary.total_calls or 0,

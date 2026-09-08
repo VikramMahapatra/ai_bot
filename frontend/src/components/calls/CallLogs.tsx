@@ -134,6 +134,7 @@ export const CallLogsTab = () => {
     campaign: 0,
     successful: 0,
     test: 0,
+    inbound: 0,
   });
 
   const getDefaultDates = () => {
@@ -211,6 +212,7 @@ export const CallLogsTab = () => {
       campaign: data.summary.campaign_calls || 0,
       successful: data.summary.successful_calls || 0,
       test: data.summary.test_calls || 0,
+      inbound: data.summary.inbound_calls || 0,
     });
   };
 
@@ -666,7 +668,7 @@ export const CallLogsTab = () => {
 
       <Grid container spacing={3} mb={3}>
         {/* TOTAL CALLS */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
@@ -681,49 +683,84 @@ export const CallLogsTab = () => {
         </Grid>
 
         {/* CAMPAIGN CALLS */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Campaign Calls</Typography>
                 <CampaignIcon color="primary" />
               </Box>
-              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                mt={1}
+                color="primary.main"
+              >
                 {callStats.campaign}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-
         {/* TEST CALLS */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Test Calls</Typography>
                 <BugReportIcon color="warning" />
               </Box>
-              <Typography variant="h5" fontWeight={700} mt={1} color="warning.main">
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                mt={1}
+                color="warning.main"
+              >
                 {callStats.test}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+
+        {/* INBOUND CALLS */}
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="subtitle2">Inbound Calls</Typography>
+                <CallReceivedIcon color="info" />
+              </Box>
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                mt={1}
+                color="info.main"
+              >
+                {callStats.inbound}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* CONNECTED CALLS */}
+        <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between">
                 <Typography variant="subtitle2">Connected Calls</Typography>
                 <CheckCircleIcon color="success" />
               </Box>
-              <Typography variant="h5" fontWeight={700} mt={1} color="primary.main">
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                mt={1}
+                color="success.main"
+              >
                 {callStats.successful}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
       </Grid>
       {/* Table */}
       <Paper>

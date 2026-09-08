@@ -268,6 +268,15 @@ def get_session_conversations_report(
                 "contact_name"
             ),
             case(
+                # Voice + positive + very hot
+                (
+                    and_(
+                        func.lower(sessions_subquery.c.source) == "voice",
+                        sessions_subquery.c.is_lead == True,
+                        call_log_subquery.c.lead_quality_rate >= 90,
+                    ),
+                    "positive - very hot",
+                ),
                 # Voice + positive + hot
                 (
                     and_(
@@ -282,7 +291,7 @@ def get_session_conversations_report(
                     and_(
                         func.lower(sessions_subquery.c.source) == "voice",
                         sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 40,
+                        call_log_subquery.c.lead_quality_rate >= 50,
                     ),
                     "positive - warm",
                 ),
@@ -291,9 +300,18 @@ def get_session_conversations_report(
                     and_(
                         func.lower(sessions_subquery.c.source) == "voice",
                         sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate > 0,
+                        call_log_subquery.c.lead_quality_rate >= 20,
                     ),
                     "positive - cold",
+                ),
+                # Voice + negative
+                (
+                    and_(
+                        func.lower(sessions_subquery.c.source) == "voice",
+                        sessions_subquery.c.is_lead == True,
+                        call_log_subquery.c.lead_quality_rate < 20,
+                    ),
+                    "negative",
                 ),
                 # Non-Voice + positive
                 (

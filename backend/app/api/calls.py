@@ -162,7 +162,19 @@ def call_analytics(
         row.campaign_id: row.successful_calls for row in successful_calls_data
     }
 
-    total_calls = sum(c.total_calls or 0 for c in campaigns)
+    campaigns_in_period = (
+        db.query(CallCampaign.id, CallCampaign.total_calls)
+        .join(CallLog, CallLog.campaign_id == CallCampaign.id)
+        .filter(
+            CallCampaign.organization_id == org_id,
+            CallCampaign.is_deleted == False,
+            *filters,
+        )
+        .group_by(CallCampaign.id, CallCampaign.total_calls)
+        .all()
+    )
+
+    total_calls = sum(campaign.total_calls or 0 for campaign in campaigns_in_period)
     total_attempted_calls = sum(attempted_calls_map.get(c.id, 0) for c in campaigns)
     successful_calls = sum(successful_calls_map.get(c.id, 0) for c in campaigns)
     pickup_rate = (

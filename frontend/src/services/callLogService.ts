@@ -138,6 +138,7 @@ export interface CallLogListResponse {
         campaign_calls: number;
         successful_calls: number;
         test_calls: number;
+        inbound_calls: number;
     }
     pagination: {
         total: number;
