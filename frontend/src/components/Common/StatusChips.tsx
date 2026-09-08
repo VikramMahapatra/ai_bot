@@ -251,6 +251,7 @@ export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
         neutral: "warning",
         unresolved: "default",
         pending: "warning",
+        "very hot": "error",
         hot: "error",
         warm: "warning",
         cold: "info",

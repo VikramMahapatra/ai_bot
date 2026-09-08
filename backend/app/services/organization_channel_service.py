@@ -5,90 +5,87 @@ from sqlalchemy import and_, exists, func
 from sqlalchemy.orm import Session
 
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
+from app.config import settings
 
-def validate_channel_available(
-    db: Session,
-    organization_id: int,
-    call_type: str
-):
-    active_res = db.query(ChannelReservation).filter(
-        ChannelReservation.is_active == True
-    )
 
-    # -------------------------
-    # TOTAL CHANNELS FOR ORG
-    # -------------------------
-    total_channels = (
-        db.query(func.count(Channel.id))
-        .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
-        .filter(OrganizationChannel.organization_id == organization_id)
-        .scalar()
-    )
+def validate_channel_available(db: Session, organization_id: int, call_type: str):
+    def get_available_channel(org_id: int):
+        org_channel_ids = (
+            db.query(Channel.id)
+            .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
+            .filter(OrganizationChannel.organization_id == org_id)
+            .subquery()
+        )
 
-    if total_channels == 0:
-        raise HTTPException(status_code=400, detail="No channels assigned")
+        active_res_subq = (
+            db.query(ChannelReservation.channel_id)
+            .filter(ChannelReservation.is_active == True)
+            .subquery()
+        )
 
-    # -------------------------
-    # TOTAL ACTIVE RESERVATIONS (GLOBAL)
-    # -------------------------
-    total_active_reservations = (
-        active_res.count()
-    )
+        available = (
+            db.query(Channel.id)
+            .filter(Channel.id.in_(org_channel_ids), ~Channel.id.in_(active_res_subq))
+            .first()
+        )
 
-    # -------------------------
-    # ORG ACTIVE CAMPAIGNS
-    # -------------------------
-    org_active_campaigns = (
-        active_res.filter(
-            ChannelReservation.organization_id == organization_id,
-            ChannelReservation.call_type == "campaign"
-        ).count()
-    )
+        return available[0] if available else None
 
-    # -------------------------
-    # CAMPAIGN RULE
-    # -------------------------
+    # =================================================
+    # CAMPAIGN
+    # Only use organization's own channel
+    # =================================================
     if call_type == "campaign":
-        # available capacity for this org
-        available_capacity = total_channels - total_active_reservations
+        channel_id = get_available_channel(organization_id)
 
-        if org_active_campaigns >= available_capacity:
+        if not channel_id:
             raise HTTPException(
-                status_code=400,
-                detail="No available channels for new campaign"
+                status_code=400, detail="No available channels for campaign"
             )
 
-    # -------------------------
-    # FINAL FREE CHANNEL CHECK
-    # -------------------------
-    active_res_subq = (
-        db.query(ChannelReservation.channel_id)
-        .filter(ChannelReservation.is_active == True)
-    )
+        return channel_id
 
-    available = (
-        db.query(Channel.id)
-        .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
-        .filter(OrganizationChannel.organization_id == organization_id)
-        .filter(~Channel.id.in_(active_res_subq))
-        .first()
-    )
+    # =================================================
+    # TEST
+    # Own channel first
+    # Then Zentrixel channel
+    # =================================================
+    if call_type == "test":
 
-    if not available:
+        # 1. Try organization's own channel
+        channel_id = get_available_channel(organization_id)
+
+        if channel_id:
+            return channel_id
+
+        # 2. Try Zentrixel channel
+        if organization_id != settings.ZENTRIXEL_ORG_ID:
+
+            channel_id = get_available_channel(settings.ZENTRIXEL_ORG_ID)
+
+            if channel_id:
+                return channel_id
+
         raise HTTPException(
-            status_code=400,
-            detail="All channels are currently occupied"
+            status_code=400, detail="No available channels for test call"
         )
-    
+
+    # =================================================
+    # OTHER CALL TYPES
+    # =================================================
+    channel_id = get_available_channel(organization_id)
+
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="No available channels")
+
+    return channel_id
+
+
 def reserve_channel(
-    db: Session,
-    organization_id: int,
-    call_type: str,
-    reference_id: int
+    db: Session, organization_id: int, call_type: str, reference_id: int
 ):
-    active_res_subq = (
-        db.query(ChannelReservation.channel_id)
-        .filter(ChannelReservation.is_active == True)
+    active_res_subq = db.query(ChannelReservation.channel_id).filter(
+        ChannelReservation.is_active == True
     )
 
     channel = (
@@ -101,7 +98,9 @@ def reserve_channel(
     )
 
     if not channel:
-        raise HTTPException(status_code=400, detail="All channels are currently occupied")
+        raise HTTPException(
+            status_code=400, detail="All channels are currently occupied"
+        )
 
     # -------------------------
     # CREATE RESERVATION
@@ -113,7 +112,7 @@ def reserve_channel(
         call_type=call_type,
         reference_id=reference_id,
         is_active=True,
-        reserved_at=datetime.utcnow()
+        reserved_at=datetime.utcnow(),
     )
 
     db.add(reservation)
@@ -123,17 +122,13 @@ def reserve_channel(
     return reservation
 
 
-def release_channel(
-    db: Session,
-    call_type: str,
-    reference_id: int
-):
+def release_channel(db: Session, call_type: str, reference_id: int):
     reservation = (
         db.query(ChannelReservation)
         .filter(
             ChannelReservation.reference_id == reference_id,
             ChannelReservation.call_type == call_type,
-            ChannelReservation.is_active == True
+            ChannelReservation.is_active == True,
         )
         .first()
     )
@@ -145,9 +140,8 @@ def release_channel(
     reservation.released_at = datetime.utcnow()
 
     db.commit()
-    
-    
-    
+
+
 def cleanup_stale_reservations(db: Session, timeout_minutes: int = 30):
     cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
 
@@ -155,7 +149,7 @@ def cleanup_stale_reservations(db: Session, timeout_minutes: int = 30):
         db.query(ChannelReservation)
         .filter(
             ChannelReservation.is_active == True,
-            ChannelReservation.reserved_at < cutoff
+            ChannelReservation.reserved_at < cutoff,
         )
         .all()
     )

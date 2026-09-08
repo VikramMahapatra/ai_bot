@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { alpha, useTheme } from '@mui/material/styles';
-import { ButtonGroup, IconButton, Menu } from "@mui/material";
+import { ButtonGroup, IconButton, Menu, TablePagination } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
     Grid,
@@ -62,6 +62,11 @@ const CampaignContacts = ({ form, setForm, campaignContacts, setCampaignContacts
     const [anchorEl, setAnchorEl] = useState(null)
     const [openContactList, setOpenContactList] = useState(false)
     const [selectedContactLists, setSelectedContactLists] = useState<number[]>([])
+
+    const [previewSearch, setPreviewSearch] = useState("");
+    const [previewContactTotal, setPreviewContactTotal] = useState(0);
+    const [previewContactPage, setPreviewContactPage] = useState(0);
+    const [previewContactRowsPerPage, setPreviewContactRowsPerPage] = useState(10);
 
     const handleMenuOpen = (event: any) => {
         setAnchorEl(event.currentTarget)
@@ -221,6 +226,11 @@ const CampaignContacts = ({ form, setForm, campaignContacts, setCampaignContacts
         action()
     }
 
+    const paginatedContacts = campaignContacts.slice(
+        previewContactPage * previewContactRowsPerPage,
+        previewContactPage * previewContactRowsPerPage + previewContactRowsPerPage
+    );
+
     return (
         <Grid container spacing={2}>
 
@@ -286,7 +296,7 @@ const CampaignContacts = ({ form, setForm, campaignContacts, setCampaignContacts
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            campaignContacts.map((contact: any, index: number) => (
+                            paginatedContacts.map((contact: any, index: number) => (
                                 <TableRow key={index}>
                                     <TableCell>{contact.name}</TableCell>
                                     <TableCell>{contact.phone}</TableCell>
@@ -306,6 +316,20 @@ const CampaignContacts = ({ form, setForm, campaignContacts, setCampaignContacts
                     </TableBody>
 
                 </Table>
+                <TablePagination
+                    component="div"
+                    count={campaignContacts.length}
+                    page={previewContactPage}
+                    onPageChange={(_, value) => setPreviewContactPage(value)}
+                    rowsPerPage={previewContactRowsPerPage}
+                    onRowsPerPageChange={(event) => {
+                        setPreviewContactRowsPerPage(
+                            parseInt(event.target.value, 10)
+                        );
+                        setPreviewContactPage(0);
+                    }}
+                    rowsPerPageOptions={[10, 25, 50]}
+                />
             </Grid>
 
             {/* STEPPER */}

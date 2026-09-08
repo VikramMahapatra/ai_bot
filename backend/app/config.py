@@ -154,6 +154,8 @@ class Settings(BaseSettings):
 
     META_WHATSAPP_REGISTRATION_PIN: str
 
+    ZENTRIXEL_ORG_ID: int = 1
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
