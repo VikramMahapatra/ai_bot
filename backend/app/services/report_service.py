@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import String, and_, case, cast, func, Float
+from sqlalchemy import String, and_, case, cast, func, Float, or_
 from app.models import ConversationMetrics, Conversation, Lead
 from app.models.call_campaigns import CallCampaign
 from app.models.calling_agents import CallingAgent
@@ -231,6 +231,7 @@ def get_session_conversations_report(
                     Float,
                 )
             ).label("lead_quality_rate"),
+            func.max(CallLog.call_summary).label("call_summary"),
         )
         .filter(
             CallLog.organization_id == organization_id,
@@ -301,15 +302,28 @@ def get_session_conversations_report(
                         func.lower(sessions_subquery.c.source) == "voice",
                         sessions_subquery.c.is_lead == True,
                         call_log_subquery.c.lead_quality_rate >= 20,
+                        call_log_subquery.c.lead_quality_rate < 50,
+                        call_log_subquery.c.call_summary.isnot(None),
+                        func.trim(call_log_subquery.c.call_summary) != "",
                     ),
                     "positive - cold",
                 ),
-                # Voice + negative
                 (
                     and_(
                         func.lower(sessions_subquery.c.source) == "voice",
                         sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate < 20,
+                        or_(
+                            call_log_subquery.c.lead_quality_rate < 20,
+                            call_log_subquery.c.lead_quality_rate.is_(None),
+                            and_(
+                                call_log_subquery.c.lead_quality_rate >= 20,
+                                call_log_subquery.c.lead_quality_rate < 50,
+                                or_(
+                                    call_log_subquery.c.call_summary.is_(None),
+                                    func.trim(call_log_subquery.c.call_summary) == "",
+                                ),
+                            ),
+                        ),
                     ),
                     "negative",
                 ),

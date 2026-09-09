@@ -1,4 +1,4 @@
-import { CallingNumber } from "../types";
+import { OrganizationCallingNumber } from "../types";
 import api from "./api";
 
 export interface CallAnalyticsFilters {
@@ -31,6 +31,7 @@ export interface AnalyticsSummary {
     conversion_rate: number;   // in percentage, e.g., 7.6
     total_duration: number;    // in minutes
     active_campaigns: number;
+    completed_campaigns: number;
     recent_calls: RecentCall[];
 }
 
@@ -76,8 +77,8 @@ export const callService = {
         return response.data;
     },
 
-    async getCallingNumbers(type: string): Promise<CallingNumber[]> {
-        const response = await api.get<CallingNumber[]>(`/api/calls/org/calling-numbers`, { params: { type } });
+    async getCallingNumbers(type: string): Promise<OrganizationCallingNumber[]> {
+        const response = await api.get<OrganizationCallingNumber[]>(`/api/calls/org/calling-numbers`, { params: { type } });
         return response.data;
     },
 

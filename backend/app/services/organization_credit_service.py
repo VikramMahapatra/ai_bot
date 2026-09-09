@@ -103,12 +103,17 @@ def get_credit_summary(
             PriceMatrixItem.module,
             PriceMatrixItem.sub_module,
             PriceMatrixItem.feature_code,
+            PriceMatrixItem.billing_unit,
             func.coalesce(
                 func.sum(
                     case(
                         (
                             OrganizationCreditUsage.status == "consumed",
                             OrganizationCreditUsage.used_quantity,
+                        ),
+                        (
+                            OrganizationCreditUsage.status == "refunded",
+                            -OrganizationCreditUsage.used_quantity,
                         ),
                         else_=0,
                     )
@@ -189,6 +194,7 @@ def get_credit_summary(
             PriceMatrixItem.module,
             PriceMatrixItem.sub_module,
             PriceMatrixItem.feature_code,
+            PriceMatrixItem.billing_unit,
         )
         .all()
     )
@@ -223,6 +229,7 @@ def get_credit_summary(
                 "module": row.module,
                 "sub_module": row.sub_module,
                 "feature_code": row.feature_code,
+                "billing_unit": row.billing_unit,
                 "reserved": row.reserved,
                 "consumed": row.consumed,
                 "refunded": row.refunded,
