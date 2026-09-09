@@ -388,6 +388,7 @@ const AdminDashboard: React.FC = () => {
             conversion_rate: numberOrZero(s.conversion_rate),
             total_duration: numberOrZero(s.total_duration),
             active_campaigns: numberOrZero(s.active_campaigns),
+            completed_campaigns: numberOrZero(s.completed_campaigns),
             recent_calls: Array.isArray(s.recent_calls) ? s.recent_calls : [],
           });
         }
@@ -489,8 +490,8 @@ const AdminDashboard: React.FC = () => {
         wave: "#468ed4",
       },
       {
-        label: "Active Call Campaigns",
-        value: numberOrZero(callSummary?.active_campaigns),
+        label: "Completed Call Campaigns",
+        value: numberOrZero(callSummary?.completed_campaigns),
         hint: "Last 30 days",
         icon: <CampaignIcon sx={{ color: theme.palette.primary.dark }} />,
         gradient: `linear-gradient(130deg, ${alpha("#a1c8f4", 0.64)} 0%, ${alpha("#dceaff", 0.76)} 100%)`,

@@ -7,6 +7,7 @@ export interface CreditItem {
     module: string;
     sub_module: string;
     feature_code: string;
+    billing_unit: string;
     allocated: number;
     used: number;
     remaining: number;
@@ -19,7 +20,7 @@ export interface CreditMonthlySummary {
     allocated: number;
     used: number;
     remaining: number;
-    reserver: number;
+    reserved: number;
 }
 
 export interface PriceMatrixItem {

@@ -113,6 +113,7 @@ def call_analytics(
                 "conversion_rate": 0,
                 "total_duration": 0,
                 "active_campaigns": 0,
+                "completed_campaigns": 0,
                 "live_calls": [],
             },
             "charts": {
@@ -229,6 +230,21 @@ def call_analytics(
         .filter(
             CallCampaign.organization_id == org_id,
             CallCampaign.status.in_(["active", "running"]),
+            CallCampaign.is_deleted == False,
+            *filters,
+        )
+        .scalar()
+    )
+
+    completed_campaigns = (
+        db.query(func.count(func.distinct(CallCampaign.id)))
+        .join(
+            CallLog,
+            CallLog.campaign_id == CallCampaign.id,
+        )
+        .filter(
+            CallCampaign.organization_id == org_id,
+            CallCampaign.status == "completed",
             CallCampaign.is_deleted == False,
             *filters,
         )
@@ -425,6 +441,7 @@ def call_analytics(
             "conversion_rate": conversion_rate,
             "total_duration": total_duration,
             "active_campaigns": active_campaigns,
+            "completed_campaigns": completed_campaigns,
             "recent_calls": recent_calls,
         },
         "charts": {
@@ -434,8 +451,6 @@ def call_analytics(
             "lead_outcome_data": lead_outcome_data,
         },
     }
-
-    print("Summary Data:", summary_data)  # Debugging statement
 
     # --- Return ---
     return summary_data

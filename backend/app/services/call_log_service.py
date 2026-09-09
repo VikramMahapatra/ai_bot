@@ -109,7 +109,9 @@ LEAD_QUALIFIED_RANGES = {
 }
 
 
-def get_lead_qualified_status(lead_info, is_lead, campaign_name, lead_outcome):
+def get_lead_qualified_status(
+    lead_info, is_lead, campaign_name, lead_outcome, call_summary
+):
     # No lead evaluation yet
     if is_lead is None:
         return "pending" if campaign_name and lead_outcome else ""
@@ -134,7 +136,7 @@ def get_lead_qualified_status(lead_info, is_lead, campaign_name, lead_outcome):
     elif rate >= 50:
         return "positive - warm"
     elif rate >= 20:
-        return "positive - cold"
+        return "positive - cold" if call_summary else "negative"
     else:
         return "negative"
 
@@ -355,10 +357,7 @@ def get_call_logs(
         # }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
 
         lead_status = get_lead_qualified_status(
-            log.lead_info,
-            is_lead,
-            campaign_name,
-            lead_outcome,
+            log.lead_info, is_lead, campaign_name, lead_outcome, log.call_summary
         )
 
         instant_log = (

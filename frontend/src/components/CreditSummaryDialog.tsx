@@ -158,9 +158,26 @@ const CreditSummaryDialog = ({
                                 >
                                     {/* LEFT */}
                                     <Box>
-                                        <Typography fontWeight={600}>
-                                            {c.sub_module}
-                                        </Typography>
+                                        <Box
+                                            display="flex"
+                                            alignItems="center"
+                                            gap={1}
+                                        >
+                                            <Typography fontWeight={600}>
+                                                {c.sub_module}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{
+                                                    fontWeight: 500,
+                                                    whiteSpace: "nowrap"
+                                                }}
+                                            >
+                                                • {formatDecimal(c.items_used)} {c.billing_unit}
+                                            </Typography>
+                                        </Box>
 
                                         <Typography
                                             variant="caption"
@@ -172,42 +189,27 @@ const CreditSummaryDialog = ({
                                     </Box>
 
                                     {/* RIGHT */}
-                                    <Box textAlign="right" display="flex" flexDirection="column" alignItems="flex-end">
-                                        {/* Main value */}
-                                        <Box display="flex" alignItems="baseline" gap={0.75}>
-                                            <Typography fontWeight={700} fontSize={16} lineHeight={1.2}>
-                                                {formatDecimal(c.used)}
-                                            </Typography>
+                                    <Box
+                                        textAlign="right"
+                                        display="flex"
+                                        alignItems="baseline"
+                                        gap={0.75}
+                                    >
+                                        <Typography
+                                            fontWeight={700}
+                                            fontSize={22}
+                                            lineHeight={1}
+                                        >
+                                            {formatDecimal(c.used)}
+                                        </Typography>
 
-                                            <Typography variant="caption" color="text.secondary">
-                                                Used
-                                            </Typography>
-                                        </Box>
-                                        {/* Label */}
-                                        <Box display="flex" alignItems="center" gap={0.5} mt={0.5}>
-                                            <Inventory2OutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
-                                            <Typography variant="caption" color="text.secondary">
-                                                {c.items_used} items
-                                            </Typography>
-                                        </Box>
-
-                                        {/* Breakdown */}
-                                        {/* {c.refunded > 0 && (
-                                            <Typography
-                                                variant="caption"
-                                                sx={{
-                                                    mt: 0.5,
-                                                    color: "text.secondary",
-                                                    fontSize: 11,
-                                                    lineHeight: 1.2
-                                                }}
-                                            >
-                                                {formatDecimal(c.consumed)} consumed •{" "}
-                                                <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>
-                                                    {formatDecimal(c.refunded)} refunded
-                                                </Box>
-                                            </Typography>
-                                        )} */}
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            sx={{ fontWeight: 500 }}
+                                        >
+                                            Used
+                                        </Typography>
                                     </Box>
                                 </Box>
                             ))
