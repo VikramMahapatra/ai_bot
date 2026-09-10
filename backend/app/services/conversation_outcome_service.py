@@ -346,7 +346,7 @@ def process_pending_session_outcomes(
                     rate = 0
 
                 # Lead Rate above 20 is considered a lead, below 20 is not a lead
-                is_lead_value = 1 if rate >= 20 and call_summary.isnot(None) else 0
+                is_lead_value = 1 if rate >= 20 else 0
                 whether_lead = "lead" if is_lead_value else "not_lead"
             else:
                 whether_lead = classification["whether_lead"]

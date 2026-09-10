@@ -136,7 +136,7 @@ def get_lead_qualified_status(
     elif rate >= 50:
         return "positive - warm"
     elif rate >= 20:
-        return "positive - cold" if call_summary else "negative"
+        return "positive - cold"
     else:
         return "negative"
 
