@@ -303,8 +303,6 @@ def get_session_conversations_report(
                         sessions_subquery.c.is_lead == True,
                         call_log_subquery.c.lead_quality_rate >= 20,
                         call_log_subquery.c.lead_quality_rate < 50,
-                        call_log_subquery.c.call_summary.isnot(None),
-                        func.trim(call_log_subquery.c.call_summary) != "",
                     ),
                     "positive - cold",
                 ),
@@ -315,14 +313,6 @@ def get_session_conversations_report(
                         or_(
                             call_log_subquery.c.lead_quality_rate < 20,
                             call_log_subquery.c.lead_quality_rate.is_(None),
-                            and_(
-                                call_log_subquery.c.lead_quality_rate >= 20,
-                                call_log_subquery.c.lead_quality_rate < 50,
-                                or_(
-                                    call_log_subquery.c.call_summary.is_(None),
-                                    func.trim(call_log_subquery.c.call_summary) == "",
-                                ),
-                            ),
                         ),
                     ),
                     "negative",
