@@ -1,3 +1,4 @@
+import { RescheduleCampaignData } from '../components/calls/RescheduleCampaignDialog';
 import api from './api';
 import { ContactItem, ContactListItem } from './campaignService';
 
@@ -201,6 +202,15 @@ export interface CampaignResponse {
     success: boolean;
 }
 
+export interface RescheduleCallRequest {
+    call_log_id: number;
+    from_number: string;
+    schedule_type: "now" | "schedule";
+    date?: string;
+    time?: string;
+    timezone: string;
+}
+
 export const callCampaignService = {
     async createContact(payload: any): Promise<Contact> {
         const response = await api.post('/api/call-campaigns/contacts/create', payload);
@@ -284,4 +294,27 @@ export const callCampaignService = {
         const response = await api.get<WorkflowEvent[]>(`/api/call-campaigns/${campaign_id}/contacts/${contact_id}/workflow-history`);
         return response.data;
     },
+
+    async rescheduleCall(data: Partial<RescheduleCallRequest>): Promise<CampaignResponse> {
+        console.log("Rescheduling call with data:", data);
+        const response = await api.post(
+            `/api/call-campaigns/${data.call_log_id}/reschedule-call`,
+            {
+                from_number: data.from_number,
+                schedule_type: data.schedule_type,
+                date: data.date,
+                time: data.time,
+                timezone: data.timezone || "Asia/Kolkata",
+            }
+        );
+
+        return response.data;
+    },
+
+    async rescheduleCampaign(campaignId: number, data: RescheduleCampaignData): Promise<CampaignResponse> {
+        return api.post(
+            `/api/call-campaigns/${campaignId}/reschedule-campaign`,
+            data
+        );
+    }
 };

@@ -1081,6 +1081,12 @@ def process_call(call, agent):
                         reference_id=str(call_log.id),
                     )
 
+                organization_channel_service.release_channel(
+                    db=db,
+                    call_type="manual_rescheduled_call",
+                    reference_id=call_log.contact_id,
+                )
+
         db.commit()
 
         if (

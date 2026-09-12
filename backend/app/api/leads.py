@@ -32,6 +32,7 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign_contacts import CampaignContact
+from app.services.conversation_outcome_service import FUNNEL_STAGE
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +391,17 @@ def build_lead_filters(
         normalized_stage = _validate_funnel_stage_for_org(
             db, current_user.organization_id, funnel_stage
         )
-        filters.append(Lead.funnel_stage == normalized_stage)
+
+        if normalized_stage == FUNNEL_STAGE["UNASSIGNED"]:
+            filters.append(
+                or_(
+                    Lead.funnel_stage == normalized_stage,
+                    Lead.funnel_stage.is_(None),
+                    Lead.funnel_stage == "",
+                )
+            )
+        else:
+            filters.append(Lead.funnel_stage == normalized_stage)
 
     if product_id:
         filters.append(Lead.product_id == product_id)
@@ -677,7 +688,7 @@ async def export_leads(
                 .all()
             )
 
-        product_name_map = {str(p.id): p.name for p in products}
+            product_name_map = {str(p.id): p.name for p in products}
 
         all_custom_keys = set()
 

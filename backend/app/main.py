@@ -34,6 +34,7 @@ from app.api.reports import router as reports_router
 from app.services.conversation_outcome_service import (
     run_daily_call_campaign_daemon,
     run_daily_outcome_daemon,
+    run_inbound_call_agent_daemon,
 )
 from app.services.org_credit_billing_service import run_daily_org_credit_billing_daemon
 import logging
@@ -61,6 +62,10 @@ org_credit_billing_daemon_stop_event = asyncio.Event()
 
 due_campaign_daemon_task = None
 due_campaign_daemon_stop_event = asyncio.Event()
+
+
+inbound_call_agent_daemon_task = None
+inbound_call_agent_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -131,6 +136,7 @@ async def startup_event():
     global outcome_daemon_task
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
+    global inbound_call_agent_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -158,6 +164,12 @@ async def startup_event():
         run_daily_due_campaign_daemon(due_campaign_daemon_stop_event)
     )
     logger.info("Due campaign daemon started")
+
+    inbound_call_agent_daemon_stop_event.clear()
+    inbound_call_agent_daemon_task = asyncio.create_task(
+        run_inbound_call_agent_daemon(inbound_call_agent_daemon_stop_event)
+    )
+    logger.info("Inbound call agent credit check daemon started")
 
     logger.info("✅ Backend is ready!")
 

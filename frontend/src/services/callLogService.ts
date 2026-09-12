@@ -33,7 +33,7 @@ export interface SentimentDetails {
 
 
 export interface CallLog {
-    id: string;
+    id: number;
     contact_id?: number;
     phone: string;
     contact?: string;

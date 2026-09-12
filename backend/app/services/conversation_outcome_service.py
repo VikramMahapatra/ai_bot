@@ -17,7 +17,10 @@ from app.models import Conversation, Lead, FunnelCategory
 import logging
 
 from app.models.call_campaigns import CallCampaign
-from app.services.call_campaign_service import sync_campaign_from_echoleads
+from app.services.call_campaign_service import (
+    add_contact_to_qualified_list,
+    sync_campaign_from_echoleads,
+)
 from app.utils.echoleads_client import EcholeadsClient
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.models.lead_activities import LeadActivity
@@ -348,6 +351,29 @@ def process_pending_session_outcomes(
                 # Lead Rate above 20 is considered a lead, below 20 is not a lead
                 is_lead_value = 1 if rate >= 20 else 0
                 whether_lead = "lead" if is_lead_value else "not_lead"
+
+                if is_lead_value == 1:
+                    campaign = None
+
+                    if call_log and call_log.campaign_id:
+                        campaign = (
+                            db.query(CallCampaign)
+                            .filter(
+                                CallCampaign.id == call_log.campaign_id,
+                                CallCampaign.organization_id == org_id,
+                                CallCampaign.is_deleted == False,
+                            )
+                            .first()
+                        )
+
+                        if campaign:
+                            add_contact_to_qualified_list(
+                                db=db,
+                                organization_id=org_id,
+                                campaign=campaign,
+                                contact_id=call_log.contact_id,
+                            )
+
             else:
                 whether_lead = classification["whether_lead"]
                 is_lead_value = 1 if whether_lead == "lead" else 0
@@ -462,91 +488,74 @@ def process_pending_lead_outcomes(
     batch_size: int = 100,
     organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
-    """Backfill lead_outcome from existing conversation outcomes for matching sessions."""
+    """Backfill Lead.lead_outcome from the latest LeadActivity outcome."""
 
-    lead_query = db.query(
-        Lead.organization_id,
-        Lead.session_id,
-        Lead.id,
-    ).filter(Lead.lead_outcome.is_(None))
+    lead_query = db.query(Lead.id, Lead.organization_id).filter(
+        Lead.lead_outcome.is_(None)
+    )
 
     if organization_id is not None:
         lead_query = lead_query.filter(Lead.organization_id == organization_id)
 
-    pending_lead_sessions = (
-        lead_query.group_by(
-            Lead.organization_id,
-            Lead.session_id,
-            Lead.id,
-        )
-        .limit(batch_size)
-        .all()
-    )
+    pending_leads = lead_query.limit(batch_size).all()
 
     synced = 0
     failed = 0
 
-    for org_id, session_id, lead_id in pending_lead_sessions:
+    for lead_id, org_id in pending_leads:
         try:
-            contact_id = (
-                db.query(LeadContactMapping.contact_id)
-                .filter(LeadContactMapping.lead_id == lead_id)
-                .scalar()
+
+            # Get the latest activity having a valid outcome.
+            latest_activity = (
+                db.query(LeadActivity)
+                .filter(
+                    LeadActivity.lead_id == lead_id,
+                    LeadActivity.outcome.isnot(None),
+                    LeadActivity.outcome != "",
+                )
+                .order_by(
+                    LeadActivity.activity_datetime.desc(),
+                    LeadActivity.id.desc(),
+                )
+                .first()
             )
 
-            if not contact_id:
-                latest_with_outcome = (
-                    db.query(Conversation)
-                    .filter(
-                        Conversation.organization_id == org_id,
-                        Conversation.session_id == session_id,
-                        Conversation.outcome.isnot(None),
-                    )
-                    .order_by(Conversation.created_at.desc())
-                    .first()
-                )
-            else:
-                latest_with_outcome = (
-                    db.query(Conversation)
-                    .filter(
-                        Conversation.organization_id == org_id,
-                        Conversation.contact_id == contact_id,
-                        Conversation.outcome.isnot(None),
-                    )
-                    .order_by(Conversation.created_at.desc())
-                    .first()
-                )
-
-            if (
-                not latest_with_outcome
-                or not (latest_with_outcome.outcome or "").strip()
-            ):
+            if not latest_activity:
                 continue
 
-            normalized_outcome = _normalize_outcome(latest_with_outcome.outcome)
+            normalized_outcome = _normalize_outcome(latest_activity.outcome)
+
+            if not normalized_outcome:
+                continue
+
             updated_rows = (
                 db.query(Lead)
                 .filter(
-                    Lead.organization_id == org_id,
                     Lead.id == lead_id,
+                    Lead.organization_id == org_id,
                     Lead.lead_outcome.is_(None),
                 )
                 .update(
-                    {Lead.lead_outcome: normalized_outcome},
+                    {
+                        Lead.lead_outcome: normalized_outcome,
+                    },
                     synchronize_session=False,
                 )
             )
 
-            db.commit()
             if updated_rows:
                 synced += 1
+
+            db.commit()
+
         except Exception as exc:
             db.rollback()
             failed += 1
+
             logger.error(
-                "Failed to backfill lead outcome for org=%s session=%s: %s",
-                org_id,
+                "Failed to backfill lead outcome: lead_id=%s org=%s: %s",
                 lead_id,
+                org_id,
                 str(exc),
                 exc_info=True,
             )
@@ -559,129 +568,161 @@ def process_pending_lead_funnel_tags(
     batch_size: int = 100,
     organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
-    """Backfill lead.funnel_stage from AI classification for sessions with missing funnel tags."""
+    """Backfill lead.funnel_stage using the same logic as
+    process_pending_session_outcomes().
+    """
+
     lead_query = db.query(
         Lead.organization_id,
-        Lead.session_id,
         Lead.id,
-    ).filter(Lead.funnel_stage.is_(None))
+    ).filter(
+        or_(
+            Lead.funnel_stage.is_(None),
+            Lead.funnel_stage == "",
+        )
+    )
 
     if organization_id is not None:
         lead_query = lead_query.filter(Lead.organization_id == organization_id)
 
-    pending_sessions = (
-        lead_query.group_by(
-            Lead.organization_id,
-            Lead.session_id,
-            Lead.id,
-        )
-        .limit(batch_size)
-        .all()
-    )
+    pending_leads = lead_query.limit(batch_size).all()
 
     tagged = 0
     failed = 0
-    funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
 
-    for org_id, session_id, lead_id in pending_sessions:
+    for org_id, lead_id in pending_leads:
         try:
-            contact_id = (
-                db.query(LeadContactMapping.contact_id)
-                .filter(LeadContactMapping.lead_id == lead_id)
-                .scalar()
-            )
-
-            if (
-                not contact_id
-            ):  # guest lead without contact mapping, try to find conversations by session_id if available
-                rows = (
-                    db.query(Conversation)
-                    .filter(
-                        Conversation.organization_id == org_id,
-                        Conversation.session_id == session_id,
-                    )
-                    .order_by(Conversation.created_at.asc())
-                    .all()
-                )
-            else:
-                rows = (
-                    db.query(Conversation)
-                    .filter(
-                        Conversation.organization_id == org_id,
-                        Conversation.contact_id == contact_id,
-                    )
-                    .order_by(Conversation.created_at.asc())
-                    .all()
-                )
-
-            if not rows:
-                continue
-
-            if org_id not in funnel_categories_by_org:
-                funnel_categories_by_org[org_id] = (
-                    db.query(FunnelCategory)
-                    .filter(
-                        FunnelCategory.organization_id == org_id,
-                        FunnelCategory.is_active == True,
-                    )
-                    .order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc())
-                    .all()
-                )
-
-            logger.info(f"Running llm for lead : {lead_id}")
-
-            # inferred_funnel_stage = _classify_funnel_stage_with_llm(
-            #     _build_transcript(rows),
-            #     funnel_categories_by_org.get(org_id, []),
-            # )
-
-            lead = (
-                db.query(Lead)
+            # ---------------------------------------------------------
+            # Find the latest LeadActivity/session for this lead
+            # ---------------------------------------------------------
+            latest_activity = (
+                db.query(LeadActivity)
                 .filter(
-                    Lead.organization_id == org_id,
-                    Lead.id == lead_id,
-                    or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ""),
+                    LeadActivity.lead_id == lead_id,
+                    LeadActivity.session_id.isnot(None),
+                    LeadActivity.session_id != "",
+                )
+                .order_by(
+                    LeadActivity.activity_datetime.desc(),
+                    LeadActivity.id.desc(),
                 )
                 .first()
             )
 
-            inferred_funnel_stage = None
-
-            if lead:
-                inferred_funnel_stage = (
-                    FUNNEL_STAGE["LEAD_QUALIFICATION"]
-                    if rows[0].is_lead
-                    else (
-                        FUNNEL_STAGE["CLOSED_LOST"]
-                        if (rows[0].outcome or "").lower() not in (None, "")
-                        else FUNNEL_STAGE["UNASSIGNED"]
-                    )
-                )
-
-            if not inferred_funnel_stage:
+            if not latest_activity:
                 continue
 
+            session_id = latest_activity.session_id
+
+            # ---------------------------------------------------------
+            # Get conversations for EXACT session
+            # ---------------------------------------------------------
+            rows = (
+                db.query(Conversation)
+                .filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                )
+                .order_by(Conversation.created_at.asc())
+                .all()
+            )
+
+            if not rows:
+                continue
+
+            # ---------------------------------------------------------
+            # Same logic as process_pending_session_outcomes()
+            # ---------------------------------------------------------
+
+            # Use the session's resolved is_lead value.
+            #
+            # Since process_pending_session_outcomes() updates ALL
+            # conversations in this session with the same is_lead,
+            # taking the latest non-null value is safe.
+            classified_row = (
+                db.query(Conversation)
+                .filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                    Conversation.is_lead.isnot(None),
+                )
+                .order_by(Conversation.created_at.desc())
+                .first()
+            )
+
+            # If is_lead hasn't been populated yet, use the latest
+            # conversation outcome if available.
+            if classified_row:
+                is_lead_value = int(classified_row.is_lead)
+            else:
+                is_lead_value = 0
+
+            # Get the resolved outcome for this session.
+            latest_outcome_row = (
+                db.query(Conversation)
+                .filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                    Conversation.outcome.isnot(None),
+                    Conversation.outcome != "",
+                )
+                .order_by(Conversation.created_at.desc())
+                .first()
+            )
+
+            outcome = latest_outcome_row.outcome if latest_outcome_row else ""
+
+            # ---------------------------------------------------------
+            # EXACT SAME FUNNEL LOGIC
+            # ---------------------------------------------------------
+            inferred_funnel_stage = (
+                FUNNEL_STAGE["LEAD_QUALIFICATION"]
+                if is_lead_value
+                else (
+                    FUNNEL_STAGE["CLOSED_LOST"]
+                    if (outcome or "").lower() not in (None, "")
+                    else FUNNEL_STAGE["UNASSIGNED"]
+                )
+            )
+
+            # ---------------------------------------------------------
+            # Update only missing funnel stage
+            # ---------------------------------------------------------
             updated_rows = (
                 db.query(Lead)
                 .filter(
                     Lead.organization_id == org_id,
                     Lead.id == lead_id,
-                    or_(Lead.funnel_stage.is_(None), Lead.funnel_stage == ""),
+                    or_(
+                        Lead.funnel_stage.is_(None),
+                        Lead.funnel_stage == "",
+                    ),
                 )
                 .update(
-                    {Lead.funnel_stage: inferred_funnel_stage},
+                    {
+                        Lead.funnel_stage: inferred_funnel_stage,
+                    },
                     synchronize_session=False,
                 )
             )
 
             db.commit()
+
             if updated_rows:
                 tagged += 1
+
+                logger.info(
+                    "Funnel stage updated: lead_id=%s stage=%s",
+                    lead_id,
+                    inferred_funnel_stage,
+                )
+
         except Exception as exc:
             db.rollback()
             failed += 1
+
             logger.error(
-                "Failed to backfill funnel stage for org=%s session=%s: %s",
+                "Failed to backfill funnel stage for org=%s lead_id=%s: %s",
                 org_id,
                 lead_id,
                 str(exc),
@@ -793,6 +834,85 @@ def process_test_call_data(
     # Return last processed ID to skip in next batch
     new_last_id = test_calls[-1].id if test_calls else None
     return synced, failed, new_last_id
+
+
+def process_inbound_agents_by_credit(
+    db: Session,
+    minimum_credit: int = 100,
+    organization_id: Optional[int] = None,
+    batch_size: int = 100,
+) -> Tuple[int, int]:
+    """
+    Deactivate inbound agents when credit is below minimum_credit.
+    Activate previously inactive inbound agents when credit is
+    equal to or above minimum_credit.
+
+    Returns:
+        processed_count, failed_count
+    """
+
+    query = db.query(CallingAgent).filter(
+        CallingAgent.external_agent_id.isnot(None),
+        CallingAgent.type == "inbound",
+    )
+
+    if organization_id is not None:
+        query = query.filter(CallingAgent.organization_id == organization_id)
+
+    agents = query.order_by(CallingAgent.id.desc()).limit(batch_size).all()
+
+    processed = 0
+    failed = 0
+
+    credit_map = {}
+
+    for agent in agents:
+        try:
+            org_id = agent.organization_id
+
+            if org_id not in credit_map:
+                credit_balance = organization_credit_service.get_current_org_credit_balance(
+                    db=db,
+                    organization_id=org_id,
+                    # Use lock=False if supported by your method
+                )
+
+                credit_map[org_id] = (
+                    credit_balance.remaining_credit if credit_balance else 0
+                )
+
+            remaining_credit = credit_map[org_id]
+
+            echoleads = EcholeadsClient(org_id)
+
+            # Low credit: deactivate active agent
+            if remaining_credit < minimum_credit:
+                if agent.status == "active":
+                    echoleads.deactivate_agent(agent.external_agent_id)
+
+                    agent.status = "inactive"
+                    processed += 1
+
+            # Sufficient credit: activate inactive agent
+            # else:
+            #     if agent.status == "inactive":
+            #         echoleads.activate_agent(
+            #             agent.external_agent_id,
+            #             agent.inbound_phone_number,
+            #         )
+
+            #         agent.status = "active"
+            #         processed += 1
+
+            db.commit()
+
+        except Exception as exc:
+            db.rollback()
+            failed += 1
+
+            print(f"Failed to process inbound agent " f"{agent.id}: {exc}")
+
+    return processed, failed
 
 
 def run_outcome_processing_batches(
@@ -1001,3 +1121,97 @@ async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
                 exc,
                 exc_info=True,
             )
+
+
+async def run_inbound_call_agent_daemon(stop_event: asyncio.Event) -> None:
+    """Inbound call agent daemon with non-blocking execution"""
+
+    initial_delay = max(settings.INBOUND_AGENT_CREDIT_DAEMON_INITIAL_DELAY_SECONDS, 0)
+    if initial_delay:
+        await asyncio.sleep(initial_delay)
+
+    try:
+        processed, failed = await asyncio.to_thread(
+            run_inbound_call_agent_processing_batches,
+            batch_size=settings.INBOUND_AGENT_CREDIT_DAEMON_BATCH_SIZE,
+            max_batches=settings.INBOUND_AGENT_CREDIT_DAEMON_MAX_BATCHES,
+        )
+
+        logger.info(
+            "Initial inbound call agent credit check completed: %s %s",
+            processed,
+            failed,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Initial inbound call agent credit check failed: %s",
+            exc,
+            exc_info=True,
+        )
+
+    while not stop_event.is_set():
+        wait_seconds = _seconds_until_next_interval(
+            settings.INBOUND_AGENT_CREDIT_DAEMON_INTERVAL_SECONDS
+        )
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
+            break
+        except asyncio.TimeoutError:
+            pass
+
+        try:
+            processed, failed = await asyncio.to_thread(
+                run_inbound_call_agent_processing_batches,
+                batch_size=settings.INBOUND_AGENT_CREDIT_DAEMON_BATCH_SIZE,
+                max_batches=settings.INBOUND_AGENT_CREDIT_DAEMON_MAX_BATCHES,
+            )
+
+            logger.info(
+                "Inbound call agent credit check completed: %s %s",
+                processed,
+                failed,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "Inbound call agent credit check failed: %s",
+                exc,
+                exc_info=True,
+            )
+
+
+def run_inbound_call_agent_processing_batches(
+    batch_size: int,
+    max_batches: int,
+    organization_id: Optional[int] = None,
+) -> Tuple[int, int]:
+    total_processed = 0
+    total_failed = 0
+
+    db = SessionLocal()
+
+    try:
+        for _ in range(max_batches):
+            processed, failed = process_inbound_agents_by_credit(
+                db=db,
+                minimum_credit=settings.INBOUND_AGENT_CREDIT_MINIMUM,
+                organization_id=organization_id,
+                batch_size=batch_size,
+            )
+
+            total_processed += processed
+            total_failed += failed
+
+            if processed == 0:
+                break
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+    return total_processed, total_failed

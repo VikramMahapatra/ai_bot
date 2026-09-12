@@ -50,11 +50,11 @@ class EcholeadsClient:
             )
 
             # Print full response
-            # print("====== ECHOLEADS API RESPONSE ======")
-            # print("URL:", f"{self.base_url}{endpoint}")
-            # print("Status Code:", response.status_code)
-            # print("Response Text:", response.text)
-            # print("====================================")
+            print("====== ECHOLEADS API RESPONSE ======")
+            print("URL:", f"{self.base_url}{endpoint}")
+            print("Status Code:", response.status_code)
+            print("Response Text:", response.text)
+            print("====================================")
 
             response.raise_for_status()
             return response.json()
@@ -255,7 +255,7 @@ class EcholeadsClient:
         return self._post("/reschedule-contact", payload)
 
     def deactivate_agent(self, agent_id: int):
-        return self._put(
+        return self._post(
             f"/agent-tables/{agent_id}/toggle-ind-status",
             {"status": "inactive"},
         )
@@ -270,7 +270,7 @@ class EcholeadsClient:
             "phone": phone,
         }
 
-        return self._put(
+        return self._post(
             f"/agent-tables/{agent_id}/toggle-ind-status",
             payload,
         )

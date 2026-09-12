@@ -181,6 +181,17 @@ export const callingAgentService = {
         return response.data;
     },
 
+    async updateInboundAgentStatus(agent_id: number, status: string): Promise<CallingAgentStatusResponse> {
+        const response = await api.post(
+            `/api/calling-agent/${agent_id}/inbound-status`,
+            {
+                status,
+            }
+        );
+
+        return response.data;
+    },
+
     async testCall(agent_id: number, payload: any): Promise<CallingAgentStatusResponse> {
         const response = await api.post(`/api/calling-agent/${agent_id}/test-call`, payload);
         return response.data;

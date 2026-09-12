@@ -692,8 +692,21 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   };
 
   const getContactListLabel = (list: ContactListItem) => {
-    const autoTag = list.is_agent_auto_list ? " • Auto" : "";
-    return `${list.list_name}${autoTag} (${list.contact_count})`;
+    const tags = [];
+
+    if (list.is_agent_auto_list) {
+      tags.push("Auto");
+    }
+
+    if (list.is_campaign_list) {
+      tags.push("Campaign");
+    }
+
+    const tagSuffix = tags.length
+      ? ` • ${tags.join(" • ")}`
+      : "";
+
+    return `${list.list_name}${tagSuffix} (${list.contact_count})`;
   };
 
   const getContactListDescription = (list: ContactListItem) => {
@@ -1212,6 +1225,16 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                   color="info"
                                   variant="outlined"
                                   label="Auto-created"
+                                />
+                              )}
+
+                              {/* Campaign Chip */}
+                              {list.is_campaign_list && (
+                                <Chip
+                                  size="small"
+                                  color="success"
+                                  variant="outlined"
+                                  label="Campaign"
                                 />
                               )}
                             </Stack>

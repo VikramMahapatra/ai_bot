@@ -23,7 +23,8 @@ import {
     DialogContent,
     DialogActions,
     MenuItem,
-    Collapse
+    Collapse,
+    Menu
 } from "@mui/material";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -52,6 +53,9 @@ import CloseIcon from "@mui/icons-material/Close";
 import { titleCase } from "../Common/StatusChips";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 
 interface Props {
     onAddCampaign: (showError: (message: string) => void) => void;
@@ -101,6 +105,7 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
     const [showFilters, setShowFilters] = useState(false);
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    const [campaignActionAnchor, setCampaignActionAnchor] = useState<null | HTMLElement>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState<
         null | { type: "toggleStatus"; campaign: Campaign } | { type: "delete"; campaign: Campaign } | { type: "cancel"; campaign: Campaign }
@@ -111,7 +116,20 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
     const [endDate, setEndDate] = useState<string | null>(null);
     const [status, setStatus] = useState<string>("All");
 
-    const openDrawer = (campaign: Campaign) => {
+    const handleCampaignActionMenuOpen = (
+        event: React.MouseEvent<HTMLElement>,
+        campaign: any
+    ) => {
+        setCampaignActionAnchor(event.currentTarget);
+        setSelectedCampaign(campaign);
+    };
+
+    const handleCampaignActionMenuClose = () => {
+        setCampaignActionAnchor(null);
+    };
+
+    const openDrawer = (campaign: Campaign | null) => {
+        if (!campaign) return;
         scrollToTop();
         setSelectedCampaign(campaign);
         setDrawerOpen(true);
@@ -709,101 +727,14 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
 
                                     {/* ACTIONS */}
                                     <TableCell align="right">
-
-                                        {["running", "paused"].includes(campaign.status) && (
-                                            <>
-
-                                                <Tooltip
-                                                    title={
-                                                        campaign.status === "running"
-                                                            ? "Pause Campaign"
-                                                            : "Start Campaign"
-                                                    }
-                                                >
-                                                    <IconButton
-                                                        size="small"
-                                                        color={
-                                                            campaign.status === "running"
-                                                                ? "warning"
-                                                                : "primary"
-                                                        }
-                                                        onClick={() => {
-                                                            scrollToTop();
-                                                            setConfirmDialog({ type: "toggleStatus", campaign });
-                                                        }}
-                                                    >
-                                                        {campaign.status === "running" ? (
-                                                            <PauseIcon />
-                                                        ) : (
-                                                            <PlayArrowIcon />
-                                                        )}
-                                                    </IconButton>
-                                                </Tooltip>
-                                                <Tooltip title="Cancel Campaign">
-                                                    <IconButton
-                                                        size="small"
-                                                        color="error"
-                                                        onClick={() => {
-                                                            scrollToTop();
-                                                            setConfirmDialog({ type: "cancel", campaign });
-                                                        }}
-                                                    >
-                                                        <CancelIcon />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            </>
-                                        )}
-                                        {["pending"].includes(campaign.status) && (
-                                            <Tooltip title="Cancel Campaign">
-                                                <IconButton
-                                                    size="small"
-                                                    color="error"
-                                                    onClick={() => {
-                                                        scrollToTop();
-                                                        setConfirmDialog({ type: "cancel", campaign });
-                                                    }}
-                                                >
-                                                    <CancelIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                        <Tooltip title="View Analytics">
-                                            <IconButton onClick={() => openDrawer(campaign)}>
-                                                <InsightsIcon color="primary" />
-                                            </IconButton>
-                                        </Tooltip>
                                         <IconButton
                                             size="small"
-                                            onClick={() => {
-                                                scrollToTop();
-                                                onViewCampaign(campaign.id);
-                                            }}
+                                            onClick={(event) =>
+                                                handleCampaignActionMenuOpen(event, campaign)
+                                            }
                                         >
-                                            <VisibilityIcon />
+                                            <MoreVertIcon />
                                         </IconButton>
-                                        {["draft"].includes(campaign.status) && (
-                                            <IconButton
-                                                size="small"
-                                                onClick={() => {
-                                                    scrollToTop();
-                                                    onEditCampaign(campaign.id);
-                                                }}
-                                            >
-                                                <EditIcon />
-                                            </IconButton>
-                                        )}
-                                        {["draft", "failed"].includes(campaign.status) && (
-                                            <IconButton
-                                                size="small"
-                                                color="error"
-                                                onClick={() => {
-                                                    scrollToTop();
-                                                    setConfirmDialog({ type: "delete", campaign });
-                                                }}
-                                            >
-                                                <DeleteIcon />
-                                            </IconButton>
-                                        )}
                                     </TableCell>
 
                                 </TableRow>
@@ -824,6 +755,158 @@ const CampaignList: React.FC<Props> = ({ onAddCampaign, onEditCampaign, onViewCa
                     rowsPerPageOptions={[10, 25, 50]}
                 />
             </Paper>
+            <Menu
+                anchorEl={campaignActionAnchor}
+                open={Boolean(campaignActionAnchor)}
+                onClose={handleCampaignActionMenuClose}
+                anchorOrigin={{
+                    vertical: "bottom",
+                    horizontal: "right",
+                }}
+                transformOrigin={{
+                    vertical: "top",
+                    horizontal: "right",
+                }}
+            >
+                {/* Pause / Start */}
+                {["running", "paused"].includes(selectedCampaign?.status ?? "") && (
+                    <MenuItem
+                        onClick={() => {
+                            if (!selectedCampaign) return;
+                            scrollToTop();
+                            setConfirmDialog({
+                                type: "toggleStatus",
+                                campaign: selectedCampaign,
+                            });
+                            handleCampaignActionMenuClose();
+                        }}
+                    >
+                        <ListItemIcon>
+                            {selectedCampaign?.status === "running" ? (
+                                <PauseIcon fontSize="small" />
+                            ) : (
+                                <PlayArrowIcon fontSize="small" />
+                            )}
+                        </ListItemIcon>
+
+                        <ListItemText>
+                            {selectedCampaign?.status === "running"
+                                ? "Pause Campaign"
+                                : "Start Campaign"}
+                        </ListItemText>
+                    </MenuItem>
+                )}
+
+                {/* Cancel */}
+                {["running", "paused", "pending"].includes(
+                    selectedCampaign?.status ?? ""
+                ) && (
+                        <MenuItem
+                            onClick={() => {
+                                if (!selectedCampaign) return;
+                                scrollToTop();
+                                setConfirmDialog({
+                                    type: "cancel",
+                                    campaign: selectedCampaign,
+                                });
+                                handleCampaignActionMenuClose();
+                            }}
+                        >
+                            <ListItemIcon>
+                                <CancelIcon
+                                    fontSize="small"
+                                    color="error"
+                                />
+                            </ListItemIcon>
+
+                            <ListItemText>
+                                Cancel Campaign
+                            </ListItemText>
+                        </MenuItem>
+                    )}
+
+                {/* Analytics */}
+                <MenuItem
+                    onClick={() => {
+                        openDrawer(selectedCampaign);
+                        handleCampaignActionMenuClose();
+                    }}
+                >
+                    <ListItemIcon>
+                        <InsightsIcon
+                            fontSize="small"
+                            color="primary"
+                        />
+                    </ListItemIcon>
+
+                    <ListItemText>
+                        View Analytics
+                    </ListItemText>
+                </MenuItem>
+
+                {/* View */}
+                <MenuItem
+                    onClick={() => {
+                        if (!selectedCampaign) return;
+                        scrollToTop();
+                        onViewCampaign(selectedCampaign.id);
+                        handleCampaignActionMenuClose();
+                    }}
+                >
+                    <ListItemIcon>
+                        <VisibilityIcon fontSize="small" />
+                    </ListItemIcon>
+
+                    <ListItemText>
+                        View Campaign
+                    </ListItemText>
+                </MenuItem>
+
+                {/* Edit */}
+                {selectedCampaign?.status === "draft" && (
+                    <MenuItem
+                        onClick={() => {
+                            scrollToTop();
+                            onEditCampaign(selectedCampaign.id);
+                            handleCampaignActionMenuClose();
+                        }}
+                    >
+                        <ListItemIcon>
+                            <EditIcon fontSize="small" />
+                        </ListItemIcon>
+
+                        <ListItemText>
+                            Edit Campaign
+                        </ListItemText>
+                    </MenuItem>
+                )}
+
+                {/* Delete */}
+                {["draft", "failed"].includes(selectedCampaign?.status ?? "") && (
+                    <MenuItem
+                        onClick={() => {
+                            if (!selectedCampaign) return;
+                            scrollToTop();
+                            setConfirmDialog({
+                                type: "delete",
+                                campaign: selectedCampaign,
+                            });
+                            handleCampaignActionMenuClose();
+                        }}
+                    >
+                        <ListItemIcon>
+                            <DeleteIcon
+                                fontSize="small"
+                                color="error"
+                            />
+                        </ListItemIcon>
+
+                        <ListItemText>
+                            Delete Campaign
+                        </ListItemText>
+                    </MenuItem>
+                )}
+            </Menu>
             <CampaignAnalyticsDrawer
                 open={drawerOpen}
                 onClose={closeDrawer}

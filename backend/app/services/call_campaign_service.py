@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone, time
 import json
 import logging
 import re
+from types import SimpleNamespace
 from typing import List, Optional
 from urllib import response
 from uuid import uuid4
@@ -19,6 +20,8 @@ from app.schemas.call_campaign import (
     CampaignStatusUpdate,
     CampaignUpdate,
     ContactCreate,
+    RescheduleCallRequest,
+    RescheduleCampaignRequest,
 )
 from app.models.campaign import Contact, ContactList
 from app.models.lead import Lead
@@ -81,9 +84,11 @@ def _serialize_contact(
         "id": row.id,
         "contact_list_id": row.contact_list_id,
         "contact_list_name": row.contact_list.list_name if row.contact_list else None,
-        "label": f"{row.contact_list.list_name} - {row.name} ({row.phone})"
-        if row.contact_list
-        else f"{row.name} ({row.phone})",
+        "label": (
+            f"{row.contact_list.list_name} - {row.name} ({row.phone})"
+            if row.contact_list
+            else f"{row.name} ({row.phone})"
+        ),
         "name": row.name,
         "email": row.email,
         "phone": row.phone,
@@ -740,6 +745,279 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
     }
 
 
+def reschedule_campaign(
+    db: Session,
+    organization_id: int,
+    campaign_id: int,
+    data: RescheduleCampaignRequest,
+):
+    # ---------------------------------------------------------
+    # Get original campaign
+    # ---------------------------------------------------------
+    original_campaign = (
+        db.query(CallCampaign)
+        .filter(
+            CallCampaign.id == campaign_id,
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not original_campaign:
+        raise HTTPException(
+            status_code=404,
+            detail="Original campaign not found",
+        )
+
+    if not data.contact_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Please select at least one contact",
+        )
+
+    # ---------------------------------------------------------
+    # Get selected contacts from original campaign
+    # ---------------------------------------------------------
+    original_campaign_contacts = (
+        db.query(CampaignContact)
+        .filter(
+            CampaignContact.campaign_id == original_campaign.id,
+            CampaignContact.contact_id.in_(data.contact_ids),
+        )
+        .all()
+    )
+
+    if not original_campaign_contacts:
+        raise HTTPException(
+            status_code=400,
+            detail=("Selected contacts were not found " "in the original campaign"),
+        )
+
+    selected_contact_ids = list(
+        {campaign_contact.contact_id for campaign_contact in original_campaign_contacts}
+    )
+
+    if not selected_contact_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid contacts selected",
+        )
+
+    # ---------------------------------------------------------
+    # Get original agent
+    # ---------------------------------------------------------
+    agent = (
+        db.query(CallingAgent)
+        .filter(
+            CallingAgent.id == original_campaign.agent_id,
+            CallingAgent.organization_id == organization_id,
+            CallingAgent.is_deleted == False,
+            CallingAgent.status == "active",
+        )
+        .first()
+    )
+
+    if not agent:
+        raise HTTPException(
+            status_code=404,
+            detail="Calling agent not found",
+        )
+
+    # ---------------------------------------------------------
+    # Get original campaign schedule
+    # ---------------------------------------------------------
+    original_schedule = (
+        db.query(CampaignSchedule)
+        .filter(
+            CampaignSchedule.campaign_id == original_campaign.id,
+        )
+        .first()
+    )
+
+    # ---------------------------------------------------------
+    # Copy instant reply configuration
+    # ---------------------------------------------------------
+    instant_reply_modes = []
+    instant_reply_templates = {
+        "whatsapp": None,
+        "sms": None,
+        "email": None,
+    }
+
+    if original_campaign.instant_reply:
+        instant_reply_rows = (
+            db.query(CallCampaignInstantReply)
+            .filter(CallCampaignInstantReply.call_campaign_id == original_campaign.id)
+            .all()
+        )
+
+        for row in instant_reply_rows:
+            instant_reply_modes.append(row.mode)
+
+            if row.mode == "whatsapp":
+                instant_reply_templates["whatsapp"] = row.template_id
+
+            elif row.mode == "sms":
+                instant_reply_templates["sms"] = row.template_id
+
+            elif row.mode == "email":
+                instant_reply_templates["email"] = row.template_id
+
+    instant_reply_template_data = instant_reply_templates
+
+    # ---------------------------------------------------------
+    # Prepare schedule values
+    # ---------------------------------------------------------
+    if data.schedule_type == "schedule":
+        if not data.date or not data.time:
+            raise HTTPException(
+                status_code=400,
+                detail=("Date and time are required " "for scheduled campaigns"),
+            )
+
+        start_datetime = f"{data.date}T{data.time}"
+
+        end_datetime = None
+
+        if original_schedule and original_schedule.end_datetime:
+            end_datetime = original_schedule.end_datetime.isoformat()
+
+        active_days = []
+
+        if original_schedule and original_schedule.active_days:
+            active_days = [
+                day.strip()
+                for day in original_schedule.active_days.split(",")
+                if day.strip()
+            ]
+
+        call_start_time = data.time
+
+    else:
+        start_datetime = None
+        end_datetime = None
+        active_days = []
+        call_start_time = None
+
+    # ---------------------------------------------------------
+    # Calling number
+    # ---------------------------------------------------------
+    calling_no = data.calling_no or original_campaign.calling_no
+
+    if not calling_no:
+        raise HTTPException(
+            status_code=400,
+            detail="Calling number is required",
+        )
+
+    # ---------------------------------------------------------
+    # Timezone
+    # ---------------------------------------------------------
+    campaign_timezone = (
+        data.timezone
+        or (original_schedule.timezone if original_schedule else None)
+        or "Asia/Kolkata"
+    )
+
+    # ---------------------------------------------------------
+    # Copy original schedule settings
+    # ---------------------------------------------------------
+    call_end_time = original_schedule.call_end_time if original_schedule else None
+
+    call_interval = original_schedule.call_interval if original_schedule else None
+
+    max_retry_attempts = (
+        original_schedule.max_retry_attempts if original_schedule else 0
+    )
+
+    retry_interval = original_schedule.retry_interval if original_schedule else None
+
+    retry_on_no_answer = (
+        original_schedule.retry_no_answer if original_schedule else False
+    )
+
+    retry_on_busy = original_schedule.retry_busy if original_schedule else False
+
+    retry_on_voicemail = (
+        original_schedule.retry_voicemail if original_schedule else False
+    )
+
+    # ---------------------------------------------------------
+    # Build CampaignCreate payload
+    # ---------------------------------------------------------
+    campaign_data = CampaignCreate(
+        name=data.campaign_name,
+        description=original_campaign.description,
+        calling_no=calling_no,
+        category=original_campaign.category,
+        priority=original_campaign.priority,
+        agent_id=original_campaign.agent_id,
+        product_id=original_campaign.product_id,
+        instant_reply=original_campaign.instant_reply,
+        instant_reply_modes=instant_reply_modes,
+        instant_reply_templates=instant_reply_template_data,
+        workflow_id=(
+            data.workflow_id
+            if data.workflow_id is not None
+            else original_campaign.workflow_id
+        ),
+        contacts=selected_contact_ids,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        timezone=campaign_timezone,
+        call_start_time=call_start_time,
+        call_end_time=call_end_time,
+        call_interval=call_interval,
+        active_days=active_days,
+        max_retry_attempts=max_retry_attempts,
+        retry_interval=retry_interval,
+        retry_on_no_answer=retry_on_no_answer,
+        retry_on_busy=retry_on_busy,
+        retry_on_voicemail=retry_on_voicemail,
+    )
+
+    # ---------------------------------------------------------
+    # Create new campaign using existing create_campaign()
+    # ---------------------------------------------------------
+    try:
+        new_campaign_response = create_campaign(
+            db=db,
+            organization_id=organization_id,
+            data=campaign_data,
+        )
+
+        new_campaign_id = new_campaign_response["campaign_id"]
+        db.commit()
+
+        return {
+            "message": (
+                f"{len(selected_contact_ids)} contact(s) " "rescheduled successfully"
+            ),
+            "original_campaign_id": original_campaign.id,
+            "new_campaign_id": new_campaign_id,
+            "contact_ids": selected_contact_ids,
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        logger.exception(
+            "Error rescheduling campaign %s: %s",
+            campaign_id,
+            str(e),
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reschedule campaign",
+        )
+
+
 def get_valid_schedule_datetime(schedule_date, schedule_time, tz_str="Asia/Kolkata"):
     if not schedule_date or not schedule_time:
         return None
@@ -1140,10 +1418,10 @@ def delete_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    if campaign.status not in ["draft", "completed"]:
+    if campaign.status not in ["draft", "completed", "failed"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft or Completed campaigns can be deleted.",
+            detail=f"Cannot delete the campaign because its status is '{campaign.status}'. Only Draft, Completed or Failed campaigns can be deleted.",
         )
 
     campaign.is_deleted = True
@@ -1182,6 +1460,213 @@ def build_contacts_payload(contacts, agent):
         )
 
     return payload
+
+
+def reschedule_call(
+    db: Session,
+    call_log_id: int,
+    data: RescheduleCallRequest,
+):
+    call_log = db.query(CallLog).filter(CallLog.id == call_log_id).first()
+
+    if not call_log:
+        raise HTTPException(
+            status_code=404,
+            detail="Call log not found",
+        )
+
+    if not call_log.campaign_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Call is not associated with a campaign",
+        )
+
+    campaign = (
+        db.query(CallCampaign)
+        .filter(
+            CallCampaign.id == call_log.campaign_id,
+            CallCampaign.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not campaign:
+        raise HTTPException(
+            status_code=404,
+            detail="Campaign not found",
+        )
+
+    contact = db.query(Contact).filter(Contact.id == call_log.contact_id).first()
+
+    if not contact:
+        raise HTTPException(
+            status_code=404,
+            detail="Contact not found",
+        )
+
+    if not campaign.external_campaign_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Campaign external ID is missing",
+        )
+
+    if not contact.external_contact_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Contact external ID is missing",
+        )
+
+    # ---------------------------------------------------------
+    # Validate timezone
+    # ---------------------------------------------------------
+    timezone_str = (
+        data.timezone.strip()
+        if data.timezone and data.timezone.strip()
+        else "Asia/Kolkata"
+    )
+
+    try:
+        selected_timezone = ZoneInfo(timezone_str)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timezone: {timezone_str}",
+        )
+
+    # ---------------------------------------------------------
+    # Validate credit
+    # ---------------------------------------------------------
+    valid = organization_credit_service.validate_feature_usage(
+        db=db,
+        organization_id=campaign.organization_id,
+        feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+        quantity=1,
+    )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient credits. Please add more credits to continue.",
+        )
+
+    # ---------------------------------------------------------
+    # Validate channel availability
+    # ---------------------------------------------------------
+    organization_channel_service.validate_channel_available(
+        db=db,
+        organization_id=campaign.organization_id,
+        call_type="rescheduled_call",
+    )
+
+    # ---------------------------------------------------------
+    # Reserve channel for this rescheduled call
+    # ---------------------------------------------------------
+    organization_channel_service.reserve_channel(
+        db=db,
+        organization_id=campaign.organization_id,
+        call_type="manual_rescheduled_call",
+        reference_id=call_log.contact_id,
+    )
+
+    # ---------------------------------------------------------
+    # Prepare scheduled datetime
+    # ---------------------------------------------------------
+    scheduled_at = None
+
+    if data.schedule_type == "schedule":
+        if not data.date or not data.time:
+            organization_channel_service.release_channel(
+                db=db,
+                call_type="manual_rescheduled_call",
+                reference_id=call_log.contact_id,
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Date and time are required for scheduling",
+            )
+
+        # User-selected date/time is in the selected timezone
+        local_datetime = datetime.combine(
+            data.date,
+            data.time,
+        ).replace(
+            tzinfo=selected_timezone,
+        )
+
+        # Convert to UTC for internal handling
+        scheduled_at = local_datetime.astimezone(timezone.utc)
+
+    # ---------------------------------------------------------
+    # Reschedule call in EchoLeads
+    # ---------------------------------------------------------
+    echo_client = EcholeadsClient(campaign.organization_id)
+
+    try:
+        response = echo_client.reschedule_contact_call(
+            campaign.external_campaign_id,
+            contact.external_contact_id,
+            scheduled_at,
+            timezone_str,
+        )
+
+        logger.info(
+            "Reschedule call response: %s",
+            response,
+        )
+
+    except Exception as e:
+        logger.error(
+            "EchoLeads reschedule call failed: %s",
+            str(e),
+            exc_info=True,
+        )
+
+        organization_channel_service.release_channel(
+            db=db,
+            call_type="manual_rescheduled_call",
+            reference_id=call_log.contact_id,
+        )
+
+        db.commit()
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to reschedule call: {str(e)}",
+        )
+
+    # ---------------------------------------------------------
+    # Check provider response
+    # ---------------------------------------------------------
+    if not response or response.get("success") is False:
+        organization_channel_service.release_channel(
+            db=db,
+            call_type="manual_rescheduled_call",
+            reference_id=call_log.contact_id,
+        )
+
+        db.commit()
+
+        raise HTTPException(
+            status_code=400,
+            detail=(response.get("error") if response else "Failed to reschedule call"),
+        )
+
+    # ---------------------------------------------------------
+    # Deduct credit only after successful provider response
+    # ---------------------------------------------------------
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=campaign.organization_id,
+        feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+        quantity=1,
+        reference_type="rescheduled_call",
+        reference_id=str(call_log.id),
+    )
+
+    db.commit()
+
+    return response
 
 
 #### Campaign Contacts
@@ -1268,8 +1753,7 @@ def get_contacts(
     # ---------------------------
     return {
         "items": [
-            _serialize_contact(row, lead_custom_fields_by_session)
-            for row in rows
+            _serialize_contact(row, lead_custom_fields_by_session) for row in rows
         ],
         "pagination": {
             "total": total,
@@ -1283,7 +1767,9 @@ def get_contact(db: Session, organization_id: int, contact_id: int):
     row = (
         db.query(Contact)
         .join(ContactList, Contact.contact_list_id == ContactList.id)
-        .filter(Contact.id == contact_id, ContactList.organization_id == organization_id)
+        .filter(
+            Contact.id == contact_id, ContactList.organization_id == organization_id
+        )
         .first()
     )
     if not row:
@@ -2020,6 +2506,92 @@ def sync_campaign_from_echoleads(
 
     except Exception as e:
         print("Sync failed:", str(e))
+
+
+def add_contact_to_qualified_list(
+    db: Session,
+    organization_id: int,
+    campaign: CallCampaign,
+    contact_id: int,
+):
+    """
+    Add a qualified contact to the campaign-specific
+    '<Campaign Name> - Qualified' contact list.
+    """
+
+    if not campaign or not contact_id:
+        return None
+
+    qualified_list_name = f"{campaign.name} - Qualified"
+
+    qualified_contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.organization_id == organization_id,
+            ContactList.list_name == qualified_list_name,
+        )
+        .first()
+    )
+
+    if not qualified_contact_list:
+        qualified_contact_list = ContactList(
+            organization_id=organization_id,
+            list_name=qualified_list_name,
+            description=f"Qualified contacts from campaign: {campaign.name}",
+        )
+
+        db.add(qualified_contact_list)
+        db.flush()
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+
+    if not contact:
+        return qualified_contact_list
+
+    # Prevent duplicate contact in Qualified list
+    existing_contact = None
+
+    if contact.external_contact_id:
+        existing_contact = (
+            db.query(Contact)
+            .filter(
+                Contact.contact_list_id == qualified_contact_list.id,
+                Contact.external_contact_id == contact.external_contact_id,
+            )
+            .first()
+        )
+
+    if not existing_contact:
+        qualified_contact = Contact(
+            contact_list_id=qualified_contact_list.id,
+            name=contact.name,
+            email=contact.email,
+            phone=contact.phone,
+            whatsapp_number=contact.whatsapp_number,
+            gender=contact.gender,
+            company=contact.company,
+            designation=contact.designation,
+            item_name=contact.item_name,
+            item_type=contact.item_type,
+            interest_stage=contact.interest_stage,
+            item_category=contact.item_category,
+            amount=contact.amount,
+            offer_value=contact.offer_value,
+            city=contact.city,
+            state=contact.state,
+            country=contact.country,
+            source=contact.source,
+            lifecycle_stage=contact.lifecycle_stage,
+            tags=contact.tags,
+            custom_fields=contact.custom_fields,
+            session_id=contact.session_id,
+            external_contact_id=contact.external_contact_id,
+        )
+
+        db.add(qualified_contact)
+        db.flush()
+
+    return qualified_contact_list
 
 
 def parse_datetime(dt):
