@@ -8,11 +8,18 @@ from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 from app.config import settings
 
 
-def validate_channel_available(db: Session, organization_id: int, call_type: str):
+def validate_channel_available(
+    db: Session,
+    organization_id: int,
+    call_type: str,
+):
     def get_available_channel(org_id: int):
         org_channel_ids = (
             db.query(Channel.id)
-            .join(OrganizationChannel, OrganizationChannel.channel_id == Channel.id)
+            .join(
+                OrganizationChannel,
+                OrganizationChannel.channel_id == Channel.id,
+            )
             .filter(OrganizationChannel.organization_id == org_id)
             .subquery()
         )
@@ -25,7 +32,10 @@ def validate_channel_available(db: Session, organization_id: int, call_type: str
 
         available = (
             db.query(Channel.id)
-            .filter(Channel.id.in_(org_channel_ids), ~Channel.id.in_(active_res_subq))
+            .filter(
+                Channel.id.in_(org_channel_ids),
+                ~Channel.id.in_(active_res_subq),
+            )
             .first()
         )
 
@@ -33,42 +43,52 @@ def validate_channel_available(db: Session, organization_id: int, call_type: str
 
     # =================================================
     # CAMPAIGN
-    # Only use organization's own channel
     # =================================================
     if call_type == "campaign":
         channel_id = get_available_channel(organization_id)
 
         if not channel_id:
             raise HTTPException(
-                status_code=400, detail="No available channels for campaign"
+                status_code=400,
+                detail="No available channels for campaign",
             )
 
         return channel_id
 
     # =================================================
     # TEST
-    # Own channel first
-    # Then Zentrixel channel
     # =================================================
     if call_type == "test":
-
-        # 1. Try organization's own channel
         channel_id = get_available_channel(organization_id)
 
         if channel_id:
             return channel_id
 
-        # 2. Try Zentrixel channel
         if organization_id != settings.ZENTRIXEL_ORG_ID:
-
             channel_id = get_available_channel(settings.ZENTRIXEL_ORG_ID)
 
             if channel_id:
                 return channel_id
 
         raise HTTPException(
-            status_code=400, detail="No available channels for test call"
+            status_code=400,
+            detail="No available channels for test call",
         )
+
+    # =================================================
+    # RESCHEDULED CALL
+    # Organization's own channel only
+    # =================================================
+    if call_type == "rescheduled_call":
+        channel_id = get_available_channel(organization_id)
+
+        if not channel_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No available channels for rescheduled call",
+            )
+
+        return channel_id
 
     # =================================================
     # OTHER CALL TYPES
@@ -76,7 +96,10 @@ def validate_channel_available(db: Session, organization_id: int, call_type: str
     channel_id = get_available_channel(organization_id)
 
     if not channel_id:
-        raise HTTPException(status_code=400, detail="No available channels")
+        raise HTTPException(
+            status_code=400,
+            detail="No available channels",
+        )
 
     return channel_id
 

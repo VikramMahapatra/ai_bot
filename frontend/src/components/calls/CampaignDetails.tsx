@@ -30,6 +30,10 @@ import {
   TableContainer,
   CircularProgress,
   DialogActions,
+  MenuItem,
+  Menu,
+  Snackbar,
+  Alert
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -37,7 +41,7 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import { callCampaignService } from "../../services/callCampaignService";
+import { callCampaignService, RescheduleCallRequest } from "../../services/callCampaignService";
 import CallDetailDrawer from "./CallDetailDrawer";
 import {
   CallLog,
@@ -63,7 +67,16 @@ import { ConversionOutcomeChip, OutcomeChip, titleCase } from "../Common/StatusC
 import WorkflowHistoryDrawer from "./WorkflowHistoryDrawer";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import { formatDate } from "../../utils/dateUtils";
-
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import PhoneCallbackIcon from "@mui/icons-material/PhoneCallback";
+import RescheduleCallDialog from "./RescheduleCallDialog";
+import RescheduleCampaignDialog, { RescheduleCampaignData } from "./RescheduleCampaignDialog";
+import { WorkflowLookupItem, workflowService } from "../../services/workflowService";
+import { CallingNumberType, callService } from "../../services/callService";
 interface Props {
   campaignId: number;
   onBack: () => void;
@@ -215,6 +228,118 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
   const [openWorkflowDrawer, setOpenWorkflowDrawer] = useState(false);
   const [workflowHistory, setWorkflowHistory] = useState<any[]>([]);
 
+  const [callActionAnchor, setCallActionAnchor] = useState<null | HTMLElement>(null);
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+
+  const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
+  const [rescheduleCampaignDialogOpen, setRescheduleCampaignDialogOpen] = useState(false);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [workflows, setWorkflows] = useState<WorkflowLookupItem[]>([]);
+  const [callingNumbers, setCallingNumbers] = useState<any[]>([]);
+
+  const loadWorkflowLookup = async () => {
+    const data = await workflowService.getWorkflowLookup();
+    setWorkflows(data || []);
+  };
+
+  const loadCallingNoLookup = async () => {
+    const data = await callService.getCallingNumbers(
+      CallingNumberType.OUTBOUND,
+    );
+    setCallingNumbers(data || []);
+  };
+
+  const handleCallActionMenuOpen = (
+    event: React.MouseEvent<HTMLElement>,
+    log: any
+  ) => {
+    setCallActionAnchor(event.currentTarget);
+    setSelectedCall(log);
+  };
+
+  const handleContactSelect = (contactId: number) => {
+    setSelectedContactIds((prev) =>
+      prev.includes(contactId)
+        ? prev.filter((id) => id !== contactId)
+        : [...prev, contactId]
+    );
+  };
+
+  const handleSelectAllContacts = () => {
+    const currentPageContactIds = Array.from(
+      new Set(
+        callLogs
+          .map((contact) => contact.contact_id)
+          .filter((id): id is number => id !== undefined)
+      )
+    );
+
+    const allCurrentPageSelected = currentPageContactIds.every(
+      (id) => selectedContactIds.includes(id)
+    );
+
+    if (allCurrentPageSelected) {
+      // Remove only current page contacts
+      setSelectedContactIds((prev) =>
+        prev.filter(
+          (id) => !currentPageContactIds.includes(id)
+        )
+      );
+    } else {
+      // Add current page contacts without duplicates
+      setSelectedContactIds((prev) =>
+        Array.from(
+          new Set([
+            ...prev,
+            ...currentPageContactIds,
+          ])
+        )
+      );
+    }
+  };
+
+  const handleCallActionMenuClose = () => {
+    setCallActionAnchor(null);
+  };
+
+  const handleOpenReschedule = (log: CallLog) => {
+    setSelectedCall(log);
+    setRescheduleDialogOpen(true);
+  };
+
+  const handleRescheduleCall = async (
+    data: Partial<RescheduleCallRequest>
+  ) => {
+    if (!selectedCall) return;
+
+    try {
+      await callCampaignService.rescheduleCall({
+        call_log_id: selectedCall.id,
+        schedule_type: data.schedule_type as "now" | "schedule",
+        date: data.date,
+        time: data.time,
+        timezone: data.timezone || "Asia/Kolkata",
+      });
+
+      showSuccess("Call rescheduled successfully");
+      await loadCallLogs();
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
+  const showError = (message: string) => {
+    setSuccess("");
+    setError(message);
+  };
+
+  const showSuccess = (message: string) => {
+    setError("");
+    setSuccess(message);
+  };
 
   const [filters, setFilters] = useState<CallLogFilterState>({
     search: "",
@@ -235,7 +360,8 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     try {
       const data = await callCampaignService.getCampaignDetails(campaignId);
       setCampaign(data);
-
+      loadCallingNoLookup();
+      loadWorkflowLookup();
       loadCallLogs(filters);
     } catch (err) {
       console.error(err);
@@ -355,11 +481,66 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
     setOpenWorkflowDrawer(true);
   };
 
+  const handleRescheduleCampaign = async (
+    data: RescheduleCampaignData
+  ) => {
+    try {
+      const response = await callCampaignService.rescheduleCampaign(
+        campaign.id,
+        data
+      );
+
+      showSuccess(
+        response.message ||
+        "Campaign rescheduled successfully"
+      );
+
+      setSelectedContactIds([]);
+      setRescheduleCampaignDialogOpen(false);
+
+      await loadData();
+    } catch (error: any) {
+      throw error; // IMPORTANT
+    }
+  };
+
+  const activePhoneNumbers = callingNumbers
+    .map((item) => item.calling_number)
+    .filter(
+      (number): number is string =>
+        Boolean(number)
+    );
 
   return (
     <Box sx={{ p: 3, bgcolor: "#f5f7fa", minHeight: "100vh" }}>
       {/* LOADING */}
       {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+      <Snackbar
+        open={Boolean(success || error)}
+        autoHideDuration={4000}
+        onClose={() => {
+          setError("");
+          setSuccess("");
+        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          severity={error ? "error" : "success"}
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          sx={{
+            borderRadius: "14px",
+            boxShadow: (theme) =>
+              `0 10px 18px ${error ? theme.palette.error.dark : theme.palette.success.dark
+              }20`,
+          }}
+        >
+          {error || success}
+        </Alert>
+      </Snackbar>
 
       {/* HEADER */}
       <Box
@@ -855,6 +1036,17 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             {/* RIGHT */}
             <Box display="flex" gap={1}>
               <Button
+                variant="contained"
+                size="small"
+                startIcon={<PhoneCallbackIcon />}
+                disabled={selectedContactIds.length < 2}
+                onClick={() => setRescheduleCampaignDialogOpen(true)}
+              >
+                Reschedule Campaign
+                {selectedContactIds.length > 0 &&
+                  ` (${selectedContactIds.length})`}
+              </Button>
+              <Button
                 variant="outlined"
                 size="small"
                 startIcon={<DownloadIcon />}
@@ -886,6 +1078,19 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={
+                        selectedContactIds.length > 0 &&
+                        selectedContactIds.length < callLogs.length
+                      }
+                      checked={
+                        callLogs.length > 0 &&
+                        selectedContactIds.length === callLogs.length
+                      }
+                      onChange={handleSelectAllContacts}
+                    />
+                  </TableCell>
                   <TableCell>Contact</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Ended Reason</TableCell>
@@ -899,7 +1104,7 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               <TableBody>
                 {callLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} sx={{ py: 8 }}>
+                    <TableCell colSpan={9} sx={{ py: 8 }}>
                       <Box
                         display="flex"
                         flexDirection="column"
@@ -929,7 +1134,18 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                   </TableRow>
                 ) : (
                   callLogs.map((log) => (
-                    <TableRow key={log.id} hover>
+                    <TableRow
+                      key={log.id}
+                      selected={selectedContactIds.includes(log?.contact_id || 0)}
+                      hover
+                    >
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedContactIds.includes(log?.contact_id || 0)}
+                          onChange={() => handleContactSelect(log?.contact_id || 0)}
+                        />
+                      </TableCell>
+
                       <TableCell>
                         <Box display="flex" alignItems="flex-start" gap={1}>
                           {/* Main icon */}
@@ -980,32 +1196,14 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       <TableCell>
                         {log.date ? formatDisplayDate(log.date) : "-"}
                       </TableCell>
-                      <TableCell>
-                        {campaign?.workflow_template_name && log.follow_up_count > 0 && (
-                          <Tooltip title="View Follow Up">
-                            <IconButton onClick={() => openWorkflowHistory(log.contact_id)}>
-                              <EventRepeatIcon color="primary" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <Tooltip title="View Insights">
-                          <IconButton
-                            onClick={() => {
-                              setSelectedCall(log);
-                              setOpenInsights(true);
-                            }}
-                          >
-                            <InsightsIcon color="primary" />
-                          </IconButton>
-                        </Tooltip>
+                      <TableCell align="right">
                         <IconButton
                           size="small"
-                          onClick={() => {
-                            setSelectedCall(log);
-                            setOpenDetail(true);
-                          }}
+                          onClick={(event) =>
+                            handleCallActionMenuOpen(event, log)
+                          }
                         >
-                          <VisibilityIcon />
+                          <MoreVertIcon />
                         </IconButton>
                       </TableCell>
                     </TableRow>
@@ -1026,6 +1224,103 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
               rowsPerPageOptions={[10, 25, 50]}
             />
           </Card>
+          <Menu
+            anchorEl={callActionAnchor}
+            open={Boolean(callActionAnchor)}
+            onClose={handleCallActionMenuClose}
+            anchorOrigin={{
+              vertical: "bottom",
+              horizontal: "right",
+            }}
+            transformOrigin={{
+              vertical: "top",
+              horizontal: "right",
+            }}
+          >
+            {/* Reschedule Call */}
+            <MenuItem
+              onClick={() => {
+                if (!selectedCall) return;
+
+                handleCallActionMenuClose();
+                setRescheduleDialogOpen(true);
+              }}
+            >
+              <ListItemIcon>
+                <PhoneCallbackIcon
+                  fontSize="small"
+                  color="primary"
+                />
+              </ListItemIcon>
+
+              <ListItemText>
+                Reschedule Call
+              </ListItemText>
+            </MenuItem>
+
+            {/* Follow Up */}
+            {campaign?.workflow_template_name &&
+              (selectedCall?.follow_up_count || 0) > 0 && (
+                <MenuItem
+                  onClick={() => {
+                    if (!selectedCall) return;
+
+                    openWorkflowHistory(selectedCall.contact_id);
+                    handleCallActionMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <EventRepeatIcon
+                      fontSize="small"
+                      color="primary"
+                    />
+                  </ListItemIcon>
+
+                  <ListItemText>
+                    View Follow Up
+                  </ListItemText>
+                </MenuItem>
+              )}
+
+            {/* Insights */}
+            <MenuItem
+              onClick={() => {
+                if (!selectedCall) return;
+
+                setOpenInsights(true);
+                handleCallActionMenuClose();
+              }}
+            >
+              <ListItemIcon>
+                <InsightsIcon
+                  fontSize="small"
+                  color="primary"
+                />
+              </ListItemIcon>
+
+              <ListItemText>
+                View Insights
+              </ListItemText>
+            </MenuItem>
+
+            {/* View Details */}
+            <MenuItem
+              onClick={() => {
+                if (!selectedCall) return;
+
+                setOpenDetail(true);
+                handleCallActionMenuClose();
+              }}
+            >
+              <ListItemIcon>
+                <VisibilityIcon fontSize="small" />
+              </ListItemIcon>
+
+              <ListItemText>
+                View Details
+              </ListItemText>
+            </MenuItem>
+          </Menu>
         </CardContent>
       </Card>
       {/* Drawer / Detail View */}
@@ -1051,6 +1346,38 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
         open={openWorkflowDrawer}
         onClose={() => setOpenWorkflowDrawer(false)}
         data={workflowHistory}
+      />
+
+      <RescheduleCallDialog
+        open={rescheduleDialogOpen}
+        onClose={() => setRescheduleDialogOpen(false)}
+        initialFromNumber={campaign?.calling_no || ""}
+        timezone={campaign?.timezone || ""}
+        onSubmit={handleRescheduleCall}
+      />
+
+      <RescheduleCampaignDialog
+        open={rescheduleCampaignDialogOpen}
+        onClose={() =>
+          setRescheduleCampaignDialogOpen(false)
+        }
+        selectedContactIds={selectedContactIds}
+        initialCampaignName={campaign?.name || ""}
+        agentName={campaign?.agent_name || ""}
+        initialFromNumber={campaign?.calling_no || ""}
+        timezone={
+          campaign?.timezone?.trim() || "Asia/Kolkata"
+        }
+        activePhoneNumbers={activePhoneNumbers}
+        workflows={workflows}
+        initialWorkflowId={
+          campaign?.workflow_id
+            ? Number(campaign.workflow_id)
+            : null
+        }
+        maxConcurrency={campaign?.max_concurrency || 2}
+        initialConcurrency={campaign?.concurrency || 1}
+        onSubmit={handleRescheduleCampaign}
       />
     </Box>
   );

@@ -119,6 +119,19 @@ def update_agent_status(
     return service.update_agent_status(db, agent_id, data)
 
 
+@router.post("/{agent_id:int}/inbound-status")
+def update_inbound_agent_status_route(
+    agent_id: int,
+    data: AgentStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    return service.update_inbound_agent_status(
+        db=db,
+        agent_id=agent_id,
+        data=data,
+    )
+
+
 @router.post("/{agent_id:int}/publish")
 def publish_agent(agent_id: int, db: Session = Depends(get_db)):
     return service.publish_agent(db, agent_id)

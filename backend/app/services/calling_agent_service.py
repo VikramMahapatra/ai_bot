@@ -988,6 +988,81 @@ def update_agent_status(
     }
 
 
+def update_inbound_agent_status(
+    db: Session,
+    agent_id: int,
+    data: AgentStatusUpdate,
+):
+    # Get the agent
+    agent = (
+        db.query(CallingAgent)
+        .filter(
+            CallingAgent.id == agent_id,
+            CallingAgent.type == "inbound",
+        )
+        .first()
+    )
+
+    if not agent:
+        raise HTTPException(
+            status_code=404,
+            detail="Inbound agent not found",
+        )
+
+    new_status = data.status.lower()
+
+    # Only active/inactive are allowed for inbound agents
+    if new_status not in ["active", "inactive"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Inbound agent status must be active or inactive",
+        )
+
+    # Check credit before activating
+    if new_status == "active":
+        credit_balance = organization_credit_service.get_current_org_credit_balance(
+            db=db,
+            organization_id=agent.organization_id,
+        )
+
+        remaining_credit = credit_balance.remaining_credit if credit_balance else 0
+
+        if remaining_credit < 100:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot activate inbound agent. "
+                    "Organization credit must be at least 100."
+                ),
+            )
+
+    # Update external EchoLeads agent status
+    if agent.external_agent_id:
+        echoleads = EcholeadsClient(agent.organization_id)
+
+        if new_status == "active":
+            echoleads.activate_agent(
+                agent.external_agent_id,
+                agent.inbound_phone_number,
+            )
+        else:
+            echoleads.deactivate_agent(
+                agent.external_agent_id,
+            )
+
+    # Update local status
+    agent.status = new_status
+
+    db.commit()
+    db.refresh(agent)
+
+    return {
+        "message": "Inbound agent status updated",
+        "agent_id": agent.id,
+        "status": agent.status,
+    }
+
+
 def delete_agent(db: Session, agent_id: int):
     agent = db.query(CallingAgent).filter(CallingAgent.id == agent_id).first()
 

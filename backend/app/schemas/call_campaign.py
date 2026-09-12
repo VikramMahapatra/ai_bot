@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Literal, Optional
-from datetime import date, datetime
+from datetime import date as DateType, time as TimeType
 
 from app.enums.campaign_reply_modes import CampaignInstantReplyMode
 
@@ -140,9 +140,34 @@ class CampaignListParams(BaseModel):
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=10, ge=1, le=100)
 
-    from_date: Optional[date] = None
-    end_date: Optional[date] = None
+    from_date: Optional[DateType] = None
+    end_date: Optional[DateType] = None
 
     status: Optional[str] = None  # Active | Paused | Draft | Cancelled
 
     sort_by: Literal["newest", "oldest"] = "newest"
+
+
+class RescheduleCallRequest(BaseModel):
+    from_number: Optional[str] = None
+    schedule_type: Literal["now", "schedule"] = "now"
+
+    date: Optional[DateType] = None
+    time: Optional[TimeType] = None
+
+    timezone: str = "Asia/Kolkata"
+
+
+class RescheduleCampaignRequest(BaseModel):
+    campaign_name: str
+    contact_ids: list[int]
+
+    calling_no: str | None = None
+    schedule_type: Literal["now", "schedule"] = "now"
+
+    date: Optional[str] = None
+    time: Optional[str] = None
+    timezone: str = "Asia/Kolkata"
+
+    workflow_id: Optional[int] = None
+    concurrency: Optional[int] = None

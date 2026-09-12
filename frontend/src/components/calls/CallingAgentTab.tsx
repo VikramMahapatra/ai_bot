@@ -24,6 +24,8 @@ import {
   TableRow,
   TableBody,
   TablePagination,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloseIcon from "@mui/icons-material/Close";
@@ -56,6 +58,9 @@ import { FEATURE_CODES, CREDIT_ERRORS } from "../../types/creditModules";
 import { useDateFormatter } from "../../hooks/useDateFormatter";
 import { chatService } from "../../services/chatService";
 import { useAuth } from "../../context/AuthContext";
+import Menu from "@mui/material/Menu";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PhoneIcon from "@mui/icons-material/Phone";
 
 export const CallingAgentTab: React.FC = () => {
   const theme = useTheme();
@@ -75,6 +80,7 @@ export const CallingAgentTab: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [selectedAgent, setSelectedAgent] = useState<CallingAgent | null>(null);
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null);
 
   // CALL TEST DIALOG
   const [openTestDialog, setOpenTestDialog] = useState(false);
@@ -208,7 +214,9 @@ export const CallingAgentTab: React.FC = () => {
     }
   };
 
-  const handleTestCall = async (agent: CallingAgent) => {
+  const handleTestCall = async (agent: CallingAgent | null) => {
+    if (!agent) return;
+
     const isChannelAvailable = await validateChannel();
     if (!isChannelAvailable) {
       setError("Channel is not available for your organization. Please contact support for assistance.");
@@ -227,7 +235,9 @@ export const CallingAgentTab: React.FC = () => {
     setOpenTestDialog(true);
   };
 
-  const handlePause = async (agent: CallingAgent) => {
+  const handlePause = async (agent: CallingAgent | null) => {
+    if (!agent) return;
+
     setLoading(true);
     const newStatus = agent.status === "paused" ? "active" : "paused";
     try {
@@ -240,7 +250,33 @@ export const CallingAgentTab: React.FC = () => {
     }
   };
 
-  const handleEdit = (agent: CallingAgent) => {
+  const handleToggleInboundAgent = async (agent: CallingAgent | null) => {
+    if (!agent) return;
+
+    setLoading(true);
+
+    const newStatus = agent.status === "active" ? "inactive" : "active";
+
+    try {
+      await callingAgentService.updateInboundAgentStatus(
+        agent.id!,
+        newStatus
+      );
+
+      await loadCallingAgents();
+    } catch (error: any) {
+      showError(
+        error?.response?.data?.detail ||
+        "Failed to update the inbound agent status"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (agent: CallingAgent | null) => {
+    if (!agent) return;
+
     setSelectedAgent(agent);
     setAgentType(agent.type as any);
     setFormMode("edit");
@@ -312,6 +348,18 @@ export const CallingAgentTab: React.FC = () => {
       setDeleteSubmitting(false);
       setLoading(false);
     }
+  };
+
+  const handleActionMenuOpen = (
+    event: React.MouseEvent<HTMLElement>,
+    agent: any
+  ) => {
+    setActionMenuAnchor(event.currentTarget);
+    setSelectedAgent(agent);
+  };
+
+  const handleActionMenuClose = () => {
+    setActionMenuAnchor(null);
   };
 
   return (
@@ -519,7 +567,35 @@ export const CallingAgentTab: React.FC = () => {
 
                       {/* Name */}
                       <TableCell>
-                        <Typography fontWeight={600}>{agent.name}</Typography>
+                        <Box>
+                          <Typography fontWeight={600}>
+                            {agent.name}
+                          </Typography>
+
+                          {agent.type === "inbound" && agent.inbound_phone_number && (
+                            <Box
+                              display="flex"
+                              alignItems="center"
+                              gap={0.5}
+                              mt={0.3}
+                            >
+                              <PhoneIcon
+                                sx={{
+                                  fontSize: 14,
+                                  color: "text.secondary",
+                                }}
+                              />
+
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                fontWeight={500}
+                              >
+                                {agent.inbound_phone_number}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
                       </TableCell>
 
                       {/* Status */}
@@ -638,84 +714,12 @@ export const CallingAgentTab: React.FC = () => {
 
                       {/* Actions */}
                       <TableCell align="right">
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          justifyContent="flex-end"
+                        <IconButton
+                          size="small"
+                          onClick={(event) => handleActionMenuOpen(event, agent)}
                         >
-                          {agent.status === "testing" && (
-                            <Tooltip title="Publish Agent">
-                              <IconButton
-                                size="small"
-                                color="success"
-                                onClick={() => handlePublish(agent)}
-                              >
-                                <PublishIcon />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          {agent.status !== "pending" && (
-                            <Tooltip title="Test Call">
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleTestCall(agent)}
-                              >
-                                <CallIcon />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          {agent.status !== "testing" && (
-                            <>
-                              <Tooltip
-                                title={
-                                  agent.status === "active"
-                                    ? "Pause Agent"
-                                    : "Resume Agent"
-                                }
-                              >
-                                <IconButton
-                                  size="small"
-                                  color={
-                                    agent.status === "active"
-                                      ? "warning"
-                                      : "primary"
-                                  }
-                                  onClick={() => handlePause(agent)}
-                                >
-                                  {agent.status === "active" ? (
-                                    <PauseIcon />
-                                  ) : (
-                                    <PlayArrowIcon />
-                                  )}
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
-                          {!["pending", "inactive"].includes(agent.status) && (
-                            <>
-                              <Tooltip title="Edit">
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={() => handleEdit(agent)}
-                                >
-                                  <EditIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
-
-                          <Tooltip title="Delete">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setAgentToDelete(agent)}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
+                          <MoreVertIcon />
+                        </IconButton>
                       </TableCell>
                     </TableRow>
                   ))
@@ -862,6 +866,125 @@ export const CallingAgentTab: React.FC = () => {
           agent={selectedAgent}
         />
       )}
+
+      <Menu
+        anchorEl={actionMenuAnchor}
+        open={Boolean(actionMenuAnchor)}
+        onClose={handleActionMenuClose}
+      >
+        {selectedAgent?.status === "testing" && (
+          <MenuItem
+            onClick={() => {
+              handleActionMenuClose();
+              handlePublish(selectedAgent);
+            }}
+          >
+            <ListItemIcon>
+              <PublishIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Publish Agent</ListItemText>
+          </MenuItem>
+        )}
+
+        {!["pending", "inactive"].includes(selectedAgent?.status ?? "") && (
+          <MenuItem
+            onClick={() => {
+              handleActionMenuClose();
+              handleTestCall(selectedAgent);
+            }}
+          >
+            <ListItemIcon>
+              <CallIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Test Call</ListItemText>
+          </MenuItem>
+        )}
+
+        {selectedAgent?.status !== "testing" && selectedAgent?.type !== "inbound" && (
+          <MenuItem
+            onClick={() => {
+              handleActionMenuClose();
+              handlePause(selectedAgent);
+            }}
+          >
+            <ListItemIcon>
+              {selectedAgent?.status === "active" ? (
+                <PauseIcon fontSize="small" />
+              ) : (
+                <PlayArrowIcon fontSize="small" />
+              )}
+            </ListItemIcon>
+
+            <ListItemText>
+              {selectedAgent?.status === "active"
+                ? "Pause Agent"
+                : "Resume Agent"}
+            </ListItemText>
+          </MenuItem>
+        )}
+
+        {!["pending", "inactive"].includes(selectedAgent?.status ?? "") && (
+          <MenuItem
+            onClick={() => {
+              handleActionMenuClose();
+              handleEdit(selectedAgent);
+            }}
+          >
+            <ListItemIcon>
+              <EditIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Edit</ListItemText>
+          </MenuItem>
+        )}
+
+        <MenuItem
+          onClick={() => {
+            handleActionMenuClose();
+            setAgentToDelete(selectedAgent);
+          }}
+        >
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+        {selectedAgent?.type === "inbound" &&
+          selectedAgent?.status !== "testing" && (
+            <MenuItem
+              onClick={() => {
+                handleToggleInboundAgent(selectedAgent);
+                handleActionMenuClose();
+              }}
+              sx={{
+                color: selectedAgent?.status === "active" ? "error.main" : "success.main",
+                fontWeight: 600,
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  color:
+                    selectedAgent?.status === "active"
+                      ? "error.main"
+                      : "success.main",
+                }}
+              >
+                {selectedAgent?.status === "active" ? (
+                  <PauseIcon fontSize="small" />
+                ) : (
+                  <PlayArrowIcon fontSize="small" />
+                )}
+              </ListItemIcon>
+
+              <ListItemText
+                primary={
+                  selectedAgent?.status === "active"
+                    ? "Deactivate Agent"
+                    : "Activate Agent"
+                }
+              />
+            </MenuItem>
+          )}
+      </Menu>
     </Box>
   );
 };

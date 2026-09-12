@@ -2095,20 +2095,29 @@ async def list_contact_lists(
         )
         counts = {contact_list_id: count for contact_list_id, count in count_rows}
 
-    return {
-        "items": [
+    items = []
+    for row in rows:
+        is_auto, widget_id = _parse_auto_agent_marker(row.description)
+
+        is_campaign_list = (row.description or "").startswith(
+            "Qualified contacts from campaign:"
+        )
+
+        items.append(
             {
                 "id": row.id,
                 "list_name": row.list_name,
-                "description": (None if is_auto else row.description),
+                "description": None if is_auto else row.description,
                 "created_at": row.created_at,
                 "contact_count": int(counts.get(row.id, 0)),
                 "is_agent_auto_list": is_auto,
                 "agent_widget_id": widget_id,
+                "is_campaign_list": is_campaign_list,
             }
-            for row in rows
-            for is_auto, widget_id in [_parse_auto_agent_marker(row.description)]
-        ],
+        )
+
+    return {
+        "items": items,
         "pagination": {
             "total": total,
             "skip": skip,
@@ -2281,7 +2290,8 @@ async def list_contacts(
                 "source": row.source,
                 "lifecycle_stage": row.lifecycle_stage,
                 "tags": row.tags,
-                "custom_fields": row.custom_fields or lead_custom_fields_by_session.get(row.session_id),
+                "custom_fields": row.custom_fields
+                or lead_custom_fields_by_session.get(row.session_id),
                 "created_at": row.created_at,
             }
             for row in rows

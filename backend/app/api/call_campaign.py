@@ -13,6 +13,8 @@ from app.schemas.call_campaign import (
     CampaignUpdate,
     ContactByIdsRequest,
     ContactCreate,
+    RescheduleCallRequest,
+    RescheduleCampaignRequest,
 )
 from app.services import call_campaign_service as service
 from app.models.user import User
@@ -161,3 +163,31 @@ def campaign_analytics(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_campaign_analytics(db, campaign_id, current_user.organization_id)
+
+
+@router.post("/{call_log_id:int}/reschedule-call")
+def reschedule_call_route(
+    call_log_id: int,
+    data: RescheduleCallRequest,
+    db: Session = Depends(get_db),
+):
+    return service.reschedule_call(
+        db=db,
+        call_log_id=call_log_id,
+        data=data,
+    )
+
+
+@router.post("/{campaign_id}/reschedule-campaign")
+def reschedule_campaign_route(
+    campaign_id: int,
+    data: RescheduleCampaignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.reschedule_campaign(
+        db=db,
+        organization_id=current_user.organization_id,
+        campaign_id=campaign_id,
+        data=data,
+    )
