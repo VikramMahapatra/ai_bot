@@ -465,6 +465,26 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
         )
     }
 
+    const onDeleteOutcome = (nodeId: string, outcomeId: string) => {
+        setNodes(nodes =>
+            nodes.map(node => {
+
+                if (node.id !== nodeId) return node;
+
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        outcomes: node.data.outcomes?.filter(
+                            o => o.id !== outcomeId
+                        )
+                    }
+                };
+
+            })
+        );
+    };
+
 
     const onAddOutcome = (nodeId: string) => {
 
@@ -647,7 +667,7 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
                     return `${node.data?.title}: Template required`;
                 }
 
-                if (!o.delay || o.delay <= 0) {
+                if (o.stepType === "call" && (!o.delay || o.delay <= 0)) {
                     return `${node.data?.title}: Delay must be > 0`;
                 }
             }
@@ -818,6 +838,7 @@ export default function WorkflowFlowBuilder({ workflowId, onBack }: FollowUpWork
         onChangeDelay,
         onChangeDelayUnit,
         onEditOutcome,
+        onDeleteOutcome,
         onCancelOutcome,
         onUpdateOutcome,
         onAddOutcome,

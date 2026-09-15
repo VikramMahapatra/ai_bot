@@ -48,6 +48,7 @@ import {
   ToggleButtonGroup,
   Snackbar,
   FormHelperText,
+  AlertTitle,
 } from "@mui/material";
 import GroupIcon from "@mui/icons-material/Group";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -82,6 +83,7 @@ import {
   DashboardStats,
   CreateCampaignPayload,
   CampaignSequence,
+  ScheduledConflictResponse,
 } from "../services/campaignService";
 import { Product, productService } from "../services/productService";
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
@@ -115,6 +117,7 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import { SourceChip } from "../components/Common/StatusChips";
 import { callCampaignService } from "../services/callCampaignService";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 const IST_TIME_ZONE = "Asia/Kolkata";
 
@@ -463,6 +466,8 @@ const CampaignManagementPage: React.FC = () => {
     campaign: null,
   });
   const [menuType, setMenuType] = useState<"calendar" | "table" | null>(null);
+  const [scheduleConflicts, setScheduleConflicts] = useState<Record<string, ScheduledConflictResponse>>({});
+
   const calendarRef = useRef<FullCalendar>(null);
 
   const isEditMode = editingCampaignId !== null;
@@ -869,6 +874,41 @@ const CampaignManagementPage: React.FC = () => {
     run();
   }, [previewSearch, previewContactPage, previewContactRowsPerPage]);
 
+  useEffect(() => {
+    const checkScheduleConflicts = async () => {
+      if (!createScheduledTime) return;
+
+      const dates = campaignSequences
+        .filter((sequence) => Number(sequence.gap_days) > 0)
+        .map((sequence, index) => {
+          const schedule = calculateSequenceSchedule(
+            createScheduledTime,
+            campaignSequences,
+            index
+          );
+
+          return schedule
+            ? new Date(schedule).toISOString().split("T")[0]
+            : null;
+        })
+        .filter(Boolean);
+
+      const uniqueDates = [...new Set(dates)];
+
+      for (const date of uniqueDates) {
+        if (!date) continue;
+        const response = await campaignService.getScheduledConflicts(createCampaignType, date);
+
+        setScheduleConflicts((prev) => ({
+          ...prev,
+          [date]: response,
+        }));
+      }
+    };
+
+    checkScheduleConflicts();
+  }, [createScheduledTime, campaignSequences]);
+
   const handleRefresh = async () => {
     try {
       setLoading(true);
@@ -900,6 +940,19 @@ const CampaignManagementPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatScheduleDateTime = (dateTime: string | null) => {
+    if (!dateTime) return "Not scheduled";
+
+    return new Date(dateTime).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   const getSequenceCampaignName = (index: number) => {
@@ -1261,6 +1314,24 @@ const CampaignManagementPage: React.FC = () => {
           }))
           : undefined,
     }
+  };
+
+  const calculateSequenceSchedule = (
+    mainScheduledTime: string | null,
+    sequences: CampaignSequence[],
+    currentIndex: number
+  ) => {
+    if (!mainScheduledTime) return null;
+
+    let scheduledTime = new Date(mainScheduledTime);
+
+    for (let index = 0; index <= currentIndex; index++) {
+      const gapDays = Number(sequences[index].gap_days || 0);
+
+      scheduledTime.setDate(scheduledTime.getDate() + gapDays);
+    }
+
+    return scheduledTime.toISOString();
   };
 
   const validateCampaign = () => {
@@ -3856,164 +3927,264 @@ const CampaignManagementPage: React.FC = () => {
                         </Box>
 
                         <Stack spacing={1.5}>
-                          {campaignSequences.map((sequence, index) => (
-                            <Box
-                              key={sequence.id ?? index}
-                              sx={{
-                                border: "1px solid",
-                                borderColor: "divider",
-                                borderRadius: 2,
-                                p: 1.5,
-                              }}
-                            >
-                              <Stack
-                                direction="row"
-                                alignItems="center"
-                                justifyContent="space-between"
-                                mb={1.5}
+                          {campaignSequences.map((sequence, index) => {
+                            const sequenceSchedule = calculateSequenceSchedule(
+                              createScheduledTime,
+                              campaignSequences,
+                              index
+                            );
+                            return (
+                              <Box
+                                key={sequence.id ?? index}
+                                sx={{
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                  borderRadius: 2,
+                                  p: 1.5,
+                                }}
                               >
-                                <Typography
-                                  variant="body2"
-                                  fontWeight={700}
+                                <Stack
+                                  direction="row"
+                                  alignItems="center"
+                                  justifyContent="space-between"
+                                  mb={1.5}
                                 >
-                                  {getSequenceCampaignName(index)}
-                                </Typography>
-
-                                {campaignSequences.length > 1 && (
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => {
-                                      setCampaignSequences((prev) =>
-                                        prev
-                                          .filter((_, i) => i !== index)
-                                          .map((item, i) => ({
-                                            ...item,
-                                            sequence_order: i + 1,
-                                          }))
-                                      );
-                                    }}
+                                  <Typography
+                                    variant="body2"
+                                    fontWeight={700}
                                   >
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                )}
-                              </Stack>
+                                    {getSequenceCampaignName(index)}
+                                  </Typography>
 
-                              <Grid container spacing={2}>
-                                <Grid item xs={12} sm={4}>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    type="number"
-                                    label="Gap (Days)"
-                                    value={sequence.gap_days}
-                                    inputProps={{ min: 0 }}
-                                    error={
-                                      createCampaignErrors.sequences &&
-                                      Number(sequence.gap_days) <= 0
-                                    }
-                                    helperText={
-                                      createCampaignErrors.sequences &&
-                                        Number(sequence.gap_days) <= 0
-                                        ? "Gap must be greater than 0."
-                                        : ""
-                                    }
-                                    onChange={(e) => {
-                                      const value = Math.max(
-                                        0,
-                                        Number(e.target.value)
-                                      );
-
-                                      setCampaignSequences((prev) =>
-                                        prev.map((item, i) =>
-                                          i === index
-                                            ? {
-                                              ...item,
-                                              gap_days: value,
-                                            }
-                                            : item
-                                        )
-                                      );
-                                    }}
-                                  />
-                                </Grid>
-
-                                <Grid item xs={12} sm={8}>
-                                  <Stack direction="row" spacing={2} alignItems="center">
-                                    <FormControl
-                                      fullWidth
+                                  {campaignSequences.length > 1 && (
+                                    <IconButton
                                       size="small"
-                                      error={
-                                        createCampaignErrors.sequences &&
-                                        !sequence.template_id
-                                      }
-                                    >
-                                      <InputLabel>Template</InputLabel>
-
-                                      <Select
-                                        value={sequence.template_id ?? ""}
-                                        label="Template"
-                                        onChange={(e) => {
-                                          const value = e.target.value;
-
-                                          setCampaignSequences((prev) =>
-                                            prev.map((item, i) =>
-                                              i === index
-                                                ? {
-                                                  ...item,
-                                                  template_id:
-                                                    value === "" ? null : Number(value),
-                                                }
-                                                : item
-                                            )
-                                          );
-                                        }}
-                                      >
-
-                                        {messageTemplates
-                                          ?.filter((t) => t.type === createCampaignType)
-                                          .map((template) => (
-                                            <MenuItem key={template.id} value={template.id}>
-                                              {template.name}
-                                            </MenuItem>
-                                          ))}
-                                      </Select>
-                                      {createCampaignErrors.sequences &&
-                                        !sequence.template_id && (
-                                          <FormHelperText>
-                                            Template is required.
-                                          </FormHelperText>
-                                        )}
-                                    </FormControl>
-
-                                    <Button
-                                      variant="outlined"
-                                      startIcon={<VisibilityIcon />}
-                                      onClick={() => handlePreviewTemplate(sequence.template_id)}
-                                      disabled={!sequence.template_id}
-                                      sx={{
-                                        height: "40px",
-                                        minWidth: "140px",
-                                        borderRadius: "12px",
-                                        textTransform: "none",
-                                        fontWeight: 600,
-                                        fontSize: "14px",
-                                        borderColor: "#7BAAF7",
-                                        color: "#3B82F6",
-                                        whiteSpace: "nowrap",
-                                        "&:hover": {
-                                          borderColor: "#3B82F6",
-                                          backgroundColor: "#F5F9FF",
-                                        },
+                                      color="error"
+                                      onClick={() => {
+                                        setCampaignSequences((prev) =>
+                                          prev
+                                            .filter((_, i) => i !== index)
+                                            .map((item, i) => ({
+                                              ...item,
+                                              sequence_order: i + 1,
+                                            }))
+                                        );
                                       }}
                                     >
-                                      Preview
-                                    </Button>
-                                  </Stack>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  )}
+                                </Stack>
+
+                                <Grid container spacing={2}>
+                                  <Grid item xs={12} sm={4}>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      type="number"
+                                      label="Gap (Days)"
+                                      value={sequence.gap_days}
+                                      inputProps={{ min: 0 }}
+                                      error={
+                                        createCampaignErrors.sequences &&
+                                        Number(sequence.gap_days) <= 0
+                                      }
+                                      helperText={
+                                        createCampaignErrors.sequences &&
+                                          Number(sequence.gap_days) <= 0
+                                          ? "Gap must be greater than 0."
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        const value = Math.max(
+                                          0,
+                                          Number(e.target.value)
+                                        );
+
+                                        setCampaignSequences((prev) =>
+                                          prev.map((item, i) =>
+                                            i === index
+                                              ? {
+                                                ...item,
+                                                gap_days: value,
+                                              }
+                                              : item
+                                          )
+                                        );
+                                      }}
+                                    />
+                                  </Grid>
+
+                                  <Grid item xs={12} sm={8}>
+                                    <Stack direction="row" spacing={2} alignItems="center">
+                                      <FormControl
+                                        fullWidth
+                                        size="small"
+                                        error={
+                                          createCampaignErrors.sequences &&
+                                          !sequence.template_id
+                                        }
+                                      >
+                                        <InputLabel>Template</InputLabel>
+
+                                        <Select
+                                          value={sequence.template_id ?? ""}
+                                          label="Template"
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+
+                                            setCampaignSequences((prev) =>
+                                              prev.map((item, i) =>
+                                                i === index
+                                                  ? {
+                                                    ...item,
+                                                    template_id:
+                                                      value === "" ? null : Number(value),
+                                                  }
+                                                  : item
+                                              )
+                                            );
+                                          }}
+                                        >
+
+                                          {messageTemplates
+                                            ?.filter((t) => t.type === createCampaignType)
+                                            .map((template) => (
+                                              <MenuItem key={template.id} value={template.id}>
+                                                {template.name}
+                                              </MenuItem>
+                                            ))}
+                                        </Select>
+                                        {createCampaignErrors.sequences &&
+                                          !sequence.template_id && (
+                                            <FormHelperText>
+                                              Template is required.
+                                            </FormHelperText>
+                                          )}
+                                      </FormControl>
+
+                                      <Button
+                                        variant="outlined"
+                                        startIcon={<VisibilityIcon />}
+                                        onClick={() => handlePreviewTemplate(sequence.template_id)}
+                                        disabled={!sequence.template_id}
+                                        sx={{
+                                          height: "40px",
+                                          minWidth: "140px",
+                                          borderRadius: "12px",
+                                          textTransform: "none",
+                                          fontWeight: 600,
+                                          fontSize: "14px",
+                                          borderColor: "#7BAAF7",
+                                          color: "#3B82F6",
+                                          whiteSpace: "nowrap",
+                                          "&:hover": {
+                                            borderColor: "#3B82F6",
+                                            backgroundColor: "#F5F9FF",
+                                          },
+                                        }}
+                                      >
+                                        Preview
+                                      </Button>
+                                    </Stack>
+                                  </Grid>
                                 </Grid>
-                              </Grid>
-                            </Box>
-                          ))}
+                                {createScheduledTime && Number(sequence.gap_days) > 0 && (
+                                  <Box
+                                    sx={{
+                                      mt: 2,
+                                      px: 1.5,
+                                      py: 1.25,
+                                      borderRadius: 2,
+                                      border: "1px solid",
+                                      borderColor: "primary.200",
+                                      bgcolor: "primary.50",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 1.25,
+                                    }}
+                                  >
+                                    <CalendarMonthIcon
+                                      sx={{
+                                        color: "primary.main",
+                                        fontSize: 20,
+                                      }}
+                                    />
+
+                                    <Box>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ display: "block", lineHeight: 1.2 }}
+                                      >
+                                        Scheduled for
+                                      </Typography>
+
+                                      <Typography
+                                        variant="body2"
+                                        fontWeight={600}
+                                        color="primary.main"
+                                      >
+                                        {formatScheduleDateTime(sequenceSchedule)}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                )}
+
+                                {createScheduledTime &&
+                                  Number(sequence.gap_days) > 0 &&
+                                  sequenceSchedule &&
+                                  (() => {
+                                    const scheduleDate = new Date(sequenceSchedule)
+                                      .toISOString()
+                                      .split("T")[0];
+
+                                    const conflict = scheduleConflicts[scheduleDate];
+
+                                    if (!conflict?.has_conflict) return null;
+
+                                    return (
+                                      <Alert
+                                        severity="warning"
+                                        icon={<WarningAmberIcon />}
+                                        sx={{
+                                          mt: 1.5,
+                                          borderRadius: 2,
+                                          alignItems: "flex-start",
+                                        }}
+                                      >
+                                        <AlertTitle sx={{ fontWeight: 600 }}>
+                                          Campaigns already scheduled
+                                        </AlertTitle>
+
+                                        <Typography variant="body2">
+                                          {conflict.campaign_count}{" "}
+                                          {conflict.campaign_count === 1
+                                            ? "campaign is"
+                                            : "campaigns are"}{" "}
+                                          already scheduled on{" "}
+                                          <strong>
+                                            {formatScheduleDateTime(sequenceSchedule)
+                                              .split(",")[0]}
+                                          </strong>
+                                          .
+                                        </Typography>
+
+                                        <Typography
+                                          variant="body2"
+                                          sx={{ mt: 0.5 }}
+                                        >
+                                          Existing contacts:{" "}
+                                          <strong>
+                                            {conflict.total_contacts.toLocaleString()}
+                                          </strong>
+                                        </Typography>
+                                      </Alert>
+                                    );
+                                  })()}
+                              </Box>
+                            );
+                          })}
                         </Stack>
                         {createCampaignErrors.sequences && (
                           <Typography

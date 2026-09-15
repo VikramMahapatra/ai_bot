@@ -6,7 +6,6 @@ import json
 import logging
 import random
 from threading import Thread
-import time
 import uuid
 from io import BytesIO
 from typing import Any, List, Optional, Tuple
@@ -3573,38 +3572,6 @@ async def all_campaigns(
     ]
 
 
-@router.get("/{campaign_id}")
-async def get_campaign(
-    campaign_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-):
-    row = (
-        db.query(Campaign)
-        .filter(
-            Campaign.id == campaign_id,
-            Campaign.organization_id == current_user.organization_id,
-        )
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    contact_list = (
-        db.query(ContactList).filter(ContactList.id == row.contact_list_id).first()
-    )
-    product_name = None
-    if row.product_id:
-        product = db.query(Product).filter(Product.id == row.product_id).first()
-        product_name = product.name if product else None
-
-    return _serialize_campaign(
-        row,
-        contact_list_name=contact_list.list_name if contact_list else None,
-        product_name=product_name,
-    )
-
-
 @router.post("/{campaign_id}/status")
 async def update_campaign_status(
     campaign_id: int,
@@ -3691,6 +3658,113 @@ async def delete_campaign(
     db.refresh(row)
 
     return {"id": row.id, "status": row.status}
+
+
+@router.get("/schedule-conflicts")
+async def get_scheduled_conflicts(
+    scheduled_date: str,
+    campaign_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    # ---------------------------------------------------------
+    # Validate campaign type
+    # ---------------------------------------------------------
+
+    campaign_type = campaign_type.strip().lower()
+
+    if campaign_type not in ALLOWED_CAMPAIGN_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="campaign_type must be email, whatsapp, or sms",
+        )
+
+    # ---------------------------------------------------------
+    # Parse date
+    # ---------------------------------------------------------
+
+    try:
+        check_date = datetime.strptime(
+            scheduled_date,
+            "%Y-%m-%d",
+        ).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="scheduled_date must be in YYYY-MM-DD format",
+        )
+
+    start_datetime = datetime.combine(
+        check_date,
+        dt_time.min,
+    )
+
+    end_datetime = start_datetime + timedelta(days=1)
+
+    # ---------------------------------------------------------
+    # Find campaigns scheduled on this date
+    # ---------------------------------------------------------
+
+    campaigns = (
+        db.query(Campaign)
+        .filter(
+            Campaign.organization_id == current_user.organization_id,
+            Campaign.campaign_type == campaign_type,
+            Campaign.scheduled_time >= start_datetime,
+            Campaign.scheduled_time < end_datetime,
+            Campaign.status.in_(
+                [
+                    "scheduled",
+                    "pending_execution",
+                    "running",
+                ]
+            ),
+        )
+        .order_by(Campaign.scheduled_time.asc())
+        .all()
+    )
+
+    # ---------------------------------------------------------
+    # Build response
+    # ---------------------------------------------------------
+
+    campaign_data = []
+
+    total_contacts = 0
+
+    for campaign in campaigns:
+
+        contact_count = (
+            db.query(func.count(Contact.id))
+            .filter(
+                Contact.contact_list_id == campaign.contact_list_id,
+            )
+            .scalar()
+            or 0
+        )
+
+        total_contacts += contact_count
+
+        campaign_data.append(
+            {
+                "id": campaign.id,
+                "name": campaign.campaign_name,
+                "scheduled_time": (
+                    campaign.scheduled_time.isoformat()
+                    if campaign.scheduled_time
+                    else None
+                ),
+                "total_contacts": contact_count,
+            }
+        )
+
+    return {
+        "has_conflict": len(campaign_data) > 0,
+        "date": check_date.isoformat(),
+        "campaign_count": len(campaign_data),
+        "total_contacts": total_contacts,
+        "campaigns": campaign_data,
+    }
 
 
 @router.post("/run-due")
@@ -3848,6 +3922,38 @@ async def get_campaign_logs(
             "limit": limit,
         },
     }
+
+
+@router.get("/{campaign_id}")
+async def get_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    row = (
+        db.query(Campaign)
+        .filter(
+            Campaign.id == campaign_id,
+            Campaign.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    contact_list = (
+        db.query(ContactList).filter(ContactList.id == row.contact_list_id).first()
+    )
+    product_name = None
+    if row.product_id:
+        product = db.query(Product).filter(Product.id == row.product_id).first()
+        product_name = product.name if product else None
+
+    return _serialize_campaign(
+        row,
+        contact_list_name=contact_list.list_name if contact_list else None,
+        product_name=product_name,
+    )
 
 
 def format_phone_number(

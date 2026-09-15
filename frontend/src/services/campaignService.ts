@@ -396,6 +396,21 @@ export interface UploadManualContactsPayload {
   }>;
 }
 
+export interface ScheduledConflictCampaign {
+  id: number;
+  name: string;
+  scheduled_time: string;
+  total_contacts: number;
+}
+
+export interface ScheduledConflictResponse {
+  has_conflict: boolean;
+  date: string;
+  campaign_count: number;
+  total_contacts: number;
+  campaigns: ScheduledConflictCampaign[];
+}
+
 export const campaignService = {
   async getDashboardStats(): Promise<DashboardStats> {
     const response = await api.get("/api/admin/campaigns/dashboard/stats");
@@ -637,4 +652,12 @@ export const campaignService = {
   async deleteContact(contactId: number): Promise<void> {
     await api.delete(`/api/admin/campaigns/contacts/${contactId}`);
   },
+
+  async getScheduledConflicts(campaignType: string, date?: string): Promise<ScheduledConflictResponse> {
+    const response = await api.get(
+      `/api/admin/campaigns/schedule-conflicts?scheduled_date=${date}&campaign_type=${campaignType}`
+    );
+    return response.data;
+  },
+
 };

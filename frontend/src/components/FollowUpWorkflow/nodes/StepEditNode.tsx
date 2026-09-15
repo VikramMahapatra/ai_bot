@@ -65,26 +65,6 @@ export default function StepEditMode({ data, id, outcomeId, agents, templates }:
             if (!outcome.outcome) {
                 return "Outcome is required";
             }
-
-            const duplicateOutcome = existingOutcomes.find(
-                (o: any) => o.outcome === outcome.outcome
-            );
-
-            if (duplicateOutcome) {
-                return "Duplicate outcome selected";
-            }
-
-            const hasAllOutcome = existingOutcomes.some(
-                (o: any) => o.outcome === "all"
-            );
-
-            if (hasAllOutcome && outcome.outcome !== "all") {
-                return `Cannot add other outcomes when "All" outcome exists`;
-            }
-
-            if (outcome.outcome === "all" && existingOutcomes.length > 0) {
-                return `Cannot add "All" outcome when other outcomes exist`;
-            }
         }
 
         // StepType required
@@ -116,7 +96,7 @@ export default function StepEditMode({ data, id, outcomeId, agents, templates }:
             return "Template required";
         }
 
-        if (outcome.delay <= 0) {
+        if (outcome.stepType === "call" && outcome.delay <= 0) {
             return "Delay must be greater than 0";
         }
 
@@ -262,45 +242,47 @@ export default function StepEditMode({ data, id, outcomeId, agents, templates }:
                         </div>
 
                     )}
+                    {outcome.stepType === "call" && (
+                        <Box display="flex" gap={1}>
 
-                    <Box display="flex" gap={1}>
-
-                        {/* Delay Value */}
-                        <div className="nodrag nopan">
-                            <TextField
-                                size="small"
-                                label="Delay"
-                                type="number"
-                                value={outcome.delay}
-                                onChange={(e) =>
-                                    onUpdateOutcome(id, outcome.id, {
-                                        delay: Number(e.target.value)
-                                    })
-                                }
-                                sx={{ flex: 1 }}
-                            />
-                        </div>
-
-                        {/* Unit Dropdown */}
-                        <div className="nodrag nopan">
-                            <FormControl size="small" sx={{ width: 120 }}>
-                                <InputLabel>Unit</InputLabel>
-                                <Select
-                                    label="Unit"
-                                    value={outcome.delayUnit}
+                            {/* Delay Value */}
+                            <div className="nodrag nopan">
+                                <TextField
+                                    size="small"
+                                    label="Delay"
+                                    type="number"
+                                    value={outcome.delay}
                                     onChange={(e) =>
                                         onUpdateOutcome(id, outcome.id, {
-                                            delayUnit: e.target.value
+                                            delay: Number(e.target.value)
                                         })
                                     }
-                                >
-                                    <MenuItem value="minutes">Minutes</MenuItem>
-                                    <MenuItem value="hours">Hours</MenuItem>
-                                    <MenuItem value="days">Days</MenuItem>
-                                </Select>
-                            </FormControl>
-                        </div>
-                    </Box>
+                                    sx={{ flex: 1 }}
+                                />
+                            </div>
+
+                            {/* Unit Dropdown */}
+                            <div className="nodrag nopan">
+                                <FormControl size="small" sx={{ width: 120 }}>
+                                    <InputLabel>Unit</InputLabel>
+                                    <Select
+                                        label="Unit"
+                                        value={outcome.delayUnit}
+                                        onChange={(e) =>
+                                            onUpdateOutcome(id, outcome.id, {
+                                                delayUnit: e.target.value
+                                            })
+                                        }
+                                    >
+                                        <MenuItem value="minutes">Minutes</MenuItem>
+                                        <MenuItem value="hours">Hours</MenuItem>
+                                        <MenuItem value="days">Days</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </div>
+                        </Box>
+                    )}
+
 
                     {/* Chips */}
                     <Box display="flex" gap={1} flexWrap="wrap">

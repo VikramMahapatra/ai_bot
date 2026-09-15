@@ -205,6 +205,7 @@ const CallLogFilterSection = ({ filters, onFilterChange }: Props) => {
                                 <MenuItem value="exceeded-max-duration">Exceeded Max Duration</MenuItem>
                                 <MenuItem value="customer-ended-call">Customer Ended</MenuItem>
                                 <MenuItem value="assistant-ended-call">Assistant Ended</MenuItem>
+                                <MenuItem value="assistant-forwarded-call">Assistant Forwarded</MenuItem>
                                 <MenuItem value="failed-to-connect">Failed to Connect</MenuItem>
                                 <MenuItem value="temporarily-unavailable">Temporarily Unavailable</MenuItem>
                             </TextField>
