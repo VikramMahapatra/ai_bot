@@ -12,7 +12,7 @@ import { UserRound, FileText, Clock } from "lucide-react";
 import AddIcon from "@mui/icons-material/Add";
 
 export default function CustomStepNode({ data, id }: any) {
-    const { onEditOutcome, onDeleteNode, edges, onDeleteEdge, setNodes, onAddOutcome } = useFlow();
+    const { onEditOutcome, onDeleteOutcome, onDeleteNode, edges, onDeleteEdge, setNodes, onAddOutcome } = useFlow();
     const [agents, setAgents] = useState<CallingAgentLookup[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
     const isConnected = edges.some(
@@ -341,27 +341,59 @@ export default function CustomStepNode({ data, id }: any) {
                                             </Typography>
                                         </Box>
 
-                                        {/* EDIT BUTTON */}
+                                        {/* ACTION BUTTONS */}
                                         <Box
-                                            onClick={() => onEditOutcome(id, outcome.id)}
                                             sx={{
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: 0.4,
-                                                px: 0.8,
-                                                py: 0.3,
-                                                borderRadius: 1.5,
-                                                fontSize: 10,
-                                                fontWeight: 500,
-                                                color: "primary.main",
-                                                cursor: "pointer",
-                                                "&:hover": {
-                                                    backgroundColor: "#eff6ff"
-                                                }
+                                                gap: 0.5
                                             }}
                                         >
-                                            <EditIcon sx={{ fontSize: 12 }} />
-                                            Edit
+                                            {/* EDIT BUTTON */}
+                                            <Box
+                                                onClick={() => onEditOutcome(id, outcome.id)}
+                                                sx={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 0.4,
+                                                    px: 0.8,
+                                                    py: 0.3,
+                                                    borderRadius: 1.5,
+                                                    fontSize: 10,
+                                                    fontWeight: 500,
+                                                    color: "primary.main",
+                                                    cursor: "pointer",
+                                                    "&:hover": {
+                                                        backgroundColor: "#eff6ff"
+                                                    }
+                                                }}
+                                            >
+                                                <EditIcon sx={{ fontSize: 12 }} />
+                                                Edit
+                                            </Box>
+
+                                            {/* DELETE BUTTON */}
+                                            <Box
+                                                onClick={() => onDeleteOutcome(id, outcome.id)}
+                                                sx={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 0.4,
+                                                    px: 0.8,
+                                                    py: 0.3,
+                                                    borderRadius: 1.5,
+                                                    fontSize: 10,
+                                                    fontWeight: 500,
+                                                    color: "error.main",
+                                                    cursor: "pointer",
+                                                    "&:hover": {
+                                                        backgroundColor: "#fef2f2"
+                                                    }
+                                                }}
+                                            >
+                                                <DeleteIcon sx={{ fontSize: 12 }} />
+                                                Delete
+                                            </Box>
                                         </Box>
                                     </Box>
 

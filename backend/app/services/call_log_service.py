@@ -1951,7 +1951,7 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         return None
 
     # CUSTOM STEP
-    step_outcome = (
+    step_outcomes = (
         db.query(WorkflowStepOutcome)
         .filter(
             WorkflowStepOutcome.step_id == edge.target_step_id,
@@ -1961,10 +1961,10 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
                 WorkflowStepOutcome.outcome == "all",
             ),
         )
-        .first()
+        .all()
     )
 
-    if not step_outcome:
+    if not step_outcomes:
         execution.status = "completed"
         call_log.workflow_execution_id = execution.id
         log_event(
@@ -1976,7 +1976,15 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         )
         return None
 
-    schedule_workflow_step(db, execution, call_log, step_outcome, edge.target_step_id)
+    # Schedule all matching actions
+    for step_outcome in step_outcomes:
+        schedule_workflow_step(
+            db,
+            execution,
+            call_log,
+            step_outcome,
+            edge.target_step_id,
+        )
 
 
 def continue_workflow_from_call(
@@ -2051,7 +2059,7 @@ def continue_workflow_from_call(
         return None
 
     # Outcome resolution
-    step_outcome = (
+    step_outcomes = (
         db.query(WorkflowStepOutcome)
         .filter(
             WorkflowStepOutcome.step_id == edge.target_step_id,
@@ -2061,12 +2069,12 @@ def continue_workflow_from_call(
                 WorkflowStepOutcome.outcome == "all",
             ),
         )
-        .first()
+        .all()
     )
 
-    logger.info(f"Call Outcome : {step_outcome} for Workflow ID : {execution.id} ")
+    logger.info(f"Call Outcomes : {step_outcomes} " f"for Workflow ID : {execution.id}")
 
-    if not step_outcome:
+    if not step_outcomes:
         execution.status = "completed"
         call_log.workflow_execution_id = execution.id
         log_event(
@@ -2078,7 +2086,15 @@ def continue_workflow_from_call(
         )
         return None
 
-    schedule_workflow_step(db, execution, call_log, step_outcome, edge.target_step_id)
+    # Schedule all matching actions
+    for step_outcome in step_outcomes:
+        schedule_workflow_step(
+            db,
+            execution,
+            call_log,
+            step_outcome,
+            edge.target_step_id,
+        )
 
 
 def schedule_workflow_step(db, execution, call_log, step_outcome, next_step_id):
