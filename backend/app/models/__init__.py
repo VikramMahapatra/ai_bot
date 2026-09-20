@@ -58,6 +58,26 @@ from app.models.instant_reply_logs import InstantReplyLog, InstantReplyChannelLo
 from app.models.voices import Voice, VoiceSync
 from app.models.organization_email_settings import OrganizationEmailSetting
 from app.models.calling_numbers import CallingNumber
+from app.models.calling_agents import CallingAgent, CallingAgentTestCall
+from app.models.call_campaigns import CallCampaign
+from app.models.campaign_contacts import CampaignContact
+from app.models.campaign_schedules import CampaignSchedule
+from app.models.call_logs import CallLog, CallTranscript
+from app.models.call_campaign_analytics import (
+    CampaignAIRecommendation,
+    CampaignKeyInsight,
+    CampaignSentiment,
+)
+from app.models.call_campaign_instant_replies import CallCampaignInstantReply
+from app.models.products import Product
+from app.models.qualification_templates import (
+    DisqualificationCriterion,
+    LeadTemperatureRule,
+    QualificationAttribute,
+    QualificationCriterion,
+    QualificationPositiveSignal,
+    QualificationTemplate,
+)
 
 __all__ = [
     "User",
@@ -124,4 +144,22 @@ __all__ = [
     "VoiceSync",
     "OrganizationEmailSetting",
     "CallingNumber",
+    "CallingAgent",
+    "CallingAgentTestCall",
+    "CallCampaign",
+    "CampaignContact",
+    "CampaignSchedule",
+    "CallLog",
+    "CallTranscript",
+    "CampaignAIRecommendation",
+    "CampaignKeyInsight",
+    "CampaignSentiment",
+    "CallCampaignInstantReply",
+    "Product",
+    "QualificationTemplate",
+    "QualificationCriterion",
+    "QualificationAttribute",
+    "QualificationPositiveSignal",
+    "DisqualificationCriterion",
+    "LeadTemperatureRule",
 ]
