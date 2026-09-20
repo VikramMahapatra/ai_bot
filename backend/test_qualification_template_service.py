@@ -49,6 +49,7 @@ def build_payload(name: str = "Inbound sales") -> QualificationTemplatePayload:
             "objective": "Identify decision-ready buyers and route them to sales.",
             "status": "Active",
             "qualification_mode": "essential_supporting",
+            "temperature_mode": "standard",
             "criteria": [
                 {
                     "name": "Has an active need",
@@ -62,24 +63,54 @@ def build_payload(name: str = "Inbound sales") -> QualificationTemplatePayload:
             ],
             "attributes": [
                 {
-                    "key": "implementation_timeline",
-                    "label": "Implementation timeline",
-                    "data_type": "select",
-                    "options": ["0-30 days", "1-3 months", "Later"],
+                    "key": "budget",
+                    "label": "Budget",
+                    "description": "Customer's expected budget for the purchase.",
+                    "data_type": "currency",
+                    "currency": "INR",
                     "is_required": True,
+                    "is_qualification_relevant": True,
+                    "importance": "Essential",
+                    "value_rule": "range",
+                    "min_value": 100000,
+                    "max_value": 500000,
                 }
             ],
             "positive_signals": [
-                {"name": "Requests a demo", "score": 20}
+                {
+                    "name": "Demo request",
+                    "signal_key": "demo_request",
+                    "category": "Next Step",
+                    "source": "predefined",
+                    "score": 20,
+                },
+                {
+                    "name": "Customer asks us to contact them after discussing internally.",
+                    "signal_key": "custom_internal_discussion",
+                    "category": "Other / Custom",
+                    "source": "custom",
+                    "score": 10,
+                },
             ],
             "disqualification_criteria": [
-                {"name": "Outside service area", "action": "disqualify"}
+                {
+                    "name": "Outside service area",
+                    "criterion_key": "outside_service_area",
+                    "source": "predefined",
+                    "action": "disqualify",
+                },
+                {
+                    "name": "The customer is only looking for a service that we do not provide.",
+                    "criterion_key": "custom_service_gap",
+                    "source": "custom",
+                    "action": "disqualify",
+                },
             ],
             "lead_temperatures": [
-                {"name": "Cold", "min_score": 0, "max_score": 24, "color": "#4b86c6"},
-                {"name": "Warm", "min_score": 25, "max_score": 49, "color": "#d59b20"},
-                {"name": "Hot", "min_score": 50, "max_score": 74, "color": "#e56b35"},
-                {"name": "Very Hot", "min_score": 75, "max_score": 100, "color": "#d83b4c"},
+                {"name": "Cold", "min_score": 1, "max_score": 39, "color": "#4b86c6"},
+                {"name": "Warm", "min_score": 40, "max_score": 59, "color": "#d59b20"},
+                {"name": "Hot", "min_score": 60, "max_score": 79, "color": "#e56b35"},
+                {"name": "Very Hot", "min_score": 80, "max_score": 100, "color": "#d83b4c"},
             ],
         }
     )
@@ -119,10 +150,25 @@ class QualificationTemplateServiceTests(unittest.TestCase):
         self.assertEqual(created.organization_id, 1)
         self.assertEqual(created.criteria[0].weight, 25)
         self.assertEqual(created.qualification_mode, "essential_supporting")
+        self.assertEqual(created.temperature_mode, "standard")
+        self.assertEqual(created.lead_temperatures[0].min_score, 1)
         self.assertEqual(created.criteria[0].criterion_key, "genuine_need")
         self.assertEqual(created.criteria[0].importance, "Supporting")
         self.assertFalse(created.criteria[0].is_required)
-        self.assertEqual(created.attributes[0].options[0], "0-30 days")
+        self.assertEqual(created.attributes[0].currency, "INR")
+        self.assertTrue(created.attributes[0].is_qualification_relevant)
+        self.assertEqual(created.attributes[0].importance, "Essential")
+        self.assertEqual(created.attributes[0].value_rule, "range")
+        self.assertEqual(float(created.attributes[0].min_value), 100000)
+        self.assertEqual(float(created.attributes[0].max_value), 500000)
+        self.assertEqual(created.positive_signals[0].signal_key, "demo_request")
+        self.assertEqual(created.positive_signals[0].category, "Next Step")
+        self.assertEqual(created.positive_signals[1].source, "custom")
+        self.assertEqual(
+            created.disqualification_criteria[0].criterion_key,
+            "outside_service_area",
+        )
+        self.assertEqual(created.disqualification_criteria[1].source, "custom")
         self.assertEqual(len(created.lead_temperatures), 4)
 
         result = qualification_template_service.list_templates(
@@ -148,6 +194,19 @@ class QualificationTemplateServiceTests(unittest.TestCase):
             qualification_template_service.list_templates(self.db, 1, None, None, 0, 10)["total"],
             0,
         )
+
+    def test_temperature_ranges_require_complete_coverage_and_standard_values(self):
+        custom_payload = build_payload().model_dump()
+        custom_payload["temperature_mode"] = "custom"
+        custom_payload["lead_temperatures"][1]["min_score"] = 41
+        with self.assertRaises(ValueError):
+            QualificationTemplatePayload.model_validate(custom_payload)
+
+        standard_payload = build_payload().model_dump()
+        standard_payload["lead_temperatures"][0]["max_score"] = 30
+        standard_payload["lead_temperatures"][1]["min_score"] = 31
+        with self.assertRaises(ValueError):
+            QualificationTemplatePayload.model_validate(standard_payload)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import api from "./api";
 
 export type QualificationStatus = "Active" | "Inactive";
-export type AttributeDataType = "text" | "number" | "boolean" | "date" | "select" | "multi_select";
+export type AttributeDataType = "text" | "number" | "currency" | "quantity" | "boolean" | "select" | "multi_select" | "date" | "date_range" | "location" | "percentage";
 
 export interface QualificationCriterion {
   id?: number;
@@ -21,12 +21,21 @@ export interface QualificationAttribute {
   data_type: AttributeDataType;
   description?: string;
   is_required: boolean;
+  is_qualification_relevant: boolean;
+  importance: "Essential" | "Supporting";
+  currency?: string;
+  value_rule: "any" | "minimum" | "maximum" | "range";
+  min_value?: number;
+  max_value?: number;
   options: string[];
 }
 
 export interface PositiveSignal {
   id?: number;
   name: string;
+  signal_key?: string;
+  category: "Interest" | "Commercial Interest" | "Next Step" | "Timing" | "Other / Custom";
+  source: "predefined" | "custom";
   description?: string;
   score: number;
 }
@@ -34,6 +43,8 @@ export interface PositiveSignal {
 export interface DisqualificationCriterion {
   id?: number;
   name: string;
+  criterion_key?: string;
+  source: "predefined" | "custom";
   description?: string;
   action: "disqualify" | "review";
 }
@@ -53,6 +64,7 @@ export interface QualificationTemplatePayload {
   objective: string;
   status: QualificationStatus;
   qualification_mode: "essential_supporting" | "any_selected" | "all_selected";
+  temperature_mode: "standard" | "custom";
   criteria: QualificationCriterion[];
   attributes: QualificationAttribute[];
   positive_signals: PositiveSignal[];

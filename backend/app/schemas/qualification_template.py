@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -13,8 +14,13 @@ class QualificationStatus(str, Enum):
 class AttributeDataType(str, Enum):
     text = "text"
     number = "number"
+    currency = "currency"
+    quantity = "quantity"
     boolean = "boolean"
     date = "date"
+    date_range = "date_range"
+    location = "location"
+    percentage = "percentage"
     select = "select"
     multi_select = "multi_select"
 
@@ -40,6 +46,12 @@ class AttributeInput(BaseModel):
     data_type: AttributeDataType = AttributeDataType.text
     description: Optional[str] = None
     is_required: bool = False
+    is_qualification_relevant: bool = False
+    importance: str = Field(default="Supporting", pattern=r"^(Essential|Supporting)$")
+    currency: Optional[str] = Field(default=None, max_length=8)
+    value_rule: str = Field(default="any", pattern=r"^(any|minimum|maximum|range)$")
+    min_value: Optional[Decimal] = None
+    max_value: Optional[Decimal] = None
     options: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -51,25 +63,53 @@ class AttributeInput(BaseModel):
             self.options = cleaned
         else:
             self.options = []
+        if self.data_type == AttributeDataType.currency and not self.currency:
+            self.currency = "INR"
+        if self.data_type not in {
+            AttributeDataType.number,
+            AttributeDataType.currency,
+            AttributeDataType.quantity,
+            AttributeDataType.percentage,
+        }:
+            self.value_rule = "any"
+            self.min_value = None
+            self.max_value = None
+        if self.value_rule == "minimum" and self.min_value is None:
+            raise ValueError("Minimum value is required for a minimum rule")
+        if self.value_rule == "maximum" and self.max_value is None:
+            raise ValueError("Maximum value is required for a maximum rule")
+        if self.value_rule == "range":
+            if self.min_value is None or self.max_value is None:
+                raise ValueError("Minimum and maximum values are required for a range")
+            if self.min_value > self.max_value:
+                raise ValueError("Minimum value cannot exceed maximum value")
         return self
 
 
 class PositiveSignalInput(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    signal_key: Optional[str] = Field(default=None, max_length=100)
+    category: str = Field(
+        default="Interest",
+        pattern=r"^(Interest|Commercial Interest|Next Step|Timing|Other / Custom)$",
+    )
+    source: str = Field(default="predefined", pattern=r"^(predefined|custom)$")
     description: Optional[str] = None
     score: int = Field(default=10, ge=1, le=100)
 
 
 class DisqualificationCriterionInput(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    criterion_key: Optional[str] = Field(default=None, max_length=100)
+    source: str = Field(default="predefined", pattern=r"^(predefined|custom)$")
     description: Optional[str] = None
     action: str = Field(default="disqualify", pattern=r"^(disqualify|review)$")
 
 
 class LeadTemperatureInput(BaseModel):
     name: str = Field(pattern=r"^(Cold|Warm|Hot|Very Hot)$")
-    min_score: int = Field(ge=0, le=100)
-    max_score: int = Field(ge=0, le=100)
+    min_score: int = Field(ge=1, le=100)
+    max_score: int = Field(ge=1, le=100)
     description: Optional[str] = None
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
 
@@ -89,6 +129,7 @@ class QualificationTemplatePayload(BaseModel):
         default="essential_supporting",
         pattern=r"^(essential_supporting|any_selected|all_selected)$",
     )
+    temperature_mode: str = Field(default="standard", pattern=r"^(standard|custom)$")
     criteria: List[CriterionInput] = Field(default_factory=list)
     attributes: List[AttributeInput] = Field(default_factory=list)
     positive_signals: List[PositiveSignalInput] = Field(default_factory=list)
@@ -115,6 +156,18 @@ class QualificationTemplatePayload(BaseModel):
         if len(criterion_keys) != len(set(criterion_keys)):
             raise ValueError("Qualification criterion keys must be unique")
 
+        signal_keys = [signal.signal_key for signal in self.positive_signals if signal.signal_key]
+        if len(signal_keys) != len(set(signal_keys)):
+            raise ValueError("Positive signal keys must be unique")
+
+        disqualifier_keys = [
+            criterion.criterion_key
+            for criterion in self.disqualification_criteria
+            if criterion.criterion_key
+        ]
+        if len(disqualifier_keys) != len(set(disqualifier_keys)):
+            raise ValueError("Disqualification criterion keys must be unique")
+
         attribute_keys = [attribute.key for attribute in self.attributes]
         if len(attribute_keys) != len(set(attribute_keys)):
             raise ValueError("Attribute keys must be unique")
@@ -123,11 +176,24 @@ class QualificationTemplatePayload(BaseModel):
         temperatures = sorted(self.lead_temperatures, key=lambda item: item.min_score)
         if {item.name for item in temperatures} != expected_names or len(temperatures) != 4:
             raise ValueError("Lead temperatures must define Cold, Warm, Hot, and Very Hot")
-        if temperatures[0].min_score != 0 or temperatures[-1].max_score != 100:
-            raise ValueError("Lead temperature ranges must cover scores from 0 to 100")
+        if temperatures[0].min_score != 1 or temperatures[-1].max_score != 100:
+            raise ValueError("Lead temperature ranges must cover scores from 1 to 100")
         for previous, current in zip(temperatures, temperatures[1:]):
             if current.min_score != previous.max_score + 1:
                 raise ValueError("Lead temperature ranges must be contiguous and non-overlapping")
+        if self.temperature_mode == "standard":
+            standard_ranges = {
+                "Cold": (1, 39),
+                "Warm": (40, 59),
+                "Hot": (60, 79),
+                "Very Hot": (80, 100),
+            }
+            if any(
+                (temperature.min_score, temperature.max_score)
+                != standard_ranges[temperature.name]
+                for temperature in temperatures
+            ):
+                raise ValueError("Standard temperature mode must use the standard score ranges")
         return self
 
 

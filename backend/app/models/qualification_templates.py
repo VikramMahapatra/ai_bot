@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     JSON,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -39,6 +40,7 @@ class QualificationTemplate(Base):
     qualification_mode = Column(
         String(32), nullable=False, default="essential_supporting"
     )
+    temperature_mode = Column(String(16), nullable=False, default="standard")
     status = Column(
         Enum(QualificationTemplateStatus),
         nullable=False,
@@ -122,6 +124,12 @@ class QualificationAttribute(Base):
     data_type = Column(String(32), nullable=False, default="text")
     description = Column(Text, nullable=True)
     is_required = Column(Boolean, nullable=False, default=False)
+    is_qualification_relevant = Column(Boolean, nullable=False, default=False)
+    importance = Column(String(16), nullable=False, default="Supporting")
+    currency = Column(String(8), nullable=True)
+    value_rule = Column(String(16), nullable=False, default="any")
+    min_value = Column(Numeric(18, 4), nullable=True)
+    max_value = Column(Numeric(18, 4), nullable=True)
     options = Column(JSON, nullable=True)
     sort_order = Column(Integer, nullable=False, default=0)
 
@@ -145,6 +153,9 @@ class QualificationPositiveSignal(Base):
         index=True,
     )
     name = Column(String(255), nullable=False)
+    signal_key = Column(String(100), nullable=True)
+    category = Column(String(32), nullable=False, default="Interest")
+    source = Column(String(16), nullable=False, default="predefined")
     description = Column(Text, nullable=True)
     score = Column(Integer, nullable=False, default=10)
     sort_order = Column(Integer, nullable=False, default=0)
@@ -161,6 +172,8 @@ class DisqualificationCriterion(Base):
         index=True,
     )
     name = Column(String(255), nullable=False)
+    criterion_key = Column(String(100), nullable=True)
+    source = Column(String(16), nullable=False, default="predefined")
     description = Column(Text, nullable=True)
     action = Column(String(32), nullable=False, default="disqualify")
     sort_order = Column(Integer, nullable=False, default=0)

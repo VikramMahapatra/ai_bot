@@ -112,6 +112,7 @@ def create_template(db: Session, organization_id: int, payload: QualificationTem
         description=payload.description,
         objective=payload.objective,
         qualification_mode=payload.qualification_mode,
+        temperature_mode=payload.temperature_mode,
         status=QualificationTemplateStatus(payload.status.value),
     )
     _replace_sections(template, payload)
@@ -132,6 +133,7 @@ def update_template(
     template.description = payload.description
     template.objective = payload.objective
     template.qualification_mode = payload.qualification_mode
+    template.temperature_mode = payload.temperature_mode
     template.status = QualificationTemplateStatus(payload.status.value)
     template.criteria.clear()
     template.attributes.clear()
