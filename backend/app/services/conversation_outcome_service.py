@@ -332,24 +332,26 @@ def process_pending_session_outcomes(
                 )
 
                 lead_info = call_log.lead_info if call_log else {}
-                call_summary = call_log.call_summary if call_log else None
+                sentiment = call_log.sentiment if call_log else None
 
-                if isinstance(lead_info, str):
-                    try:
-                        lead_info = json.loads(lead_info)
-                    except (json.JSONDecodeError, TypeError):
-                        lead_info = {}
+                # if isinstance(lead_info, str):
+                #     try:
+                #         lead_info = json.loads(lead_info)
+                #     except (json.JSONDecodeError, TypeError):
+                #         lead_info = {}
 
-                lead_quality = lead_info.get("lead_quality") or {}
+                # lead_quality = lead_info.get("lead_quality") or {}
 
-                rate = lead_quality.get("rate", 0)
-                try:
-                    rate = float(rate or 0)
-                except (TypeError, ValueError):
-                    rate = 0
+                # rate = lead_quality.get("rate", 0)
+                # try:
+                #     rate = float(rate or 0)
+                # except (TypeError, ValueError):
+                #     rate = 0
 
                 # Lead Rate above 20 is considered a lead, below 20 is not a lead
-                is_lead_value = 1 if rate >= 20 else 0
+                is_lead_value = (
+                    1 if sentiment and sentiment.lower() == "positive" else 0
+                )
                 whether_lead = "lead" if is_lead_value else "not_lead"
 
                 if is_lead_value == 1:

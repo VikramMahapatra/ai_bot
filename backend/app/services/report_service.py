@@ -241,6 +241,12 @@ def get_session_conversations_report(
         .subquery()
     )
 
+    lead_conversion_case = case(
+        (sessions_subquery.c.is_lead == True, "positive"),
+        (sessions_subquery.c.is_lead == False, "negative"),
+        else_="pending",
+    )
+
     query = (
         db.query(
             sessions_subquery.c.id.label("id"),
@@ -268,68 +274,7 @@ def get_session_conversations_report(
             func.coalesce(contact_subquery.c.contact_name, "Guest").label(
                 "contact_name"
             ),
-            case(
-                # Voice + positive + very hot
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 90,
-                    ),
-                    "positive - very hot",
-                ),
-                # Voice + positive + hot
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 70,
-                    ),
-                    "positive - hot",
-                ),
-                # Voice + positive + warm
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 50,
-                    ),
-                    "positive - warm",
-                ),
-                # Voice + positive + cold
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 20,
-                        call_log_subquery.c.lead_quality_rate < 50,
-                    ),
-                    "positive - cold",
-                ),
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        or_(
-                            call_log_subquery.c.lead_quality_rate < 20,
-                            call_log_subquery.c.lead_quality_rate.is_(None),
-                        ),
-                    ),
-                    "negative",
-                ),
-                # Non-Voice + positive
-                (
-                    sessions_subquery.c.is_lead == True,
-                    "positive",
-                ),
-                # Negative
-                (
-                    sessions_subquery.c.is_lead == False,
-                    "negative",
-                ),
-                # Pending
-                else_="pending",
-            ).label("lead_conversion"),
+            lead_conversion_case.label("lead_conversion"),
         )
         .select_from(sessions_subquery)
         .outerjoin(
@@ -382,14 +327,7 @@ def get_session_conversations_report(
         normalized_lead_conversion = _normalize_outcome(lead_conversion_outcome)
 
         if normalized_lead_conversion != "all":
-            query = query.filter(
-                case(
-                    (sessions_subquery.c.is_lead == True, "positive"),
-                    (sessions_subquery.c.is_lead == False, "negative"),
-                    else_="pending",
-                )
-                == normalized_lead_conversion
-            )
+            query = query.filter(lead_conversion_case == normalized_lead_conversion)
 
     if source:
         normalized_source = _normalize_source(source)

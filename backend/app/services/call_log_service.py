@@ -116,29 +116,32 @@ def get_lead_qualified_status(
     if is_lead is None:
         return "pending" if campaign_name and lead_outcome else ""
 
+    # lead
+    if is_lead:
+        return "positive"
+
     # Not a lead
-    if not is_lead:
-        return "negative"
+    return "negative"
 
     # Positive lead - determine quality from rate
-    lead_quality = (lead_info or {}).get("lead_quality") or {}
-    rate = lead_quality.get("rate", 0)
+    # lead_quality = (lead_info or {}).get("lead_quality") or {}
+    # rate = lead_quality.get("rate", 0)
 
-    try:
-        rate = float(rate or 0)
-    except (TypeError, ValueError):
-        rate = 0
+    # try:
+    #     rate = float(rate or 0)
+    # except (TypeError, ValueError):
+    #     rate = 0
 
-    if rate >= 90:
-        return "positive - very hot"
-    elif rate >= 70:
-        return "positive - hot"
-    elif rate >= 50:
-        return "positive - warm"
-    elif rate >= 20:
-        return "positive - cold"
-    else:
-        return "negative"
+    # if rate >= 90:
+    #     return "positive - very hot"
+    # elif rate >= 70:
+    #     return "positive - hot"
+    # elif rate >= 50:
+    #     return "positive - warm"
+    # elif rate >= 20:
+    #     return "positive - cold"
+    # else:
+    #     return "negative"
 
 
 def get_call_logs(
