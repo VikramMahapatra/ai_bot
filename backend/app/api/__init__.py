@@ -24,6 +24,7 @@ from app.api.message_templates import router as message_templates_router
 from app.api.workflow import router as workflow_router
 from app.api.channels import router as channel_router
 from app.api.calling_numbers import router as calling_number_router
+from app.api.qualification_templates import router as qualification_templates_router
 
 __all__ = [
     "admin_router",
@@ -50,4 +51,5 @@ __all__ = [
     "workflow_router",
     "channel_router",
     "calling_number_router",
+    "qualification_templates_router",
 ]

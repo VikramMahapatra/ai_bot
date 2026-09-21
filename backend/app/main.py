@@ -28,6 +28,7 @@ from app.api import (
     workflow_router,
     channel_router,
     calling_number_router,
+    qualification_templates_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -108,6 +109,7 @@ app.include_router(whatsapp_router)
 app.include_router(campaigns_router)
 app.include_router(handoff_router)
 app.include_router(calling_agent_router)
+app.include_router(qualification_templates_router)
 app.include_router(call_campaign_router)
 app.include_router(call_log_router)
 app.include_router(twilio_sms_router)

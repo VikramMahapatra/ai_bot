@@ -39,6 +39,7 @@ import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AutoModeIcon from '@mui/icons-material/AutoMode';
 import DescriptionIcon from "@mui/icons-material/Description";
+import RuleIcon from "@mui/icons-material/Rule";
 import zentrixelLogo from '../../assets/zentrixel-logo.png';
 
 const drawerWidth = 280;
@@ -81,6 +82,7 @@ export const allMenuItems: MenuItem[] = [
   //{ text: 'Advanced Analytics', icon: <InsightsIcon />, path: '/analytics/advanced', requiredRole: 'ADMIN', featureKey: 'module_advanced_analytics_enabled' },
   { text: 'Reports', icon: <AssignmentIcon />, path: '/reports', requiredRole: 'ADMIN', featureKey: 'module_reports_enabled' },
   { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', requiredRole: 'ADMIN', featureKey: 'module_campaigns_enabled' },
+  { text: 'Qualification Templates', icon: <RuleIcon />, path: '/qualification-templates', requiredRole: 'ADMIN' },
   { text: 'Message Templates', icon: <DescriptionIcon />, path: '/templates', requiredRole: 'ADMIN', featureKey: 'module_message_templates_enabled' },
   { text: 'Follow-Up Workflows', icon: <AutoModeIcon />, path: '/follow-up-workflow', requiredRole: 'ADMIN', featureKey: 'module_followup_workflow_enabled' },
   { text: 'Appointments', icon: <CalendarMonthIcon />, path: '/appointments', requiredRole: 'ADMIN', featureKey: 'module_appointments_enabled' },

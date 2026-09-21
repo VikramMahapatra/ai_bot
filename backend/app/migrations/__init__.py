@@ -22,6 +22,30 @@ from app.migrations.m2026_04_10_add_org_credit_payment_metadata import (
     MIGRATION_ID as ADD_ORG_CREDIT_PAYMENT_METADATA_ID,
     upgrade as add_org_credit_payment_metadata_upgrade,
 )
+from app.migrations.m2026_09_20_create_qualification_templates import (
+    MIGRATION_ID as CREATE_QUALIFICATION_TEMPLATES_ID,
+    upgrade as create_qualification_templates_upgrade,
+)
+from app.migrations.m2026_09_20_extend_qualification_criteria import (
+    MIGRATION_ID as EXTEND_QUALIFICATION_CRITERIA_ID,
+    upgrade as extend_qualification_criteria_upgrade,
+)
+from app.migrations.m2026_09_20_extend_qualification_attributes import (
+    MIGRATION_ID as EXTEND_QUALIFICATION_ATTRIBUTES_ID,
+    upgrade as extend_qualification_attributes_upgrade,
+)
+from app.migrations.m2026_09_20_extend_positive_signals import (
+    MIGRATION_ID as EXTEND_POSITIVE_SIGNALS_ID,
+    upgrade as extend_positive_signals_upgrade,
+)
+from app.migrations.m2026_09_20_extend_disqualification_criteria import (
+    MIGRATION_ID as EXTEND_DISQUALIFICATION_CRITERIA_ID,
+    upgrade as extend_disqualification_criteria_upgrade,
+)
+from app.migrations.m2026_09_20_add_temperature_mode import (
+    MIGRATION_ID as ADD_TEMPERATURE_MODE_ID,
+    upgrade as add_temperature_mode_upgrade,
+)
 
 
 MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
@@ -30,6 +54,12 @@ MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
     (ADD_ORG_JOINING_DATES_ID, add_org_joining_dates_upgrade),
     (CREATE_ORG_CREDIT_BILLING_TABLES_ID, create_org_credit_billing_tables_upgrade),
     (ADD_ORG_CREDIT_PAYMENT_METADATA_ID, add_org_credit_payment_metadata_upgrade),
+    (CREATE_QUALIFICATION_TEMPLATES_ID, create_qualification_templates_upgrade),
+    (EXTEND_QUALIFICATION_CRITERIA_ID, extend_qualification_criteria_upgrade),
+    (EXTEND_QUALIFICATION_ATTRIBUTES_ID, extend_qualification_attributes_upgrade),
+    (EXTEND_POSITIVE_SIGNALS_ID, extend_positive_signals_upgrade),
+    (EXTEND_DISQUALIFICATION_CRITERIA_ID, extend_disqualification_criteria_upgrade),
+    (ADD_TEMPERATURE_MODE_ID, add_temperature_mode_upgrade),
 ]
 
 

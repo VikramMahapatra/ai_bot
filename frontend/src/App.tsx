@@ -55,6 +55,8 @@ import { organizationService } from "./services/organizationService.ts";
 import RestrictedFeaturePage from "./components/Common/RestrictedModulePage.tsx";
 import SuperAdminChannelPage from "./pages/SuperAdminChannelPage.tsx";
 import SuperAdminCallingNumberPage from "./pages/SuperAdminCallingNumberPage";
+import QualificationTemplatesPage from "./pages/QualificationTemplatesPage";
+import QualificationTemplateEditorPage from "./pages/QualificationTemplateEditorPage";
 
 
 type ColorMode = "light" | "dark";
@@ -835,6 +837,30 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="ADMIN">
               <FollowUpWorkflowPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/qualification-templates"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <QualificationTemplatesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/qualification-templates/new"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <QualificationTemplateEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/qualification-templates/:templateId/edit"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <QualificationTemplateEditorPage />
             </ProtectedRoute>
           }
         />
