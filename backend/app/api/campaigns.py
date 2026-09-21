@@ -912,6 +912,10 @@ def is_campaign_within_sending_window(
     organization: Organization,
 ) -> bool:
 
+    # Send Now campaign → do not validate sending window
+    if campaign.scheduled_time is None:
+        return True
+
     timezone_name = organization.timezone or "Asia/Kolkata"
 
     try:
