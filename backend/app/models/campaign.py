@@ -81,6 +81,8 @@ class Contact(Base):
     campaign_links = relationship("CampaignContact", back_populates="contact")
     call_logs = relationship("CallLog", back_populates="contact")
 
+    external_crm_id = Column(String(100), nullable=True)
+
     __table_args__ = (Index("idx_contact_external_id", "external_contact_id"),)
 
 

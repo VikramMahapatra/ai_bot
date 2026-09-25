@@ -25,13 +25,15 @@ export interface OrganizationMeCampaignQuery {
   skip?: number;
   limit?: number;
 }
-
 function normalizeMeCampaignsResponse(data: unknown): CampaignItem[] {
   if (!data || typeof data !== "object") return [];
+
   const d = data as Record<string, unknown>;
+
   if (Array.isArray(d.items)) {
     return d.items as CampaignItem[];
   }
+
   if (Array.isArray(d.campaigns)) {
     return (d.campaigns as Record<string, unknown>[]).map((c) => ({
       id: Number(c.campaign_id ?? c.id),
@@ -40,14 +42,22 @@ function normalizeMeCampaignsResponse(data: unknown): CampaignItem[] {
       message_template: String(c.message_template ?? ""),
       contact_list_id: Number(c.contact_list_id ?? 0),
       status: (c.status as CampaignItem["status"]) || "draft",
+
       number_sent: Number(c.number_sent ?? 0),
       number_failed: Number(c.number_failed ?? 0),
+
       created_at: String(c.created_at ?? ""),
+
+      // Missing CampaignItem properties
+      contact_count: Number(c.contact_count ?? 0),
+      open_tracking_enabled: Boolean(c.open_tracking_enabled ?? false),
+      click_tracking_enabled: Boolean(c.click_tracking_enabled ?? false),
+      footer_display_enabled: Boolean(c.footer_display_enabled ?? false),
     }));
   }
+
   return [];
 }
-
 export interface Organization {
   id: number;
   name: string;
@@ -209,5 +219,42 @@ export const organizationService = {
     );
 
     return response.data;
+  },
+
+  async saveZohoAutoTriggerSettings(data: any): Promise<any> {
+    const response = await api.put(`/api/organization-settings/zoho/auto-trigger`, data);
+    return response.data;
+  },
+
+  async getZohoAutoIntegration(): Promise<any> {
+    const response = await api.get(`/api/organization-settings/zoho/integration`);
+    return response.data;
+  },
+
+  async connectZoho(): Promise<any> {
+    const response = await api.post(`/api/organization-settings/zoho/connect`);
+    return response.data;
+  },
+
+  async getZohoStatus(): Promise<any> {
+    const response = await api.get(`/api/organization-settings/zoho/status`);
+    return response.data;
+  },
+
+  async disconnectZoho(): Promise<any> {
+    const response = await api.delete(
+      `/api/organization-settings/zoho/disconnect`
+    );
+
+    return response.data;
+  },
+
+  async initializeZoho(): Promise<any> {
+    const response = await api.post(
+      `/api/organization-settings/zoho/initialize`
+    );
+
+    return response.data;
   }
+
 };

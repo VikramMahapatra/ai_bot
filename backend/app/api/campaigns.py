@@ -14,6 +14,8 @@ import re
 from zoneinfo import ZoneInfo
 from app.models.campaign import CampaignSequence
 from app.models.user import Organization
+from app.models.call_campaigns import CallCampaign
+from app.models.calling_agents import CallingAgent
 import phonenumbers
 from datetime import datetime, time as dt_time, timedelta
 from typing import Optional
@@ -39,7 +41,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 import pandas as pd
 
-from app.auth import require_admin
+from app.auth import get_current_user, require_admin
 from app.config import settings
 from app.database import SessionLocal, get_db
 from app.models import (
@@ -973,6 +975,7 @@ def _execute_campaign_now(
     campaign: Campaign,
     contacts: List[Contact],
     twilio_sms_config: Optional[TwilioSmsChannel] = None,
+    auto_trigger: bool = False,
 ) -> dict:
 
     run_sequence = (
@@ -987,8 +990,9 @@ def _execute_campaign_now(
     run_started_at = datetime.utcnow()
 
     campaign.status = "running"
-    campaign.number_sent = 0
-    campaign.number_failed = 0
+    if not auto_trigger:
+        campaign.number_sent = 0
+        campaign.number_failed = 0
     db.commit()
 
     sent_count = 0
@@ -1305,17 +1309,19 @@ def _execute_campaign_now(
                         base_interval
                     )  # wait according to settings before next contact
 
-    campaign.number_sent = sent_count
-    campaign.number_failed = failed_count
-    campaign.status = "completed" if sent_count > 0 else "failed"
+    if not auto_trigger:
+        campaign.number_sent = sent_count
+        campaign.number_failed = failed_count
+        campaign.status = "completed" if sent_count > 0 else "failed"
     db.flush()
 
-    organization_credit_service.consume_reserved_credits(
-        db=db,
-        reference_type="campaign",
-        reference_id=str(campaign.id),
-        actual_quantity=sent_count,
-    )
+    if not auto_trigger:
+        organization_credit_service.consume_reserved_credits(
+            db=db,
+            reference_type="campaign",
+            reference_id=str(campaign.id),
+            actual_quantity=sent_count,
+        )
 
     db.commit()
     db.refresh(campaign)
@@ -2106,6 +2112,10 @@ async def list_contact_lists(
             "Qualified contacts from campaign:"
         )
 
+        is_crm_list = (row.description or "").startswith(
+            "Contacts synchronized from Zoho CRM"
+        )
+
         items.append(
             {
                 "id": row.id,
@@ -2116,6 +2126,7 @@ async def list_contact_lists(
                 "is_agent_auto_list": is_auto,
                 "agent_widget_id": widget_id,
                 "is_campaign_list": is_campaign_list,
+                "is_crm_list": is_crm_list,
             }
         )
 
@@ -3573,6 +3584,71 @@ async def all_campaigns(
             product_map.get(row.product_id),
         )
         for row in rows
+    ]
+
+
+@router.get("/filtered-campaign-lookup")
+def get_filtered_campaigns(
+    campaign_type: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get campaigns for the current user's organization.
+
+    campaign_type:
+        call
+        email
+        whatsapp
+    """
+
+    org_id = current_user.organization_id
+
+    # Call campaigns
+    if campaign_type == "call":
+        query = (
+            db.query(CallCampaign)
+            .filter(
+                CallCampaign.organization_id == org_id, CallCampaign.is_deleted == False
+            )
+            .join(
+                CallingAgent,
+                CallCampaign.agent_id == CallingAgent.id,
+            )
+        )
+
+        call_campaigns = query.all()
+
+        return [
+            {
+                "id": campaign.id,
+                "campaign_name": campaign.name,
+                "created_at": (
+                    campaign.created_at.isoformat() if campaign.created_at else None
+                ),
+            }
+            for campaign in call_campaigns
+        ]
+
+    # Email / WhatsApp campaigns
+    query = db.query(Campaign).filter(
+        Campaign.organization_id == org_id, Campaign.is_deleted == False
+    )
+
+    if campaign_type:
+        query = query.filter(Campaign.campaign_type == campaign_type)
+
+    campaigns = query.order_by(Campaign.created_at.desc()).all()
+
+    return [
+        {
+            "id": campaign.id,
+            "campaign_name": campaign.campaign_name,
+            "created_at": (
+                campaign.created_at.isoformat() if campaign.created_at else None
+            ),
+        }
+        for campaign in campaigns
     ]
 
 
