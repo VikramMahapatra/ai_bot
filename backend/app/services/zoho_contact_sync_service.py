@@ -3,7 +3,8 @@ from datetime import date, datetime, time, timedelta, timezone
 import logging
 from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
-from sqlalchemy import func, or_
+from fastapi import HTTPException
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 from app.models.campaign import Campaign, Contact, ContactList
 from app.models.organization_zoho_integrations import OrganizationZohoIntegration
@@ -24,6 +25,8 @@ from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 from app.services import organization_channel_service
+from app.services.call_campaign_service import get_external_contact_ids
+from app.utils.echoleads_client import EcholeadsClient
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +477,7 @@ async def trigger_zoho_email_campaign(
         return {
             "status": "skipped",
             "reason": "no_contacts",
+            "processed_count": 0,
         }
 
     campaign = (
@@ -496,11 +500,13 @@ async def trigger_zoho_email_campaign(
         return {
             "status": "failed",
             "reason": "campaign_not_found",
+            "processed_count": 0,
         }
 
-    contacts = [contact for contact in contacts if contact.email]
+    # Only contacts with email
+    valid_contacts = [contact for contact in contacts if contact.email]
 
-    if not contacts:
+    if not valid_contacts:
         logger.info(
             "No Zoho contacts with email available for automation: "
             "organization=%s campaign=%s",
@@ -511,12 +517,13 @@ async def trigger_zoho_email_campaign(
         return {
             "status": "skipped",
             "reason": "no_email_contacts",
+            "processed_count": 0,
         }
 
     result = _execute_campaign_now(
         db=db,
         campaign=campaign,
-        contacts=contacts,
+        contacts=valid_contacts,
         auto_trigger=True,
     )
 
@@ -525,12 +532,26 @@ async def trigger_zoho_email_campaign(
         "organization=%s campaign=%s contacts=%s result=%s",
         organization_id,
         campaign.id,
-        len(contacts),
+        len(valid_contacts),
         result,
     )
 
-    return result or {
+    # Normalize result
+    if isinstance(result, dict):
+        processed_count = result.get(
+            "processed_count",
+            result.get("sent_count", len(valid_contacts)),
+        )
+
+        return {
+            **result,
+            "status": result.get("status", "completed"),
+            "processed_count": processed_count,
+        }
+
+    return {
         "status": "completed",
+        "processed_count": len(valid_contacts),
     }
 
 
@@ -545,6 +566,7 @@ async def trigger_zoho_whatsapp_campaign(
         return {
             "status": "skipped",
             "reason": "no_contacts",
+            "processed_count": 0,
         }
 
     campaign = (
@@ -568,11 +590,13 @@ async def trigger_zoho_whatsapp_campaign(
         return {
             "status": "failed",
             "reason": "campaign_not_found",
+            "processed_count": 0,
         }
 
-    contacts = [contact for contact in contacts if contact.phone]
+    # WhatsApp requires phone
+    valid_contacts = [contact for contact in contacts if contact.phone]
 
-    if not contacts:
+    if not valid_contacts:
         logger.info(
             "No Zoho contacts with phone available for WhatsApp automation: "
             "organization=%s campaign=%s",
@@ -583,12 +607,13 @@ async def trigger_zoho_whatsapp_campaign(
         return {
             "status": "skipped",
             "reason": "no_phone_contacts",
+            "processed_count": 0,
         }
 
     result = _execute_campaign_now(
         db=db,
         campaign=campaign,
-        contacts=contacts,
+        contacts=valid_contacts,
         auto_trigger=True,
     )
 
@@ -597,12 +622,25 @@ async def trigger_zoho_whatsapp_campaign(
         "organization=%s campaign=%s contacts=%s result=%s",
         organization_id,
         campaign.id,
-        len(contacts),
+        len(valid_contacts),
         result,
     )
 
-    return result or {
+    if isinstance(result, dict):
+        processed_count = result.get(
+            "processed_count",
+            result.get("sent_count", len(valid_contacts)),
+        )
+
+        return {
+            **result,
+            "status": result.get("status", "completed"),
+            "processed_count": processed_count,
+        }
+
+    return {
         "status": "completed",
+        "processed_count": len(valid_contacts),
     }
 
 
@@ -616,13 +654,16 @@ async def process_zoho_automation_logs(
     db = SessionLocal()
 
     try:
+        now = datetime.now(timezone.utc)
+
         logs = (
             db.query(ZohoAutomationLog)
             .filter(
                 ZohoAutomationLog.status == "pending",
+                ZohoAutomationLog.automation_type.in_(["whatsapp", "email"]),
                 or_(
                     ZohoAutomationLog.scheduled_at.is_(None),
-                    ZohoAutomationLog.scheduled_at <= datetime.utcnow(),
+                    ZohoAutomationLog.scheduled_at <= now,
                 ),
             )
             .order_by(ZohoAutomationLog.created_at.asc())
@@ -633,15 +674,20 @@ async def process_zoho_automation_logs(
         if not logs:
             return 0, 0
 
+        # ---------------------------------------------------------
         # Mark logs as processing
+        # ---------------------------------------------------------
         for log in logs:
             log.status = "processing"
-            log.started_at = datetime.utcnow()
+            log.started_at = now
             log.attempts += 1
 
         db.commit()
 
-        # Group by organization + campaign + automation type
+        # ---------------------------------------------------------
+        # Group:
+        # organization + campaign + automation type
+        # ---------------------------------------------------------
         groups = defaultdict(list)
 
         for log in logs:
@@ -653,6 +699,9 @@ async def process_zoho_automation_logs(
                 )
             ].append(log)
 
+        # ---------------------------------------------------------
+        # Process each group
+        # ---------------------------------------------------------
         for (
             organization_id,
             campaign_id,
@@ -660,27 +709,97 @@ async def process_zoho_automation_logs(
         ), group_logs in groups.items():
 
             try:
-
+                # =================================================
+                # 1. Load contacts
+                # =================================================
                 contact_ids = [log.contact_id for log in group_logs]
 
                 contacts = db.query(Contact).filter(Contact.id.in_(contact_ids)).all()
 
                 contacts_by_id = {contact.id: contact for contact in contacts}
 
-                valid_contacts = [
-                    contacts_by_id[log.contact_id]
-                    for log in group_logs
-                    if log.contact_id in contacts_by_id
+                # Keep mapping between log and contact
+                log_contact_pairs = [
+                    (log, contacts_by_id.get(log.contact_id)) for log in group_logs
                 ]
 
-                if not valid_contacts:
-                    for log in group_logs:
-                        log.status = "skipped"
-                        log.error_message = "No valid contacts found"
+                # =================================================
+                # 2. Filter contacts based on channel
+                # =================================================
+                valid_pairs = []
 
+                for log, contact in log_contact_pairs:
+
+                    if not contact:
+                        log.status = "skipped"
+                        log.error_message = "Contact not found"
+                        continue
+
+                    if automation_type == "email":
+                        if not contact.email:
+                            log.status = "skipped"
+                            log.error_message = "Contact has no email"
+                            continue
+
+                    elif automation_type == "whatsapp":
+                        if not contact.phone:
+                            log.status = "skipped"
+                            log.error_message = "Contact has no phone"
+                            continue
+
+                    valid_pairs.append((log, contact))
+
+                if not valid_pairs:
                     db.commit()
                     continue
 
+                valid_contacts = [contact for _, contact in valid_pairs]
+
+                # =================================================
+                # 3. Determine feature
+                # =================================================
+                feature_code = (
+                    FeatureCodes.CMP_EMAIL_SEND
+                    if automation_type == "email"
+                    else FeatureCodes.CMP_WA_CONVERSATION
+                )
+
+                requested_quantity = len(valid_contacts)
+
+                # =================================================
+                # 4. Validate credits
+                # =================================================
+                has_credits = organization_credit_service.validate_feature_usage(
+                    db=db,
+                    organization_id=organization_id,
+                    feature_code=feature_code,
+                    quantity=requested_quantity,
+                )
+
+                if not has_credits:
+                    # Do NOT mark failed.
+                    # Keep them pending so next scheduler run
+                    # can retry after credits are added.
+                    for log, _ in valid_pairs:
+                        log.status = "pending"
+                        log.error_message = "Insufficient credits"
+
+                    db.commit()
+
+                    logger.warning(
+                        "Insufficient credits for Zoho automation: "
+                        "organization=%s campaign=%s type=%s quantity=%s",
+                        organization_id,
+                        campaign_id,
+                        automation_type,
+                        requested_quantity,
+                    )
+
+                    continue
+
+                # =================================================
+                # 5. Execute campaign
+                # =================================================
                 result = None
 
                 if automation_type == "email":
@@ -701,26 +820,73 @@ async def process_zoho_automation_logs(
                         contacts=valid_contacts,
                     )
 
-                elif automation_type == "call":
+                if not result:
+                    raise Exception("Automation returned no result")
 
-                    # Handle call scheduling here
-                    result = {
-                        "status": "pending",
-                    }
+                # =================================================
+                # 6. Determine successful quantity
+                # =================================================
+                result_status = result.get("status")
+                processed_count = result.get("processed_count", 0)
 
-                for log in group_logs:
+                if result_status == "failed":
+                    raise Exception(
+                        result.get("reason") or "Automation execution failed"
+                    )
+
+                if result_status == "skipped":
+                    for log in group_logs:
+                        log.status = "skipped"
+                        log.error_message = result.get("reason")
+
+                    db.commit()
+                    continue
+
+                # =================================================
+                # 7. Deduct credits
+                # =================================================
+                if processed_count > 0:
+
+                    organization_credit_service.deduct_credits(
+                        db=db,
+                        organization_id=organization_id,
+                        feature_code=feature_code,
+                        quantity=processed_count,
+                        reference_type="zoho_automation",
+                        reference_id=f"{automation_type}:{campaign_id}",
+                    )
+
+                # =================================================
+                # 8. Update logs
+                # =================================================
+                for log, contact in valid_pairs:
+
                     log.status = "completed"
-                    log.completed_at = datetime.utcnow()
+                    log.completed_at = datetime.now(timezone.utc)
+                    log.error_message = None
 
-                processed += len(group_logs)
+                processed += len(valid_pairs)
 
                 db.commit()
+
+                logger.info(
+                    "Zoho automation completed: "
+                    "organization=%s campaign=%s type=%s "
+                    "contacts=%s credits_deducted=%s",
+                    organization_id,
+                    campaign_id,
+                    automation_type,
+                    len(valid_pairs),
+                    processed_count,
+                )
 
             except Exception as exc:
 
                 db.rollback()
 
                 for log in group_logs:
+
+                    # Only logs belonging to this group
                     log.status = "failed"
                     log.error_message = str(exc)
 
@@ -730,7 +896,8 @@ async def process_zoho_automation_logs(
 
                 logger.error(
                     "Zoho automation batch failed: "
-                    "organization=%s campaign=%s type=%s contacts=%s error=%s",
+                    "organization=%s campaign=%s type=%s "
+                    "contacts=%s error=%s",
                     organization_id,
                     campaign_id,
                     automation_type,
@@ -920,6 +1087,7 @@ def trigger_zoho_call_campaign(
     # 3. Sync contact with EchoLeads
     # ---------------------------------------------------------
     try:
+        echoleads_client = EcholeadsClient(organization_id)
         external_contact_ids = get_external_contact_ids(
             db=db,
             contact_ids=[contact.id],
@@ -1328,11 +1496,12 @@ def trigger_zoho_call_campaign(
 
 
 def process_zoho_call_automations(
-    db: Session,
     batch_size: int = 100,
 ) -> tuple[int, int]:
 
     now = datetime.now(timezone.utc)
+
+    db = SessionLocal()
 
     logs = (
         db.query(ZohoAutomationLog)

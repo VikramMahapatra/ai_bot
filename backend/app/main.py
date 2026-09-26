@@ -44,6 +44,7 @@ import asyncio
 from app.api.campaigns import run_daily_due_campaign_daemon
 from app.services.zoho_contact_sync_service import (
     run_zoho_automation_daemon,
+    run_zoho_call_automation_daemon,
     run_zoho_contact_sync_daemon,
 )
 
@@ -77,6 +78,9 @@ zoho_contact_sync_stop_event = asyncio.Event()
 
 zoho_automation_daemon_task = None
 zoho_automation_daemon_stop_event = asyncio.Event()
+
+zoho_call_automation_daemon_task = None
+zoho_call_automation_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -151,6 +155,7 @@ async def startup_event():
     global inbound_call_agent_daemon_task
     global zoho_contact_sync_task
     global zoho_automation_daemon_task
+    global zoho_call_automation_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -195,7 +200,13 @@ async def startup_event():
     zoho_automation_daemon_task = asyncio.create_task(
         run_zoho_automation_daemon(zoho_automation_daemon_stop_event)
     )
-    logger.info("Zoho automation daemon started")
+    logger.info("Zoho email/whatsapp automation daemon started")
+
+    zoho_call_automation_daemon_stop_event.clear()
+    zoho_call_automation_daemon_task = asyncio.create_task(
+        run_zoho_call_automation_daemon(zoho_automation_daemon_stop_event)
+    )
+    logger.info("Zoho call automation daemon started")
 
     logger.info("✅ Backend is ready!")
 
@@ -210,6 +221,7 @@ async def shutdown_event():
     global zoho_automation_daemon_task
     global inbound_call_agent_daemon_task
     global zoho_contact_sync_task
+    global zoho_call_automation_daemon_task
     outcome_daemon_stop_event.set()
     call_campaign_daemon_stop_event.set()
     org_credit_billing_daemon_stop_event.set()
@@ -217,6 +229,7 @@ async def shutdown_event():
     inbound_call_agent_daemon_stop_event.set()
     zoho_contact_sync_stop_event.set()
     zoho_automation_daemon_stop_event.set()
+    zoho_call_automation_daemon_stop_event.set()
 
     if outcome_daemon_task:
         try:
@@ -258,7 +271,15 @@ async def shutdown_event():
         try:
             await zoho_automation_daemon_task
         except Exception:
-            logger.exception("Error while stopping Zoho automation daemon")
+            logger.exception(
+                "Error while stopping Zoho email/whatsapp automation daemon"
+            )
+
+    if zoho_call_automation_daemon_task:
+        try:
+            await zoho_call_automation_daemon_task
+        except Exception:
+            logger.exception("Error while stopping Zoho call automation daemon")
 
 
 @app.get("/")
