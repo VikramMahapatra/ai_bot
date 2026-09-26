@@ -81,6 +81,7 @@ from app.models.appointment import Appointment
 from app.models.user import Organization
 from app.models.voices import Voice
 from app.services.limits_service import get_effective_limits
+from app.models.zoho_automation_logs import ZohoAutomationLog
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -1065,30 +1066,50 @@ def process_call(call, agent):
                     )
 
             if source == "rescheduled_call" and not mapped_job:
-                already_deducted = organization_credit_service.has_credit_usage(
-                    db=db,
-                    organization_id=call_log.organization_id,
-                    feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-                    reference_type="auto_rescheduled_call",
-                    reference_id=str(call_log.id),
+                automation_log = (
+                    db.query(ZohoAutomationLog)
+                    .filter(
+                        ZohoAutomationLog.external_call_id
+                        == call_log.external_call_a_id
+                    )
+                    .first()
                 )
 
-                if not already_deducted:
+                if automation_log:
+                    automation_log.status = "completed" if is_call_ended else "failed"
 
-                    organization_credit_service.deduct_credits(
+                    automation_log.completed_at = datetime.now(timezone.utc)
+
+                    organization_channel_service.release_channel(
+                        db=db,
+                        call_type="zoho_automation",
+                        reference_id=automation_log.id,
+                    )
+                else:
+                    already_deducted = organization_credit_service.has_credit_usage(
                         db=db,
                         organization_id=call_log.organization_id,
                         feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-                        quantity=1,
                         reference_type="auto_rescheduled_call",
                         reference_id=str(call_log.id),
                     )
 
-                organization_channel_service.release_channel(
-                    db=db,
-                    call_type="manual_rescheduled_call",
-                    reference_id=call_log.contact_id,
-                )
+                    if not already_deducted:
+
+                        organization_credit_service.deduct_credits(
+                            db=db,
+                            organization_id=call_log.organization_id,
+                            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                            quantity=1,
+                            reference_type="auto_rescheduled_call",
+                            reference_id=str(call_log.id),
+                        )
+
+                    organization_channel_service.release_channel(
+                        db=db,
+                        call_type="manual_rescheduled_call",
+                        reference_id=call_log.contact_id,
+                    )
 
         db.commit()
 

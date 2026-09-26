@@ -22,6 +22,9 @@ import {
   MenuItem,
   Chip,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
@@ -47,6 +50,13 @@ import { messageTemplateService, Template } from "../services/messageTemplateSer
 import { generatePreview } from "./TemplatePage";
 import { DeleteIcon, EditIcon } from "lucide-react";
 import { ConfirmDialog } from "../components/Common/ConfirmDialog";
+
+import PhoneIcon from "@mui/icons-material/Phone";
+import EmailIcon from "@mui/icons-material/Email";
+import SyncIcon from "@mui/icons-material/Sync";
+import { CampaignItem, campaignService } from "../services/campaignService";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -99,6 +109,31 @@ const buildDefaultTwilioState = (): TwilioFormState => ({
   testMessage: "Hello from AI Bot SMS Campaign!",
 });
 
+type AutoTriggerChannel = {
+  enabled: boolean;
+  campaign_id: string;
+};
+
+type AutoTriggerSettings = {
+  calling: AutoTriggerChannel;
+  email: AutoTriggerChannel;
+  whatsapp: AutoTriggerChannel;
+};
+
+const defaultAutoTriggerSettings: AutoTriggerSettings = {
+  calling: {
+    enabled: false,
+    campaign_id: "",
+  },
+  email: {
+    enabled: false,
+    campaign_id: "",
+  },
+  whatsapp: {
+    enabled: false,
+    campaign_id: "",
+  },
+}
 
 const SettingsPage: React.FC = () => {
   const theme = useTheme();
@@ -114,6 +149,8 @@ const SettingsPage: React.FC = () => {
   const [testEmail, setTestEmail] = useState("");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingZoho, setLoadingZoho] = useState(false);
+
   const [testOpen, setTestOpen] = useState(false);
   const [testToNumber, setTestToNumber] = useState('');
   const [testMessage, setTestMessage] = useState('Hello from Zentrixel WhatsApp bot');
@@ -170,10 +207,29 @@ const SettingsPage: React.FC = () => {
   const [success, setSuccess] = useState("");
   const [whatsappData, setWhatsappData] = useState<any>(null);
 
+  const [disconnectingZoho, setDisconnectingZoho] = useState(false);
+  const [initializingZoho, setInitializingZoho] = useState(false);
+
+  const [callCampaigns, setCallCampaigns] = useState<CampaignItem[]>([]);
+  const [emailCampaigns, setEmailCampaigns] = useState<CampaignItem[]>([]);
+  const [whatsappCampaigns, setWhatsappCampaigns] = useState<CampaignItem[]>([]);
+
+  const [autoTriggerSettings, setAutoTriggerSettings] = useState<AutoTriggerSettings>(defaultAutoTriggerSettings);
+
+  const [zohoData, setZohoData] = useState<{
+    is_connected: boolean;
+    is_initialized: boolean;
+    integration_connection_id: string | null;
+    email: string | null;
+  } | null>(null);
 
   useEffect(() => {
     loadOrgSettings();
     loadOrgEmailSettings();
+    loadZohoIntegration();
+    loadCampaigns("call");
+    loadCampaigns("email");
+    loadCampaigns("whatsapp");
   }, []);
 
   useEffect(() => {
@@ -212,6 +268,522 @@ const SettingsPage: React.FC = () => {
     loadWhatsAppUtilityTemplates();
   }, []);
 
+  const loadCampaigns = async (campaignType: string) => {
+    try {
+      const campaignList =
+        await campaignService.getFilteredCampaignLookup(campaignType);
+
+      if (campaignType === "call") {
+        setCallCampaigns(campaignList);
+      } else if (campaignType === "email") {
+        setEmailCampaigns(campaignList);
+      } else if (campaignType === "whatsapp") {
+        setWhatsappCampaigns(campaignList);
+      }
+    } catch (err) {
+      console.error(
+        `Failed to load ${campaignType} campaigns:`,
+        err
+      );
+    }
+  };
+
+  const applyZohoIntegrationData = (zoho: any) => {
+    setZohoData({
+      is_connected: zoho?.is_connected ?? false,
+      is_initialized: zoho?.is_initialized ?? false,
+      integration_connection_id:
+        zoho?.integration_connection_id ?? null,
+      email: zoho?.email ?? null,
+    });
+
+    setAutoTriggerSettings({
+      calling: {
+        enabled: zoho?.auto_calling_enabled ?? false,
+        campaign_id: zoho?.auto_calling_campaign_id ?? "",
+      },
+      email: {
+        enabled: zoho?.auto_email_enabled ?? false,
+        campaign_id: zoho?.auto_email_campaign_id ?? "",
+      },
+      whatsapp: {
+        enabled: zoho?.auto_whatsapp_enabled ?? false,
+        campaign_id: zoho?.auto_whatsapp_campaign_id ?? "",
+      },
+    });
+  };
+
+  const integrationNav = [
+    {
+      id: "email-smtp",
+      label: "Email SMTP",
+      icon: <EmailOutlinedIcon fontSize="small" />,
+      connected: emailSettings.length > 0,
+    },
+    {
+      id: "twilio",
+      label: "Twilio",
+      icon: <PhoneOutlinedIcon fontSize="small" />,
+      connected: twilioForm.accountSid !== DEFAULT_TWILIO_ACCOUNT_SID,
+    },
+    {
+      id: "whatsapp",
+      label: "WhatsApp",
+      icon: <WhatsAppIcon fontSize="small" />,
+      connected: whatsappData != null,
+    },
+    {
+      id: "zoho",
+      label: "Zoho CRM",
+      icon: <SyncIcon fontSize="small" />,
+      connected: zohoData?.is_connected ?? false,
+    },
+  ];
+
+
+  const loadZohoIntegration = async () => {
+    try {
+      const response = await organizationService.getZohoAutoIntegration();
+
+      if (!response?.success) {
+        return;
+      }
+
+      const data = response.data;
+      applyZohoIntegrationData(data);
+
+    } catch (error) {
+      console.error("Failed to load Zoho integration:", error);
+    }
+  };
+
+  const handleConnectZoho = async () => {
+    let statusIntervalId: number | undefined;
+    let popupCheckIntervalId: number | undefined;
+    let timeoutId: number | undefined;
+
+    try {
+      setLoadingZoho(true);
+
+      const width = 600;
+      const height = 700;
+
+      const left =
+        window.screenX +
+        (window.outerWidth - width) / 2;
+
+      const top =
+        window.screenY +
+        (window.outerHeight - height) / 2;
+
+      // Open popup immediately to avoid popup blocker
+      const popup = window.open(
+        "about:blank",
+        "zoho_oauth",
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!popup) {
+        setLoadingZoho(false);
+        showError("Popup was blocked by the browser");
+        return;
+      }
+
+      const cleanup = () => {
+        if (statusIntervalId !== undefined) {
+          window.clearInterval(statusIntervalId);
+        }
+
+        if (popupCheckIntervalId !== undefined) {
+          window.clearInterval(popupCheckIntervalId);
+        }
+
+        if (timeoutId !== undefined) {
+          window.clearTimeout(timeoutId);
+        }
+      };
+
+      // ---------------------------------------------------------
+      // Step 1: Get OAuth URL
+      // ---------------------------------------------------------
+
+      const response =
+        await organizationService.connectZoho();
+
+      const authorizationUrl =
+        response?.data?.authorization_url;
+
+      const connectionId =
+        response?.data?.connection_id;
+
+      if (!authorizationUrl || !connectionId) {
+        popup.close();
+        cleanup();
+        setLoadingZoho(false);
+
+        showError("Invalid Zoho connection response");
+        return;
+      }
+
+      console.log("AUTH URL:", authorizationUrl);
+      console.log("CONNECTION ID:", connectionId);
+
+      // Navigate popup to Zoho
+      popup.location.href = authorizationUrl;
+
+      // ---------------------------------------------------------
+      // Step 2: Check popup manually closed
+      // ---------------------------------------------------------
+
+      popupCheckIntervalId = window.setInterval(() => {
+        if (popup.closed) {
+          console.log("Zoho popup was closed by user");
+
+          cleanup();
+          setLoadingZoho(false);
+
+          showError(
+            "Zoho authorization was cancelled."
+          );
+        }
+      }, 500);
+
+      // ---------------------------------------------------------
+      // Step 3: Poll connection status
+      // ---------------------------------------------------------
+
+      statusIntervalId = window.setInterval(
+        async () => {
+          try {
+            if (popup.closed) {
+              return;
+            }
+
+            const statusResponse =
+              await organizationService.getZohoStatus();
+
+            console.log(
+              "Zoho status response:",
+              statusResponse
+            );
+
+            const zoho =
+              statusResponse?.data;
+
+            if (!zoho?.is_connected) {
+              return;
+            }
+
+            console.log(
+              "Zoho OAuth connected successfully"
+            );
+
+            // Stop OAuth polling
+            cleanup();
+
+            if (!popup.closed) {
+              popup.close();
+            }
+
+            // ---------------------------------------------------
+            // OAuth is successful
+            // Now initialize Zoho
+            // ---------------------------------------------------
+
+            setLoadingZoho(true);
+
+            try {
+              const initResponse =
+                await organizationService.initializeZoho();
+
+              console.log(
+                "Zoho initialization response:",
+                initResponse
+              );
+
+              if (!initResponse?.success) {
+                throw new Error(
+                  initResponse?.message ||
+                  "Failed to initialize Zoho CRM"
+                );
+              }
+
+              // -----------------------------------------------
+              // Everything succeeded
+              // -----------------------------------------------
+
+              setZohoData({
+                is_connected: true,
+                is_initialized: true,
+                integration_connection_id:
+                  zoho.integration_connection_id,
+                email: zoho.email ?? null,
+              });
+
+              showSuccess(
+                "Zoho CRM connected and initialized successfully."
+              );
+
+            } catch (initError: any) {
+
+              console.error(
+                "Zoho initialization failed:",
+                initError
+              );
+
+              // OAuth succeeded, so keep connection state
+              setZohoData({
+                is_connected: true,
+                is_initialized: false,
+                integration_connection_id:
+                  zoho.integration_connection_id,
+                email: zoho.email ?? null,
+              });
+
+              // Extract backend error
+              const message =
+                initError?.response?.data?.detail ||
+                initError?.message ||
+                "Failed to initialize Zoho CRM.";
+
+              showError(message);
+
+            } finally {
+              setLoadingZoho(false);
+            }
+
+          } catch (error) {
+            console.error(
+              "Error checking Zoho connection:",
+              error
+            );
+          }
+        },
+        2000
+      );
+
+      // ---------------------------------------------------------
+      // Step 4: Timeout
+      // ---------------------------------------------------------
+
+      timeoutId = window.setTimeout(() => {
+        console.log(
+          "Zoho authorization timed out"
+        );
+
+        cleanup();
+
+        if (!popup.closed) {
+          popup.close();
+        }
+
+        setLoadingZoho(false);
+
+        showError(
+          "Zoho authorization timed out."
+        );
+
+      }, 120000);
+
+    } catch (error: any) {
+
+      console.error(
+        "Error connecting Zoho:",
+        error
+      );
+
+      if (statusIntervalId !== undefined) {
+        window.clearInterval(statusIntervalId);
+      }
+
+      if (popupCheckIntervalId !== undefined) {
+        window.clearInterval(popupCheckIntervalId);
+      }
+
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+
+      setLoadingZoho(false);
+
+      const message =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to connect Zoho CRM.";
+
+      showError(message);
+    }
+  };
+
+  const handleInitializeZoho = async () => {
+    try {
+      setInitializingZoho(true);
+
+      const response =
+        await organizationService.initializeZoho();
+
+      if (!response?.success) {
+        throw new Error(
+          response?.message ||
+          "Failed to initialize Zoho CRM"
+        );
+      }
+
+      const statusResponse =
+        await organizationService.getZohoStatus();
+
+      const zoho =
+        statusResponse?.data;
+
+      setZohoData({
+        is_connected: zoho?.is_connected ?? true,
+        is_initialized: zoho?.is_initialized ?? true,
+        integration_connection_id:
+          zoho?.integration_connection_id ?? null,
+        email: zoho?.email ?? null,
+      });
+
+      showSuccess(
+        "Zoho CRM setup completed successfully."
+      );
+
+    } catch (error: any) {
+      console.error(
+        "Zoho initialization failed:",
+        error
+      );
+
+      const message =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to initialize Zoho CRM.";
+
+      showError(message);
+
+    } finally {
+      setInitializingZoho(false);
+    }
+  };
+
+  const handleDisconnectZoho = async () => {
+    try {
+      setDisconnectingZoho(true);
+
+      const response =
+        await organizationService.disconnectZoho();
+
+      if (response?.success) {
+        setZohoData({
+          is_connected: false,
+          is_initialized: false,
+          integration_connection_id: null,
+          email: null,
+        });
+
+        setAutoTriggerSettings(defaultAutoTriggerSettings);
+
+        showSuccess(
+          "Zoho CRM disconnected successfully."
+        );
+      } else {
+        showError(
+          response?.message ||
+          "Failed to disconnect Zoho CRM."
+        );
+      }
+
+    } catch (error) {
+      console.error(
+        "Error disconnecting Zoho:",
+        error
+      );
+
+      showError(
+        "Failed to disconnect Zoho CRM."
+      );
+
+    } finally {
+      setDisconnectingZoho(false);
+    }
+  };
+
+  const handleSaveAutoTriggerSettings = async () => {
+    try {
+      setLoadingZoho(true);
+
+      const channels = [
+        { key: "calling", label: "Calling" },
+        { key: "email", label: "Email" },
+        { key: "whatsapp", label: "WhatsApp" },
+      ] as const;
+
+      for (const channel of channels) {
+        const setting = autoTriggerSettings[channel.key];
+
+        if (
+          setting.enabled &&
+          !setting.campaign_id
+        ) {
+          showError(
+            `Please select a campaign for Auto ${channel.label}.`
+          );
+          return;
+        }
+      }
+
+      const payload = {
+        auto_calling_enabled:
+          autoTriggerSettings.calling.enabled,
+
+        auto_calling_campaign_id:
+          autoTriggerSettings.calling.enabled
+            ? autoTriggerSettings.calling.campaign_id
+            : null,
+
+        auto_email_enabled:
+          autoTriggerSettings.email.enabled,
+
+        auto_email_campaign_id:
+          autoTriggerSettings.email.enabled
+            ? autoTriggerSettings.email.campaign_id
+            : null,
+
+        auto_whatsapp_enabled:
+          autoTriggerSettings.whatsapp.enabled,
+
+        auto_whatsapp_campaign_id:
+          autoTriggerSettings.whatsapp.enabled
+            ? autoTriggerSettings.whatsapp.campaign_id
+            : null,
+      };
+
+      const response = await organizationService.saveZohoAutoTriggerSettings(payload);
+
+      if (response?.success) {
+        showSuccess(
+          "Zoho auto trigger settings saved successfully."
+        );
+      }
+      else {
+        showError(
+          response?.message || "Failed to save Zoho auto trigger settings."
+        );
+      }
+
+    } catch (error: any) {
+      console.error(
+        "Error saving Zoho auto trigger settings:",
+        error
+      );
+
+      showError(
+        error?.response?.data?.detail ||
+        "Failed to save settings."
+      );
+    } finally {
+      setLoadingZoho(false);
+    }
+  };
 
   const loadOrgSettings = async () => {
     const data = await organizationService.getOrgSettings();
@@ -1130,9 +1702,71 @@ const SettingsPage: React.FC = () => {
                     Connect external services and communication channels
                   </Typography>
                 </Box>
+                {/* Integration Navigation */}
+                <Box
+                  sx={{
+                    mt: 3,
+                    mb: 4,
+                    p: 1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3,
+                    display: "flex",
+                    gap: 0.5,
+                    overflowX: "auto",
+                  }}
+                >
+                  {integrationNav.map((item) => (
+                    <Box
+                      key={item.id}
+                      onClick={() =>
+                        document.getElementById(item.id)?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        })
+                      }
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        px: 2,
+                        py: 1.25,
+                        borderRadius: 2,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "all .2s",
+
+                        "&:hover": {
+                          backgroundColor: "action.hover",
+                          color: "primary.main",
+                        },
+                      }}
+                    >
+                      {item.icon}
+
+                      <Typography
+                        variant="body2"
+                        fontWeight={600}
+                      >
+                        {item.label}
+                      </Typography>
+
+                      <Box
+                        sx={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          backgroundColor: item.connected
+                            ? "success.main"
+                            : "text.disabled",
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
               </Box>
             </Grid>
-            <Grid item xs={12} mt={2}>
+            <Grid item xs={12} mt={2} id="email-smtp">
 
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
@@ -1357,7 +1991,7 @@ const SettingsPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} mt={2}>
+            <Grid item xs={12} mt={2} id="twilio">
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1584,7 +2218,7 @@ const SettingsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} mt={2}>
+            <Grid item xs={12} mt={2} id="whatsapp">
               <Card sx={{ boxShadow: 2 }}>
                 <CardContent>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -1733,6 +2367,482 @@ const SettingsPage: React.FC = () => {
                       </Stack>
                     </>
 
+                  )}
+
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} mt={2} id="zoho">
+              <Card sx={{ boxShadow: 2 }}>
+                <CardContent>
+
+                  {/* Header */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      mb: 1,
+                    }}
+                  >
+                    <SyncIcon sx={{ color: "#3d75d9" }} />
+
+                    <Typography
+                      variant="h6"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      Zoho CRM Integration
+                    </Typography>
+                  </Box>
+
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mb: 3,
+                      color: "text.secondary",
+                    }}
+                  >
+                    Connect your Zoho CRM account and automatically add new
+                    prospects to your selected campaigns for calling, email,
+                    and WhatsApp follow-ups.
+                  </Typography>
+
+                  {/* Zoho Connection */}
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 2,
+                      mb: 3,
+                      p: 2,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            background: "#3d75d9",
+                            borderRadius: 2,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "white",
+                          }}
+                        >
+                          <SyncIcon />
+                        </Box>
+
+                        <Box>
+                          <Typography fontWeight={600}>
+                            Zoho CRM
+                          </Typography>
+
+                          <Typography
+                            variant="caption"
+                            color={
+                              zohoData?.is_connected
+                                ? zohoData?.is_initialized
+                                  ? "success.main"
+                                  : "warning.main"
+                                : "text.secondary"
+                            }
+                          >
+                            {!zohoData?.is_connected
+                              ? "Not Connected"
+                              : zohoData?.is_initialized
+                                ? `Connected${zohoData.email ? ` • ${zohoData.email}` : ""}`
+                                : "Connected • Setup required"}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {!zohoData?.is_connected ? (
+                        <Button
+                          variant="contained"
+                          onClick={handleConnectZoho}
+                          disabled={loadingZoho}
+                          sx={{
+                            background: "#3d75d9",
+                            "&:hover": {
+                              background: "#315fae",
+                            },
+                          }}
+                        >
+                          {loadingZoho ? "Connecting..." : "Connect Zoho CRM"}
+                        </Button>
+                      ) : (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                          }}
+                        >
+                          {!zohoData?.is_initialized && (
+                            <Button
+                              variant="contained"
+                              onClick={handleInitializeZoho}
+                              disabled={initializingZoho}
+                              sx={{
+                                background: "#3d75d9",
+                                "&:hover": {
+                                  background: "#315fae",
+                                },
+                              }}
+                            >
+                              {initializingZoho ? "Setting up..." : "Complete Setup"}
+                            </Button>
+                          )}
+
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            onClick={handleDisconnectZoho}
+                            disabled={disconnectingZoho}
+                          >
+                            {disconnectingZoho ? "Disconnecting..." : "Disconnect"}
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  </Card>
+
+                  {/* Auto Trigger Settings */}
+                  {zohoData?.is_connected && (
+                    <>
+                      <Typography
+                        variant="subtitle1"
+                        sx={{
+                          fontWeight: 600,
+                          mb: 1,
+                        }}
+                      >
+                        Auto Trigger Settings
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "text.secondary",
+                          mb: 2,
+                        }}
+                      >
+                        Enable the channels you want to use for automatically
+                        adding Zoho prospects to campaigns.
+                      </Typography>
+
+                      {/* Auto Calling */}
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 2,
+                          mb: 2,
+                          p: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              gap: 2,
+                            }}
+                          >
+                            <PhoneIcon
+                              sx={{
+                                color: "#3d75d9",
+                                mt: 0.5,
+                              }}
+                            />
+
+                            <Box>
+                              <Typography fontWeight={600}>
+                                Auto Calling
+                              </Typography>
+
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                Automatically add new Zoho prospects to a
+                                calling campaign.
+                              </Typography>
+                            </Box>
+                          </Box>
+
+                          <Switch
+                            checked={autoTriggerSettings.calling.enabled}
+                            onChange={(e) =>
+                              setAutoTriggerSettings((prev) => ({
+                                ...prev,
+                                calling: {
+                                  ...prev.calling,
+                                  enabled: e.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                        </Box>
+
+                        {autoTriggerSettings.calling.enabled && (
+                          <FormControl
+                            fullWidth
+                            size="small"
+                            sx={{ mt: 2 }}
+                          >
+                            <InputLabel>Campaign</InputLabel>
+
+                            <Select
+                              value={
+                                autoTriggerSettings.calling.campaign_id || ""
+                              }
+                              label="Campaign"
+                              onChange={(e) =>
+                                setAutoTriggerSettings((prev) => ({
+                                  ...prev,
+                                  calling: {
+                                    ...prev.calling,
+                                    campaign_id: e.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              {callCampaigns.map((campaign) => (
+                                <MenuItem
+                                  key={campaign.id}
+                                  value={campaign.id}
+                                >
+                                  {campaign.campaign_name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      </Card>
+
+                      {/* Auto Email */}
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 2,
+                          mb: 2,
+                          p: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              gap: 2,
+                            }}
+                          >
+                            <EmailIcon
+                              sx={{
+                                color: "#3d75d9",
+                                mt: 0.5,
+                              }}
+                            />
+
+                            <Box>
+                              <Typography fontWeight={600}>
+                                Auto Email
+                              </Typography>
+
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                Automatically add new Zoho prospects to an
+                                email campaign.
+                              </Typography>
+                            </Box>
+                          </Box>
+
+                          <Switch
+                            checked={autoTriggerSettings.email.enabled}
+                            onChange={(e) =>
+                              setAutoTriggerSettings((prev) => ({
+                                ...prev,
+                                email: {
+                                  ...prev.email,
+                                  enabled: e.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                        </Box>
+
+                        {autoTriggerSettings.email.enabled && (
+                          <FormControl
+                            fullWidth
+                            size="small"
+                            sx={{ mt: 2 }}
+                          >
+                            <InputLabel>Campaign</InputLabel>
+
+                            <Select
+                              value={
+                                autoTriggerSettings.email.campaign_id || ""
+                              }
+                              label="Campaign"
+                              onChange={(e) =>
+                                setAutoTriggerSettings((prev) => ({
+                                  ...prev,
+                                  email: {
+                                    ...prev.email,
+                                    campaign_id: e.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              {emailCampaigns.map((campaign) => (
+                                <MenuItem
+                                  key={campaign.id}
+                                  value={campaign.id}
+                                >
+                                  {campaign.campaign_name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      </Card>
+
+                      {/* Auto WhatsApp */}
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 2,
+                          mb: 2,
+                          p: 2,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              gap: 2,
+                            }}
+                          >
+                            <WhatsAppIcon
+                              sx={{
+                                color: "#25D366",
+                                mt: 0.5,
+                              }}
+                            />
+
+                            <Box>
+                              <Typography fontWeight={600}>
+                                Auto WhatsApp
+                              </Typography>
+
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                Automatically add new Zoho prospects to a
+                                WhatsApp campaign.
+                              </Typography>
+                            </Box>
+                          </Box>
+
+                          <Switch
+                            checked={autoTriggerSettings.whatsapp.enabled}
+                            onChange={(e) =>
+                              setAutoTriggerSettings((prev) => ({
+                                ...prev,
+                                whatsapp: {
+                                  ...prev.whatsapp,
+                                  enabled: e.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                        </Box>
+
+                        {autoTriggerSettings.whatsapp.enabled && (
+                          <FormControl
+                            fullWidth
+                            size="small"
+                            sx={{ mt: 2 }}
+                          >
+                            <InputLabel>Campaign</InputLabel>
+
+                            <Select
+                              value={
+                                autoTriggerSettings.whatsapp.campaign_id || ""
+                              }
+                              label="Campaign"
+                              onChange={(e) =>
+                                setAutoTriggerSettings((prev) => ({
+                                  ...prev,
+                                  whatsapp: {
+                                    ...prev.whatsapp,
+                                    campaign_id: e.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              {whatsappCampaigns.map((campaign) => (
+                                <MenuItem
+                                  key={campaign.id}
+                                  value={campaign.id}
+                                >
+                                  {campaign.campaign_name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      </Card>
+
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          mt: 2,
+                        }}
+                      >
+                        <Button
+                          variant="contained"
+                          onClick={handleSaveAutoTriggerSettings}
+                          disabled={loadingZoho}
+                        >
+                          Save Settings
+                        </Button>
+                      </Box>
+                    </>
                   )}
 
                 </CardContent>

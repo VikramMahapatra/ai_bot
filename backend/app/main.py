@@ -42,6 +42,11 @@ import logging
 import asyncio
 
 from app.api.campaigns import run_daily_due_campaign_daemon
+from app.services.zoho_contact_sync_service import (
+    run_zoho_automation_daemon,
+    run_zoho_call_automation_daemon,
+    run_zoho_contact_sync_daemon,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +72,15 @@ due_campaign_daemon_stop_event = asyncio.Event()
 
 inbound_call_agent_daemon_task = None
 inbound_call_agent_daemon_stop_event = asyncio.Event()
+
+zoho_contact_sync_task = None
+zoho_contact_sync_stop_event = asyncio.Event()
+
+zoho_automation_daemon_task = None
+zoho_automation_daemon_stop_event = asyncio.Event()
+
+zoho_call_automation_daemon_task = None
+zoho_call_automation_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -139,6 +153,9 @@ async def startup_event():
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
     global inbound_call_agent_daemon_task
+    global zoho_contact_sync_task
+    global zoho_automation_daemon_task
+    global zoho_call_automation_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -173,6 +190,24 @@ async def startup_event():
     )
     logger.info("Inbound call agent credit check daemon started")
 
+    zoho_contact_sync_stop_event.clear()
+    zoho_contact_sync_task = asyncio.create_task(
+        run_zoho_contact_sync_daemon(zoho_contact_sync_stop_event)
+    )
+    logger.info("Zoho contact sync daemon started")
+
+    zoho_automation_daemon_stop_event.clear()
+    zoho_automation_daemon_task = asyncio.create_task(
+        run_zoho_automation_daemon(zoho_automation_daemon_stop_event)
+    )
+    logger.info("Zoho email/whatsapp automation daemon started")
+
+    zoho_call_automation_daemon_stop_event.clear()
+    zoho_call_automation_daemon_task = asyncio.create_task(
+        run_zoho_call_automation_daemon(zoho_automation_daemon_stop_event)
+    )
+    logger.info("Zoho call automation daemon started")
+
     logger.info("✅ Backend is ready!")
 
 
@@ -183,10 +218,18 @@ async def shutdown_event():
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
     global due_campaign_daemon_task
+    global zoho_automation_daemon_task
+    global inbound_call_agent_daemon_task
+    global zoho_contact_sync_task
+    global zoho_call_automation_daemon_task
     outcome_daemon_stop_event.set()
     call_campaign_daemon_stop_event.set()
     org_credit_billing_daemon_stop_event.set()
     due_campaign_daemon_stop_event.set()
+    inbound_call_agent_daemon_stop_event.set()
+    zoho_contact_sync_stop_event.set()
+    zoho_automation_daemon_stop_event.set()
+    zoho_call_automation_daemon_stop_event.set()
 
     if outcome_daemon_task:
         try:
@@ -211,6 +254,32 @@ async def shutdown_event():
             await due_campaign_daemon_task
         except Exception:
             logger.exception("Error while stopping due campaign daemon")
+
+    if inbound_call_agent_daemon_task:
+        try:
+            await inbound_call_agent_daemon_task
+        except Exception:
+            logger.exception("Error while stopping inbound call agent daemon")
+
+    if zoho_contact_sync_task:
+        try:
+            await zoho_contact_sync_task
+        except Exception:
+            logger.exception("Error while stopping Zoho contact sync daemon")
+
+    if zoho_automation_daemon_task:
+        try:
+            await zoho_automation_daemon_task
+        except Exception:
+            logger.exception(
+                "Error while stopping Zoho email/whatsapp automation daemon"
+            )
+
+    if zoho_call_automation_daemon_task:
+        try:
+            await zoho_call_automation_daemon_task
+        except Exception:
+            logger.exception("Error while stopping Zoho call automation daemon")
 
 
 @app.get("/")

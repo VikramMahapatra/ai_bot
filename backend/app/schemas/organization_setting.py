@@ -80,3 +80,14 @@ class OrganizationEmailSettingResponse(BaseModel):
 
 class DailyEmailLimitUpdate(BaseModel):
     daily_email_limit: int
+
+
+class ZohoAutoTriggerSettingsRequest(BaseModel):
+    auto_calling_enabled: bool = False
+    auto_calling_campaign_id: int | None = None
+
+    auto_email_enabled: bool = False
+    auto_email_campaign_id: int | None = None
+
+    auto_whatsapp_enabled: bool = False
+    auto_whatsapp_campaign_id: int | None = None
