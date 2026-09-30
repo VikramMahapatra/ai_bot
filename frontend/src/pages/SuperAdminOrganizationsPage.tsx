@@ -67,7 +67,14 @@ import TvIcon from "@mui/icons-material/Tv";
 import { StatusChip } from "../components/Common/StatusChips";
 import OrganizationFormDialog from "../components/SuperAdmin/OrganizationFormDialog";
 import { CallingNumber } from "../services/callingNumberService";
-
+import AssessmentIcon from "@mui/icons-material/Assessment";
+import { QualificationEngineData, qualificationEngineService } from "../services/qualificationEngineService";
+import BusinessIcon from "@mui/icons-material/Business";
+import CloudDoneIcon from "@mui/icons-material/CloudDone";
+import LinkIcon from "@mui/icons-material/Link";
+import LinkOffIcon from "@mui/icons-material/LinkOff";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const limitToggleFields: LimitToggleField[] = [
   // AI & Automation
@@ -383,6 +390,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([]);
   const [callingNumberError, setCallingNumberError] = useState("");
 
+  const [qualificationEngineDialogOpen, setQualificationEngineDialogOpen] = useState(false);
+  const [qualificationEngineData, setQualificationEngineData] = useState<QualificationEngineData | null>(null);
+  const [qualificationEngineLoading, setQualificationEngineLoading] = useState(false);
+  const [qualificationEngineTesting, setQualificationEngineTesting] = useState(false);
+  const [qualificationEngineDisconnecting, setQualificationEngineDisconnecting] = useState(false);
+  const [qualificationEngineError, setQualificationEngineError] = useState("");
+  const [qualificationEngineSuccess, setQualificationEngineSuccess] = useState("");
+
   const orgStats = useMemo(() => {
     const total = organizations.length;
     const leadGenerationEnabled = organizations.filter((org) =>
@@ -499,6 +514,100 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       console.error("Failed to fetch organization channels", error);
     }
   };
+
+  const handleOpenQualificationEngineDialog = async (org: any) => {
+    setSelectedOrg(org);
+    setQualificationEngineDialogOpen(true);
+    setQualificationEngineError("");
+    setQualificationEngineSuccess("");
+
+    await loadQualificationEngineData(org.id);
+  };
+
+  const loadQualificationEngineData = async (org_id: number) => {
+    const response = await qualificationEngineService.getQualificationEngineStatus(org_id);
+    setQualificationEngineData(response);
+  };
+
+  const handleCloseQualificationEngineDialog = () => {
+    setQualificationEngineDialogOpen(false);
+    setSelectedOrg(null);
+  };
+
+
+  const handleConnectQualificationEngine = async () => {
+    if (!selectedOrg?.id) return;
+
+    try {
+      setQualificationEngineLoading(true);
+      setQualificationEngineError("");
+      setQualificationEngineSuccess("");
+
+      const response = await qualificationEngineService.connectQualificationEngine(selectedOrg.id);
+
+      setQualificationEngineData(response);
+
+      setQualificationEngineSuccess(
+        "Qualification Engine connected successfully."
+      );
+    } catch (error: any) {
+      setQualificationEngineError(
+        error?.response?.data?.detail ||
+        "Failed to connect Qualification Engine."
+      );
+    } finally {
+      setQualificationEngineLoading(false);
+    }
+  };
+
+  const handleTestQualificationEngine = async () => {
+    if (!selectedOrg?.id) return;
+    try {
+      setQualificationEngineTesting(true);
+      setQualificationEngineError("");
+      setQualificationEngineSuccess("");
+
+      const response = await qualificationEngineService.testConnection(selectedOrg?.id);
+
+      if (response?.connected) {
+        setQualificationEngineSuccess(
+          "Qualification Engine connection is working."
+        );
+      }
+    } catch (error: any) {
+      setQualificationEngineError(
+        error?.response?.data?.detail ||
+        "Qualification Engine connection failed."
+      );
+    } finally {
+      setQualificationEngineTesting(false);
+    }
+  };
+
+  const handleDisconnectQualificationEngine = async () => {
+    if (!selectedOrg?.id) return;
+    try {
+      setQualificationEngineDisconnecting(true);
+      setQualificationEngineError("");
+      setQualificationEngineSuccess("");
+
+      await qualificationEngineService.disconnectQualificationEngine(selectedOrg?.id);
+
+      setQualificationEngineData(null);
+
+      setQualificationEngineSuccess(
+        "Qualification Engine disconnected successfully."
+      );
+    } catch (error: any) {
+      setQualificationEngineError(
+        error?.response?.data?.detail ||
+        "Failed to disconnect Qualification Engine."
+      );
+    } finally {
+      setQualificationEngineDisconnecting(false);
+    }
+  };
+
 
   const loadCallingNumbers = async () => {
     if (!selectedOrg) return;
@@ -1303,6 +1412,23 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                         <HubIcon />
                       </IconButton>
                     </Tooltip>
+                    <Tooltip title="Qualification Engine">
+                      <IconButton
+                        onClick={() => handleOpenQualificationEngineDialog(org)}
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.primary.main, 0.15),
+                          color: "primary.main",
+                          "&:hover": {
+                            bgcolor: alpha(theme.palette.primary.main, 0.25),
+                          },
+                        }}
+                      >
+                        <AssessmentIcon />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Delete Organization">
                       <IconButton
                         onClick={() => setOrgToDelete(org)}
@@ -1454,6 +1580,14 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                             size="small"
                           >
                             <HubIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Qualification Engine">
+                          <IconButton
+                            onClick={() => handleOpenQualificationEngineDialog(org)}
+                            size="small"
+                          >
+                            <AssessmentIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete">
@@ -1953,6 +2087,460 @@ const SuperAdminOrganizationsPage: React.FC = () => {
 
         <DialogActions>
           <Button onClick={handleCloseChannelDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={qualificationEngineDialogOpen}
+        onClose={handleCloseQualificationEngineDialog}
+        fullWidth
+        maxWidth="md"
+      >
+        {/* Header */}
+        <DialogTitle
+          sx={{
+            px: 3,
+            py: 2.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            background:
+              "linear-gradient(135deg, rgba(61,117,217,0.08) 0%, rgba(72,184,232,0.04) 100%)",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "linear-gradient(135deg, #3d75d9, #48b8e8)",
+                  color: "white",
+                }}
+              >
+                <AssessmentIcon />
+              </Box>
+
+              <Box>
+                <Typography variant="h6" fontWeight={700}>
+                  Qualification Engine
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  {selectedOrg?.name || "Organization"}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Chip
+              size="small"
+              label={
+                qualificationEngineData?.enabled
+                  ? "Connected"
+                  : "Not Connected"
+              }
+              color={
+                qualificationEngineData?.enabled
+                  ? "success"
+                  : "default"
+              }
+              sx={{
+                fontWeight: 600,
+              }}
+            />
+          </Box>
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 3,
+            py: 3,
+            backgroundColor: "#fafbfc",
+          }}
+        >
+          {/* Description */}
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mb: 2.5 }}
+          >
+            Connect this organization to the Qualification Engine to
+            automatically evaluate conversations, qualify leads, calculate
+            lead scores, and assign lead temperatures.
+          </Typography>
+
+          {/* Organization / Tenant Information */}
+          <Card
+            elevation={0}
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 2.5,
+              overflow: "hidden",
+              mb: 2,
+            }}
+          >
+            <Box
+              sx={{
+                px: 2.5,
+                py: 1.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                backgroundColor: "grey.50",
+              }}
+            >
+              <BusinessIcon
+                fontSize="small"
+                sx={{ color: "#3d75d9" }}
+              />
+
+              <Typography variant="subtitle2" fontWeight={700}>
+                Organization Details
+              </Typography>
+            </Box>
+
+            <CardContent sx={{ p: 2.5 }}>
+              <Grid container spacing={2.5}>
+                {/* Organization */}
+                <Grid item xs={12} sm={6}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mb: 0.5 }}
+                  >
+                    Organization
+                  </Typography>
+
+                  <Typography variant="body2" fontWeight={600}>
+                    {selectedOrg?.name || "-"}
+                  </Typography>
+                </Grid>
+
+                {/* Organization ID */}
+                <Grid item xs={12} sm={6}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mb: 0.5 }}
+                  >
+                    Organization ID
+                  </Typography>
+
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ fontFamily: "monospace" }}
+                  >
+                    {selectedOrg?.id || "-"}
+                  </Typography>
+                </Grid>
+
+                {/* Tenant ID */}
+                <Grid item xs={12}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mb: 0.5 }}
+                  >
+                    Qualification Engine Tenant ID
+                  </Typography>
+
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 1.5,
+                      backgroundColor: "#f5f7fa",
+                      border: "1px solid",
+                      borderColor: "divider",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      sx={{
+                        fontFamily: "monospace",
+                        wordBreak: "break-all",
+                        color: qualificationEngineData?.tenant_id
+                          ? "text.primary"
+                          : "text.secondary",
+                      }}
+                    >
+                      {qualificationEngineData?.tenant_id ||
+                        "Tenant will be created when the engine is connected"}
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          {/* Connection Card */}
+          <Card
+            elevation={0}
+            sx={{
+              border: "1px solid",
+              borderColor: qualificationEngineData?.enabled
+                ? "success.light"
+                : "divider",
+              borderRadius: 2.5,
+              mb: 2,
+            }}
+          >
+            <CardContent sx={{ p: 2.5 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: { xs: "flex-start", sm: "center" },
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 2,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 1.5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: qualificationEngineData?.enabled
+                        ? "success.light"
+                        : "grey.100",
+                      color: qualificationEngineData?.enabled
+                        ? "success.dark"
+                        : "text.secondary",
+                    }}
+                  >
+                    <CloudDoneIcon />
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Engine Connection
+                    </Typography>
+
+                    <Typography variant="body2" color="text.secondary">
+                      {qualificationEngineData?.enabled
+                        ? "This organization is connected to the qualification engine."
+                        : "This organization is not connected yet."}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {!qualificationEngineData?.enabled ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<LinkIcon />}
+                    onClick={handleConnectQualificationEngine}
+                    disabled={qualificationEngineLoading}
+                    sx={{
+                      minWidth: 150,
+                      background: "#3d75d9",
+                      "&:hover": {
+                        background: "#315fae",
+                      },
+                    }}
+                  >
+                    {qualificationEngineLoading
+                      ? "Connecting..."
+                      : "Connect Engine"}
+                  </Button>
+                ) : (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 1,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Button
+                      variant="outlined"
+                      startIcon={<RefreshIcon />}
+                      onClick={handleTestQualificationEngine}
+                      disabled={qualificationEngineTesting}
+                    >
+                      {qualificationEngineTesting
+                        ? "Testing..."
+                        : "Test Connection"}
+                    </Button>
+
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<LinkOffIcon />}
+                      onClick={handleDisconnectQualificationEngine}
+                      disabled={qualificationEngineDisconnecting}
+                    >
+                      {qualificationEngineDisconnecting
+                        ? "Disconnecting..."
+                        : "Disconnect"}
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Alerts */}
+          {qualificationEngineError && (
+            <Alert
+              severity="error"
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+              }}
+            >
+              {qualificationEngineError}
+            </Alert>
+          )}
+
+          {qualificationEngineSuccess && (
+            <Alert
+              severity="success"
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+              }}
+            >
+              {qualificationEngineSuccess}
+            </Alert>
+          )}
+
+          {/* Capabilities */}
+          {qualificationEngineData?.enabled && (
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 2.5,
+              }}
+            >
+              <CardContent sx={{ p: 2.5 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 1.5,
+                  }}
+                >
+                  <AssessmentIcon
+                    sx={{
+                      color: "#3d75d9",
+                      mt: 0.2,
+                    }}
+                  />
+
+                  <Box sx={{ flex: 1 }}>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={700}
+                    >
+                      Qualification & Lead Scoring
+                    </Typography>
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mt: 0.5, mb: 1.5 }}
+                    >
+                      The engine evaluates completed conversation
+                      transcripts against the organization's qualification
+                      templates and provides:
+                    </Typography>
+
+                    <Grid container spacing={1}>
+                      {[
+                        "Lead qualification status",
+                        "Lead score from 1–100",
+                        "Lead temperature",
+                        "Positive and disqualification signals",
+                        "Evidence and evaluation trace",
+                      ].map((item) => (
+                        <Grid item xs={12} sm={6} key={item}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
+                            <CheckCircleIcon
+                              sx={{
+                                fontSize: 18,
+                                color: "success.main",
+                              }}
+                            />
+
+                            <Typography variant="body2">
+                              {item}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Not connected message */}
+          {!qualificationEngineData?.enabled && (
+            <Alert
+              severity="warning"
+              sx={{
+                mt: 2,
+                borderRadius: 2,
+              }}
+            >
+              Qualification Engine is not connected for this
+              organization. Connect the engine to enable automated lead
+              qualification and scoring.
+            </Alert>
+          )}
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Button
+            onClick={handleCloseQualificationEngineDialog}
+            variant="outlined"
+          >
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 

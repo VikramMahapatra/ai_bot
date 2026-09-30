@@ -179,6 +179,9 @@ class Settings(BaseSettings):
     INTEGRATION_HUB_URL: str
     INTEGRATION_HUB_API_KEY: str
 
+    QUALIFICATION_ENGINE_URL: str
+    QUALIFICATION_ENGINE_ADMIN_API_KEY: str
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]

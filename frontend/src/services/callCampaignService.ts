@@ -126,6 +126,7 @@ export interface CallCampaign {
     priority: string;
     calling_no: string;
     agent_id: number | "";
+    qualification_template_id?: number | "";
     product_id?: number | "";
     contacts: number[];
     start_datetime: string;

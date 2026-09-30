@@ -46,6 +46,21 @@ class QualificationTemplate(Base):
         nullable=False,
         default=QualificationTemplateStatus.active,
     )
+    engine_template_id = Column(String(100), nullable=True, index=True)
+    version = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+    sync_status = Column(
+        String(32),
+        nullable=False,
+        default="pending",
+    )
+
+    sync_error = Column(Text, nullable=True)
+
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=True, onupdate=func.now())
 
@@ -80,6 +95,21 @@ class QualificationTemplate(Base):
         passive_deletes=True,
     )
 
+    agents = relationship(
+        "WidgetConfig",
+        back_populates="qualification_template",
+    )
+
+    calling_agents = relationship(
+        "CallingAgent",
+        back_populates="qualification_template",
+    )
+
+    call_campaigns = relationship(
+        "CallCampaign",
+        back_populates="qualification_template",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "organization_id",
@@ -107,6 +137,7 @@ class QualificationCriterion(Base):
     is_required = Column(Boolean, nullable=False, default=True)
     weight = Column(Integer, nullable=False, default=10)
     sort_order = Column(Integer, nullable=False, default=0)
+    rule = Column(JSON, nullable=True)
 
 
 class QualificationAttribute(Base):
@@ -159,6 +190,7 @@ class QualificationPositiveSignal(Base):
     description = Column(Text, nullable=True)
     score = Column(Integer, nullable=False, default=10)
     sort_order = Column(Integer, nullable=False, default=0)
+    rule = Column(JSON, nullable=True)
 
 
 class DisqualificationCriterion(Base):
@@ -177,6 +209,7 @@ class DisqualificationCriterion(Base):
     description = Column(Text, nullable=True)
     action = Column(String(32), nullable=False, default="disqualify")
     sort_order = Column(Integer, nullable=False, default=0)
+    rule = Column(JSON, nullable=True)
 
 
 class LeadTemperatureRule(Base):

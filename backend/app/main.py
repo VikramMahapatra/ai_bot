@@ -29,6 +29,7 @@ from app.api import (
     channel_router,
     calling_number_router,
     qualification_templates_router,
+    qualification_engine_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
@@ -137,6 +138,7 @@ app.include_router(message_templates_router)
 app.include_router(workflow_router)
 app.include_router(channel_router)
 app.include_router(calling_number_router)
+app.include_router(qualification_engine_router)
 
 
 # Handle OPTIONS requests for CORS preflight

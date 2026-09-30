@@ -156,7 +156,9 @@ class QualificationTemplatePayload(BaseModel):
         if len(criterion_keys) != len(set(criterion_keys)):
             raise ValueError("Qualification criterion keys must be unique")
 
-        signal_keys = [signal.signal_key for signal in self.positive_signals if signal.signal_key]
+        signal_keys = [
+            signal.signal_key for signal in self.positive_signals if signal.signal_key
+        ]
         if len(signal_keys) != len(set(signal_keys)):
             raise ValueError("Positive signal keys must be unique")
 
@@ -174,13 +176,19 @@ class QualificationTemplatePayload(BaseModel):
 
         expected_names = {"Cold", "Warm", "Hot", "Very Hot"}
         temperatures = sorted(self.lead_temperatures, key=lambda item: item.min_score)
-        if {item.name for item in temperatures} != expected_names or len(temperatures) != 4:
-            raise ValueError("Lead temperatures must define Cold, Warm, Hot, and Very Hot")
+        if {item.name for item in temperatures} != expected_names or len(
+            temperatures
+        ) != 4:
+            raise ValueError(
+                "Lead temperatures must define Cold, Warm, Hot, and Very Hot"
+            )
         if temperatures[0].min_score != 1 or temperatures[-1].max_score != 100:
             raise ValueError("Lead temperature ranges must cover scores from 1 to 100")
         for previous, current in zip(temperatures, temperatures[1:]):
             if current.min_score != previous.max_score + 1:
-                raise ValueError("Lead temperature ranges must be contiguous and non-overlapping")
+                raise ValueError(
+                    "Lead temperature ranges must be contiguous and non-overlapping"
+                )
         if self.temperature_mode == "standard":
             standard_ranges = {
                 "Cold": (1, 39),
@@ -193,7 +201,9 @@ class QualificationTemplatePayload(BaseModel):
                 != standard_ranges[temperature.name]
                 for temperature in temperatures
             ):
-                raise ValueError("Standard temperature mode must use the standard score ranges")
+                raise ValueError(
+                    "Standard temperature mode must use the standard score ranges"
+                )
         return self
 
 
@@ -252,6 +262,9 @@ class QualificationTemplateSummary(BaseModel):
     description: Optional[str] = None
     objective: str
     status: QualificationStatus
+    sync_status: Optional[str] = None
+    sync_error: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -261,6 +274,14 @@ class QualificationTemplateListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class QualificationTemplateLookup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: Optional[str] = None
 
 
 class QualificationStatusUpdate(BaseModel):

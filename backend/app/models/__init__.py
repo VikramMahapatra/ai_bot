@@ -18,7 +18,7 @@ from app.models.org_credit_invoice import OrgCreditInvoice
 from app.models.org_credit_payment import OrgCreditPayment
 from app.models.org_credit_balance import OrgCreditBalance
 from app.models.knowledge_source import KnowledgeSource, SourceType
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, ConversationEvaluation
 from app.models.lead import Lead
 from app.models.widget_config import WidgetConfig
 from app.models.feedback import MessageFeedback
@@ -78,6 +78,10 @@ from app.models.qualification_templates import (
     QualificationPositiveSignal,
     QualificationTemplate,
 )
+from app.models.zoho_automation_logs import ZohoAutomationLog
+from app.models.zoho_contact_sync_states import ZohoContactSyncState
+from app.models.organization_zoho_integrations import OrganizationZohoIntegration
+from app.models.qualification_engine_integrations import QualificationEngineIntegration
 
 __all__ = [
     "User",
@@ -162,4 +166,9 @@ __all__ = [
     "QualificationPositiveSignal",
     "DisqualificationCriterion",
     "LeadTemperatureRule",
+    "ZohoAutomationLog",
+    "ZohoContactSyncState",
+    "OrganizationZohoIntegration",
+    "QualificationEngineIntegration",
+    "ConversationEvaluation",
 ]

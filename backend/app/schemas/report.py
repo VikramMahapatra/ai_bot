@@ -22,6 +22,11 @@ class ConversationMetricsResponse(BaseModel):
     lead_name: Optional[str]
     lead_email: Optional[str]
     outcome: Optional[str] = None
+    temperature: Optional[str] = None
+    score: Optional[int] = None
+    qualified: Optional[bool] = False
+    next_action: Optional[str] = None
+    disposition: Optional[str] = None
     ai_funnel: Optional[str] = None
     conversation_start: Optional[datetime]
     conversation_end: Optional[datetime]
@@ -100,6 +105,10 @@ class VoiceCampaignReportRow(BaseModel):
     campaign_source: str
     funnel_stage: Optional[str]
     lead_outcome: Optional[str]
+    temperature: Optional[str] = None
+    score: Optional[int] = None
+    next_action: Optional[str] = None
+    disposition: Optional[str] = None
     sentiment: Optional[str]
     outcome: Optional[str]
     created_at: Optional[datetime]
