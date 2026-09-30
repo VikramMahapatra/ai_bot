@@ -557,6 +557,7 @@ async def create_widget_config(
         organization_id=current_user.organization_id,
         widget_id=widget_id,
         name=config_data.get("name", "Chatbot"),
+        qualification_template_id=config_data.get("qualification_template_id"),
         welcome_message=config_data.get("welcome_message"),
         system_prompt=config_data.get("system_prompt"),
         logo_url=config_data.get("logo_url"),

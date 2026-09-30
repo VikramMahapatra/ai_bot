@@ -57,6 +57,9 @@ import SyncIcon from "@mui/icons-material/Sync";
 import { CampaignItem, campaignService } from "../services/campaignService";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
+import AssessmentIcon from "@mui/icons-material/Assessment";
+import AutoGraphIcon from "@mui/icons-material/AutoGraph";
+import { QualificationEngineData, qualificationEngineService } from "../services/qualificationEngineService";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -223,6 +226,8 @@ const SettingsPage: React.FC = () => {
     email: string | null;
   } | null>(null);
 
+
+
   useEffect(() => {
     loadOrgSettings();
     loadOrgEmailSettings();
@@ -337,7 +342,7 @@ const SettingsPage: React.FC = () => {
       label: "Zoho CRM",
       icon: <SyncIcon fontSize="small" />,
       connected: zohoData?.is_connected ?? false,
-    },
+    }
   ];
 
 
@@ -3307,8 +3312,8 @@ const SettingsPage: React.FC = () => {
           onCancel={() => !deleteSubmitting && setSmtpProfileToDelete(null)}
           onConfirm={handleSMTPDelete}
         />
-      </Box>
-    </AdminLayout>
+      </Box >
+    </AdminLayout >
   );
 };
 

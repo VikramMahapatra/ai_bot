@@ -1,16 +1,37 @@
-from sqlalchemy import Column, Identity, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import (
+    Column,
+    Identity,
+    Integer,
+    String,
+    DateTime,
+    Text,
+    Boolean,
+    ForeignKey,
+)
 from sqlalchemy.sql import func
 from app.database import Base
+from sqlalchemy.orm import relationship
 
 
 class WidgetConfig(Base):
     __tablename__ = "widget_configs"
-    
+
     id = Column(Integer, Identity(), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=True, index=True
+    )
     widget_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
+    qualification_template_id = Column(
+        Integer,
+        ForeignKey(
+            "qualification_templates.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        index=True,
+    )
     welcome_message = Column(Text, nullable=True)
     system_prompt = Column(Text, nullable=True)
     logo_url = Column(String, nullable=True)
@@ -23,3 +44,9 @@ class WidgetConfig(Base):
     escalation_contact_level_2 = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    qualification_template = relationship(
+        "QualificationTemplate",
+        foreign_keys=[qualification_template_id],
+        back_populates="agents",
+    )

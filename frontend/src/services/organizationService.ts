@@ -1,6 +1,8 @@
 import api from './api';
 import type { CampaignItem, CampaignType } from './campaignService';
 
+
+
 export interface User {
   id: number;
   username: string;

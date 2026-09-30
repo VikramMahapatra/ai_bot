@@ -1341,9 +1341,60 @@ const ReportsPage: React.FC = () => {
                         title={conv.contact_name}
                         sx={{ maxWidth: 220 }}
                       >
-                        <Typography variant="body2" noWrap>
-                          {conv.contact_name}
-                        </Typography>
+                        <Box>
+                          <Typography variant="body2" noWrap>
+                            {conv.contact_name}
+                          </Typography>
+
+                          {conv.qualified !== null && conv.qualified == true && conv.score !== null && conv.score !== undefined && (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                                mt: 0.25,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: "text.secondary",
+                                  fontSize: "0.7rem",
+                                }}
+                              >
+                                Lead Score
+                              </Typography>
+
+                              <Chip
+                                label={conv.score}
+                                size="small"
+                                sx={{
+                                  height: 18,
+                                  fontSize: "0.68rem",
+                                  fontWeight: 600,
+                                  borderRadius: "5px",
+                                  px: 0.25,
+                                  backgroundColor:
+                                    conv.score >= 90
+                                      ? "success.light"
+                                      : conv.score >= 70
+                                        ? "warning.light"
+                                        : conv.score >= 50
+                                          ? "info.light"
+                                          : "grey.200",
+                                  color:
+                                    conv.score >= 90
+                                      ? "success.dark"
+                                      : conv.score >= 70
+                                        ? "warning.dark"
+                                        : conv.score >= 50
+                                          ? "info.dark"
+                                          : "text.secondary",
+                                }}
+                              />
+                            </Box>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <SourceChip value={conv.source} />

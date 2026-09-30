@@ -108,6 +108,7 @@ def create_agent(
         widget_id=agent_widget_id,
         greeting=agent.greeting,
         prompt=agent.prompt,
+        qualification_template_id=agent.qualification_template_id,
         server_location=agent.server_location,
         inbound_phone_number=(
             agent.inbound_phone_number if agent.type.lower() == "inbound" else None

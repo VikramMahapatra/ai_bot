@@ -40,6 +40,7 @@ import Grid from "@mui/material/Grid";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import { useAuth } from '../../context/AuthContext';
+import { QualificationTemplateLookup, qualificationTemplateService } from '../../services/qualificationTemplateService';
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -233,6 +234,7 @@ const emptyFormData = {
     name: '',
     greeting: OUTGOING_DEFAULTS.greeting,
     prompt: OUTGOING_DEFAULTS.prompt,
+    qualification_template_id: '',
     destination: [],
     server_location: OUTGOING_DEFAULTS.server_location,
 
@@ -305,6 +307,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const [speakFirstExpanded, setSpeakFirstExpanded] = useState(false);
     const [additionalSettingExpanded, setAdditionalSettingExpanded] = useState(false);
     const [analysisOptionExpanded, setAnalysisOptionExpanded] = useState(false);
+    const [templates, setTemplates] = useState<QualificationTemplateLookup[]>([]);
     const { featureFlags } = useAuth();
 
     const callForwardingEnabled =
@@ -319,6 +322,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             name: agent?.name || '',
             greeting: agent?.greeting || defaults.greeting,
             prompt: agent?.prompt || defaults.prompt,
+            qualification_template_id: agent?.qualification_template_id || '',
+
             destination: agent?.destination || [],
             server_location: agent?.server_location || defaults.server_location,
 
@@ -381,11 +386,13 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
             agent?.training_doc ? agent.training_doc.split(",") : []
         );
 
+
     }, [agent, agentType]);
 
     useEffect(() => {
         fetchVoices();
         loadInboundCallingNoLookup();
+        loadQualificationTemplateLookup();
     }, [mode]);
 
     const fetchVoices = async () => {
@@ -465,6 +472,12 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         agent?.training_doc ? agent.training_doc.split(",") : []
     );
 
+    const loadQualificationTemplateLookup = async () => {
+        const data = await qualificationTemplateService.lookup();
+        setTemplates(data || []);
+    };
+
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -492,6 +505,7 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
         setFormData(prev => ({ ...prev, destination: typeof value === 'string' ? value.split(',') : value }));
     };
 
+
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files) {
             setFiles(Array.from(event.target.files));
@@ -511,6 +525,10 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
 
         if (!formData.prompt.trim()) {
             newErrors.prompt = "Agent prompt is required";
+        }
+
+        if (!formData.qualification_template_id) {
+            newErrors.qualification_template_id = "Qualification Template selection required";
         }
 
         if (!formData.server_location) {
@@ -793,6 +811,26 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 }
                             }}
                         />
+
+                        <TextField
+                            required
+                            label="Qualification Template"
+                            select
+                            fullWidth
+                            name="qualification_template_id"
+                            value={formData.qualification_template_id}
+                            onChange={(e) =>
+                                handleSelectChange("qualification_template_id", e.target.value)
+                            }
+                            error={!!errors.qualification_template_id}
+                            helperText={errors.qualification_template_id}
+                        >
+                            {templates.map((template) => (
+                                <MenuItem key={template.id} value={template.id}>
+                                    {template.name}
+                                </MenuItem>
+                            ))}
+                        </TextField>
                         <Stack spacing={2}>
 
                             {/* Enable Prompt Timezone */}
@@ -840,6 +878,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                             )}
 
                         </Stack>
+
+
                         {/* <Stack spacing={2}>
 
                             <Button variant="outlined" component="label">

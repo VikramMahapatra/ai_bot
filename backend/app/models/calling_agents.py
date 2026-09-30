@@ -44,6 +44,15 @@ class CallingAgent(Base):
     attempted_calls = Column(Integer, default=0)
 
     # Agent configuration
+    qualification_template_id = Column(
+        Integer,
+        ForeignKey(
+            "qualification_templates.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        index=True,
+    )
     greeting = Column(String, nullable=True)
     prompt = Column(String, nullable=True)
     training_doc = Column(String, nullable=True)  # store filename/path
@@ -123,6 +132,12 @@ class CallingAgent(Base):
     __table_args__ = (
         Index("idx_agent_external_id", "external_agent_id"),
         Index("idx_agent_external_a_id", "external_agent_a_id"),
+    )
+
+    qualification_template = relationship(
+        "QualificationTemplate",
+        foreign_keys=[qualification_template_id],
+        back_populates="calling_agents",
     )
 
 

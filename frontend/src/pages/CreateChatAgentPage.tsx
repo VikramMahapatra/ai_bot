@@ -15,6 +15,7 @@ import {
   Divider,
   Grid,
   LinearProgress,
+  MenuItem,
   Snackbar,
   Stack,
   Step,
@@ -49,11 +50,13 @@ import type { CrawlJobStatus } from '../types';
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
 import { useDateFormatter } from '../hooks/useDateFormatter';
+import { QualificationTemplateLookup, qualificationTemplateService, QualificationTemplateSummary } from '../services/qualificationTemplateService';
 
 interface WidgetConfig {
   widget_id: string;
   name: string;
   welcome_message?: string;
+  qualification_template_id?: string;
   system_prompt?: string;
   escalation_contact_level_1?: string;
   escalation_contact_level_2?: string;
@@ -146,13 +149,13 @@ const normalizeContactFieldKey = (value: string): string =>
     .replace(/^_+|_+$/g, '')
     .slice(0, 48);
 
-  let nextContactFieldId = 0;
+let nextContactFieldId = 0;
 
-  const createContactFieldId = (): string => `contact-field-${nextContactFieldId++}`;
+const createContactFieldId = (): string => `contact-field-${nextContactFieldId++}`;
 
-  let nextQuickQuestionId = 0;
+let nextQuickQuestionId = 0;
 
-  const createQuickQuestionId = (): string => `quick-question-${nextQuickQuestionId++}`;
+const createQuickQuestionId = (): string => `quick-question-${nextQuickQuestionId++}`;
 
 const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
   if (!leadFieldsRaw) return [];
@@ -185,7 +188,7 @@ const parseQuickQuestions = (leadFieldsRaw?: string): QuickQuestionDefinition[] 
         const answer = typeof item?.answer === 'string' ? item.answer.trim() : '';
         return question && answer ? { id: createQuickQuestionId(), question, answer } : null;
       })
-      .filter((item): item is QuickQuestionDefinition => Boolean(item));
+      .filter((item: any): item is QuickQuestionDefinition => Boolean(item));
   } catch {
     return [];
   }
@@ -221,11 +224,13 @@ const CreateChatAgentPage: React.FC = () => {
   const [initializingEdit, setInitializingEdit] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [templates, setTemplates] = useState<QualificationTemplateLookup[]>([]);
 
   const [widget, setWidget] = useState<WidgetConfig>({
     widget_id: `widget_${Date.now()}`,
     name: '',
     welcome_message: 'Hi! How can I help you?',
+    qualification_template_id: '',
     system_prompt: '',
     escalation_contact_level_1: '',
     escalation_contact_level_2: '',
@@ -239,6 +244,7 @@ const CreateChatAgentPage: React.FC = () => {
 
   const [errors, setErrors] = useState({
     name: "",
+    qualification_template_id: ""
   });
 
   const [createdWidgetId, setCreatedWidgetId] = useState('');
@@ -275,6 +281,11 @@ const CreateChatAgentPage: React.FC = () => {
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestionDefinition[]>([]);
   const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
   const formatDisplayDate = useDateFormatter()
+
+  const loadQualificationTemplateLookup = async () => {
+    const data = await qualificationTemplateService.lookup();
+    setTemplates(data || []);
+  };
 
   const integrationSteps = useMemo(
     () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
@@ -485,6 +496,10 @@ const CreateChatAgentPage: React.FC = () => {
   );
 
   useEffect(() => {
+    loadQualificationTemplateLookup();
+  })
+
+  useEffect(() => {
     if (!createdWidgetId) {
       setShareLink('');
       setShareLinkExpiresAt('');
@@ -517,6 +532,7 @@ const CreateChatAgentPage: React.FC = () => {
           widget_id: loadedWidgetId,
           name: config.name || prev.name,
           welcome_message: config.welcome_message || prev.welcome_message,
+          qualification_template_id: config.qualification_template_id || '',
           system_prompt: config.system_prompt || '',
           escalation_contact_level_1:
             typeof config.escalation_contact_level_1 === 'string'
@@ -943,11 +959,18 @@ const CreateChatAgentPage: React.FC = () => {
   const saveWidgetProfile = async () => {
 
     const newErrors = {
-      name: ""
+      name: "",
+      qualification_template_id: ""
     }
 
     if (!widget.name.trim()) {
       newErrors.name = `Please enter a widget name to ${isEditMode ? 'update' : 'create'} your agent.`;
+      setErrors(newErrors);
+      return;
+    }
+
+    if (!widget.qualification_template_id) {
+      newErrors.qualification_template_id = `Please select the template.`;
       setErrors(newErrors);
       return;
     }
@@ -1542,6 +1565,23 @@ const CreateChatAgentPage: React.FC = () => {
                         fullWidth
                         sx={fieldSx}
                       />
+                      <TextField
+                        required
+                        label="Qualification Template"
+                        select
+                        fullWidth
+                        name="qualification_template_id"
+                        value={widget.qualification_template_id}
+                        onChange={(e) => setWidget((prev) => ({ ...prev, qualification_template_id: e.target.value }))}
+                        error={!!errors.qualification_template_id}
+                        helperText={errors.qualification_template_id}
+                      >
+                        {templates.map((template) => (
+                          <MenuItem key={template.id} value={template.id}>
+                            {template.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                       <TextField
                         label="System Prompt (Optional)"
                         value={widget.system_prompt || ''}

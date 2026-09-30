@@ -19,8 +19,11 @@ from app.models.campaign import Contact
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.lead_activities import LeadActivity
+from app.models.conversation import ConversationEvaluation
 
 logger = logging.getLogger(__name__)
+
+EVALUATION_STATUS_EVALUATED = "evaluated"
 
 VOICE_LEAD_OUTCOME_OPTIONS = [
     "positive",
@@ -241,9 +244,67 @@ def get_session_conversations_report(
         .subquery()
     )
 
+    evaluation_subquery = (
+        db.query(
+            ConversationEvaluation.session_id.label("session_id"),
+            ConversationEvaluation.temperature.label("temperature"),
+            ConversationEvaluation.score.label("score"),
+            ConversationEvaluation.qualified.label("qualified"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "disposition",
+            ).label("disposition"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "next_action",
+            ).label("next_action"),
+            ConversationEvaluation.evaluation_status.label("evaluation_status"),
+            func.row_number()
+            .over(
+                partition_by=ConversationEvaluation.session_id,
+                order_by=ConversationEvaluation.updated_at.desc(),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            ConversationEvaluation.organization_id == organization_id,
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_EVALUATED,
+        )
+        .subquery()
+    )
+
+    latest_evaluation_subquery = (
+        db.query(
+            evaluation_subquery.c.session_id,
+            evaluation_subquery.c.temperature,
+            evaluation_subquery.c.score,
+            evaluation_subquery.c.qualified,
+            evaluation_subquery.c.disposition,
+            evaluation_subquery.c.next_action,
+            evaluation_subquery.c.evaluation_status,
+        )
+        .filter(evaluation_subquery.c.row_number == 1)
+        .subquery()
+    )
+
     lead_conversion_case = case(
-        (sessions_subquery.c.is_lead == True, "positive"),
-        (sessions_subquery.c.is_lead == False, "negative"),
+        (
+            sessions_subquery.c.is_lead == True,
+            case(
+                (
+                    latest_evaluation_subquery.c.temperature.isnot(None),
+                    func.concat(
+                        "positive - ",
+                        func.lower(latest_evaluation_subquery.c.temperature),
+                    ),
+                ),
+                else_="positive",
+            ),
+        ),
+        (
+            sessions_subquery.c.is_lead == False,
+            "negative",
+        ),
         else_="pending",
     )
 
@@ -274,6 +335,11 @@ def get_session_conversations_report(
             func.coalesce(contact_subquery.c.contact_name, "Guest").label(
                 "contact_name"
             ),
+            latest_evaluation_subquery.c.temperature.label("temperature"),
+            latest_evaluation_subquery.c.score.label("score"),
+            latest_evaluation_subquery.c.qualified.label("qualified"),
+            latest_evaluation_subquery.c.disposition.label("disposition"),
+            latest_evaluation_subquery.c.next_action.label("next_action"),
             lead_conversion_case.label("lead_conversion"),
         )
         .select_from(sessions_subquery)
@@ -292,6 +358,10 @@ def get_session_conversations_report(
         .outerjoin(
             call_log_subquery,
             call_log_subquery.c.session_id == sessions_subquery.c.session_id,
+        )
+        .outerjoin(
+            latest_evaluation_subquery,
+            latest_evaluation_subquery.c.session_id == sessions_subquery.c.session_id,
         )
     )
 
@@ -389,6 +459,11 @@ def get_session_conversations_report(
                 "lead_name": row.lead_name,
                 "lead_email": row.lead_email,
                 "outcome": row.outcome,
+                "temperature": row.temperature,
+                "qualified": row.qualified,
+                "score": (int(row.score) if row.score is not None else None),
+                "disposition": row.disposition,
+                "next_action": row.next_action,
                 "ai_funnel": funnel_key_to_name.get(row.funnel_stage, row.funnel_stage),
                 "conversation_start": row.conversation_start,
                 "conversation_end": row.conversation_end,
@@ -692,7 +767,35 @@ def get_voice_campaign_report(
         .label("rn"),
     ).subquery()
 
+    latest_evaluation_subquery = (
+        db.query(
+            ConversationEvaluation.session_id.label("session_id"),
+            ConversationEvaluation.temperature.label("temperature"),
+            ConversationEvaluation.score.label("score"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "disposition",
+            ).label("disposition"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "next_action",
+            ).label("next_action"),
+            func.row_number()
+            .over(
+                partition_by=ConversationEvaluation.session_id,
+                order_by=ConversationEvaluation.updated_at.desc(),
+            )
+            .label("rn"),
+        )
+        .filter(
+            ConversationEvaluation.organization_id == organization_id,
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_EVALUATED,
+        )
+        .subquery()
+    )
+
     latest_conversation = aliased(latest_conversation_subquery)
+    latest_evaluation = aliased(latest_evaluation_subquery)
 
     query = (
         db.query(
@@ -712,6 +815,10 @@ def get_voice_campaign_report(
             ).label("campaign_start_date"),
             latest_conversation.c.conversation_outcome.label("outcome"),
             latest_conversation.c.conversation_is_lead.label("is_lead"),
+            latest_evaluation.c.temperature.label("temperature"),
+            latest_evaluation.c.score.label("score"),
+            latest_evaluation.c.disposition.label("disposition"),
+            latest_evaluation.c.next_action.label("next_action"),
         )
         .join(LeadContactMapping, Lead.id == LeadContactMapping.lead_id)
         .join(
@@ -750,6 +857,13 @@ def get_voice_campaign_report(
             and_(
                 latest_conversation.c.session_id == LeadActivity.session_id,
                 latest_conversation.c.rn == 1,
+            ),
+        )
+        .outerjoin(
+            latest_evaluation,
+            and_(
+                latest_evaluation.c.session_id == LeadActivity.session_id,
+                latest_evaluation.c.rn == 1,
             ),
         )
         .filter(
@@ -852,6 +966,10 @@ def get_voice_campaign_report(
                 "campaign_start_date": row.campaign_start_date,
                 "sentiment": row.outcome,
                 "outcome": "positive" if row.is_lead else "negative",
+                "temperature": row.temperature,
+                "score": int(row.score) if row.score is not None else None,
+                "disposition": row.disposition,
+                "next_action": row.next_action,
             }
             for row in rows
         ],

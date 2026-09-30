@@ -46,6 +46,11 @@ export interface ConversationMetric {
   lead_name: string | null;
   lead_email: string | null;
   outcome: string | null;
+  qualified: boolean | null;
+  score: number | null;
+  temperature: string | null;
+  disposition: string | null;
+  next_action: string | null;
   ai_funnel?: string | null;
   conversation_start: string;
   conversation_end: string | null;
@@ -107,6 +112,10 @@ export interface VoiceCampaignReportItem {
   lead_outcome: string | null;
   sentiment: string | null;
   outcome: string | null;
+  score: number | null;
+  temperature: string | null;
+  disposition: string | null;
+  next_action: string | null;
   created_at: string | null;
   campaign_start_date: string | null;
   product_name: string | null;
@@ -747,7 +756,11 @@ export const reportService = {
   ): Promise<void> {
     const totalCall = summary?.total_calls ?? items.length;
     const successfulAttempt = summary?.successful_attempts ?? 0;
-    const successRate = totalCall > 0 ? Number(((successfulAttempt / totalCall) * 100).toFixed(2)) : 0;
+    const successRate =
+      totalCall > 0
+        ? Number(((successfulAttempt / totalCall) * 100).toFixed(2))
+        : 0;
+
     const generatedAt = formatDate(new Date());
 
     const headerRows: (string | number)[][] = [
@@ -757,13 +770,41 @@ export const reportService = {
       ['Powered by: Zentrixel'],
       [],
       ['Total Call', totalCall, 'Successful Attempt', successfulAttempt],
-      ['Success Rate (%)', successRate, 'Sum of Call Duration', summary?.sum_call_duration_label || '0s'],
-      ['Campaign Duration', summary?.campaign_duration_label || '0s', '', ''],
+      [
+        'Success Rate (%)',
+        successRate,
+        'Sum of Call Duration',
+        summary?.sum_call_duration_label || '0s',
+      ],
+      [
+        'Campaign Duration',
+        summary?.campaign_duration_label || '0s',
+        '',
+        '',
+      ],
       [],
-      ['Agent Name', 'Customer Name', 'Email', 'Company', 'Organization', 'Campaign Name', 'Campaign Start Date', 'Campaign Source', 'Lead Sentiment', 'Funnel Stage', 'Product', 'Lead Created Date'],
+      [
+        'Agent Name',
+        'Customer Name',
+        'Email',
+        'Company',
+        'Organization',
+        'Campaign Name',
+        'Campaign Start Date',
+        'Campaign Source',
+        'Lead Sentiment',
+        'Lead Outcome',
+        'Temperature',
+        'Lead Score',
+        'Disposition',
+        'Next Action',
+        'Funnel Stage',
+        'Product',
+        'Lead Created Date',
+      ],
     ];
 
-    const detailRows = items.map((item) => ([
+    const detailRows = items.map((item) => [
       item.agent_name || '-',
       item.customer_name || '-',
       item.email || '-',
@@ -772,31 +813,62 @@ export const reportService = {
       item.campaign_name || '-',
       formatDate(item.campaign_start_date),
       item.campaign_source || '-',
+      item.sentiment || '-',
+      item.outcome || '-',
+      item.temperature || '-',
+      item.score ?? '-',
+      item.disposition || '-',
+      item.next_action || '-',
       item.funnel_stage || '-',
-      normalizeLeadOutcome(item.lead_outcome),
       item.product_name || '-',
       formatDate(item.created_at),
-    ]));
-    const footerRows: (string | number)[][] = [[], ['Powered by: Zentrixel']];
+    ]);
+
+    const footerRows: (string | number)[][] = [
+      [],
+      ['Powered by: Zentrixel'],
+    ];
 
     const workbook = XLSX.utils.book_new();
-    const reportSheet = XLSX.utils.aoa_to_sheet([...headerRows, ...detailRows, ...footerRows]);
-    reportSheet['!cols'] = [
-      { wch: 20 },
-      { wch: 24 },
-      { wch: 30 },
-      { wch: 22 },
-      { wch: 24 },
-      { wch: 24 },
-      { wch: 16 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 18 },
-      { wch: 22 },
-    ];
-    reportSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
 
-    XLSX.utils.book_append_sheet(workbook, reportSheet, 'Voice Report');
+    const reportSheet = XLSX.utils.aoa_to_sheet([
+      ...headerRows,
+      ...detailRows,
+      ...footerRows,
+    ]);
+
+    reportSheet['!cols'] = [
+      { wch: 20 }, // Agent Name
+      { wch: 24 }, // Customer Name
+      { wch: 30 }, // Email
+      { wch: 22 }, // Company
+      { wch: 24 }, // Organization
+      { wch: 24 }, // Campaign Name
+      { wch: 20 }, // Campaign Start Date
+      { wch: 18 }, // Campaign Source
+      { wch: 18 }, // Lead Sentiment
+      { wch: 18 }, // Lead Outcome
+      { wch: 16 }, // Temperature
+      { wch: 12 }, // Lead Score
+      { wch: 22 }, // Disposition
+      { wch: 28 }, // Next Action
+      { wch: 18 }, // Funnel Stage
+      { wch: 22 }, // Product
+      { wch: 20 }, // Lead Created Date
+    ];
+
+    reportSheet['!merges'] = [
+      {
+        s: { r: 0, c: 0 },
+        e: { r: 0, c: 15 },
+      },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      reportSheet,
+      'Voice Report'
+    );
 
     const excelBuffer = XLSX.write(workbook, {
       bookType: 'xlsx',

@@ -60,8 +60,9 @@ import { MoveLeadDialog } from "./LeadMoveDialog";
 import { ConversionOutcomeChip, OutcomeChip } from "../Common/StatusChips";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import { useDateFormatter } from "../../hooks/useDateFormatter";
+import { useDateFormatter, useOnlyDateFormatter, useTimeFormatter } from "../../hooks/useDateFormatter";
 import { useAuth } from "../../context/AuthContext";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -120,6 +121,8 @@ export const CallLogsTab = () => {
   const [actionAnchor, setActionAnchor] = useState(null);
   const [openInsights, setOpenInsights] = useState(false);
   const formatDisplayDate = useDateFormatter();
+  const formatDisplayOnlyDate = useOnlyDateFormatter();
+  const formatDisplayTime = useTimeFormatter();
 
   const handleActionOpen = (event: any) => {
     setActionAnchor(event.currentTarget);
@@ -775,8 +778,6 @@ export const CallLogsTab = () => {
               <TableCell>Sentiment</TableCell>
               <TableCell>Outcome</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell>Duration</TableCell>
-              {/* <TableCell>Cost</TableCell> */}
               <TableCell>Date</TableCell>
               <TableCell>View</TableCell>
             </TableRow>
@@ -784,7 +785,7 @@ export const CallLogsTab = () => {
           <TableBody>
             {callLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} sx={{ py: 8 }}>
+                <TableCell colSpan={8} sx={{ py: 8 }}>
                   <Box
                     display="flex"
                     flexDirection="column"
@@ -844,24 +845,138 @@ export const CallLogsTab = () => {
                   </TableCell>
                   <TableCell>
                     <OutcomeChip value={log.sentiment} />
+
                   </TableCell>
                   <TableCell>
                     <ConversionOutcomeChip value={log.lead_qualified_status} />
+                    {log.qualified !== null && log.qualified == true && log.qualification_score !== null && log.qualification_score !== undefined && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mt: 0.25,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          Lead Score
+                        </Typography>
+
+                        <Chip
+                          label={log.qualification_score}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: "0.68rem",
+                            fontWeight: 600,
+                            borderRadius: "5px",
+                            px: 0.25,
+                            backgroundColor:
+                              log.qualification_score >= 90
+                                ? "success.light"
+                                : log.qualification_score >= 70
+                                  ? "warning.light"
+                                  : log.qualification_score >= 50
+                                    ? "info.light"
+                                    : "grey.200",
+                            color:
+                              log.qualification_score >= 90
+                                ? "success.dark"
+                                : log.qualification_score >= 70
+                                  ? "warning.dark"
+                                  : log.qualification_score >= 50
+                                    ? "info.dark"
+                                    : "text.secondary",
+                          }}
+                        />
+                      </Box>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={titleCase(log.status)}
-                      color={getStatusColor(log.status) as any}
-                      size="small"
-                      variant="outlined"
-                    />
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        minWidth: 0,
+                      }}
+                    >
+                      <Chip
+                        label={titleCase(log.status)}
+                        color={getStatusColor(log.status) as any}
+                        size="small"
+                        variant="outlined"
+                      />
+
+                      {log.ended_reason && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            mt: 0.4,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            maxWidth: "100%",
+                          }}
+                        >
+                          {titleCase(log.ended_reason)}
+                        </Typography>
+                      )}
+
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mt: 0.6,
+                        }}
+                      >
+                        <AccessTimeIcon
+                          sx={{
+                            fontSize: 15,
+                            color: "text.secondary",
+                          }}
+                        />
+
+                        <Typography
+                          variant="body2"
+                          fontWeight={700}
+                          sx={{
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {log.duration ? `${log.duration} sec` : "N/A"}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
                   <TableCell>
-                    {log.duration ? `${log.duration} sec` : "N/A"}
-                  </TableCell>
-                  {/* <TableCell>{log.cost || "0.00"}</TableCell> */}
-                  <TableCell>
-                    {log.date ? formatDisplayDate(log.date) : "-"}
+                    <TableCell>
+                      {log.date ? (
+                        <Box sx={{ display: "flex", flexDirection: "column" }}>
+                          <Typography variant="body2" fontWeight={500}>
+                            {formatDisplayOnlyDate(log.date)}
+                          </Typography>
+
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mt: 0.2 }}
+                          >
+                            {formatDisplayTime(log.date)}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
                   </TableCell>
                   <TableCell>
                     <Box

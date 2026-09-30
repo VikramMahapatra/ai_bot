@@ -299,17 +299,17 @@ export default function QualificationTemplateEditorPage() {
         criteria: exists
           ? current.criteria.filter((criterion) => criterion.criterion_key !== criterionKey)
           : [
-              ...current.criteria,
-              {
-                name: label,
-                criterion_key: criterionKey,
-                source: "predefined",
-                importance: "Essential",
-                description: "",
-                is_required: true,
-                weight: 10,
-              },
-            ],
+            ...current.criteria,
+            {
+              name: label,
+              criterion_key: criterionKey,
+              source: "predefined",
+              importance: "Essential",
+              description: "",
+              is_required: true,
+              weight: 10,
+            },
+          ],
       };
     });
   };
@@ -363,18 +363,18 @@ export default function QualificationTemplateEditorPage() {
         ...current,
         disqualification_criteria: exists
           ? current.disqualification_criteria.filter(
-              (criterion) => criterion.criterion_key !== criterionKey,
-            )
+            (criterion) => criterion.criterion_key !== criterionKey,
+          )
           : [
-              ...current.disqualification_criteria,
-              {
-                name,
-                criterion_key: criterionKey,
-                source: "predefined",
-                description: "",
-                action: "disqualify",
-              },
-            ],
+            ...current.disqualification_criteria,
+            {
+              name,
+              criterion_key: criterionKey,
+              source: "predefined",
+              description: "",
+              action: "disqualify",
+            },
+          ],
       };
     });
   };
@@ -503,12 +503,27 @@ export default function QualificationTemplateEditorPage() {
 
   const save = async () => {
     if (!validate()) return;
+
     setSaving(true);
     setError("");
+
     try {
-      if (id) await qualificationTemplateService.update(id, form);
-      else await qualificationTemplateService.create(form);
+      // 1. Save the final tab locally
+      let templateId = id ? Number(id) : null;
+
+      if (templateId) {
+        await qualificationTemplateService.update(templateId, form);
+      } else {
+        const savedTemplate = await qualificationTemplateService.create(form);
+        templateId = savedTemplate.id;
+      }
+
+      // 2. Sync the complete 6-tab template
+      await qualificationTemplateService.sync(templateId);
+
+      // 3. Go back to template list
       navigate("/qualification-templates");
+
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
@@ -561,9 +576,13 @@ export default function QualificationTemplateEditorPage() {
               <Typography variant="body2" color="text.secondary">Build a reusable decision framework in six focused steps.</Typography>
             </Box>
           </Stack>
-          <Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={save} disabled={saving} sx={{ bgcolor: "#157f78", "&:hover": { bgcolor: "#106c66" } }}>
-            {saving ? "Saving..." : "Save template"}
-          </Button>
+          {activeTab < tabs.length - 1 ? (
+            <Button variant="contained" endIcon={saving ? undefined : <KeyboardArrowRightIcon />} onClick={saveAndContinue} disabled={saving}>
+              {saving ? "Saving section..." : "Save & next section"}
+            </Button>
+          ) : (
+            <Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={save} disabled={saving} sx={{ bgcolor: "#157f78", "&:hover": { bgcolor: "#106c66" } }}>{saving ? "Saving..." : "Save template"}</Button>
+          )}
         </Stack>
 
         <Paper elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`, overflow: "hidden", boxShadow: `0 20px 55px ${alpha(theme.palette.common.black, 0.08)}` }}>
@@ -787,32 +806,32 @@ export default function QualificationTemplateEditorPage() {
                 </Paper>
 
                 {form.criteria.some((criterion) => criterion.source === "custom") && (
-                <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: `1px solid ${theme.palette.divider}`, bgcolor: alpha(theme.palette.background.paper, 0.76) }}>
-                  <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} gap={1} sx={{ mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6" fontWeight={900}>Other / Custom requirements</Typography>
-                      <Typography variant="body2" color="text.secondary">Add business-specific conditions that are not covered above.</Typography>
-                    </Box>
-                    <Button variant="outlined" startIcon={<AddIcon />} onClick={() => addItem("criteria")}>Add another custom requirement</Button>
-                  </Stack>
-                  <Stack spacing={1.5}>
-                    {form.criteria.map((criterion, index) => criterion.source === "custom" && (
-                      <Box key={criterion.criterion_key || index} sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-                        <TextField
-                          required
-                          fullWidth
-                          multiline
-                          minRows={2}
-                          label="Describe the additional qualification requirement"
-                          placeholder="The customer must have an active requirement for at least 100 units."
-                          value={criterion.name}
-                          onChange={(event) => updateCollection("criteria", index, { name: event.target.value })}
-                        />
-                        <Tooltip title="Remove custom requirement"><IconButton color="error" onClick={() => removeFromCollection("criteria", index)}><DeleteOutlineIcon /></IconButton></Tooltip>
+                  <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: `1px solid ${theme.palette.divider}`, bgcolor: alpha(theme.palette.background.paper, 0.76) }}>
+                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} gap={1} sx={{ mb: 2 }}>
+                      <Box>
+                        <Typography variant="h6" fontWeight={900}>Other / Custom requirements</Typography>
+                        <Typography variant="body2" color="text.secondary">Add business-specific conditions that are not covered above.</Typography>
                       </Box>
-                    ))}
-                  </Stack>
-                </Paper>
+                      <Button variant="outlined" startIcon={<AddIcon />} onClick={() => addItem("criteria")}>Add another custom requirement</Button>
+                    </Stack>
+                    <Stack spacing={1.5}>
+                      {form.criteria.map((criterion, index) => criterion.source === "custom" && (
+                        <Box key={criterion.criterion_key || index} sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+                          <TextField
+                            required
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            label="Describe the additional qualification requirement"
+                            placeholder="The customer must have an active requirement for at least 100 units."
+                            value={criterion.name}
+                            onChange={(event) => updateCollection("criteria", index, { name: event.target.value })}
+                          />
+                          <Tooltip title="Remove custom requirement"><IconButton color="error" onClick={() => removeFromCollection("criteria", index)}><DeleteOutlineIcon /></IconButton></Tooltip>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
                 )}
 
                 <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: `1px solid ${theme.palette.divider}`, bgcolor: alpha(theme.palette.primary.main, 0.025) }}>
@@ -925,54 +944,54 @@ export default function QualificationTemplateEditorPage() {
                       <Tooltip title="Remove attribute"><IconButton color="error" onClick={() => removeFromCollection("attributes", index)}><DeleteOutlineIcon /></IconButton></Tooltip>
                     </Stack>
                     <Box sx={{ p: { xs: 2, md: 2.5 } }}>
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.15fr .85fr" }, gap: 2 }}>
-                      <TextField required label="Attribute name" value={attribute.label} onChange={(event) => { const label = event.target.value; updateCollection("attributes", index, { label, key: label.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") }); }} placeholder="Budget" />
-                      <TextField select required label="Data type" value={attribute.data_type} onChange={(event) => { const dataType = event.target.value; updateCollection("attributes", index, { data_type: dataType, options: selectableAttributeTypes.has(dataType) ? attribute.options : [], currency: dataType === "currency" ? (attribute.currency || "INR") : undefined, value_rule: numericAttributeTypes.has(dataType) ? attribute.value_rule : "any", min_value: numericAttributeTypes.has(dataType) ? attribute.min_value : undefined, max_value: numericAttributeTypes.has(dataType) ? attribute.max_value : undefined }); }}>
-                        {attributeDataTypes.map((type) => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
-                      </TextField>
-                    </Box>
-                    <TextField fullWidth multiline minRows={2} label="What does this information represent?" value={attribute.description || ""} onChange={(event) => updateCollection("attributes", index, { description: event.target.value })} placeholder="Customer's expected budget for the purchase." sx={{ mt: 2 }} />
-
-                    {attribute.data_type === "currency" && (
-                      <TextField select label="Currency" value={attribute.currency || "INR"} onChange={(event) => updateCollection("attributes", index, { currency: event.target.value })} sx={{ minWidth: 180, mt: 2 }}>
-                        <MenuItem value="INR">INR (₹)</MenuItem><MenuItem value="USD">USD ($)</MenuItem><MenuItem value="EUR">EUR (€)</MenuItem><MenuItem value="GBP">GBP (£)</MenuItem><MenuItem value="AED">AED</MenuItem>
-                      </TextField>
-                    )}
-
-                    {selectableAttributeTypes.has(attribute.data_type) && (
-                      <Box sx={{ mt: 2.5, p: 2, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.035), border: `1px solid ${theme.palette.divider}` }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}><Box><Typography fontWeight={900}>Options</Typography><Typography variant="caption" color="text.secondary">One choice per row. Order is preserved.</Typography></Box><Button size="small" startIcon={<AddIcon />} onClick={() => updateCollection("attributes", index, { options: [...attribute.options, ""] })}>Add option</Button></Stack>
-                        <Stack spacing={1}>
-                          {attribute.options.map((option, optionIndex) => (
-                            <Stack key={optionIndex} direction="row" spacing={1} alignItems="center"><TextField fullWidth size="small" label={`Option ${optionIndex + 1}`} value={option} onChange={(event) => updateCollection("attributes", index, { options: attribute.options.map((current, currentIndex) => currentIndex === optionIndex ? event.target.value : current) })} placeholder={optionIndex === 0 ? "Apartment" : "Add another choice"} /><Tooltip title="Delete option"><IconButton color="error" onClick={() => updateCollection("attributes", index, { options: attribute.options.filter((_, currentIndex) => currentIndex !== optionIndex) })}><DeleteOutlineIcon /></IconButton></Tooltip></Stack>
-                          ))}
-                          {attribute.options.length === 0 && <Typography variant="body2" color="text.secondary">Add at least one option for this data type.</Typography>}
-                        </Stack>
+                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.15fr .85fr" }, gap: 2 }}>
+                        <TextField required label="Attribute name" value={attribute.label} onChange={(event) => { const label = event.target.value; updateCollection("attributes", index, { label, key: label.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") }); }} placeholder="Budget" />
+                        <TextField select required label="Data type" value={attribute.data_type} onChange={(event) => { const dataType = event.target.value; updateCollection("attributes", index, { data_type: dataType, options: selectableAttributeTypes.has(dataType) ? attribute.options : [], currency: dataType === "currency" ? (attribute.currency || "INR") : undefined, value_rule: numericAttributeTypes.has(dataType) ? attribute.value_rule : "any", min_value: numericAttributeTypes.has(dataType) ? attribute.min_value : undefined, max_value: numericAttributeTypes.has(dataType) ? attribute.max_value : undefined }); }}>
+                          {attributeDataTypes.map((type) => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
+                        </TextField>
                       </Box>
-                    )}
+                      <TextField fullWidth multiline minRows={2} label="What does this information represent?" value={attribute.description || ""} onChange={(event) => updateCollection("attributes", index, { description: event.target.value })} placeholder="Customer's expected budget for the purchase." sx={{ mt: 2 }} />
 
-                    <Box sx={{ mt: 2.5, display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1.4fr" }, gap: 2 }}>
-                      <Box sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5 }}><Typography fontWeight={900}>Required?</Typography><RadioGroup row value={attribute.is_required ? "yes" : "no"} onChange={(event) => updateCollection("attributes", index, { is_required: event.target.value === "yes" })}><FormControlLabel value="yes" control={<Radio />} label="Yes" /><FormControlLabel value="no" control={<Radio />} label="No" /></RadioGroup></Box>
-                      <Box sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5 }}><Typography fontWeight={900}>Qualification relevant?</Typography><RadioGroup row value={attribute.is_qualification_relevant ? "yes" : "no"} onChange={(event) => updateCollection("attributes", index, { is_qualification_relevant: event.target.value === "yes", importance: event.target.value === "yes" ? attribute.importance : "Supporting", value_rule: event.target.value === "yes" ? attribute.value_rule : "any", min_value: event.target.value === "yes" ? attribute.min_value : undefined, max_value: event.target.value === "yes" ? attribute.max_value : undefined })}><FormControlLabel value="yes" control={<Radio />} label="Yes — Consider for qualification" /><FormControlLabel value="no" control={<Radio />} label="No — Information only" /></RadioGroup></Box>
-                    </Box>
+                      {attribute.data_type === "currency" && (
+                        <TextField select label="Currency" value={attribute.currency || "INR"} onChange={(event) => updateCollection("attributes", index, { currency: event.target.value })} sx={{ minWidth: 180, mt: 2 }}>
+                          <MenuItem value="INR">INR (₹)</MenuItem><MenuItem value="USD">USD ($)</MenuItem><MenuItem value="EUR">EUR (€)</MenuItem><MenuItem value="GBP">GBP (£)</MenuItem><MenuItem value="AED">AED</MenuItem>
+                        </TextField>
+                      )}
 
-                    {attribute.is_qualification_relevant && (
-                      <Box sx={{ mt: 2, p: 2, borderRadius: 1.5, border: `1px solid ${alpha("#157f78", 0.3)}`, bgcolor: alpha("#157f78", 0.055) }}>
-                        <Typography fontWeight={900}>Qualification importance</Typography>
-                        <RadioGroup row value={attribute.importance} onChange={(event) => updateCollection("attributes", index, { importance: event.target.value })}><FormControlLabel value="Essential" control={<Radio />} label="Essential" /><FormControlLabel value="Supporting" control={<Radio />} label="Supporting" /></RadioGroup>
+                      {selectableAttributeTypes.has(attribute.data_type) && (
+                        <Box sx={{ mt: 2.5, p: 2, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.035), border: `1px solid ${theme.palette.divider}` }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}><Box><Typography fontWeight={900}>Options</Typography><Typography variant="caption" color="text.secondary">One choice per row. Order is preserved.</Typography></Box><Button size="small" startIcon={<AddIcon />} onClick={() => updateCollection("attributes", index, { options: [...attribute.options, ""] })}>Add option</Button></Stack>
+                          <Stack spacing={1}>
+                            {attribute.options.map((option, optionIndex) => (
+                              <Stack key={optionIndex} direction="row" spacing={1} alignItems="center"><TextField fullWidth size="small" label={`Option ${optionIndex + 1}`} value={option} onChange={(event) => updateCollection("attributes", index, { options: attribute.options.map((current, currentIndex) => currentIndex === optionIndex ? event.target.value : current) })} placeholder={optionIndex === 0 ? "Apartment" : "Add another choice"} /><Tooltip title="Delete option"><IconButton color="error" onClick={() => updateCollection("attributes", index, { options: attribute.options.filter((_, currentIndex) => currentIndex !== optionIndex) })}><DeleteOutlineIcon /></IconButton></Tooltip></Stack>
+                            ))}
+                            {attribute.options.length === 0 && <Typography variant="body2" color="text.secondary">Add at least one option for this data type.</Typography>}
+                          </Stack>
+                        </Box>
+                      )}
 
-                        {numericAttributeTypes.has(attribute.data_type) && (
-                          <Box sx={{ mt: 1.5, pt: 2, borderTop: `1px solid ${alpha("#157f78", 0.2)}` }}>
-                            <Typography fontWeight={900} sx={{ mb: 1 }}>Relevant value</Typography>
-                            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "center" }}>
-                              <RadioGroup row value={attribute.value_rule} onChange={(event) => updateCollection("attributes", index, { value_rule: event.target.value, min_value: event.target.value === "any" || event.target.value === "maximum" ? undefined : attribute.min_value, max_value: event.target.value === "any" || event.target.value === "minimum" ? undefined : attribute.max_value })}><FormControlLabel value="any" control={<Radio />} label="Any value" /><FormControlLabel value="minimum" control={<Radio />} label="Minimum" /><FormControlLabel value="maximum" control={<Radio />} label="Maximum" /><FormControlLabel value="range" control={<Radio />} label="Range" /></RadioGroup>
-                            </Stack>
-                            {attribute.value_rule !== "any" && <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1.5 }}>{(attribute.value_rule === "minimum" || attribute.value_rule === "range") && <TextField type="number" label="Minimum value" value={attribute.min_value ?? ""} onChange={(event) => updateCollection("attributes", index, { min_value: event.target.value === "" ? undefined : Number(event.target.value) })} />}{(attribute.value_rule === "maximum" || attribute.value_rule === "range") && <TextField type="number" label="Maximum value" value={attribute.max_value ?? ""} onChange={(event) => updateCollection("attributes", index, { max_value: event.target.value === "" ? undefined : Number(event.target.value) })} />}</Stack>}
-                          </Box>
-                        )}
+                      <Box sx={{ mt: 2.5, display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1.4fr" }, gap: 2 }}>
+                        <Box sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5 }}><Typography fontWeight={900}>Required?</Typography><RadioGroup row value={attribute.is_required ? "yes" : "no"} onChange={(event) => updateCollection("attributes", index, { is_required: event.target.value === "yes" })}><FormControlLabel value="yes" control={<Radio />} label="Yes" /><FormControlLabel value="no" control={<Radio />} label="No" /></RadioGroup></Box>
+                        <Box sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5 }}><Typography fontWeight={900}>Qualification relevant?</Typography><RadioGroup row value={attribute.is_qualification_relevant ? "yes" : "no"} onChange={(event) => updateCollection("attributes", index, { is_qualification_relevant: event.target.value === "yes", importance: event.target.value === "yes" ? attribute.importance : "Supporting", value_rule: event.target.value === "yes" ? attribute.value_rule : "any", min_value: event.target.value === "yes" ? attribute.min_value : undefined, max_value: event.target.value === "yes" ? attribute.max_value : undefined })}><FormControlLabel value="yes" control={<Radio />} label="Yes — Consider for qualification" /><FormControlLabel value="no" control={<Radio />} label="No — Information only" /></RadioGroup></Box>
                       </Box>
-                    )}
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>System key: {attribute.key || "generated from attribute name"}</Typography>
+
+                      {attribute.is_qualification_relevant && (
+                        <Box sx={{ mt: 2, p: 2, borderRadius: 1.5, border: `1px solid ${alpha("#157f78", 0.3)}`, bgcolor: alpha("#157f78", 0.055) }}>
+                          <Typography fontWeight={900}>Qualification importance</Typography>
+                          <RadioGroup row value={attribute.importance} onChange={(event) => updateCollection("attributes", index, { importance: event.target.value })}><FormControlLabel value="Essential" control={<Radio />} label="Essential" /><FormControlLabel value="Supporting" control={<Radio />} label="Supporting" /></RadioGroup>
+
+                          {numericAttributeTypes.has(attribute.data_type) && (
+                            <Box sx={{ mt: 1.5, pt: 2, borderTop: `1px solid ${alpha("#157f78", 0.2)}` }}>
+                              <Typography fontWeight={900} sx={{ mb: 1 }}>Relevant value</Typography>
+                              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "center" }}>
+                                <RadioGroup row value={attribute.value_rule} onChange={(event) => updateCollection("attributes", index, { value_rule: event.target.value, min_value: event.target.value === "any" || event.target.value === "maximum" ? undefined : attribute.min_value, max_value: event.target.value === "any" || event.target.value === "minimum" ? undefined : attribute.max_value })}><FormControlLabel value="any" control={<Radio />} label="Any value" /><FormControlLabel value="minimum" control={<Radio />} label="Minimum" /><FormControlLabel value="maximum" control={<Radio />} label="Maximum" /><FormControlLabel value="range" control={<Radio />} label="Range" /></RadioGroup>
+                              </Stack>
+                              {attribute.value_rule !== "any" && <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1.5 }}>{(attribute.value_rule === "minimum" || attribute.value_rule === "range") && <TextField type="number" label="Minimum value" value={attribute.min_value ?? ""} onChange={(event) => updateCollection("attributes", index, { min_value: event.target.value === "" ? undefined : Number(event.target.value) })} />}{(attribute.value_rule === "maximum" || attribute.value_rule === "range") && <TextField type="number" label="Maximum value" value={attribute.max_value ?? ""} onChange={(event) => updateCollection("attributes", index, { max_value: event.target.value === "" ? undefined : Number(event.target.value) })} />}</Stack>}
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>System key: {attribute.key || "generated from attribute name"}</Typography>
                     </Box>
                   </Paper>
                 ))}
@@ -1293,8 +1312,34 @@ export default function QualificationTemplateEditorPage() {
         </Paper>
       </Box>
 
-      <Snackbar open={Boolean(error || success)} autoHideDuration={4000} onClose={() => { setError(""); setSuccess(""); }} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
-        <Alert severity={error ? "error" : "success"} variant="filled" onClose={() => { setError(""); setSuccess(""); }}>{error || success}</Alert>
+      <Snackbar
+        open={Boolean(error || success)}
+        autoHideDuration={4000}
+        onClose={() => {
+          setError("");
+          setSuccess("");
+        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity={error ? "error" : "success"}
+          variant="filled"
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          sx={{
+            color: "#000",
+            "& .MuiAlert-icon": {
+              color: "#000",
+            },
+            "& .MuiAlert-action": {
+              color: "#000",
+            },
+          }}
+        >
+          {error || success}
+        </Alert>
       </Snackbar>
     </AdminLayout>
   );
