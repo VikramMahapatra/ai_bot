@@ -226,6 +226,7 @@ export const StageChip = ({
         />
     );
 };
+
 export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
     if (!value || !value.trim()) {
         return (
@@ -292,6 +293,36 @@ export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
     );
 };
 
+export const TemperatureChip = ({
+    value,
+}: {
+    value?: string | null;
+}) => {
+    if (!value || !value.trim()) {
+        return null;
+    }
+
+    const normalized = value.toLowerCase().trim();
+
+    const colorMap: Record<string, any> = {
+        "very hot": "error",
+        hot: "error",
+        warm: "warning",
+        cold: "info",
+    };
+
+    const label =
+        normalized.charAt(0).toUpperCase() + normalized.slice(1);
+
+    return (
+        <Chip
+            label={label}
+            size="small"
+            variant="outlined"
+            color={colorMap[normalized] || "default"}
+        />
+    );
+};
 
 interface SourceProps {
     value: string;
