@@ -34,9 +34,12 @@ from app.api import (
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
 from app.services.conversation_outcome_service import (
-    run_daily_call_campaign_daemon,
     run_daily_outcome_daemon,
+)
+from app.services.calling_agent_daemon_service import (
+    run_daily_call_campaign_daemon,
     run_inbound_call_agent_daemon,
+    run_republish_agents_agent_daemon,
 )
 from app.services.org_credit_billing_service import run_daily_org_credit_billing_daemon
 import logging
@@ -73,6 +76,9 @@ due_campaign_daemon_stop_event = asyncio.Event()
 
 inbound_call_agent_daemon_task = None
 inbound_call_agent_daemon_stop_event = asyncio.Event()
+
+republish_agents_daemon_task = None
+republish_agents_daemon_stop_event = asyncio.Event()
 
 zoho_contact_sync_task = None
 zoho_contact_sync_stop_event = asyncio.Event()
@@ -158,6 +164,7 @@ async def startup_event():
     global zoho_contact_sync_task
     global zoho_automation_daemon_task
     global zoho_call_automation_daemon_task
+    global republish_agents_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -192,6 +199,11 @@ async def startup_event():
     )
     logger.info("Inbound call agent credit check daemon started")
 
+    republish_agents_daemon_stop_event.clear()
+    republish_agents_daemon_task = asyncio.create_task(
+        run_republish_agents_agent_daemon(republish_agents_daemon_stop_event)
+    )
+
     zoho_contact_sync_stop_event.clear()
     zoho_contact_sync_task = asyncio.create_task(
         run_zoho_contact_sync_daemon(zoho_contact_sync_stop_event)
@@ -222,6 +234,7 @@ async def shutdown_event():
     global due_campaign_daemon_task
     global zoho_automation_daemon_task
     global inbound_call_agent_daemon_task
+    global republish_agents_daemon_task
     global zoho_contact_sync_task
     global zoho_call_automation_daemon_task
     outcome_daemon_stop_event.set()
@@ -229,6 +242,7 @@ async def shutdown_event():
     org_credit_billing_daemon_stop_event.set()
     due_campaign_daemon_stop_event.set()
     inbound_call_agent_daemon_stop_event.set()
+    republish_agents_daemon_stop_event.set()
     zoho_contact_sync_stop_event.set()
     zoho_automation_daemon_stop_event.set()
     zoho_call_automation_daemon_stop_event.set()
@@ -262,6 +276,12 @@ async def shutdown_event():
             await inbound_call_agent_daemon_task
         except Exception:
             logger.exception("Error while stopping inbound call agent daemon")
+
+    if republish_agents_daemon_task:
+        try:
+            await republish_agents_daemon_task
+        except Exception:
+            logger.exception("Error while stopping republish agents daemon")
 
     if zoho_contact_sync_task:
         try:

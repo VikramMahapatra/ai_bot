@@ -91,9 +91,11 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import {
+  ConversionOutcomeChip,
   OutcomeChip,
   SourceChip,
   StageChip,
+  TemperatureChip,
   titleCase,
 } from "../Common/StatusChips";
 import {
@@ -226,8 +228,8 @@ const LeadManager = ({
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [closeDateOpen, setCloseDateOpen] = useState(false);
   const [closeDate, setCloseDate] = useState(
-  new Date().toISOString().split("T")[0]
-);
+    new Date().toISOString().split("T")[0]
+  );
   const [summary, setSummary] = useState<any>({});
   const formatDisplayDate = useDateFormatter();
   const formatDisplayOnlyDate = useOnlyDateFormatter();
@@ -334,8 +336,8 @@ const LeadManager = ({
     const campaignLabel =
       selectedCampaignId !== "all"
         ? (campaigns
-            .find((c) => String(c.id) === selectedCampaignId)
-            ?.campaign_name?.toLowerCase() ?? "")
+          .find((c) => String(c.id) === selectedCampaignId)
+          ?.campaign_name?.toLowerCase() ?? "")
         : "";
 
     return leads.filter((lead) => {
@@ -972,20 +974,19 @@ const LeadManager = ({
         >
           {[
             selectedWidget &&
-              `widget: ${selectedWidget.name}${
-                selectedWidget.source
-                  ? ` (${sourceLabel(selectedWidget.source)})`
-                  : ""
-              }`,
+            `widget: ${selectedWidget.name}${selectedWidget.source
+              ? ` (${sourceLabel(selectedWidget.source)})`
+              : ""
+            }`,
             selectedProduct && `product: ${selectedProduct.name}`,
             selectedSource !== "all" &&
-              `source: ${sourceLabel(selectedSource)}`,
+            `source: ${sourceLabel(selectedSource)}`,
             selectedFunnelStage !== "all" &&
-              `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
+            `funnel: ${activeFunnelCategories.find((s) => s.key === selectedFunnelStage)?.name ?? selectedFunnelStage}`,
             selectedCampaign &&
-              `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
+            `campaign: ${selectedCampaign.campaign_name} (${campaignTypeLabel(selectedCampaign.campaign_type)})`,
             selectedCampaignType !== "all" &&
-              `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
+            `campaign type: ${campaignTypeLabel(selectedCampaignType)}`,
           ]
             .filter(Boolean)
             .join(" · ") || "Showing leads from all widgets and campaigns"}
@@ -1128,7 +1129,7 @@ const LeadManager = ({
                   <MenuItem key={campaign.id} value={String(campaign.id)}>
                     {campaign.campaign_name}
                     {campaign.campaign_type &&
-                    campaignTypeLabel(campaign.campaign_type)
+                      campaignTypeLabel(campaign.campaign_type)
                       ? `(${campaignTypeLabel(campaign.campaign_type)})`
                       : ""}
                   </MenuItem>
@@ -1377,6 +1378,7 @@ const LeadManager = ({
                 <TableCell sx={{ fontWeight: 700 }}>Product</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Latest Sentiment</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Priority</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Funnel Stage</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Created Date</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Exp/Actual Closed Date</TableCell>
@@ -1470,6 +1472,12 @@ const LeadManager = ({
                     <OutcomeChip value={lead.lead_outcome} />
                   </TableCell>
                   <TableCell>
+                    {lead.qualification_outcome === "positive" &&
+                      lead.qualification_temperature && (
+                        <TemperatureChip value={lead.qualification_temperature} />
+                      )}
+                  </TableCell>
+                  <TableCell>
                     <StageChip
                       value={lead.funnel_stage}
                       funnelCategories={funnelCategories}
@@ -1550,7 +1558,7 @@ const LeadManager = ({
               ))}
               {displayLeads.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {leads.length === 0
                         ? "No leads found for the selected filters."
@@ -1746,7 +1754,7 @@ const LeadManager = ({
                 </Typography>
 
                 {selectedLead?.funnel_stage === "closed_won" ||
-                selectedLead?.funnel_stage === "closed_lost" ? (
+                  selectedLead?.funnel_stage === "closed_lost" ? (
                   <Box
                     sx={{
                       border: "1px solid",
@@ -1811,8 +1819,8 @@ const LeadManager = ({
                           // Prevent selecting before created_date
                           min: selectedLead?.created_at
                             ? new Date(selectedLead.created_at)
-                                .toISOString()
-                                .split("T")[0]
+                              .toISOString()
+                              .split("T")[0]
                             : undefined,
                         }}
                         sx={{
@@ -1989,12 +1997,12 @@ const LeadManager = ({
               control={
                 <Switch
                   checked={categoryForm.is_active}
-                  // onChange={(event) =>
-                  //   setCategoryForm((prev) => ({
-                  //     ...prev,
-                  //     is_active: event.target.checked,
-                  //   }))
-                  // }
+                // onChange={(event) =>
+                //   setCategoryForm((prev) => ({
+                //     ...prev,
+                //     is_active: event.target.checked,
+                //   }))
+                // }
                 />
               }
               label="Active"
@@ -2035,20 +2043,20 @@ const LeadManager = ({
       />
 
       <Dialog
-              open={openFunnelCatDialog}
-              onClose={() => setOpenFunnelCatDialog(false)}
-              sx={{
-                "& .MuiDialog-paper": {
-                  maxWidth: "60%",
-                  margin: 0,
-                  overflowX: "hidden",
-                },
-              }}
+        open={openFunnelCatDialog}
+        onClose={() => setOpenFunnelCatDialog(false)}
+        sx={{
+          "& .MuiDialog-paper": {
+            maxWidth: "60%",
+            margin: 0,
+            overflowX: "hidden",
+          },
+        }}
         fullWidth
-            >
-              <DialogTitle>Funnel Category Master</DialogTitle>
-              <DialogContent sx={{ overflowX: "hidden" }}>
-                <TableContainer
+      >
+        <DialogTitle>Funnel Category Master</DialogTitle>
+        <DialogContent sx={{ overflowX: "hidden" }}>
+          <TableContainer
             id="funnel-category-master-panel"
             sx={{
               borderRadius: "12px",
@@ -2122,11 +2130,11 @@ const LeadManager = ({
               </TableBody>
             </Table>
           </TableContainer>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setOpenFunnelCatDialog(false)}>Close</Button>
-              </DialogActions>
-            </Dialog>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenFunnelCatDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Drawer
         anchor="right"

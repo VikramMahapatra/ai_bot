@@ -27,7 +27,7 @@ from app.services.organization_setting_service import (
 from app.models.campaign import Contact
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.api.chat import _get_or_create_agent_contact_list, _normalize_phone
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, ConversationEvaluation
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 from app.models.call_campaigns import CallCampaign
@@ -406,37 +406,6 @@ def build_lead_filters(
     if product_id:
         filters.append(Lead.product_id == product_id)
 
-    # if campaign_id:
-    #     if source == "voice":
-    #         filters.append(
-    #             exists().where(
-    #                 (LeadContactMapping.lead_id == Lead.id)
-    #                 & (LeadContactMapping.contact_id == CampaignContact.contact_id)
-    #                 & (CampaignContact.campaign_id == campaign_id)
-    #             )
-    #         )
-    #     else:
-    #         campaign_contact_list_id = (
-    #             db.query(CallCampaign.contact_list_id)
-    #             .filter(
-    #                 CallCampaign.id == campaign_id,
-    #                 CallCampaign.organization_id == current_user.organization_id,
-    #             )
-    #             .scalar()
-    #         )
-
-    #         if not campaign_contact_list_id:
-    #             return None  # handle separately
-
-    #         filters.append(
-    #             exists()
-    #             .select_from(LeadContactMapping)
-    #             .join(Contact, Contact.id == LeadContactMapping.contact_id)
-    #             .where(
-    #                 LeadContactMapping.lead_id == Lead.id,
-    #                 Contact.contact_list_id == campaign_contact_list_id,
-    #             )
-    #         )
     if campaign_id:
         filters.append(
             exists().where(
@@ -463,8 +432,11 @@ async def list_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    EXCLUDED_STAGES = ["unassigned", "closed_won", "closed_lost"]
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    EXCLUDED_STAGES = [
+        "unassigned",
+        "closed_won",
+        "closed_lost",
+    ]
 
     filters = build_lead_filters(
         db,
@@ -482,7 +454,11 @@ async def list_leads(
     if filters is None:
         return {
             "items": [],
-            "pagination": {"total": 0, "skip": skip, "limit": limit},
+            "pagination": {
+                "total": 0,
+                "skip": skip,
+                "limit": limit,
+            },
             "summary": {
                 "total_pipeline_leads": 0,
                 "closed_won_leads": 0,
@@ -490,13 +466,19 @@ async def list_leads(
             },
         }
 
-    """List all leads (paginated)"""
+    # ---------------------------------------------------------
+    # BASE LEAD QUERY
+    # ---------------------------------------------------------
+
     query = db.query(Lead).filter(*filters)
 
     total = query.count()
 
+    # ---------------------------------------------------------
+    # SUMMARY
+    # ---------------------------------------------------------
+
     summary = db.query(
-        # total pipeline leads
         func.count(
             case(
                 (
@@ -508,18 +490,17 @@ async def list_leads(
                 )
             )
         ).label("total_pipeline_leads"),
-        # closed won leads
         func.count(
             case(
                 (
                     and_(
-                        Lead.funnel_stage.isnot(None), Lead.funnel_stage == "closed_won"
+                        Lead.funnel_stage.isnot(None),
+                        Lead.funnel_stage == "closed_won",
                     ),
                     1,
                 )
             )
         ).label("closed_won_leads"),
-        # closed lost leads
         func.count(
             case(
                 (
@@ -533,23 +514,35 @@ async def list_leads(
         ).label("closed_lost_leads"),
     ).select_from(Lead)
 
-    # reuse filters
     summary = summary.filter(*filters)
 
     summary_result = summary.one()
 
+    # ---------------------------------------------------------
+    # PAGINATED LEADS
+    # ---------------------------------------------------------
+
     leads = query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
 
+    # ---------------------------------------------------------
+    # PRODUCT NAMES
+    # ---------------------------------------------------------
+
     product_ids = []
+
     for lead in leads:
         if not lead.product_id:
             continue
+
         try:
             product_ids.append(int(lead.product_id))
         except (TypeError, ValueError):
             continue
+
     product_ids = list(set(product_ids))
+
     product_name_map = {}
+
     if product_ids:
         products = (
             db.query(Product)
@@ -560,19 +553,150 @@ async def list_leads(
             )
             .all()
         )
+
         product_name_map = {str(product.id): product.name for product in products}
 
-    for lead in leads:
-        setattr(lead, "product_name", product_name_map.get(lead.product_id))
+    # ---------------------------------------------------------
+    # LATEST LEAD ACTIVITY / SESSION
+    #
+    # A lead can have multiple activities.
+    # Get the latest activity that has a session_id.
+    # ---------------------------------------------------------
 
-    # return leads
+    lead_ids = [lead.id for lead in leads]
+
+    evaluation_map = {}
+
+    if lead_ids:
+        latest_lead_activity = (
+            db.query(
+                LeadActivity.lead_id.label("lead_id"),
+                LeadActivity.session_id.label("session_id"),
+                func.row_number()
+                .over(
+                    partition_by=LeadActivity.lead_id,
+                    order_by=LeadActivity.activity_datetime.desc(),
+                )
+                .label("rn"),
+            )
+            .filter(
+                LeadActivity.lead_id.in_(lead_ids),
+                LeadActivity.session_id.isnot(None),
+            )
+            .subquery()
+        )
+
+        # -----------------------------------------------------
+        # LATEST QUALIFICATION EVALUATION
+        #
+        # For each lead, use the evaluation belonging to the
+        # latest LeadActivity session.
+        # -----------------------------------------------------
+
+        evaluation_rows = (
+            db.query(
+                latest_lead_activity.c.lead_id.label("lead_id"),
+                ConversationEvaluation.outcome.label("outcome"),
+                ConversationEvaluation.temperature.label("temperature"),
+                ConversationEvaluation.score.label("score"),
+                ConversationEvaluation.updated_at.label("updated_at"),
+                func.row_number()
+                .over(
+                    partition_by=latest_lead_activity.c.lead_id,
+                    order_by=ConversationEvaluation.updated_at.desc(),
+                )
+                .label("evaluation_rn"),
+            )
+            .join(
+                ConversationEvaluation,
+                ConversationEvaluation.session_id == latest_lead_activity.c.session_id,
+            )
+            .filter(
+                latest_lead_activity.c.rn == 1,
+                ConversationEvaluation.organization_id == current_user.organization_id,
+                ConversationEvaluation.evaluation_status == "evaluated",
+            )
+            .subquery()
+        )
+
+        # -----------------------------------------------------
+        # CREATE LEAD -> EVALUATION MAP
+        # -----------------------------------------------------
+
+        evaluation_results = (
+            db.query(
+                evaluation_rows.c.lead_id,
+                evaluation_rows.c.outcome,
+                evaluation_rows.c.temperature,
+                evaluation_rows.c.score,
+            )
+            .filter(
+                evaluation_rows.c.evaluation_rn == 1,
+            )
+            .all()
+        )
+
+        evaluation_map = {
+            row.lead_id: {
+                "outcome": row.outcome,
+                "temperature": row.temperature,
+                "score": row.score,
+            }
+            for row in evaluation_results
+        }
+
+    # ---------------------------------------------------------
+    # ENRICH LEADS
+    # ---------------------------------------------------------
+
+    for lead in leads:
+        # Product
+        setattr(
+            lead,
+            "product_name",
+            product_name_map.get(lead.product_id),
+        )
+
+        # Qualification evaluation
+        evaluation = evaluation_map.get(lead.id)
+
+        setattr(
+            lead,
+            "qualification_outcome",
+            evaluation["outcome"] if evaluation else None,
+        )
+
+        setattr(
+            lead,
+            "qualification_temperature",
+            evaluation["temperature"] if evaluation else None,
+        )
+
+        setattr(
+            lead,
+            "qualification_score",
+            (
+                int(evaluation["score"])
+                if evaluation and evaluation["score"] is not None
+                else None
+            ),
+        )
+
+    # ---------------------------------------------------------
+    # RESPONSE
+    # ---------------------------------------------------------
+
     return {
         "items": leads,
-        "pagination": {"total": total, "skip": skip, "limit": limit},
+        "pagination": {
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        },
         "summary": {
-            "total_pipeline_leads": summary_result.total_pipeline_leads or 0,
-            "closed_won_leads": summary_result.closed_won_leads or 0,
-            "closed_lost_leads": summary_result.closed_lost_leads or 0,
+            "total_pipeline_leads": (summary_result.total_pipeline_leads or 0),
+            "closed_won_leads": (summary_result.closed_won_leads or 0),
+            "closed_lost_leads": (summary_result.closed_lost_leads or 0),
         },
     }
 
