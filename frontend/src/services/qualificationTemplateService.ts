@@ -74,6 +74,7 @@ export interface QualificationTemplatePayload {
 
 export interface QualificationTemplate extends QualificationTemplatePayload {
   id: number;
+  engine_template_id?: string | null;
   organization_id: number;
   created_at: string;
   updated_at?: string;

@@ -925,6 +925,46 @@ async def process_pending_session_outcomes(
             is_lead_value = 1 if whether_lead == "lead" else 0
 
             # =========================================================
+            # Add contact to qualified list for voice calls
+            #
+            # Qualification Engine is now the source of truth for
+            # whether the contact is qualified.
+            # =========================================================
+
+            if source == "voice" and is_lead_value == 1:
+
+                call_log = (
+                    db.query(CallLog)
+                    .filter(
+                        CallLog.call_session_id == session_id,
+                        CallLog.organization_id == org_id,
+                    )
+                    .order_by(CallLog.created_at.desc())
+                    .first()
+                )
+
+                if call_log and call_log.contact_id and call_log.campaign_id:
+
+                    campaign = (
+                        db.query(CallCampaign)
+                        .filter(
+                            CallCampaign.id == call_log.campaign_id,
+                            CallCampaign.organization_id == org_id,
+                            CallCampaign.is_deleted == False,
+                        )
+                        .first()
+                    )
+
+                    if campaign:
+
+                        add_contact_to_qualified_list(
+                            db=db,
+                            organization_id=org_id,
+                            campaign=campaign,
+                            contact_id=call_log.contact_id,
+                        )
+
+            # =========================================================
             # Deduct credit only after successful Engine evaluation
             # =========================================================
 
