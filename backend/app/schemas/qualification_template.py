@@ -252,6 +252,7 @@ class QualificationTemplateResponse(QualificationTemplatePayload):
     positive_signals: List[PositiveSignalResponse]
     disqualification_criteria: List[DisqualificationCriterionResponse]
     lead_temperatures: List[LeadTemperatureResponse]
+    engine_template_id: Optional[str] = None
 
 
 class QualificationTemplateSummary(BaseModel):

@@ -488,8 +488,23 @@ export default function QualificationTemplateEditorPage() {
       const savedTemplate = id
         ? await qualificationTemplateService.update(id, form)
         : await qualificationTemplateService.create(form);
+
+      // Existing Engine template → sync the new version
+      const shouldSync = Boolean(savedTemplate.engine_template_id);
+      console.log("Saved template:", savedTemplate, "Should sync:", shouldSync);
+      if (shouldSync) {
+        console.log("Syncing template with engine:", savedTemplate.id);
+        await qualificationTemplateService.sync(
+          savedTemplate.id
+        );
+      }
+
       setForm(savedTemplate);
-      setSuccess(`${tabs[activeTab].label} saved.`);
+      setSuccess(
+        shouldSync
+          ? `${tabs[activeTab].label} saved and synced.`
+          : `${tabs[activeTab].label} saved.`
+      );
       if (!id) {
         navigate(`/qualification-templates/${savedTemplate.id}/edit`, { replace: true });
       }
