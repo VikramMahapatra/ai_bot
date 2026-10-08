@@ -8,6 +8,8 @@ class ConversationMetricsResponse(BaseModel):
     session_id: str
     contact_name: str
     source: Optional[str] = None
+    call_type: Optional[str] = None
+    phone: Optional[str] = None
     organization_id: int
     widget_id: Optional[str]
     total_messages: int

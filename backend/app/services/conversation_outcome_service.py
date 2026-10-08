@@ -386,53 +386,54 @@ def _get_or_create_conversation_evaluation(
 
 
 async def _evaluate_conversation_with_engine(
-    db: Session,
-    organization_id: int,
+    *,
+    api_key: str,
+    project_id: str,
     session_id: str,
     transcript: dict[str, Any],
-    template: QualificationTemplate,
+    template_id: str,
+    engine_template_payload: dict[str, Any],
 ) -> dict[str, Any]:
 
-    if not template:
-        raise RuntimeError("Qualification template is required")
+    if not api_key:
+        raise RuntimeError("Qualification Engine API key is not configured")
 
-    if not template.engine_template_id:
+    if not template_id:
         raise RuntimeError(
-            f"Qualification template '{template.name}' "
-            "is not synced with the Qualification Engine"
+            "Qualification template is not synced with the Qualification Engine"
         )
 
-    engine_service = QualificationEngineService()
-
-    api_key = engine_service.get_api_key(
-        db,
-        organization_id,
-    )
-
-    engine_template_payload = engine_service.build_engine_template_payload(template)
+    if not engine_template_payload:
+        raise RuntimeError("Qualification Engine template payload is required")
 
     evaluation_request = {
-        "project_id": f"org_{organization_id}_qualification",
+        "project_id": project_id,
         "conversation_transcript_id": str(session_id),
         "transcript": transcript,
         "template": engine_template_payload,
-        "template_id": str(template.engine_template_id),
+        "template_id": str(template_id),
     }
 
     try:
+        engine_service = QualificationEngineService()
+
         result = await engine_service.evaluate(
             api_key=api_key,
-            project_id=f"org_{organization_id}_qualification",
+            project_id=project_id,
             conversation_transcript_id=str(session_id),
             transcript=transcript,
-            template_id=str(template.engine_template_id),
+            template_id=str(template_id),
             template=engine_template_payload,
         )
 
-        return result
+        return {
+            "request": evaluation_request,
+            "response": result,
+        }
 
     except Exception as exc:
-        # Attach the request to the exception so the caller can persist it.
+        # Attach the request so the caller can persist it
+        # if the Engine request fails.
         exc.evaluation_request = evaluation_request
         raise
 
@@ -736,6 +737,32 @@ async def process_pending_session_outcomes(
                                 )
                                 .first()
                             )
+                # INBOUND
+                else:
+
+                    calling_agent = None
+
+                    if call_log.agent_id:
+                        calling_agent = (
+                            db.query(CallingAgent)
+                            .filter(
+                                CallingAgent.id == call_log.agent_id,
+                                CallingAgent.organization_id == org_id,
+                            )
+                            .first()
+                        )
+
+                    if calling_agent and calling_agent.qualification_template_id:
+
+                        template = (
+                            db.query(QualificationTemplate)
+                            .filter(
+                                QualificationTemplate.id
+                                == calling_agent.qualification_template_id,
+                                QualificationTemplate.organization_id == org_id,
+                            )
+                            .first()
+                        )
 
             # ---------------------------------------------------------
             # Chat / Widget
@@ -789,14 +816,31 @@ async def process_pending_session_outcomes(
             # =========================================================
 
             try:
+                engine_service = QualificationEngineService()
+
+                api_key = engine_service.get_api_key(
+                    db,
+                    org_id,
+                )
+
+                engine_template_payload = engine_service.build_engine_template_payload(
+                    template
+                )
+
+                # Release DB connection before external HTTP call.
+                db.commit()
+                db.close()
 
                 evaluation_result = await _evaluate_conversation_with_engine(
-                    db=db,
-                    organization_id=org_id,
-                    session_id=session_id,
+                    api_key=api_key,
+                    project_id=f"org_{org_id}_qualification",
+                    session_id=str(session_id),
                     transcript=evaluation_transcript,
-                    template=template,
+                    template_id=str(template.engine_template_id),
+                    engine_template_payload=engine_template_payload,
                 )
+
+                db = SessionLocal()
 
                 evaluation_request = evaluation_result["request"]
                 evaluation = evaluation_result["response"]
