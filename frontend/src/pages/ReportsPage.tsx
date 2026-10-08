@@ -73,6 +73,8 @@ import EmailIcon from "@mui/icons-material/Email";
 import EllipsisCell from "../components/EllipsisCell";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import { formatDate } from "../utils/dateUtils";
+import CallMadeIcon from "@mui/icons-material/CallMade";
+import CallReceivedIcon from "@mui/icons-material/CallReceived";
 
 export const ActionMenu = ({
   handleExportCSV,
@@ -292,6 +294,13 @@ const ReportsPage: React.FC = () => {
       setError("Failed to load funnel categories");
     }
   };
+
+  const getTypeIcon = (type: string) =>
+    type === "outbound" ? (
+      <CallMadeIcon fontSize="small" color="primary" />
+    ) : (
+      <CallReceivedIcon fontSize="small" color="primary" />
+    );
 
   const activeFunnelCategories = useMemo(
     () =>
@@ -1345,6 +1354,25 @@ const ReportsPage: React.FC = () => {
                           <Typography variant="body2" noWrap>
                             {conv.contact_name}
                           </Typography>
+                          {conv.call_type === "inbound" && conv.phone && (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                                mt: 0.25,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                noWrap
+                                sx={{ display: "block", mt: 0.2 }}
+                              >
+                                {conv.phone}
+                              </Typography>
+                            </Box>
+                          )}
 
                           {conv.qualified !== null && conv.qualified == true && conv.score !== null && conv.score !== undefined && (
                             <Box
@@ -1398,6 +1426,14 @@ const ReportsPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <SourceChip value={conv.source} />
+                        {conv.call_type && (
+                          <Box display="flex" alignItems="center" gap={0.5} mt={0.4}>
+                            {getTypeIcon(conv.call_type)}
+                            <Typography variant="caption" color="text.secondary">
+                              {conv.call_type}
+                            </Typography>
+                          </Box>
+                        )}
                       </TableCell>
                       {/* <TableCell align="right">{conv.total_messages}</TableCell>
                       <TableCell align="right">{conv.total_tokens}</TableCell> */}

@@ -224,17 +224,8 @@ def get_session_conversations_report(
     call_log_subquery = (
         db.query(
             CallLog.call_session_id.label("session_id"),
-            func.max(
-                cast(
-                    func.json_extract_path_text(
-                        CallLog.lead_info,
-                        "lead_quality",
-                        "rate",
-                    ),
-                    Float,
-                )
-            ).label("lead_quality_rate"),
-            func.max(CallLog.call_summary).label("call_summary"),
+            func.max(CallLog.type).label("call_type"),
+            func.max(CallLog.phone).label("phone"),
         )
         .filter(
             CallLog.organization_id == organization_id,
@@ -341,6 +332,8 @@ def get_session_conversations_report(
             latest_evaluation_subquery.c.disposition.label("disposition"),
             latest_evaluation_subquery.c.next_action.label("next_action"),
             lead_conversion_case.label("lead_conversion"),
+            func.coalesce(call_log_subquery.c.call_type, "").label("call_type"),
+            func.coalesce(call_log_subquery.c.phone, "").label("phone"),
         )
         .select_from(sessions_subquery)
         .outerjoin(
@@ -397,7 +390,10 @@ def get_session_conversations_report(
         normalized_lead_conversion = _normalize_outcome(lead_conversion_outcome)
 
         if normalized_lead_conversion != "all":
-            query = query.filter(lead_conversion_case == normalized_lead_conversion)
+            if normalized_lead_conversion == "positive":
+                query = query.filter(sessions_subquery.c.is_lead == True)
+            else:
+                query = query.filter(lead_conversion_case == normalized_lead_conversion)
 
     if source:
         normalized_source = _normalize_source(source)
@@ -442,6 +438,8 @@ def get_session_conversations_report(
                 "organization_id": organization_id,
                 "widget_id": row.widget_id,
                 "source": row.source,
+                "call_type": row.call_type,
+                "phone": row.phone,
                 "total_messages": turn_count * 2,
                 "total_tokens": int(row.total_tokens or 0),
                 "prompt_tokens": int(row.prompt_tokens or 0),

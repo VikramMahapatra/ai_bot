@@ -32,6 +32,8 @@ export interface ConversationMetric {
   session_id: string;
   contact_name: string;
   source: string;
+  call_type?: string;
+  phone?: string;
   organization_id: number;
   widget_id: string | null;
   total_messages: number;

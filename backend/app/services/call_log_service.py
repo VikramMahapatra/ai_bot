@@ -83,6 +83,7 @@ from app.models.voices import Voice
 from app.services.limits_service import get_effective_limits
 from app.models.zoho_automation_logs import ZohoAutomationLog
 from app.models.qualification_templates import QualificationTemplate
+from app.services.qualification_engine_service import QualificationEngineService
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -111,10 +112,14 @@ LEAD_QUALIFIED_RANGES = {
 }
 
 
-def get_lead_qualified_status(is_lead, campaign_name, temperature, duration):
+def get_lead_qualified_status(is_lead, call_type, campaign_name, temperature, duration):
     # No lead evaluation yet
     if is_lead is None:
-        return "pending" if campaign_name and duration > 0 else ""
+        return (
+            "pending"
+            if (campaign_name or call_type == "inbound") and duration > 0
+            else ""
+        )
 
     # Qualified lead
     if is_lead:
@@ -395,6 +400,7 @@ def get_call_logs(
 
         lead_status = get_lead_qualified_status(
             is_lead=is_lead,
+            call_type=log.type,
             campaign_name=campaign_name,
             temperature=evaluation_temperature,
             duration=duration,
@@ -460,7 +466,11 @@ def get_call_logs(
                 "testCall": False if log.campaign_id else True,
                 "ended_reason": log.ended_reason,
                 "call_summary": log.call_summary,
-                "sentiment": lead_outcome if lead_outcome and log.campaign_id else "",
+                "sentiment": (
+                    lead_outcome
+                    if lead_outcome and (log.campaign_id or log.type == "inbound")
+                    else ""
+                ),
                 "sentiment_details": log.sentiment_details or {},
                 "follow_up_recommended": log.follow_up_recommended or [],
                 "extract_data": log.extract_data or {},
@@ -1157,6 +1167,11 @@ def process_call(call, agent):
                         call_type="manual_rescheduled_call",
                         reference_id=call_log.contact_id,
                     )
+
+        # For inbound calls, once call is ended, we can create conversation from transcripts
+        if call_log.type == "inbound" and is_call_ended:
+            # Create conversation
+            create_conversation_from_transcripts(db=db, call_log=call_log, agent=agent)
 
         db.commit()
 
@@ -2583,19 +2598,36 @@ async def get_call_result(
     # Qualification Engine evaluation
     # ---------------------------------------------------------
 
-    evaluation = await _evaluate_conversation_with_engine(
-        db=db,
-        organization_id=organization_id,
+    engine_service = QualificationEngineService()
+
+    # Everything that needs the DB must happen BEFORE
+    # the long-running external HTTP request.
+    api_key = engine_service.get_api_key(
+        db,
+        organization_id,
+    )
+
+    engine_template_payload = engine_service.build_engine_template_payload(template)
+
+    # Release the current DB transaction/connection before
+    # waiting for the Qualification Engine.
+    db.commit()
+    db.expire_all()
+
+    evaluation_result = await _evaluate_conversation_with_engine(
+        api_key=api_key,
+        project_id=f"org_{organization_id}_qualification",
         session_id=str(session_id),
         transcript=evaluation_transcript,
-        template=template,
+        template_id=str(template.engine_template_id),
+        engine_template_payload=engine_template_payload,
     )
 
     # ---------------------------------------------------------
     # Use Engine result
     # ---------------------------------------------------------
 
-    classification = _normalize_evaluation_result(evaluation)
+    classification = _normalize_evaluation_result(evaluation_result["response"])
 
     outcome = classification["outcome"]
 
