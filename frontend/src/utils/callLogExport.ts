@@ -29,14 +29,6 @@ export const ExportToExcel = (data: CallLogListResponse, fileName: string, timez
         "Call Summary": log.call_summary || "-",
         "Follow Up Recommended":
             log.follow_up_recommended?.join(", ") || "-",
-        "Lead Quality":
-            log.lead_info?.lead_quality
-                ? `${log.lead_info.lead_quality.label || ""} (${log.lead_info.lead_quality.rate || 0})`
-                : "-",
-        "Follow Up Score":
-            log.lead_info?.follow_up
-                ? `${log.lead_info.follow_up.label || ""} (${log.lead_info.follow_up.rate || 0})`
-                : "-",
         "Transcript":
             log.transcript?.map(t =>
                 `[${t.speaker}] ${t.text}`
