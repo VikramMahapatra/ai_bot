@@ -111,14 +111,10 @@ LEAD_QUALIFIED_RANGES = {
 }
 
 
-def get_lead_qualified_status(
-    is_lead,
-    campaign_name,
-    temperature,
-):
+def get_lead_qualified_status(is_lead, campaign_name, temperature, duration):
     # No lead evaluation yet
     if is_lead is None:
-        return "pending" if campaign_name else ""
+        return "pending" if campaign_name and duration > 0 else ""
 
     # Qualified lead
     if is_lead:
@@ -401,6 +397,7 @@ def get_call_logs(
             is_lead=is_lead,
             campaign_name=campaign_name,
             temperature=evaluation_temperature,
+            duration=duration,
         )
 
         instant_log = (
