@@ -280,6 +280,10 @@ def get_session_conversations_report(
 
     lead_conversion_case = case(
         (
+            latest_evaluation_subquery.c.evaluation_status == "failed",
+            "failed",
+        ),
+        (
             sessions_subquery.c.is_lead == True,
             case(
                 (
@@ -326,6 +330,7 @@ def get_session_conversations_report(
             func.coalesce(contact_subquery.c.contact_name, "Guest").label(
                 "contact_name"
             ),
+            latest_evaluation_subquery.c.evaluation_status.label("evaluation_status"),
             latest_evaluation_subquery.c.temperature.label("temperature"),
             latest_evaluation_subquery.c.score.label("score"),
             latest_evaluation_subquery.c.qualified.label("qualified"),

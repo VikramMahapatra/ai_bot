@@ -214,6 +214,7 @@ def get_call_logs(
             evaluation_subq.c.evaluation_qualified,
             evaluation_subq.c.evaluation_disposition,
             evaluation_subq.c.evaluation_next_action,
+            evaluation_subq.c.evaluation_status,
         )
         .filter(evaluation_subq.c.row_number == 1)
         .subquery()
@@ -234,6 +235,7 @@ def get_call_logs(
             latest_evaluation_subq.c.evaluation_qualified,
             latest_evaluation_subq.c.evaluation_disposition,
             latest_evaluation_subq.c.evaluation_next_action,
+            latest_evaluation_subq.c.evaluation_status,
         )
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
@@ -379,6 +381,7 @@ def get_call_logs(
         evaluation_qualified,
         evaluation_disposition,
         evaluation_next_action,
+        evaluation_status,
     ) in logs:
 
         transcripts = (
@@ -392,19 +395,23 @@ def get_call_logs(
         duration = log.duration or 0
 
         # Determine lead status for grid
-        is_lead = (
-            evaluation_qualified
-            if evaluation_qualified is not None
-            else conversation_is_lead
-        )
+        if evaluation_status == "failed":
+            is_lead = None
+            lead_status = "failed"
+        else:
+            is_lead = (
+                evaluation_qualified
+                if evaluation_qualified is not None
+                else conversation_is_lead
+            )
 
-        lead_status = get_lead_qualified_status(
-            is_lead=is_lead,
-            call_type=log.type,
-            campaign_name=campaign_name,
-            temperature=evaluation_temperature,
-            duration=duration,
-        )
+            lead_status = get_lead_qualified_status(
+                is_lead=is_lead,
+                call_type=log.type,
+                campaign_name=campaign_name,
+                temperature=evaluation_temperature,
+                duration=duration,
+            )
 
         instant_log = (
             db.query(InstantReplyLog)
@@ -440,6 +447,22 @@ def get_call_logs(
 
         is_follow_up = log.source == "rescheduled_call"
 
+        evaluation_failed = evaluation_status == "failed"
+
+        sentiment_value = (
+            "failed"
+            if evaluation_failed
+            else (
+                lead_outcome
+                if lead_outcome and (log.campaign_id or log.type == "inbound")
+                else ""
+            )
+        )
+
+        qualification_outcome_value = (
+            "failed" if evaluation_failed else evaluation_outcome
+        )
+
         rows.append(
             {
                 "id": log.id,
@@ -466,11 +489,7 @@ def get_call_logs(
                 "testCall": False if log.campaign_id else True,
                 "ended_reason": log.ended_reason,
                 "call_summary": log.call_summary,
-                "sentiment": (
-                    lead_outcome
-                    if lead_outcome and (log.campaign_id or log.type == "inbound")
-                    else ""
-                ),
+                "sentiment": sentiment_value,
                 "sentiment_details": log.sentiment_details or {},
                 "follow_up_recommended": log.follow_up_recommended or [],
                 "extract_data": log.extract_data or {},
@@ -486,7 +505,7 @@ def get_call_logs(
                 "is_lead_qualified": is_lead,
                 "lead_qualified_status": lead_status,
                 "qualified": evaluation_qualified,
-                "qualification_outcome": evaluation_outcome,
+                "qualification_outcome": qualification_outcome_value,
                 "qualification_temperature": evaluation_temperature,
                 "qualification_score": (
                     int(evaluation_score) if evaluation_score is not None else None
