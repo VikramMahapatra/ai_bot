@@ -426,10 +426,7 @@ async def _evaluate_conversation_with_engine(
             template=engine_template_payload,
         )
 
-        return {
-            "request": evaluation_request,
-            "response": result,
-        }
+        return result
 
     except Exception as exc:
         # Attach the request so the caller can persist it
