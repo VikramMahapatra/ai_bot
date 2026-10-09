@@ -453,13 +453,38 @@ async def process_pending_session_outcomes(
     Returns:
         Tuple[int, int]: (processed_count, failed_count)
     """
+    failed_evaluation_sessions = (
+        db.query(
+            ConversationEvaluation.organization_id,
+            ConversationEvaluation.session_id,
+        )
+        .filter(
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_FAILED,
+        )
+        .distinct()
+        .subquery()
+    )
 
-    pending_query = db.query(
-        Conversation.organization_id,
-        Conversation.session_id,
-    ).filter(
-        Conversation.session_id.isnot(None),
-        Conversation.outcome.is_(None),
+    pending_query = (
+        db.query(
+            Conversation.organization_id,
+            Conversation.session_id,
+        )
+        .outerjoin(
+            failed_evaluation_sessions,
+            and_(
+                failed_evaluation_sessions.c.organization_id
+                == Conversation.organization_id,
+                failed_evaluation_sessions.c.session_id == Conversation.session_id,
+            ),
+        )
+        .filter(
+            Conversation.session_id.isnot(None),
+            or_(
+                Conversation.outcome.is_(None),
+                failed_evaluation_sessions.c.session_id.isnot(None),
+            ),
+        )
     )
 
     if organization_id is not None:
@@ -1058,7 +1083,6 @@ async def process_pending_session_outcomes(
             db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
-                Conversation.outcome.is_(None),
             ).update(
                 {
                     Conversation.outcome: outcome,
@@ -1073,7 +1097,6 @@ async def process_pending_session_outcomes(
 
             db.query(LeadActivity).filter(
                 LeadActivity.session_id == session_id,
-                LeadActivity.outcome.is_(None),
             ).update(
                 {
                     LeadActivity.outcome: outcome,

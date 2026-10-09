@@ -248,6 +248,7 @@ export const ConversionOutcomeChip = ({ value }: { value?: string | null }) => {
     const colorMap: Record<string, any> = {
         positive: "success",
         negative: "error",
+        failed: "error",
         satisfactory: "info",
         neutral: "warning",
         unresolved: "default",
