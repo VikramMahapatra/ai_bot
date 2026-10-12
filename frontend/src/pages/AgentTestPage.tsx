@@ -101,6 +101,13 @@ interface QuickQuestionDefinition {
   answer: string;
 }
 
+interface ContactFieldDefinition {
+  key: string;
+  label: string;
+  type?: "text" | "email" | "tel" | "number" | "date";
+  required?: boolean;
+}
+
 const BOT_ICON_GLYPHS: Record<string, string> = {
   "bot-robot": "🤖",
   "bot-spark": "✨",
@@ -566,7 +573,9 @@ const AgentTestPage: React.FC = () => {
   const [widgetConfig, setWidgetConfig] = useState<WidgetPublicConfig | null>(
     null,
   );
+  const [contactFields, setContactFields] = useState<ContactFieldDefinition[]>([]);
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestionDefinition[]>([]);
+
   const [accessError, setAccessError] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "Hi! How can I help you today?" },
@@ -750,6 +759,16 @@ const AgentTestPage: React.FC = () => {
     return `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithVideoMuted=${videoMuted}`;
   };
 
+  const [leadCustomFields, setLeadCustomFields] = useState<Record<string, string>>({});
+
+  const extraContactFields = useMemo(
+    () =>
+      contactFields.filter(
+        (field) => field.key && field.label && !["name", "email", "phone", "company"].includes(field.key),
+      ),
+    [contactFields],
+  );
+
   const sessionStorageKey = useMemo(
     () => `public_agent_session_${widgetId || "unknown"}`,
     [widgetId],
@@ -828,17 +847,22 @@ const AgentTestPage: React.FC = () => {
         const config = (await response.json()) as WidgetPublicConfig;
         setWidgetConfig(config);
         try {
+          const remoteContactFields = parseContactFields(config.lead_fields);
+          setContactFields(remoteContactFields);
+
           const metadata = config.lead_fields ? JSON.parse(config.lead_fields) : null;
           const configuredQuestions = Array.isArray(metadata?.quick_questions)
             ? metadata.quick_questions
-                .filter((item: any) => typeof item?.question === "string" && typeof item?.answer === "string")
-                .map((item: any) => ({ question: item.question.trim(), answer: item.answer.trim() }))
-                .filter((item: QuickQuestionDefinition) => item.question && item.answer)
-                .slice(0, 6)
+              .filter((item: any) => typeof item?.question === "string" && typeof item?.answer === "string")
+              .map((item: any) => ({ question: item.question.trim(), answer: item.answer.trim() }))
+              .filter((item: QuickQuestionDefinition) => item.question && item.answer)
+              .slice(0, 6)
             : [];
+
           setQuickQuestions(configuredQuestions);
         } catch {
           setQuickQuestions([]);
+          setContactFields([]);
         }
         setMessages((prev) => {
           if (prev.length === 1 && prev[0]?.role === "assistant") {
@@ -905,6 +929,34 @@ const AgentTestPage: React.FC = () => {
     setSessionEngaged(false);
     setLastActivityAtMs(Date.now());
     return created;
+  };
+
+  const normalizeContactFieldKey = (value: string): string =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48);
+
+  const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
+    if (!leadFieldsRaw) return [];
+    try {
+      const parsed = JSON.parse(leadFieldsRaw);
+      const fields = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as any).fields : undefined;
+      if (!Array.isArray(fields)) return [];
+      return fields
+        .map((field: any): ContactFieldDefinition | null => {
+          const label = typeof field?.label === "string" ? field.label.trim() : "";
+          const key = normalizeContactFieldKey(typeof field?.key === "string" ? field.key : label);
+          const type = ["text", "email", "tel", "number", "date"].includes(field?.type) ? field.type : "text";
+          if (!label || !key) return null;
+          return { key, label, type, required: Boolean(field?.required) };
+        })
+        .filter((field): field is ContactFieldDefinition => Boolean(field));
+    } catch {
+      return [];
+    }
   };
 
   const handleQuickQuestion = (item: QuickQuestionDefinition) => {
@@ -1645,6 +1697,30 @@ const AgentTestPage: React.FC = () => {
       return;
     }
 
+    const missingRequiredField = extraContactFields.find(
+      (field) => field.required && !String(leadCustomFields[field.key] || "").trim(),
+    );
+
+    if (missingRequiredField) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Please add ${missingRequiredField.label} so we can follow up properly.`,
+        },
+      ]);
+      return;
+    }
+
+    const customFields = extraContactFields.reduce<Record<string, string>>(
+      (fields, field) => {
+        const value = String(leadCustomFields[field.key] || "").trim();
+        if (value) fields[field.key] = value;
+        return fields;
+      },
+      {},
+    );
+
     try {
       setLeadSubmitting(true);
       const response = await fetch(`${apiBaseUrl}/api/admin/leads`, {
@@ -1657,6 +1733,10 @@ const AgentTestPage: React.FC = () => {
           email: leadForm.email.trim() || undefined,
           phone: leadForm.phone.trim() || undefined,
           company: leadForm.company.trim() || undefined,
+          custom_fields:
+            Object.keys(customFields).length > 0
+              ? JSON.stringify(customFields)
+              : undefined,
           source: "chat",
         }),
       });
@@ -1667,7 +1747,7 @@ const AgentTestPage: React.FC = () => {
 
       setShowLeadForm(false);
       setLeadForm({ name: "", email: "", phone: "", company: "" });
-
+      setLeadCustomFields({});
       if (pendingHandoffAfterLead) {
         setPendingHandoffAfterLead(false);
         setMessages((prev) => [
@@ -2156,9 +2236,9 @@ const AgentTestPage: React.FC = () => {
                 transition: "transform 160ms ease, box-shadow 160ms ease",
                 "&:hover": canUseChat
                   ? {
-                      transform: "translateY(-1px)",
-                      boxShadow: "0 16px 32px rgba(15,23,42,0.22)",
-                    }
+                    transform: "translateY(-1px)",
+                    boxShadow: "0 16px 32px rgba(15,23,42,0.22)",
+                  }
                   : undefined,
               }}
             >
@@ -2483,7 +2563,7 @@ const AgentTestPage: React.FC = () => {
                       </Typography>
                     ) : null}
                     {handoffStatus === "waiting_for_agent" &&
-                    typeof handoffProgressPercent === "number" ? (
+                      typeof handoffProgressPercent === "number" ? (
                       <Stack spacing={0.4}>
                         <Stack
                           direction="row"
@@ -2500,7 +2580,7 @@ const AgentTestPage: React.FC = () => {
                             {Math.max(
                               0,
                               handoffRemainingSeconds ??
-                                handoffWaitTimeoutSeconds,
+                              handoffWaitTimeoutSeconds,
                             )}{" "}
                             sec
                           </Typography>
@@ -2625,17 +2705,17 @@ const AgentTestPage: React.FC = () => {
                               height: 12,
                               ...(message.role === "user"
                                 ? {
-                                    right: "-6px",
-                                    background: secondaryColor,
-                                    borderBottomLeftRadius: "12px",
-                                  }
+                                  right: "-6px",
+                                  background: secondaryColor,
+                                  borderBottomLeftRadius: "12px",
+                                }
                                 : {
-                                    left: "-6px",
-                                    background: widgetLookDark
-                                      ? "#1f2937"
-                                      : "#f8fafc",
-                                    borderBottomRightRadius: "12px",
-                                  }),
+                                  left: "-6px",
+                                  background: widgetLookDark
+                                    ? "#1f2937"
+                                    : "#f8fafc",
+                                  borderBottomRightRadius: "12px",
+                                }),
                             },
                             "&::after": {
                               content: '""',
@@ -2649,13 +2729,13 @@ const AgentTestPage: React.FC = () => {
                                 : "#eef2f7",
                               ...(message.role === "user"
                                 ? {
-                                    right: "-10px",
-                                    borderBottomLeftRadius: "10px",
-                                  }
+                                  right: "-10px",
+                                  borderBottomLeftRadius: "10px",
+                                }
                                 : {
-                                    left: "-10px",
-                                    borderBottomRightRadius: "10px",
-                                  }),
+                                  left: "-10px",
+                                  borderBottomRightRadius: "10px",
+                                }),
                             },
                             bgcolor:
                               message.role === "user"
@@ -2846,6 +2926,29 @@ const AgentTestPage: React.FC = () => {
                           },
                         }}
                       />
+                      {extraContactFields.map((field) => (
+                        <TextField
+                          key={field.key}
+                          type={field.type || "text"}
+                          placeholder={`${field.label}${field.required ? " *" : ""}`}
+                          value={leadCustomFields[field.key] || ""}
+                          onChange={(e) =>
+                            setLeadCustomFields((prev) => ({
+                              ...prev,
+                              [field.key]: e.target.value,
+                            }))
+                          }
+                          size="small"
+                          fullWidth
+                          required={field.required}
+                          sx={{
+                            "& .MuiInputBase-input": {
+                              fontSize: "0.78rem",
+                              py: 0.8,
+                            },
+                          }}
+                        />
+                      ))}
                       <Stack direction="row" spacing={0.75} sx={{ my: 0.75 }}>
                         <Button
                           variant="contained"
@@ -3120,11 +3223,11 @@ const AgentTestPage: React.FC = () => {
                         boxShadow: "none !important",
                       },
                       "&:hover fieldset, &:hover .MuiOutlinedInput-notchedOutline":
-                        {
-                          borderColor: widgetLookDark ? "#475569" : "#94a3b8",
-                          borderWidth: "1px !important",
-                          boxShadow: "none !important",
-                        },
+                      {
+                        borderColor: widgetLookDark ? "#475569" : "#94a3b8",
+                        borderWidth: "1px !important",
+                        boxShadow: "none !important",
+                      },
                       "&.Mui-focused": {
                         boxShadow: "none !important",
                         outline: `1px solid ${primaryColor}`,
@@ -3132,11 +3235,11 @@ const AgentTestPage: React.FC = () => {
                         filter: "none",
                       },
                       "&.Mui-focused fieldset, &.Mui-focused .MuiOutlinedInput-notchedOutline":
-                        {
-                          borderColor: `${primaryColor} !important`,
-                          borderWidth: "1px !important",
-                          boxShadow: "none !important",
-                        },
+                      {
+                        borderColor: `${primaryColor} !important`,
+                        borderWidth: "1px !important",
+                        boxShadow: "none !important",
+                      },
                     },
                     "& .MuiInputBase-input": {
                       fontSize: "0.94rem",
