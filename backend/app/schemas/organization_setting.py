@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrganizationSettingsBase(BaseModel):
@@ -91,3 +91,9 @@ class ZohoAutoTriggerSettingsRequest(BaseModel):
 
     auto_whatsapp_enabled: bool = False
     auto_whatsapp_campaign_id: int | None = None
+
+
+class ZohoConnectRequest(BaseModel):
+    client_id: str = Field(..., min_length=1)
+    client_secret: str = Field(..., min_length=1)
+    domain: str = Field(default="in", min_length=1)

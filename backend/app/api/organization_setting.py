@@ -11,6 +11,7 @@ from app.schemas.organization_setting import (
     OrganizationSettingsResponse,
     OrganizationSettingsUpdate,
     ZohoAutoTriggerSettingsRequest,
+    ZohoConnectRequest,
 )
 from app.models.organization_settings import OrganizationSettings
 from app.auth import get_current_user
@@ -343,6 +344,7 @@ def save_zoho_auto_trigger_settings(
 
 @router.post("/zoho/connect")
 async def connect_zoho(
+    payload: ZohoConnectRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -355,7 +357,10 @@ async def connect_zoho(
             provider="zoho_crm",
             name=f"Zoho CRM - Organization {organization_id}",
             config={
-                "dc": "com",
+                "client_id": payload.client_id,
+                "client_secret": payload.client_secret,
+                "domain": payload.domain,
+                "dc": get_zoho_dc(payload.domain),
             },
         )
 
@@ -367,8 +372,6 @@ async def connect_zoho(
         )
 
         authorization_url = oauth.get("authorize_url")
-
-        print("Authorization URL:", authorization_url)
 
         if not authorization_url:
             raise HTTPException(
@@ -388,8 +391,6 @@ async def connect_zoho(
             db.add(integration)
 
         integration.integration_connection_id = connection_id
-
-        # OAuth is not completed yet
         integration.is_connected = False
 
         db.commit()
@@ -404,14 +405,16 @@ async def connect_zoho(
         }
 
     except HTTPException:
+        db.rollback()
         raise
 
-    except Exception as e:
+    except Exception:
         db.rollback()
-
+        # Avoid returning secrets or internal exception details to clients.
+        logger.exception("Failed to initiate Zoho CRM connection")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to connect Zoho CRM: {str(e)}",
+            detail="Failed to initiate Zoho CRM connection",
         )
 
 
@@ -712,3 +715,24 @@ async def initialize_zoho(
             status_code=500,
             detail=f"Failed to initialize Zoho CRM: {str(e)}",
         ) from e
+
+
+def get_zoho_dc(domain: str) -> str:
+    domain_to_dc = {
+        "https://www.zohoapis.in": "in",
+        "https://www.zohoapis.com": "com",
+        "https://www.zohoapis.eu": "eu",
+        "https://www.zohoapis.com.au": "au",
+        "https://www.zohoapis.jp": "jp",
+        "https://www.zohoapis.ca": "ca",
+    }
+
+    normalized_domain = domain.rstrip("/").lower()
+
+    if normalized_domain not in domain_to_dc:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported Zoho domain",
+        )
+
+    return domain_to_dc[normalized_domain]
