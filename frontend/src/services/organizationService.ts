@@ -91,6 +91,12 @@ export interface UsersFilters {
   limit?: number;
 }
 
+export interface ZohoCredentials {
+  client_id: string;
+  client_secret: string;
+  domain: string;
+}
+
 export const organizationService = {
   async getOrganization(orgId: number): Promise<Organization> {
     const response = await api.get<Organization>(`/api/organizations/${orgId}`);
@@ -233,8 +239,8 @@ export const organizationService = {
     return response.data;
   },
 
-  async connectZoho(): Promise<any> {
-    const response = await api.post(`/api/organization-settings/zoho/connect`);
+  async connectZoho(credentials: ZohoCredentials): Promise<any> {
+    const response = await api.post(`/api/organization-settings/zoho/connect`, credentials);
     return response.data;
   },
 

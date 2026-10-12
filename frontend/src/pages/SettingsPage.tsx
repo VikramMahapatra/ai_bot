@@ -29,7 +29,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import AdminLayout from "../components/Layout/AdminLayout";
 import { twilioSmsService } from "../services/twilioSmsService";
-import { organizationService } from "../services/organizationService";
+import { organizationService, ZohoCredentials } from "../services/organizationService";
 import { Tabs, Tab, Paper } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
 import HubIcon from "@mui/icons-material/Hub";
@@ -227,6 +227,13 @@ const SettingsPage: React.FC = () => {
   } | null>(null);
 
 
+  const [zohoCredentialsDialog, setZohoCredentialsDialog] = useState(false);
+  const [zohoCredentials, setZohoCredentials] = useState({
+    client_id: "",
+    client_secret: "",
+    domain: "https://www.zohoapis.com",
+  });
+
 
   useEffect(() => {
     loadOrgSettings();
@@ -362,7 +369,7 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleConnectZoho = async () => {
+  const handleConnectZoho = async (credentials: ZohoCredentials) => {
     let statusIntervalId: number | undefined;
     let popupCheckIntervalId: number | undefined;
     let timeoutId: number | undefined;
@@ -413,7 +420,7 @@ const SettingsPage: React.FC = () => {
       // ---------------------------------------------------------
 
       const response =
-        await organizationService.connectZoho();
+        await organizationService.connectZoho(credentials);
 
       const authorizationUrl =
         response?.data?.authorization_url;
@@ -2478,7 +2485,7 @@ const SettingsPage: React.FC = () => {
                       {!zohoData?.is_connected ? (
                         <Button
                           variant="contained"
-                          onClick={handleConnectZoho}
+                          onClick={() => setZohoCredentialsDialog(true)}
                           disabled={loadingZoho}
                           sx={{
                             background: "#3d75d9",
@@ -2487,7 +2494,7 @@ const SettingsPage: React.FC = () => {
                             },
                           }}
                         >
-                          {loadingZoho ? "Connecting..." : "Connect Zoho CRM"}
+                          Connect Zoho CRM
                         </Button>
                       ) : (
                         <Box
@@ -3297,6 +3304,146 @@ const SettingsPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <Dialog
+          open={zohoCredentialsDialog}
+          onClose={() => {
+            if (!loadingZoho) {
+              setZohoCredentialsDialog(false);
+            }
+          }}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle sx={{ fontWeight: 600 }}>
+            Connect Zoho CRM
+          </DialogTitle>
+
+          <DialogContent>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 3 }}
+            >
+              Enter your Zoho API Console application credentials
+              to connect your Zoho CRM account.
+            </Typography>
+
+            <TextField
+              fullWidth
+              required
+              label="Client ID"
+              margin="normal"
+              value={zohoCredentials.client_id}
+              onChange={(e) =>
+                setZohoCredentials((prev) => ({
+                  ...prev,
+                  client_id: e.target.value,
+                }))
+              }
+            />
+
+            <TextField
+              fullWidth
+              required
+              label="Client Secret"
+              type="password"
+              margin="normal"
+              value={zohoCredentials.client_secret}
+              onChange={(e) =>
+                setZohoCredentials((prev) => ({
+                  ...prev,
+                  client_secret: e.target.value,
+                }))
+              }
+            />
+
+            <FormControl fullWidth margin="normal" required>
+              <InputLabel id="zoho-domain-label">
+                Zoho Domain
+              </InputLabel>
+
+              <Select
+                labelId="zoho-domain-label"
+                label="Zoho Domain"
+                value={zohoCredentials.domain}
+                onChange={(e) =>
+                  setZohoCredentials((prev) => ({
+                    ...prev,
+                    domain: e.target.value,
+                  }))
+                }
+              >
+                <MenuItem value="https://www.zohoapis.in">
+                  India (.in)
+                </MenuItem>
+
+                <MenuItem value="https://www.zohoapis.com">
+                  United States (.com)
+                </MenuItem>
+
+                <MenuItem value="https://www.zohoapis.eu">
+                  Europe (.eu)
+                </MenuItem>
+
+                <MenuItem value="https://www.zohoapis.com.au">
+                  Australia (.com.au)
+                </MenuItem>
+
+                <MenuItem value="https://www.zohoapis.jp">
+                  Japan (.jp)
+                </MenuItem>
+
+                <MenuItem value="https://www.zohoapis.ca">
+                  Canada (.ca)
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 1 }}
+            >
+              Use the credentials from your Zoho API Console.
+              Select the domain where your Zoho account is registered.
+            </Typography>
+          </DialogContent>
+
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setZohoCredentialsDialog(false)}
+              disabled={loadingZoho}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="contained"
+              disabled={
+                loadingZoho ||
+                !zohoCredentials.client_id.trim() ||
+                !zohoCredentials.client_secret.trim() ||
+                !zohoCredentials.domain
+              }
+              onClick={async () => {
+                setZohoCredentialsDialog(false);
+                await handleConnectZoho(zohoCredentials);
+              }}
+              sx={{
+                background: "#3d75d9",
+                "&:hover": {
+                  background: "#315fae",
+                },
+              }}
+            >
+              {loadingZoho
+                ? "Connecting..."
+                : "Continue"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         <ConfirmDialog
           open={Boolean(smtpProfileToDelete)}
           title="Delete SMTP profile?"
