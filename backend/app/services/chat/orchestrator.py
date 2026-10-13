@@ -153,7 +153,7 @@ def _build_plan(
 
 
 def _generate_structured_response(plan: ChatResponsePlan) -> Tuple[StructuredAnswer, Dict[str, int]]:
-    raw, token_usage = openai_service.generate_structured_answer(plan.messages, model=settings.OPENAI_CHAT_MODEL, max_tokens=260, temperature=0.2, timeout_seconds=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS))
+    raw, token_usage = openai_service.generate_structured_answer(plan.messages, model=settings.OPENAI_CHAT_MODEL, max_tokens=1024, temperature=0.2, timeout_seconds=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS))
     return parse_structured_answer(raw), token_usage
 
 
@@ -252,7 +252,7 @@ def stream_chat_response(
         plan.retrieval_trace["escalation_triggered"] = False
         return None, plan.sources, plan.grounded_fallback or build_soft_fallback_message(seed_text=f"{session_id}:{message}"), plan.retrieval_trace
     try:
-        stream = openai_service.stream_chat_completion(plan.messages, model=settings.OPENAI_CHAT_MODEL, max_tokens=260, temperature=0.2, timeout_seconds=float(settings.OPENAI_STREAM_TIMEOUT_SECONDS))
+        stream = openai_service.stream_chat_completion(plan.messages, model=settings.OPENAI_CHAT_MODEL, max_tokens=1024, temperature=0.2, timeout_seconds=float(settings.OPENAI_STREAM_TIMEOUT_SECONDS))
         return stream, plan.sources, plan.grounded_fallback or build_soft_fallback_message(seed_text=f"{session_id}:{message}"), plan.retrieval_trace
     except Exception as exc:
         logger.warning("OpenAI stream init failed for widget_id=%s session_id=%s: %s", widget_id, session_id, str(exc))
