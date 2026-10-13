@@ -262,6 +262,7 @@ class QualificationTemplateSummary(BaseModel):
     name: str
     description: Optional[str] = None
     objective: str
+    qualification_mode: str = "essential_supporting"
     status: QualificationStatus
     sync_status: Optional[str] = None
     sync_error: Optional[str] = None

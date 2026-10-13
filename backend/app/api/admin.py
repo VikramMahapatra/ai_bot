@@ -17,7 +17,8 @@ from app.auth import (
     verify_password,
     get_current_user,
 )
-from app.models import User, UserRole, Organization, Appointment, WidgetConfig
+from app.models import User, UserRole, Organization, Appointment, WidgetConfig, QualificationTemplate
+from app.models.qualification_templates import QualificationTemplateStatus
 from app.services.limits_service import get_or_create_limits, get_effective_limits
 from app.services.email_service import (
     send_appointment_rescheduled_notification,
@@ -71,6 +72,27 @@ def _ensure_widget_escalation_contacts(config, org_settings) -> bool:
         )
         changed = True
     return changed
+
+
+def _validate_qualification_template(db: Session, template_id, organization_id: int):
+    if template_id in (None, "", 0, "0"):
+        return None
+    try:
+        template_id = int(template_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="qualification_template_id must be an integer")
+    template = (
+        db.query(QualificationTemplate)
+        .filter(
+            QualificationTemplate.id == template_id,
+            QualificationTemplate.organization_id == organization_id,
+            QualificationTemplate.status == QualificationTemplateStatus.active,
+        )
+        .first()
+    )
+    if not template:
+        raise HTTPException(status_code=422, detail="Selected qualification template is not available")
+    return template.id
 
 
 def _extract_emails(*values: Optional[str]) -> List[str]:
@@ -557,7 +579,6 @@ async def create_widget_config(
         organization_id=current_user.organization_id,
         widget_id=widget_id,
         name=config_data.get("name", "Chatbot"),
-        qualification_template_id=config_data.get("qualification_template_id"),
         welcome_message=config_data.get("welcome_message"),
         system_prompt=config_data.get("system_prompt"),
         logo_url=config_data.get("logo_url"),
@@ -568,6 +589,9 @@ async def create_widget_config(
         lead_fields=config_data.get("lead_fields"),
         escalation_contact_level_1=escalation_contact_level_1,
         escalation_contact_level_2=escalation_contact_level_2,
+        qualification_template_id=_validate_qualification_template(
+            db, config_data.get("qualification_template_id"), current_user.organization_id
+        ),
     )
     db.add(config)
     db.commit()
@@ -611,6 +635,11 @@ async def update_widget_config(
         "updated_at",
         "widget_id",
     }
+
+    if "qualification_template_id" in config_data:
+        config_data["qualification_template_id"] = _validate_qualification_template(
+            db, config_data.get("qualification_template_id"), current_user.organization_id
+        )
 
     # Update only allowed fields
     for key, value in config_data.items():

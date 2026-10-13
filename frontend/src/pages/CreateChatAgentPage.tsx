@@ -12,22 +12,24 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Grid,
   LinearProgress,
-  MenuItem,
+  Tab,
+  Tabs,
   Snackbar,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import LaunchIcon from '@mui/icons-material/Launch';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import HubIcon from '@mui/icons-material/Hub';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import GroupsIcon from '@mui/icons-material/Groups';
 import ForumIcon from '@mui/icons-material/Forum';
@@ -50,13 +52,12 @@ import type { CrawlJobStatus } from '../types';
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
 import { useDateFormatter } from '../hooks/useDateFormatter';
-import { QualificationTemplateLookup, qualificationTemplateService, QualificationTemplateSummary } from '../services/qualificationTemplateService';
+import { qualificationTemplateService, type QualificationTemplateLookup, type QualificationTemplateSummary } from '../services/qualificationTemplateService';
 
 interface WidgetConfig {
   widget_id: string;
   name: string;
   welcome_message?: string;
-  qualification_template_id?: string;
   system_prompt?: string;
   escalation_contact_level_1?: string;
   escalation_contact_level_2?: string;
@@ -96,6 +97,12 @@ interface QuickQuestionDefinition {
   question: string;
   answer: string;
 }
+
+const qualificationModeLabels: Record<string, string> = {
+  essential_supporting: 'Essential + supporting',
+  any_selected: 'Any selected criteria',
+  all_selected: 'All selected criteria',
+};
 
 interface CrawlPreviewItem {
   url: string;
@@ -188,7 +195,7 @@ const parseQuickQuestions = (leadFieldsRaw?: string): QuickQuestionDefinition[] 
         const answer = typeof item?.answer === 'string' ? item.answer.trim() : '';
         return question && answer ? { id: createQuickQuestionId(), question, answer } : null;
       })
-      .filter((item: any): item is QuickQuestionDefinition => Boolean(item));
+        .filter((item: QuickQuestionDefinition | null): item is QuickQuestionDefinition => Boolean(item));
   } catch {
     return [];
   }
@@ -230,7 +237,6 @@ const CreateChatAgentPage: React.FC = () => {
     widget_id: `widget_${Date.now()}`,
     name: '',
     welcome_message: 'Hi! How can I help you?',
-    qualification_template_id: '',
     system_prompt: '',
     escalation_contact_level_1: '',
     escalation_contact_level_2: '',
@@ -279,16 +285,14 @@ const CreateChatAgentPage: React.FC = () => {
   const [userIcon, setUserIcon] = useState('user-person');
   const [contactFields, setContactFields] = useState<ContactFieldDefinition[]>([]);
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestionDefinition[]>([]);
+  const [qualificationTemplates, setQualificationTemplates] = useState<QualificationTemplateSummary[]>([]);
+  const [qualificationTemplatesLoading, setQualificationTemplatesLoading] = useState(false);
+  const [qualificationTemplateId, setQualificationTemplateId] = useState<number | ''>('');
   const { getRequiredCreditInfo, totalCredits, deductCredits } = useCredits();
   const formatDisplayDate = useDateFormatter()
 
-  const loadQualificationTemplateLookup = async () => {
-    const data = await qualificationTemplateService.lookup();
-    setTemplates(data || []);
-  };
-
   const integrationSteps = useMemo(
-    () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
+    () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Conversation Setup', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
     [isEditMode]
   );
 
@@ -297,6 +301,7 @@ const CreateChatAgentPage: React.FC = () => {
       isEditMode
         ? 'Refine brand, style, and conversation personality for this existing agent.'
         : 'Define brand, style, and conversation personality.',
+      'Configure qualification, escalation, contact capture, and guided questions.',
       'Train your agent with website pages, docs, and internal knowledge.',
       'Connect external channels and automation-ready integrations.',
       'Share a live test URL and hand over for stakeholder review.',
@@ -308,6 +313,14 @@ const CreateChatAgentPage: React.FC = () => {
     () => ((activeStep + 1) / integrationSteps.length) * 100,
     [activeStep, integrationSteps.length]
   );
+
+  const tabMeta = [
+    { eyebrow: '01 · Foundation', title: 'Shape your agent', short: 'Identity', icon: <AutoAwesomeIcon />, color: '#2f6bff' },
+    { eyebrow: '02 · Conversation', title: 'Design the conversation', short: 'Conversation', icon: <ForumIcon />, color: '#157f78' },
+    { eyebrow: '03 · Intelligence', title: 'Teach your agent', short: 'Knowledge', icon: <LibraryBooksIcon />, color: '#2563eb' },
+    { eyebrow: '04 · Connections', title: 'Connect your channels', short: 'Integrations', icon: <HubIcon />, color: '#8b5cf6' },
+    { eyebrow: '05 · Launch', title: 'Review and share', short: 'Launch', icon: <RocketLaunchIcon />, color: '#d97706' },
+  ];
 
   const selectedPreviewCount = useMemo(
     () => crawlPreviewItems.filter((item) => item.selected).length,
@@ -452,9 +465,13 @@ const CreateChatAgentPage: React.FC = () => {
       return Math.round((checks.filter(Boolean).length / checks.length) * 100);
     }
     if (activeStep === 1) {
-      return Math.min(100, knowledgeActionsDone * 35);
+      const checks = [qualificationTemplateId || contactFields.length || quickQuestions.length, widget.escalation_contact_level_1 || widget.escalation_contact_level_2];
+      return Math.round((checks.filter(Boolean).length / checks.length) * 100);
     }
     if (activeStep === 2) {
+      return Math.min(100, knowledgeActionsDone * 35);
+    }
+    if (activeStep === 3) {
       return whatsappConfigured ? 100 : 60;
     }
     return createdWidgetId ? 100 : 70;
@@ -496,8 +513,16 @@ const CreateChatAgentPage: React.FC = () => {
   );
 
   useEffect(() => {
-    loadQualificationTemplateLookup();
-  })
+    let active = true;
+    qualificationTemplateService.lookup()
+      .then((data) => {
+        if (active) setTemplates(data || []);
+      })
+      .catch(() => {
+        if (active) setError('Qualification templates could not be loaded. Please try again.');
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!createdWidgetId) {
@@ -508,6 +533,22 @@ const CreateChatAgentPage: React.FC = () => {
 
     fetchShareLink(createdWidgetId);
   }, [createdWidgetId, fetchShareLink]);
+
+  useEffect(() => {
+    let active = true;
+    setQualificationTemplatesLoading(true);
+    qualificationTemplateService.list({ status: 'Active', limit: 100 })
+      .then((result) => {
+        if (active) setQualificationTemplates(result.items || []);
+      })
+      .catch(() => {
+        if (active) setError('Qualification templates could not be loaded. Please try again.');
+      })
+      .finally(() => {
+        if (active) setQualificationTemplatesLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!isEditMode || !routeWidgetId?.trim()) {
@@ -532,7 +573,6 @@ const CreateChatAgentPage: React.FC = () => {
           widget_id: loadedWidgetId,
           name: config.name || prev.name,
           welcome_message: config.welcome_message || prev.welcome_message,
-          qualification_template_id: config.qualification_template_id || '',
           system_prompt: config.system_prompt || '',
           escalation_contact_level_1:
             typeof config.escalation_contact_level_1 === 'string'
@@ -549,6 +589,9 @@ const CreateChatAgentPage: React.FC = () => {
             typeof config.lead_capture_enabled === 'boolean' ? config.lead_capture_enabled : prev.lead_capture_enabled,
           lead_fields: typeof config.lead_fields === 'string' ? config.lead_fields : prev.lead_fields,
         }));
+        setQualificationTemplateId(
+          config.qualification_template_id == null ? '' : Number(config.qualification_template_id)
+        );
 
         const styleSelection = parseStyleSelection(typeof config.lead_fields === 'string' ? config.lead_fields : undefined);
         if (styleSelection.botIcon) setBotIcon(styleSelection.botIcon);
@@ -934,6 +977,7 @@ const CreateChatAgentPage: React.FC = () => {
     return {
       ...widget,
       widget_id: widget.widget_id || `widget_${Date.now()}`,
+      qualification_template_id: qualificationTemplateId || null,
       lead_fields: JSON.stringify({
         ...leadFieldMetadata,
         fields: contactFields
@@ -956,7 +1000,7 @@ const CreateChatAgentPage: React.FC = () => {
     };
   };
 
-  const saveWidgetProfile = async () => {
+  const saveWidgetProfile = async (nextStep = 1) => {
 
     const newErrors = {
       name: "",
@@ -969,7 +1013,7 @@ const CreateChatAgentPage: React.FC = () => {
       return;
     }
 
-    if (!widget.qualification_template_id) {
+    if (!qualificationTemplateId) {
       newErrors.qualification_template_id = `Please select the template.`;
       setErrors(newErrors);
       return;
@@ -1020,7 +1064,7 @@ const CreateChatAgentPage: React.FC = () => {
           ? 'Widget updated successfully. Next step: review knowledge base updates.'
           : 'Widget created successfully. Next step: add your knowledge base.'
       );
-      setActiveStep(1);
+      setActiveStep(nextStep);
     } catch (err: any) {
       setError(err.response?.data?.detail || `Failed to ${isEditMode ? 'update' : 'create'} widget.`);
     } finally {
@@ -1276,7 +1320,7 @@ const CreateChatAgentPage: React.FC = () => {
       setError('Please wait for website crawling/embedding to finish before continuing to integrations.');
       return;
     }
-    setActiveStep(2);
+    setActiveStep(3);
     setError('');
     if (knowledgeActionsDone > 0) {
       setSuccess('Knowledge added. Next step: choose integrations.');
@@ -1286,7 +1330,7 @@ const CreateChatAgentPage: React.FC = () => {
   };
 
   const moveToShareStep = () => {
-    setActiveStep(3);
+    setActiveStep(4);
     setError('');
     if (whatsappConfigured) {
       setSuccess('Integrations configured. Your share link is ready.');
@@ -1381,115 +1425,30 @@ const CreateChatAgentPage: React.FC = () => {
         />
 
         <Stack spacing={3} sx={{ position: 'relative', zIndex: 1 }}>
-          <Card sx={{ ...sectionPanelSx, borderRadius: '24px' }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-                <Box>
-                  <Typography
-                    variant="h4"
-                    sx={{
-                      fontWeight: 800,
-                      color: 'text.primary',
-                      mb: 0.8,
-                      letterSpacing: '-0.025em',
-                      fontSize: { xs: '1.7rem', md: '2.15rem' },
-                      lineHeight: 1.14,
-                    }}
-                  >
-                    {isEditMode ? 'Edit Chat Agent' : 'Create Chat Agent'}
-                  </Typography>
-                  <Typography variant="body1" color="text.secondary">
-                    {isEditMode
-                      ? 'Guided editing flow to refine your existing AI agent with updated profile, knowledge, and integrations.'
-                      : 'Guided setup flow to launch a polished AI agent with knowledge, integrations, and share-ready testing.'}
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Chip label="4-Step Wizard" color="primary" variant="outlined" />
-                  <Chip label={isEditMode ? 'Edit Mode' : 'Knowledge Ready'} color="secondary" variant="outlined" />
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-
-          <Card sx={{ ...sectionPanelSx, borderRadius: '20px' }}>
-            <CardContent>
-              <Stack spacing={2.1}>
-                <Stack
-                  direction={{ xs: 'column', md: 'row' }}
-                  spacing={1.2}
-                  justifyContent="space-between"
-                  alignItems={{ xs: 'flex-start', md: 'center' }}
-                >
-                  <Box>
-                    <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                      Wizard Progress
-                    </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                      Step {activeStep + 1} of {integrationSteps.length}: {integrationSteps[activeStep]}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {stepDescriptions[activeStep]}
-                    </Typography>
-                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                      <Chip
-                        size="small"
-                        label={`Readiness ${stepReadiness}%`}
-                        color={stepReadiness >= 80 ? 'success' : 'primary'}
-                        variant="outlined"
-                      />
-                      <Chip
-                        size="small"
-                        label={activeStep === integrationSteps.length - 1 ? 'Final Step' : 'In Progress'}
-                        variant="outlined"
-                      />
-                    </Stack>
+          <Card sx={{ ...sectionPanelSx, borderRadius: '26px', boxShadow: `0 22px 60px ${alpha(theme.palette.primary.dark, 0.16)}` }}>
+            <CardContent sx={{ p: { xs: 2, md: 3.2 } }}>
+              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} justifyContent="space-between" alignItems={{ xs: 'stretch', lg: 'center' }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Box sx={{ width: 58, height: 58, borderRadius: '18px', display: 'grid', placeItems: 'center', color: '#fff', background: `linear-gradient(145deg, ${tabMeta[activeStep].color}, ${alpha(tabMeta[activeStep].color, 0.62)})`, boxShadow: `0 12px 24px ${alpha(tabMeta[activeStep].color, 0.28)}` }}>
+                    {React.cloneElement(tabMeta[activeStep].icon, { sx: { fontSize: 30 } })}
                   </Box>
-                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>
-                    Exit Wizard
-                  </Button>
+                  <Box>
+                    <Typography variant="overline" sx={{ letterSpacing: '0.13em', fontWeight: 900, color: tabMeta[activeStep].color }}>{isEditMode ? 'EDIT CHAT AGENT' : 'NEW CHAT AGENT'}</Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.035em', lineHeight: 1.08 }}>{tabMeta[activeStep].title}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{stepDescriptions[activeStep]}</Typography>
+                  </Box>
                 </Stack>
-
-                <LinearProgress
-                  variant="determinate"
-                  value={stepProgress}
-                  sx={{
-                    height: 10,
-                    borderRadius: 999,
-                    backgroundColor: alpha(theme.palette.primary.main, 0.14),
-                    '& .MuiLinearProgress-bar': {
-                      borderRadius: 999,
-                      background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(
-                        theme.palette.primary.dark,
-                        0.94
-                      )} 100%)`,
-                    },
-                  }}
-                />
-
-                <Stepper
-                  activeStep={activeStep}
-                  alternativeLabel
-                  sx={{
-                    '& .MuiStepLabel-label': { fontWeight: 600 },
-                    '& .MuiStepIcon-root': {
-                      color: alpha(theme.palette.primary.main, 0.24),
-                    },
-                    '& .MuiStepIcon-root.Mui-active': {
-                      color: theme.palette.primary.main,
-                    },
-                    '& .MuiStepIcon-root.Mui-completed': {
-                      color: theme.palette.success.main,
-                    },
-                  }}
-                >
-                  {integrationSteps.map((label) => (
-                    <Step key={label}>
-                      <StepLabel>{label}</StepLabel>
-                    </Step>
-                  ))}
-                </Stepper>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent={{ xs: 'space-between', lg: 'flex-end' }}>
+                  <Chip icon={<CheckCircleOutlineIcon />} label={`${stepReadiness}% ready`} color={stepReadiness >= 80 ? 'success' : 'primary'} sx={{ fontWeight: 800 }} />
+                  <Button variant="text" startIcon={<ArrowBackIcon />} onClick={() => navigate('/widgets')}>Exit</Button>
+                </Stack>
               </Stack>
+              <LinearProgress variant="determinate" value={stepProgress} sx={{ mt: 3, height: 7, borderRadius: 99, bgcolor: alpha(tabMeta[activeStep].color, 0.12), '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: tabMeta[activeStep].color } }} />
+              <Tabs value={activeStep} onChange={(_, value) => { setActiveStep(value); setError(''); }} variant="scrollable" scrollButtons="auto" sx={{ mt: 1.5, minHeight: 70, '& .MuiTabs-indicator': { height: 3, borderRadius: 99, bgcolor: tabMeta[activeStep].color }, '& .MuiTab-root': { minHeight: 70, minWidth: { xs: 132, md: 170 }, alignItems: 'flex-start', textAlign: 'left', px: 1.5, borderRadius: '14px 14px 0 0' }, '& .MuiTab-root.Mui-selected': { color: tabMeta[activeStep].color, bgcolor: alpha(tabMeta[activeStep].color, 0.055) } }}>
+                {tabMeta.map((tab, index) => (
+                  <Tab key={tab.short} icon={React.cloneElement(tab.icon, { sx: { fontSize: 20 } })} iconPosition="start" label={<Box><Typography variant="caption" sx={{ display: 'block', fontWeight: 800, opacity: 0.65 }}>0{index + 1}</Typography><Typography variant="body2" fontWeight={850}>{tab.short}</Typography></Box>} />
+                ))}
+              </Tabs>
             </CardContent>
           </Card>
 
@@ -1558,6 +1517,60 @@ const CreateChatAgentPage: React.FC = () => {
                         fullWidth
                         sx={fieldSx}
                       />
+                      {activeStep === 1 && (<Box
+                        sx={{
+                          p: 2,
+                          borderRadius: '16px',
+                          border: `1px solid ${alpha(theme.palette.secondary.main, 0.28)}`,
+                          background: `linear-gradient(135deg, ${alpha(theme.palette.secondary.main, 0.09)} 0%, ${alpha(theme.palette.primary.main, 0.055)} 100%)`,
+                        }}
+                      >
+                        <Stack spacing={1.25}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                            <Box>
+                              <Typography variant="subtitle1" fontWeight={800}>Qualification framework</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Give this agent a reusable set of rules for identifying qualified leads.
+                              </Typography>
+                            </Box>
+                            <Chip size="small" label="Required" variant="outlined" color="secondary" />
+                          </Stack>
+                          <TextField
+                            select
+                            fullWidth
+                            label="Qualification template"
+                            value={qualificationTemplateId}
+                            onChange={(event) => setQualificationTemplateId(event.target.value ? Number(event.target.value) : '')}
+                            disabled={qualificationTemplatesLoading}
+                            required
+                            error={!!errors.qualification_template_id}
+                            helperText={errors.qualification_template_id || (qualificationTemplatesLoading ? 'Loading active templates…' : 'You can change this later when your qualification strategy evolves.')}
+                            sx={fieldSx}
+                          >
+                            {qualificationTemplates.map((template) => (
+                              <MenuItem key={template.id} value={template.id}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }}>
+                                  <Box>
+                                    <Typography variant="body2" fontWeight={750}>{template.name}</Typography>
+                                    <Typography variant="caption" color="text.secondary" noWrap>
+                                      {template.description || template.objective}
+                                    </Typography>
+                                  </Box>
+                                </Stack>
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                          {qualificationTemplateId && (() => {
+                            const selected = qualificationTemplates.find((item) => item.id === qualificationTemplateId);
+                            return selected ? (
+                              <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" color="secondary" label={`${selected.name} selected`} />
+                                <Chip size="small" variant="outlined" label={qualificationModeLabels[selected.qualification_mode || ''] || 'Reusable framework'} />
+                              </Stack>
+                            ) : null;
+                          })()}
+                        </Stack>
+                      </Box>)}
                       <TextField
                         label="Welcome Message"
                         value={widget.welcome_message || ''}
@@ -1571,8 +1584,8 @@ const CreateChatAgentPage: React.FC = () => {
                         select
                         fullWidth
                         name="qualification_template_id"
-                        value={widget.qualification_template_id}
-                        onChange={(e) => setWidget((prev) => ({ ...prev, qualification_template_id: e.target.value }))}
+                        value={qualificationTemplateId}
+                        onChange={(e) => setQualificationTemplateId(e.target.value ? Number(e.target.value) : '')}
                         error={!!errors.qualification_template_id}
                         helperText={errors.qualification_template_id}
                       >
@@ -1600,6 +1613,7 @@ const CreateChatAgentPage: React.FC = () => {
                         }}
                       />
 
+                      {activeStep === 1 && (<>
                       <TextField
                         label="Escalation Contact Level 1"
                         value={widget.escalation_contact_level_1 || ''}
@@ -1619,8 +1633,9 @@ const CreateChatAgentPage: React.FC = () => {
                         helperText="Fallback contact shown after Level 1 for escalated conversations."
                         sx={fieldSx}
                       />
+                      </>)}
 
-                      <Box sx={accentPanelSx}>
+                      {activeStep === 1 && (<Box sx={accentPanelSx}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -1750,9 +1765,9 @@ const CreateChatAgentPage: React.FC = () => {
                             ))}
                           </Stack>
                         )}
-                      </Box>
+                      </Box>)}
 
-                      <Box sx={accentPanelSx}>
+                      {activeStep === 1 && (<Box sx={accentPanelSx}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -1809,7 +1824,7 @@ const CreateChatAgentPage: React.FC = () => {
                             ))}
                           </Stack>
                         )}
-                      </Box>
+                      </Box>)}
 
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
                         <TextField
@@ -2062,7 +2077,7 @@ const CreateChatAgentPage: React.FC = () => {
                       </Button>
                       <Button
                         variant="contained"
-                        onClick={saveWidgetProfile}
+                        onClick={() => saveWidgetProfile()}
                         disabled={busy}
                         sx={{
                           borderRadius: '12px',
@@ -2082,6 +2097,59 @@ const CreateChatAgentPage: React.FC = () => {
 
           {activeStep === 1 && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Stack spacing={2.2}>
+                  <Box sx={{ ...accentPanelSx, background: `linear-gradient(145deg, ${alpha('#157f78', 0.1)} 0%, ${alpha(theme.palette.background.paper, 0.82)} 100%)` }}>
+                    <Typography variant="overline" sx={{ color: '#157f78', letterSpacing: '0.1em', fontWeight: 900 }}>Conversation design</Typography>
+                    <Typography variant="h5" fontWeight={900}>Make every conversation feel intentional</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 760 }}>Set the qualification logic, human handoff details, and helpful conversation starters your visitors will see.</Typography>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="h6" fontWeight={900}>Qualification framework</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>Attach a reusable qualification template to keep lead decisions consistent.</Typography>
+                        <TextField required select fullWidth label="Qualification template" value={qualificationTemplateId} onChange={(event) => setQualificationTemplateId(event.target.value ? Number(event.target.value) : '')} disabled={qualificationTemplatesLoading} error={!!errors.qualification_template_id} helperText={errors.qualification_template_id} sx={fieldSx}>
+                          {qualificationTemplates.map((template) => <MenuItem key={template.id} value={template.id}>{template.name}</MenuItem>)}
+                        </TextField>
+                        {qualificationTemplateId && <Chip size="small" color="success" label="Template connected" sx={{ mt: 1.2, fontWeight: 800 }} />}
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Box sx={accentPanelSx}>
+                        <Typography variant="h6" fontWeight={900}>Human handoff</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>Give the agent clear contacts for conversations that need a person.</Typography>
+                        <Stack spacing={1.3}>
+                          <TextField label="Primary escalation contact" value={widget.escalation_contact_level_1 || ''} onChange={(e) => setWidget((prev) => ({ ...prev, escalation_contact_level_1: e.target.value }))} placeholder="Support Team · support@example.com" fullWidth sx={fieldSx} />
+                          <TextField label="Backup escalation contact" value={widget.escalation_contact_level_2 || ''} onChange={(e) => setWidget((prev) => ({ ...prev, escalation_contact_level_2: e.target.value }))} placeholder="Escalation Manager · manager@example.com" fullWidth sx={fieldSx} />
+                        </Stack>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Box sx={accentPanelSx}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.5 }}>
+                          <Box><Typography variant="h6" fontWeight={900}>Additional quick contact fields</Typography><Typography variant="body2" color="text.secondary">Collect the context your team needs beyond name, email, phone, and company.</Typography></Box>
+                          <Button variant="outlined" onClick={() => setContactFields((prev) => [...prev, { id: createContactFieldId(), key: '', label: '', type: 'text', required: false }])} sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, textTransform: 'none', fontWeight: 800 }}>Add field</Button>
+                        </Stack>
+                        {contactFields.length === 0 ? <Typography variant="body2" color="text.secondary">No custom fields yet. Keep the form lightweight or add one for richer lead context.</Typography> : <Stack spacing={1.1}>{contactFields.map((field, index) => <Box key={field.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.3fr 1fr 0.8fr auto auto' }, gap: 1, alignItems: 'center' }}><TextField size="small" label="Label" value={field.label} onChange={(e) => setContactFields((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, label: e.target.value, key: item.key || normalizeContactFieldKey(e.target.value) } : item))} sx={fieldSx} /><TextField size="small" label="Key" value={field.key} onChange={(e) => setContactFields((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, key: normalizeContactFieldKey(e.target.value) } : item))} sx={fieldSx} /><TextField size="small" select label="Type" value={field.type} onChange={(e) => setContactFields((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, type: e.target.value as ContactFieldDefinition['type'] } : item))} sx={fieldSx}>{['text', 'email', 'tel', 'number', 'date'].map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><Checkbox checked={field.required} onChange={(e) => setContactFields((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, required: e.target.checked } : item))} /><Button color="error" onClick={() => setContactFields((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button></Box>)}</Stack>}
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Box sx={accentPanelSx}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.5 }}><Box><Typography variant="h6" fontWeight={900}>Quick questions and answers</Typography><Typography variant="body2" color="text.secondary">Give visitors useful starting points the moment the chat opens.</Typography></Box><Button variant="outlined" disabled={quickQuestions.length >= 6} onClick={() => setQuickQuestions((prev) => [...prev, { id: createQuickQuestionId(), question: '', answer: '' }])} sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, textTransform: 'none', fontWeight: 800 }}>Add question</Button></Stack>
+                        {quickQuestions.length === 0 ? <Typography variant="body2" color="text.secondary">No starter questions yet. Add up to six thoughtful prompts.</Typography> : <Stack spacing={1.1}>{quickQuestions.map((item) => <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1, alignItems: 'start' }}><TextField size="small" label="Question" value={item.question} onChange={(e) => setQuickQuestions((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, question: e.target.value } : entry))} sx={fieldSx} /><TextField size="small" label="Answer" value={item.answer} onChange={(e) => setQuickQuestions((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, answer: e.target.value } : entry))} multiline minRows={2} sx={fieldSx} /><Button color="error" onClick={() => setQuickQuestions((prev) => prev.filter((entry) => entry.id !== item.id))}>Remove</Button></Box>)}</Stack>}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={stepActionBarSx}><Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>Back to Identity</Button><Button variant="contained" onClick={() => saveWidgetProfile(2)} disabled={busy} sx={{ borderRadius: '12px', px: 2.6 }}>Save conversation setup and continue</Button></Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeStep === 2 && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Grid container spacing={2.2}>
                   <Grid item xs={12}>
@@ -2089,7 +2157,7 @@ const CreateChatAgentPage: React.FC = () => {
                       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
                         <Box>
                           <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                            Step 2
+                            Step 3
                           </Typography>
                           <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
                             Add Knowledge Base
@@ -2692,7 +2760,7 @@ const CreateChatAgentPage: React.FC = () => {
             </Card>
           )}
 
-          {activeStep === 2 && (
+          {activeStep === 3 && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Stack spacing={2.2}>
@@ -2700,7 +2768,7 @@ const CreateChatAgentPage: React.FC = () => {
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
                       <Box>
                         <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                          Step 3
+                          Step 4
                         </Typography>
                         <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
                           Integrations
@@ -2882,7 +2950,7 @@ const CreateChatAgentPage: React.FC = () => {
             </Card>
           )}
 
-          {activeStep === 3 && (
+          {activeStep === 4 && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Stack spacing={2.2}>
