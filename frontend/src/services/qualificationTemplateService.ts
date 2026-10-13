@@ -74,10 +74,16 @@ export interface QualificationTemplatePayload {
 
 export interface QualificationTemplate extends QualificationTemplatePayload {
   id: number;
+  engine_template_id?: string | null;
   organization_id: number;
   created_at: string;
   updated_at?: string;
 }
+
+export type QualificationTemplateSyncStatus =
+  | "pending"
+  | "synced"
+  | "failed";
 
 export interface QualificationTemplateSummary {
   id: number;
@@ -88,6 +94,17 @@ export interface QualificationTemplateSummary {
   status: QualificationStatus;
   created_at: string;
   updated_at?: string;
+
+  engine_template_id?: string | null;
+  sync_status: QualificationTemplateSyncStatus;
+  sync_error?: string | null;
+  last_synced_at?: string | null;
+}
+
+export interface QualificationTemplateLookup {
+  id: number;
+  name: string;
+  description?: string;
 }
 
 export interface QualificationTemplateListResponse {
@@ -100,6 +117,11 @@ export interface QualificationTemplateListResponse {
 export const qualificationTemplateService = {
   async list(params: { search?: string; status?: QualificationStatus; skip?: number; limit?: number } = {}) {
     const response = await api.get<QualificationTemplateListResponse>("/api/qualification-templates", { params });
+    return response.data;
+  },
+
+  async lookup() {
+    const response = await api.get<QualificationTemplateLookup[]>("/api/qualification-templates/lookup");
     return response.data;
   },
 
@@ -128,5 +150,9 @@ export const qualificationTemplateService = {
 
   async remove(templateId: number) {
     await api.delete(`/api/qualification-templates/${templateId}`);
+  },
+
+  async sync(id: number) {
+    return api.post(`/api/qualification-templates/${id}/sync`);
   },
 };

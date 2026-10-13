@@ -151,6 +151,9 @@ export interface Lead {
   phone?: string;
   company?: string;
   lead_outcome?: string;
+  qualification_outcome?: string;
+  qualification_temperature?: string;
+  qualification_score?: number;
   source: 'chat' | 'voice' | 'email' | 'sms' | 'whatsapp';
   funnel_stage?: string;
   custom_fields?: string;

@@ -19,20 +19,16 @@ export const ExportToExcel = (data: CallLogListResponse, fileName: string, timez
         Duration: log.duration,
         Sentiment: log.sentiment || "-",
         "Conversion Outcome": log.lead_qualified_status || "-",
+        "Temperature": log.qualification_temperature || "-",
+        "Lead Score": log.qualification_score || "-",
+        "Disposition": log.qualification_disposition || "-",
+        "Next Action": log.qualification_next_action || "-",
         "End Reason": formatEndedReason(log.ended_reason),
         "Test Call": log.testCall ? "Yes" : "No",
         Date: formatDateTime(log.date, timezone),
         "Call Summary": log.call_summary || "-",
         "Follow Up Recommended":
             log.follow_up_recommended?.join(", ") || "-",
-        "Lead Quality":
-            log.lead_info?.lead_quality
-                ? `${log.lead_info.lead_quality.label || ""} (${log.lead_info.lead_quality.rate || 0})`
-                : "-",
-        "Follow Up Score":
-            log.lead_info?.follow_up
-                ? `${log.lead_info.follow_up.label || ""} (${log.lead_info.follow_up.rate || 0})`
-                : "-",
         "Transcript":
             log.transcript?.map(t =>
                 `[${t.speaker}] ${t.text}`

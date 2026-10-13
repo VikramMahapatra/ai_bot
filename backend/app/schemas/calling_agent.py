@@ -15,6 +15,8 @@ class CallingAgentCreate(BaseModel):
     server_location: Optional[str] = None
     inbound_phone_number: Optional[str] = None
 
+    qualification_template_id: int
+
     # Credit & campaign
     active_campaigns: int = 0
     allocated_calls: int = 0
@@ -101,6 +103,8 @@ class CallingAgentUpdate(BaseModel):
     destination: Optional[List[str]] = None
     server_location: Optional[str] = None
     inbound_phone_number: Optional[str] = None
+
+    qualification_template_id: int
 
     # Voice
     gender: Optional[str] = None

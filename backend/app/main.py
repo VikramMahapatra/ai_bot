@@ -29,19 +29,28 @@ from app.api import (
     channel_router,
     calling_number_router,
     qualification_templates_router,
+    qualification_engine_router,
 )
 from app.api.feedback import router as feedback_router
 from app.api.reports import router as reports_router
 from app.services.conversation_outcome_service import (
-    run_daily_call_campaign_daemon,
     run_daily_outcome_daemon,
+)
+from app.services.calling_agent_daemon_service import (
+    run_daily_call_campaign_daemon,
     run_inbound_call_agent_daemon,
+    run_republish_agents_agent_daemon,
 )
 from app.services.org_credit_billing_service import run_daily_org_credit_billing_daemon
 import logging
 import asyncio
 
 from app.api.campaigns import run_daily_due_campaign_daemon
+from app.services.zoho_contact_sync_service import (
+    run_zoho_automation_daemon,
+    run_zoho_call_automation_daemon,
+    run_zoho_contact_sync_daemon,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +76,18 @@ due_campaign_daemon_stop_event = asyncio.Event()
 
 inbound_call_agent_daemon_task = None
 inbound_call_agent_daemon_stop_event = asyncio.Event()
+
+republish_agents_daemon_task = None
+republish_agents_daemon_stop_event = asyncio.Event()
+
+zoho_contact_sync_task = None
+zoho_contact_sync_stop_event = asyncio.Event()
+
+zoho_automation_daemon_task = None
+zoho_automation_daemon_stop_event = asyncio.Event()
+
+zoho_call_automation_daemon_task = None
+zoho_call_automation_daemon_stop_event = asyncio.Event()
 
 # Create FastAPI app
 app = FastAPI(
@@ -123,6 +144,7 @@ app.include_router(message_templates_router)
 app.include_router(workflow_router)
 app.include_router(channel_router)
 app.include_router(calling_number_router)
+app.include_router(qualification_engine_router)
 
 
 # Handle OPTIONS requests for CORS preflight
@@ -139,6 +161,10 @@ async def startup_event():
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
     global inbound_call_agent_daemon_task
+    global zoho_contact_sync_task
+    global zoho_automation_daemon_task
+    global zoho_call_automation_daemon_task
+    global republish_agents_daemon_task
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
@@ -173,6 +199,29 @@ async def startup_event():
     )
     logger.info("Inbound call agent credit check daemon started")
 
+    republish_agents_daemon_stop_event.clear()
+    republish_agents_daemon_task = asyncio.create_task(
+        run_republish_agents_agent_daemon(republish_agents_daemon_stop_event)
+    )
+
+    zoho_contact_sync_stop_event.clear()
+    zoho_contact_sync_task = asyncio.create_task(
+        run_zoho_contact_sync_daemon(zoho_contact_sync_stop_event)
+    )
+    logger.info("Zoho contact sync daemon started")
+
+    zoho_automation_daemon_stop_event.clear()
+    zoho_automation_daemon_task = asyncio.create_task(
+        run_zoho_automation_daemon(zoho_automation_daemon_stop_event)
+    )
+    logger.info("Zoho email/whatsapp automation daemon started")
+
+    zoho_call_automation_daemon_stop_event.clear()
+    zoho_call_automation_daemon_task = asyncio.create_task(
+        run_zoho_call_automation_daemon(zoho_automation_daemon_stop_event)
+    )
+    logger.info("Zoho call automation daemon started")
+
     logger.info("✅ Backend is ready!")
 
 
@@ -183,10 +232,20 @@ async def shutdown_event():
     global call_campaign_daemon_task
     global org_credit_billing_daemon_task
     global due_campaign_daemon_task
+    global zoho_automation_daemon_task
+    global inbound_call_agent_daemon_task
+    global republish_agents_daemon_task
+    global zoho_contact_sync_task
+    global zoho_call_automation_daemon_task
     outcome_daemon_stop_event.set()
     call_campaign_daemon_stop_event.set()
     org_credit_billing_daemon_stop_event.set()
     due_campaign_daemon_stop_event.set()
+    inbound_call_agent_daemon_stop_event.set()
+    republish_agents_daemon_stop_event.set()
+    zoho_contact_sync_stop_event.set()
+    zoho_automation_daemon_stop_event.set()
+    zoho_call_automation_daemon_stop_event.set()
 
     if outcome_daemon_task:
         try:
@@ -211,6 +270,38 @@ async def shutdown_event():
             await due_campaign_daemon_task
         except Exception:
             logger.exception("Error while stopping due campaign daemon")
+
+    if inbound_call_agent_daemon_task:
+        try:
+            await inbound_call_agent_daemon_task
+        except Exception:
+            logger.exception("Error while stopping inbound call agent daemon")
+
+    if republish_agents_daemon_task:
+        try:
+            await republish_agents_daemon_task
+        except Exception:
+            logger.exception("Error while stopping republish agents daemon")
+
+    if zoho_contact_sync_task:
+        try:
+            await zoho_contact_sync_task
+        except Exception:
+            logger.exception("Error while stopping Zoho contact sync daemon")
+
+    if zoho_automation_daemon_task:
+        try:
+            await zoho_automation_daemon_task
+        except Exception:
+            logger.exception(
+                "Error while stopping Zoho email/whatsapp automation daemon"
+            )
+
+    if zoho_call_automation_daemon_task:
+        try:
+            await zoho_call_automation_daemon_task
+        except Exception:
+            logger.exception("Error while stopping Zoho call automation daemon")
 
 
 @app.get("/")

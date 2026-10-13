@@ -691,7 +691,7 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
     URL.revokeObjectURL(url);
   };
 
-  const getContactListLabel = (list: ContactListItem) => {
+  const getContactListLabel = (list: ContactListItem): string => {
     const tags = [];
 
     if (list.is_agent_auto_list) {
@@ -700,6 +700,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
 
     if (list.is_campaign_list) {
       tags.push("Campaign");
+    }
+
+    if (list.is_crm_list) {
+      tags.push("CRM");
     }
 
     const tagSuffix = tags.length
@@ -1235,6 +1239,16 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                   color="success"
                                   variant="outlined"
                                   label="Campaign"
+                                />
+                              )}
+
+                              {/* CRM Chip */}
+                              {list.is_crm_list && (
+                                <Chip
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                  label="CRM"
                                 />
                               )}
                             </Stack>

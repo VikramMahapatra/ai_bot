@@ -66,6 +66,13 @@ class Organization(Base):
         cascade="all, delete-orphan",
     )
 
+    qualification_engine_integration = relationship(
+        "QualificationEngineIntegration",
+        back_populates="organization",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
 
 class User(Base):
     __tablename__ = "users"

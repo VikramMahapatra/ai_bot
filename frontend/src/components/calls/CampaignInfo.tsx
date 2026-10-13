@@ -26,6 +26,7 @@ import { messageTemplateService } from "../../services/messageTemplateService";
 import { WorkflowLookupItem, workflowService } from "../../services/workflowService";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import { useAuth } from "../../context/AuthContext";
+import { QualificationTemplateLookup, qualificationTemplateService } from "../../services/qualificationTemplateService";
 
 interface CampaignInfoProps {
   form: any;
@@ -76,6 +77,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowLookupItem[]>([]);
   const [callingNumbers, setCallingNumbers] = useState<any[]>([]);
+  const [qualificationTemplates, setQualificationTemplates] = useState<QualificationTemplateLookup[]>([]);
   const { featureFlags } = useAuth();
 
   const loadAgentLookup = async () => {
@@ -105,12 +107,18 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
     setTemplates(data || []);
   };
 
+  const loadQualificationTemplateLookup = async () => {
+    const data = await qualificationTemplateService.lookup();
+    setQualificationTemplates(data || []);
+  };
+
   useEffect(() => {
     loadAgentLookup();
     loadProductLookup();
     loadCallingNoLookup();
     loadTemplateLookup();
     loadWorkflowLookup();
+    loadQualificationTemplateLookup();
   }, [form]);
 
   const validate = () => {
@@ -223,7 +231,7 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
           helperText={errors.description}
         />
       </Grid>
-      <Grid item xs={12} sm={6}>
+      <Grid item xs={12} sm={4}>
         <TextField
           required
           label="Agent"
@@ -242,7 +250,36 @@ const CampaignInfo = ({ form, setForm, nextStep }: CampaignInfoProps) => {
           ))}
         </TextField>
       </Grid>
-      <Grid item xs={12} sm={6}>
+      <Grid item xs={12} sm={4}>
+        <TextField
+          label="Qualification Template"
+          select
+          fullWidth
+          name="qualification_template_id"
+          value={form.qualification_template_id ?? ""}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              qualification_template_id: e.target.value
+                ? Number(e.target.value)
+                : null,
+            })
+          }
+          helperText={
+            !form.qualification_template_id
+              ? "If not selected, the template configured in the agent will be used."
+              : ""
+          }
+        >
+
+          {qualificationTemplates.map((template) => (
+            <MenuItem key={template.id} value={template.id}>
+              {template.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Grid>
+      <Grid item xs={12} sm={4}>
         <TextField
           required
           label="From Number"

@@ -19,8 +19,11 @@ from app.models.campaign import Contact
 from app.models.campaign_contacts import CampaignContact
 from app.models.campaign_schedules import CampaignSchedule
 from app.models.lead_activities import LeadActivity
+from app.models.conversation import ConversationEvaluation
 
 logger = logging.getLogger(__name__)
+
+EVALUATION_STATUS_EVALUATED = "evaluated"
 
 VOICE_LEAD_OUTCOME_OPTIONS = [
     "positive",
@@ -221,17 +224,8 @@ def get_session_conversations_report(
     call_log_subquery = (
         db.query(
             CallLog.call_session_id.label("session_id"),
-            func.max(
-                cast(
-                    func.json_extract_path_text(
-                        CallLog.lead_info,
-                        "lead_quality",
-                        "rate",
-                    ),
-                    Float,
-                )
-            ).label("lead_quality_rate"),
-            func.max(CallLog.call_summary).label("call_summary"),
+            func.max(CallLog.type).label("call_type"),
+            func.max(CallLog.phone).label("phone"),
         )
         .filter(
             CallLog.organization_id == organization_id,
@@ -239,6 +233,74 @@ def get_session_conversations_report(
         )
         .group_by(CallLog.call_session_id)
         .subquery()
+    )
+
+    evaluation_subquery = (
+        db.query(
+            ConversationEvaluation.session_id.label("session_id"),
+            ConversationEvaluation.temperature.label("temperature"),
+            ConversationEvaluation.score.label("score"),
+            ConversationEvaluation.qualified.label("qualified"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "disposition",
+            ).label("disposition"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "next_action",
+            ).label("next_action"),
+            ConversationEvaluation.evaluation_status.label("evaluation_status"),
+            func.row_number()
+            .over(
+                partition_by=ConversationEvaluation.session_id,
+                order_by=ConversationEvaluation.updated_at.desc(),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            ConversationEvaluation.organization_id == organization_id,
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_EVALUATED,
+        )
+        .subquery()
+    )
+
+    latest_evaluation_subquery = (
+        db.query(
+            evaluation_subquery.c.session_id,
+            evaluation_subquery.c.temperature,
+            evaluation_subquery.c.score,
+            evaluation_subquery.c.qualified,
+            evaluation_subquery.c.disposition,
+            evaluation_subquery.c.next_action,
+            evaluation_subquery.c.evaluation_status,
+        )
+        .filter(evaluation_subquery.c.row_number == 1)
+        .subquery()
+    )
+
+    lead_conversion_case = case(
+        (
+            latest_evaluation_subquery.c.evaluation_status == "failed",
+            "failed",
+        ),
+        (
+            sessions_subquery.c.is_lead == True,
+            case(
+                (
+                    latest_evaluation_subquery.c.temperature.isnot(None),
+                    func.concat(
+                        "positive - ",
+                        func.lower(latest_evaluation_subquery.c.temperature),
+                    ),
+                ),
+                else_="positive",
+            ),
+        ),
+        (
+            sessions_subquery.c.is_lead == False,
+            "negative",
+        ),
+        else_="pending",
     )
 
     query = (
@@ -268,68 +330,15 @@ def get_session_conversations_report(
             func.coalesce(contact_subquery.c.contact_name, "Guest").label(
                 "contact_name"
             ),
-            case(
-                # Voice + positive + very hot
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 90,
-                    ),
-                    "positive - very hot",
-                ),
-                # Voice + positive + hot
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 70,
-                    ),
-                    "positive - hot",
-                ),
-                # Voice + positive + warm
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 50,
-                    ),
-                    "positive - warm",
-                ),
-                # Voice + positive + cold
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        call_log_subquery.c.lead_quality_rate >= 20,
-                        call_log_subquery.c.lead_quality_rate < 50,
-                    ),
-                    "positive - cold",
-                ),
-                (
-                    and_(
-                        func.lower(sessions_subquery.c.source) == "voice",
-                        sessions_subquery.c.is_lead == True,
-                        or_(
-                            call_log_subquery.c.lead_quality_rate < 20,
-                            call_log_subquery.c.lead_quality_rate.is_(None),
-                        ),
-                    ),
-                    "negative",
-                ),
-                # Non-Voice + positive
-                (
-                    sessions_subquery.c.is_lead == True,
-                    "positive",
-                ),
-                # Negative
-                (
-                    sessions_subquery.c.is_lead == False,
-                    "negative",
-                ),
-                # Pending
-                else_="pending",
-            ).label("lead_conversion"),
+            latest_evaluation_subquery.c.evaluation_status.label("evaluation_status"),
+            latest_evaluation_subquery.c.temperature.label("temperature"),
+            latest_evaluation_subquery.c.score.label("score"),
+            latest_evaluation_subquery.c.qualified.label("qualified"),
+            latest_evaluation_subquery.c.disposition.label("disposition"),
+            latest_evaluation_subquery.c.next_action.label("next_action"),
+            lead_conversion_case.label("lead_conversion"),
+            func.coalesce(call_log_subquery.c.call_type, "").label("call_type"),
+            func.coalesce(call_log_subquery.c.phone, "").label("phone"),
         )
         .select_from(sessions_subquery)
         .outerjoin(
@@ -347,6 +356,10 @@ def get_session_conversations_report(
         .outerjoin(
             call_log_subquery,
             call_log_subquery.c.session_id == sessions_subquery.c.session_id,
+        )
+        .outerjoin(
+            latest_evaluation_subquery,
+            latest_evaluation_subquery.c.session_id == sessions_subquery.c.session_id,
         )
     )
 
@@ -382,14 +395,10 @@ def get_session_conversations_report(
         normalized_lead_conversion = _normalize_outcome(lead_conversion_outcome)
 
         if normalized_lead_conversion != "all":
-            query = query.filter(
-                case(
-                    (sessions_subquery.c.is_lead == True, "positive"),
-                    (sessions_subquery.c.is_lead == False, "negative"),
-                    else_="pending",
-                )
-                == normalized_lead_conversion
-            )
+            if normalized_lead_conversion == "positive":
+                query = query.filter(sessions_subquery.c.is_lead == True)
+            else:
+                query = query.filter(lead_conversion_case == normalized_lead_conversion)
 
     if source:
         normalized_source = _normalize_source(source)
@@ -434,6 +443,8 @@ def get_session_conversations_report(
                 "organization_id": organization_id,
                 "widget_id": row.widget_id,
                 "source": row.source,
+                "call_type": row.call_type,
+                "phone": row.phone,
                 "total_messages": turn_count * 2,
                 "total_tokens": int(row.total_tokens or 0),
                 "prompt_tokens": int(row.prompt_tokens or 0),
@@ -451,6 +462,11 @@ def get_session_conversations_report(
                 "lead_name": row.lead_name,
                 "lead_email": row.lead_email,
                 "outcome": row.outcome,
+                "temperature": row.temperature,
+                "qualified": row.qualified,
+                "score": (int(row.score) if row.score is not None else None),
+                "disposition": row.disposition,
+                "next_action": row.next_action,
                 "ai_funnel": funnel_key_to_name.get(row.funnel_stage, row.funnel_stage),
                 "conversation_start": row.conversation_start,
                 "conversation_end": row.conversation_end,
@@ -754,7 +770,35 @@ def get_voice_campaign_report(
         .label("rn"),
     ).subquery()
 
+    latest_evaluation_subquery = (
+        db.query(
+            ConversationEvaluation.session_id.label("session_id"),
+            ConversationEvaluation.temperature.label("temperature"),
+            ConversationEvaluation.score.label("score"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "disposition",
+            ).label("disposition"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "next_action",
+            ).label("next_action"),
+            func.row_number()
+            .over(
+                partition_by=ConversationEvaluation.session_id,
+                order_by=ConversationEvaluation.updated_at.desc(),
+            )
+            .label("rn"),
+        )
+        .filter(
+            ConversationEvaluation.organization_id == organization_id,
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_EVALUATED,
+        )
+        .subquery()
+    )
+
     latest_conversation = aliased(latest_conversation_subquery)
+    latest_evaluation = aliased(latest_evaluation_subquery)
 
     query = (
         db.query(
@@ -774,6 +818,10 @@ def get_voice_campaign_report(
             ).label("campaign_start_date"),
             latest_conversation.c.conversation_outcome.label("outcome"),
             latest_conversation.c.conversation_is_lead.label("is_lead"),
+            latest_evaluation.c.temperature.label("temperature"),
+            latest_evaluation.c.score.label("score"),
+            latest_evaluation.c.disposition.label("disposition"),
+            latest_evaluation.c.next_action.label("next_action"),
         )
         .join(LeadContactMapping, Lead.id == LeadContactMapping.lead_id)
         .join(
@@ -812,6 +860,13 @@ def get_voice_campaign_report(
             and_(
                 latest_conversation.c.session_id == LeadActivity.session_id,
                 latest_conversation.c.rn == 1,
+            ),
+        )
+        .outerjoin(
+            latest_evaluation,
+            and_(
+                latest_evaluation.c.session_id == LeadActivity.session_id,
+                latest_evaluation.c.rn == 1,
             ),
         )
         .filter(
@@ -914,6 +969,10 @@ def get_voice_campaign_report(
                 "campaign_start_date": row.campaign_start_date,
                 "sentiment": row.outcome,
                 "outcome": "positive" if row.is_lead else "negative",
+                "temperature": row.temperature,
+                "score": int(row.score) if row.score is not None else None,
+                "disposition": row.disposition,
+                "next_action": row.next_action,
             }
             for row in rows
         ],

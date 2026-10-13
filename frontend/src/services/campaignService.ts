@@ -245,6 +245,7 @@ export interface ContactListItem {
   description?: string;
   is_agent_auto_list?: boolean;
   is_campaign_list?: boolean;
+  is_crm_list?: boolean;
   agent_widget_id?: string | null;
   created_at: string;
   contact_count: number;
@@ -433,6 +434,13 @@ export const campaignService = {
 
   async getCampaignLookup(): Promise<CampaignItem[]> {
     const response = await api.get("/api/admin/campaigns/campaign-lookup");
+    return response.data;
+  },
+
+  async getFilteredCampaignLookup(campaignType: string): Promise<CampaignItem[]> {
+    const response = await api.get("/api/admin/campaigns/filtered-campaign-lookup", {
+      params: { campaign_type: campaignType }
+    });
     return response.data;
   },
 

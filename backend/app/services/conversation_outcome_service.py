@@ -33,6 +33,10 @@ from app.services.call_log_service import (
     sync_test_call_log,
     process_workflow_scheduled_calls,
 )
+from app.models.conversation import ConversationEvaluation
+from app.models.qualification_templates import QualificationTemplate
+from app.models.widget_config import WidgetConfig
+from app.services.qualification_engine_service import QualificationEngineService
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,24 @@ FUNNEL_STAGE = {
     "CLOSED_LOST": "closed_lost",
     "UNASSIGNED": "unassigned",
 }
+
+EVALUATION_STATUS_EVALUATED = "evaluated"
+EVALUATION_STATUS_SKIPPED_NO_CUSTOMER = "skipped_no_customer_message"
+EVALUATION_STATUS_FAILED = "failed"
+
+
+def _seconds_until_next_run(hour_utc: int, minute_utc: int) -> float:
+    now = datetime.now(timezone.utc)
+    target = now.replace(hour=hour_utc, minute=minute_utc, second=0, microsecond=0)
+    if now >= target:
+        target = target + timedelta(days=1)
+    return max((target - now).total_seconds(), 1.0)
+
+
+def _seconds_until_next_interval(interval_seconds: int) -> float:
+    now = datetime.now(timezone.utc).timestamp()
+    next_run = ((now // interval_seconds) + 1) * interval_seconds
+    return max(next_run - now, 1.0)
 
 
 def _normalize_outcome(value: Optional[str]) -> str:
@@ -256,19 +278,213 @@ def _classify_funnel_stage_with_llm(
     return None
 
 
-def process_pending_session_outcomes(
-    db: Session, batch_size: int = 100, organization_id: Optional[int] = None
+def _build_evaluation_transcript(
+    rows: List[Conversation],
+    session_id: str,
+) -> dict[str, Any]:
+
+    if not rows:
+        return {
+            "conversation_transcript_id": str(session_id),
+            "channel": "chat",
+            "language": "en",
+            "messages": [],
+            "metadata": {},
+        }
+
+    source = (rows[0].source or "").lower()
+
+    channel = "voice" if source == "voice" else "chat"
+
+    messages = []
+
+    for row in rows[:120]:
+
+        timestamp = row.created_at.isoformat() if row.created_at else None
+
+        if row.message and row.message.strip():
+            messages.append(
+                {
+                    "speaker": "customer",
+                    "text": row.message.strip(),
+                    "timestamp": timestamp,
+                    "metadata": {},
+                }
+            )
+
+        if row.response and row.response.strip():
+            messages.append(
+                {
+                    "speaker": "agent",
+                    "text": row.response.strip(),
+                    "timestamp": timestamp,
+                    "metadata": {},
+                }
+            )
+
+    return {
+        "conversation_transcript_id": str(session_id),
+        "channel": channel,
+        "language": "en",
+        "messages": messages,
+        "metadata": {
+            "source": source,
+        },
+    }
+
+
+def _normalize_evaluation_result(
+    evaluation: dict[str, Any],
+) -> dict[str, Any]:
+
+    qualified = bool(evaluation.get("qualified", False))
+
+    outcome = _normalize_outcome(evaluation.get("outcome"))
+
+    return {
+        "outcome": outcome,
+        "whether_lead": ("lead" if qualified else "not lead"),
+        "qualified": qualified,
+        "score": evaluation.get("score"),
+        "temperature": evaluation.get("temperature"),
+        "evaluation": evaluation,
+    }
+
+
+def _get_or_create_conversation_evaluation(
+    db: Session,
+    organization_id: int,
+    session_id: str,
+    template_id: Optional[int],
+) -> ConversationEvaluation:
+
+    query = db.query(ConversationEvaluation).filter(
+        ConversationEvaluation.organization_id == organization_id,
+        ConversationEvaluation.session_id == session_id,
+    )
+
+    if template_id is None:
+        query = query.filter(ConversationEvaluation.template_id.is_(None))
+    else:
+        query = query.filter(ConversationEvaluation.template_id == template_id)
+
+    evaluation_record = query.first()
+
+    if evaluation_record:
+        return evaluation_record
+
+    evaluation_record = ConversationEvaluation(
+        organization_id=organization_id,
+        session_id=session_id,
+        template_id=template_id,
+    )
+
+    db.add(evaluation_record)
+    db.flush()
+
+    return evaluation_record
+
+
+async def _evaluate_conversation_with_engine(
+    *,
+    api_key: str,
+    project_id: str,
+    session_id: str,
+    transcript: dict[str, Any],
+    template_id: str,
+    engine_template_payload: dict[str, Any],
+) -> dict[str, Any]:
+
+    if not api_key:
+        raise RuntimeError("Qualification Engine API key is not configured")
+
+    if not template_id:
+        raise RuntimeError(
+            "Qualification template is not synced with the Qualification Engine"
+        )
+
+    if not engine_template_payload:
+        raise RuntimeError("Qualification Engine template payload is required")
+
+    evaluation_request = {
+        "project_id": project_id,
+        "conversation_transcript_id": str(session_id),
+        "transcript": transcript,
+        "template": engine_template_payload,
+        "template_id": str(template_id),
+    }
+
+    try:
+        engine_service = QualificationEngineService()
+
+        result = await engine_service.evaluate(
+            api_key=api_key,
+            project_id=project_id,
+            conversation_transcript_id=str(session_id),
+            transcript=transcript,
+            template_id=str(template_id),
+            template=engine_template_payload,
+        )
+
+        return result
+
+    except Exception as exc:
+        # Attach the request so the caller can persist it
+        # if the Engine request fails.
+        exc.evaluation_request = evaluation_request
+        raise
+
+
+def _has_customer_message(transcript: dict[str, Any]) -> bool:
+    return any(
+        (message.get("speaker") or "").lower() == "customer"
+        and (message.get("text") or "").strip()
+        for message in transcript.get("messages", [])
+    )
+
+
+async def process_pending_session_outcomes(
+    db: Session,
+    batch_size: int = 100,
+    organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
     """Process pending session outcomes where conversation.outcome is NULL.
 
-    Returns tuple: (processed_count, failed_count)
+    Returns:
+        Tuple[int, int]: (processed_count, failed_count)
     """
-    pending_query = db.query(
-        Conversation.organization_id,
-        Conversation.session_id,
-    ).filter(
-        Conversation.session_id.isnot(None),
-        Conversation.outcome.is_(None),
+    failed_evaluation_sessions = (
+        db.query(
+            ConversationEvaluation.organization_id,
+            ConversationEvaluation.session_id,
+        )
+        .filter(
+            ConversationEvaluation.evaluation_status == EVALUATION_STATUS_FAILED,
+        )
+        .distinct()
+        .subquery()
+    )
+
+    pending_query = (
+        db.query(
+            Conversation.organization_id,
+            Conversation.session_id,
+        )
+        .outerjoin(
+            failed_evaluation_sessions,
+            and_(
+                failed_evaluation_sessions.c.organization_id
+                == Conversation.organization_id,
+                failed_evaluation_sessions.c.session_id == Conversation.session_id,
+            ),
+        )
+        .filter(
+            Conversation.session_id.isnot(None),
+            or_(
+                Conversation.outcome.is_(None),
+                failed_evaluation_sessions.c.session_id.isnot(None),
+            ),
+        )
     )
 
     if organization_id is not None:
@@ -287,19 +503,15 @@ def process_pending_session_outcomes(
 
     processed = 0
     failed = 0
+
     funnel_categories_by_org: dict[int, List[FunnelCategory]] = {}
 
     for org_id, session_id in pending_sessions:
-        try:
-            valid = organization_credit_service.validate_feature_usage(
-                db, org_id, FeatureCodes.AI_SENTIMENT, 1
-            )
 
-            if not valid:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Insufficient credits. Please add more credits to continue.",
-                )
+        try:
+            # =========================================================
+            # Load conversation rows
+            # =========================================================
 
             rows = (
                 db.query(Conversation)
@@ -314,13 +526,199 @@ def process_pending_session_outcomes(
             if not rows:
                 continue
 
-            transcript = _build_transcript(rows)
-            classification = _classify_outcome_with_llm(transcript)
-            outcome = classification["outcome"]
+            # =========================================================
+            # Build transcript
+            # =========================================================
+
+            evaluation_transcript = _build_evaluation_transcript(
+                rows,
+                session_id,
+            )
+
+            # =========================================================
+            # NO CUSTOMER MESSAGE
+            #
+            # Do not call Qualification Engine.
+            # Do not consume credits.
+            # =========================================================
+
+            if not _has_customer_message(evaluation_transcript):
+
+                logger.info(
+                    "No customer message found for org=%s session=%s. "
+                    "Marking conversation as negative without "
+                    "Qualification Engine evaluation.",
+                    org_id,
+                    session_id,
+                )
+
+                outcome = "negative"
+                whether_lead = "not lead"
+                is_lead_value = 0
+
+                # -----------------------------------------------------
+                # Funnel stage
+                # -----------------------------------------------------
+
+                if org_id not in funnel_categories_by_org:
+                    funnel_categories_by_org[org_id] = (
+                        db.query(FunnelCategory)
+                        .filter(
+                            FunnelCategory.organization_id == org_id,
+                            FunnelCategory.is_active == True,
+                        )
+                        .order_by(
+                            FunnelCategory.position.asc(),
+                            FunnelCategory.id.asc(),
+                        )
+                        .all()
+                    )
+
+                inferred_funnel_stage = FUNNEL_STAGE["CLOSED_LOST"]
+
+                # -----------------------------------------------------
+                # Update Conversations
+                # -----------------------------------------------------
+
+                db.query(Conversation).filter(
+                    Conversation.organization_id == org_id,
+                    Conversation.session_id == session_id,
+                    Conversation.outcome.is_(None),
+                ).update(
+                    {
+                        Conversation.outcome: outcome,
+                        Conversation.is_lead: is_lead_value,
+                    },
+                    synchronize_session=False,
+                )
+
+                # -----------------------------------------------------
+                # Update LeadActivity
+                # -----------------------------------------------------
+
+                db.query(LeadActivity).filter(
+                    LeadActivity.session_id == session_id,
+                    LeadActivity.outcome.is_(None),
+                ).update(
+                    {
+                        LeadActivity.outcome: outcome,
+                    },
+                    synchronize_session=False,
+                )
+
+                # -----------------------------------------------------
+                # Update Lead
+                # -----------------------------------------------------
+
+                lead_rows = (
+                    db.query(Lead)
+                    .join(
+                        LeadContactMapping,
+                        LeadContactMapping.lead_id == Lead.id,
+                    )
+                    .join(
+                        Conversation,
+                        Conversation.contact_id == LeadContactMapping.contact_id,
+                    )
+                    .filter(
+                        Conversation.organization_id == org_id,
+                        Conversation.session_id == session_id,
+                        Lead.organization_id == org_id,
+                    )
+                    .distinct(Lead.id)
+                    .all()
+                )
+
+                for lead in lead_rows:
+                    lead.lead_outcome = outcome
+
+                    if not (lead.funnel_stage or "").strip():
+                        lead.funnel_stage = inferred_funnel_stage
+
+                # -----------------------------------------------------
+                # Store skipped evaluation
+                #
+                # No template because Engine was never called.
+                # -----------------------------------------------------
+
+                evaluation_record = _get_or_create_conversation_evaluation(
+                    db=db,
+                    organization_id=org_id,
+                    session_id=session_id,
+                    template_id=None,
+                )
+
+                evaluation_record.engine_template_id = None
+                evaluation_record.template_version = None
+                evaluation_record.evaluation_id = None
+
+                evaluation_record.evaluation_status = (
+                    EVALUATION_STATUS_SKIPPED_NO_CUSTOMER
+                )
+
+                evaluation_record.qualified = False
+                evaluation_record.outcome = "negative"
+                evaluation_record.score = 0
+                evaluation_record.temperature = None
+                evaluation_record.evidence_level = "insufficient"
+
+                evaluation_record.evaluation_request = None
+
+                evaluation_record.evaluation_response = {
+                    "evaluation_skipped": True,
+                    "reason": ("No customer message found in conversation"),
+                }
+
+                evaluation_record.evaluation_error = None
+
+                db.commit()
+
+                processed += 1
+
+                logger.info(
+                    "No-response outcome resolved for "
+                    "org=%s session=%s: outcome=%s whether_lead=%s",
+                    org_id,
+                    session_id,
+                    outcome,
+                    whether_lead,
+                )
+
+                continue
+
+            # =========================================================
+            # Validate credits
+            # =========================================================
+
+            valid = organization_credit_service.validate_feature_usage(
+                db,
+                org_id,
+                FeatureCodes.AI_SENTIMENT,
+                1,
+            )
+
+            if not valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Insufficient credits. Please add more credits " "to continue."
+                    ),
+                )
+
+            # =========================================================
+            # Resolve qualification template
+            # =========================================================
+
+            template = None
 
             source = (rows[0].source or "").lower()
 
+            # ---------------------------------------------------------
+            # Voice
+            # ---------------------------------------------------------
+
             if source == "voice":
+
                 call_log = (
                     db.query(CallLog)
                     .filter(
@@ -331,80 +729,342 @@ def process_pending_session_outcomes(
                     .first()
                 )
 
-                lead_info = call_log.lead_info if call_log else {}
-                call_summary = call_log.call_summary if call_log else None
+                if call_log and call_log.campaign_id:
 
-                if isinstance(lead_info, str):
-                    try:
-                        lead_info = json.loads(lead_info)
-                    except (json.JSONDecodeError, TypeError):
-                        lead_info = {}
+                    campaign = (
+                        db.query(CallCampaign)
+                        .filter(
+                            CallCampaign.id == call_log.campaign_id,
+                            CallCampaign.organization_id == org_id,
+                            CallCampaign.is_deleted == False,
+                        )
+                        .first()
+                    )
 
-                lead_quality = lead_info.get("lead_quality") or {}
+                    if campaign:
 
-                rate = lead_quality.get("rate", 0)
-                try:
-                    rate = float(rate or 0)
-                except (TypeError, ValueError):
-                    rate = 0
+                        effective_template_id = campaign.qualification_template_id or (
+                            campaign.agent.qualification_template_id
+                            if campaign.agent
+                            else None
+                        )
 
-                # Lead Rate above 20 is considered a lead, below 20 is not a lead
-                is_lead_value = 1 if rate >= 20 else 0
-                whether_lead = "lead" if is_lead_value else "not_lead"
+                        if effective_template_id:
 
-                if is_lead_value == 1:
-                    campaign = None
+                            template = (
+                                db.query(QualificationTemplate)
+                                .filter(
+                                    QualificationTemplate.id == effective_template_id,
+                                    QualificationTemplate.organization_id == org_id,
+                                )
+                                .first()
+                            )
+                # INBOUND
+                else:
 
-                    if call_log and call_log.campaign_id:
-                        campaign = (
-                            db.query(CallCampaign)
+                    calling_agent = None
+
+                    if call_log.agent_id:
+                        calling_agent = (
+                            db.query(CallingAgent)
                             .filter(
-                                CallCampaign.id == call_log.campaign_id,
-                                CallCampaign.organization_id == org_id,
-                                CallCampaign.is_deleted == False,
+                                CallingAgent.id == call_log.agent_id,
+                                CallingAgent.organization_id == org_id,
                             )
                             .first()
                         )
 
-                        if campaign:
-                            add_contact_to_qualified_list(
-                                db=db,
-                                organization_id=org_id,
-                                campaign=campaign,
-                                contact_id=call_log.contact_id,
+                    if calling_agent and calling_agent.qualification_template_id:
+
+                        template = (
+                            db.query(QualificationTemplate)
+                            .filter(
+                                QualificationTemplate.id
+                                == calling_agent.qualification_template_id,
+                                QualificationTemplate.organization_id == org_id,
                             )
+                            .first()
+                        )
+
+            # ---------------------------------------------------------
+            # Chat / Widget
+            # ---------------------------------------------------------
 
             else:
-                whether_lead = classification["whether_lead"]
-                is_lead_value = 1 if whether_lead == "lead" else 0
 
-            if transcript.strip():
-                organization_credit_service.deduct_credits(
-                    db=db,
-                    organization_id=org_id,
-                    feature_code=FeatureCodes.AI_SENTIMENT,
-                    quantity=1,
-                    reference_type="conversation",
-                    reference_id=session_id,
+                widget_id = rows[0].widget_id
+
+                if widget_id:
+
+                    widget = (
+                        db.query(WidgetConfig)
+                        .filter(
+                            WidgetConfig.widget_id == widget_id,
+                            WidgetConfig.organization_id == org_id,
+                        )
+                        .first()
+                    )
+
+                    if widget and widget.qualification_template_id:
+
+                        template = (
+                            db.query(QualificationTemplate)
+                            .filter(
+                                QualificationTemplate.id
+                                == widget.qualification_template_id,
+                                QualificationTemplate.organization_id == org_id,
+                            )
+                            .first()
+                        )
+
+            # =========================================================
+            # Validate template
+            # =========================================================
+
+            if not template:
+                raise RuntimeError(
+                    "No qualification template configured for "
+                    f"organization={org_id}, session={session_id}"
                 )
 
+            if not template.engine_template_id:
+                raise RuntimeError(
+                    f"Qualification template '{template.name}' "
+                    "is not synced with the Qualification Engine"
+                )
+
+            # =========================================================
+            # Qualification Engine evaluation
+            # =========================================================
+
+            try:
+                engine_service = QualificationEngineService()
+
+                api_key = engine_service.get_api_key(
+                    db,
+                    org_id,
+                )
+
+                engine_template_payload = engine_service.build_engine_template_payload(
+                    template
+                )
+
+                # Release DB connection before external HTTP call.
+                db.commit()
+                db.close()
+
+                evaluation_result = await _evaluate_conversation_with_engine(
+                    api_key=api_key,
+                    project_id=f"org_{org_id}_qualification",
+                    session_id=str(session_id),
+                    transcript=evaluation_transcript,
+                    template_id=str(template.engine_template_id),
+                    engine_template_payload=engine_template_payload,
+                )
+
+                db = SessionLocal()
+
+                evaluation_request = evaluation_result["request"]
+                evaluation = evaluation_result["response"]
+
+            except Exception as exc:
+
+                logger.error(
+                    "Qualification Engine evaluation failed "
+                    "for org=%s session=%s: %s",
+                    org_id,
+                    session_id,
+                    str(exc),
+                    exc_info=True,
+                )
+
+                # -----------------------------------------------------
+                # IMPORTANT:
+                #
+                # Roll back the current transaction first.
+                # This removes any pending DB changes but leaves the
+                # Engine request available from the exception.
+                # -----------------------------------------------------
+
+                db.rollback()
+
+                evaluation_request = getattr(
+                    exc,
+                    "evaluation_request",
+                    None,
+                )
+
+                # -----------------------------------------------------
+                # Store failed Engine evaluation.
+                #
+                # Because the unique constraint is:
+                #
+                # organization_id + session_id + template_id
+                #
+                # we UPDATE an existing record instead of blindly
+                # INSERTing another one.
+                # -----------------------------------------------------
+
+                evaluation_record = _get_or_create_conversation_evaluation(
+                    db=db,
+                    organization_id=org_id,
+                    session_id=session_id,
+                    template_id=template.id,
+                )
+
+                evaluation_record.engine_template_id = str(template.engine_template_id)
+
+                evaluation_record.template_version = str(template.version)
+
+                evaluation_record.evaluation_id = None
+
+                evaluation_record.evaluation_status = EVALUATION_STATUS_FAILED
+
+                evaluation_record.qualified = None
+                evaluation_record.outcome = None
+                evaluation_record.score = None
+                evaluation_record.temperature = None
+                evaluation_record.evidence_level = None
+
+                evaluation_record.evaluation_request = evaluation_request
+
+                evaluation_record.evaluation_response = None
+
+                evaluation_record.evaluation_error = str(exc)
+
+                db.commit()
+
+                failed += 1
+
+                continue
+
+            # =========================================================
+            # Store successful Engine response
+            #
+            # UPSERT instead of INSERT because the session/template
+            # combination is unique.
+            # =========================================================
+
+            evaluation_record = _get_or_create_conversation_evaluation(
+                db=db,
+                organization_id=org_id,
+                session_id=session_id,
+                template_id=template.id,
+            )
+
+            evaluation_record.engine_template_id = str(template.engine_template_id)
+
+            evaluation_record.template_version = str(template.version)
+
+            evaluation_record.evaluation_id = evaluation.get("evaluation_id")
+
+            evaluation_record.evaluation_status = EVALUATION_STATUS_EVALUATED
+
+            evaluation_record.qualified = bool(evaluation.get("qualified", False))
+
+            evaluation_record.outcome = evaluation.get("outcome")
+
+            evaluation_record.score = evaluation.get("score")
+
+            evaluation_record.temperature = evaluation.get("temperature")
+
+            evaluation_record.evidence_level = evaluation.get("evidence_level")
+
+            evaluation_record.evaluation_request = evaluation_request
+
+            evaluation_record.evaluation_response = evaluation
+
+            evaluation_record.evaluation_error = None
+
+            db.flush()
+
+            # =========================================================
+            # Normalize Engine result
+            # =========================================================
+
+            classification = _normalize_evaluation_result(evaluation)
+
+            outcome = classification["outcome"]
+
+            whether_lead = classification["whether_lead"]
+
+            is_lead_value = 1 if whether_lead == "lead" else 0
+
+            # =========================================================
+            # Add contact to qualified list for voice calls
+            #
+            # Qualification Engine is now the source of truth for
+            # whether the contact is qualified.
+            # =========================================================
+
+            if source == "voice" and is_lead_value == 1:
+
+                call_log = (
+                    db.query(CallLog)
+                    .filter(
+                        CallLog.call_session_id == session_id,
+                        CallLog.organization_id == org_id,
+                    )
+                    .order_by(CallLog.created_at.desc())
+                    .first()
+                )
+
+                if call_log and call_log.contact_id and call_log.campaign_id:
+
+                    campaign = (
+                        db.query(CallCampaign)
+                        .filter(
+                            CallCampaign.id == call_log.campaign_id,
+                            CallCampaign.organization_id == org_id,
+                            CallCampaign.is_deleted == False,
+                        )
+                        .first()
+                    )
+
+                    if campaign:
+
+                        add_contact_to_qualified_list(
+                            db=db,
+                            organization_id=org_id,
+                            campaign=campaign,
+                            contact_id=call_log.contact_id,
+                        )
+
+            # =========================================================
+            # Deduct credit only after successful Engine evaluation
+            # =========================================================
+
+            organization_credit_service.deduct_credits(
+                db=db,
+                organization_id=org_id,
+                feature_code=FeatureCodes.AI_SENTIMENT,
+                quantity=1,
+                reference_type="conversation",
+                reference_id=session_id,
+            )
+
+            # =========================================================
+            # Load funnel categories
+            # =========================================================
+
             if org_id not in funnel_categories_by_org:
+
                 funnel_categories_by_org[org_id] = (
                     db.query(FunnelCategory)
                     .filter(
                         FunnelCategory.organization_id == org_id,
                         FunnelCategory.is_active == True,
                     )
-                    .order_by(FunnelCategory.position.asc(), FunnelCategory.id.asc())
+                    .order_by(
+                        FunnelCategory.position.asc(),
+                        FunnelCategory.id.asc(),
+                    )
                     .all()
                 )
 
-            # FUNNEL STAGE ANALYSIS TO BE DONE
-
-            # inferred_funnel_stage = _classify_funnel_stage_with_llm(
-            #     transcript,
-            #     funnel_categories_by_org.get(org_id, []),
-            # )
+            # =========================================================
+            # Resolve funnel stage
+            # =========================================================
 
             inferred_funnel_stage = (
                 FUNNEL_STAGE["LEAD_QUALIFICATION"]
@@ -416,10 +1076,13 @@ def process_pending_session_outcomes(
                 )
             )
 
+            # =========================================================
+            # Update Conversations
+            # =========================================================
+
             db.query(Conversation).filter(
                 Conversation.organization_id == org_id,
                 Conversation.session_id == session_id,
-                Conversation.outcome.is_(None),
             ).update(
                 {
                     Conversation.outcome: outcome,
@@ -428,19 +1091,29 @@ def process_pending_session_outcomes(
                 synchronize_session=False,
             )
 
-            # Update LeadActivity outcome by session_id
+            # =========================================================
+            # Update LeadActivity
+            # =========================================================
+
             db.query(LeadActivity).filter(
                 LeadActivity.session_id == session_id,
-                LeadActivity.outcome.is_(None),
             ).update(
-                {LeadActivity.outcome: outcome},
+                {
+                    LeadActivity.outcome: outcome,
+                },
                 synchronize_session=False,
             )
 
-            # Keep leads in sync with the resolved conversation outcome.
+            # =========================================================
+            # Update Lead
+            # =========================================================
+
             lead_rows = (
                 db.query(Lead)
-                .join(LeadContactMapping, LeadContactMapping.lead_id == Lead.id)
+                .join(
+                    LeadContactMapping,
+                    LeadContactMapping.lead_id == Lead.id,
+                )
                 .join(
                     Conversation,
                     Conversation.contact_id == LeadContactMapping.contact_id,
@@ -455,25 +1128,43 @@ def process_pending_session_outcomes(
             )
 
             for lead in lead_rows:
+
                 lead.lead_outcome = outcome
+
                 if inferred_funnel_stage and not (lead.funnel_stage or "").strip():
                     lead.funnel_stage = inferred_funnel_stage
 
+            # =========================================================
+            # Log
+            # =========================================================
+
             logger.info(
-                "Outcome classification resolved for org=%s session=%s: outcome=%s whether_lead=%s",
+                "Outcome classification resolved for "
+                "org=%s session=%s: outcome=%s "
+                "whether_lead=%s evaluation_id=%s",
                 org_id,
                 session_id,
                 outcome,
                 whether_lead,
+                evaluation.get("evaluation_id"),
             )
 
+            # =========================================================
+            # Commit everything
+            # =========================================================
+
             db.commit()
+
             processed += 1
+
         except Exception as exc:
+
             db.rollback()
+
             failed += 1
+
             logger.error(
-                "Failed to process outcome for org=%s session=%s: %s",
+                "Failed to process outcome for " "org=%s session=%s: %s",
                 org_id,
                 session_id,
                 str(exc),
@@ -732,190 +1423,7 @@ def process_pending_lead_funnel_tags(
     return tagged, failed
 
 
-def process_call_campaigns_data(
-    db: Session,
-    batch_size: int = 100,
-    organization_id: Optional[int] = None,
-    last_id: Optional[int] = None,
-) -> Tuple[int, int, Optional[int]]:
-    SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
-
-    pending_execution_exists = exists().where(
-        (WorkflowExecution.campaign_id == CallCampaign.id)
-        & (WorkflowExecution.status != "completed")
-    )
-
-    query = db.query(CallCampaign).filter(
-        CallCampaign.is_deleted == False,
-        or_(
-            CallCampaign.status.in_(SYNC_STATUSES),
-            and_(
-                CallCampaign.status.in_(["completed", "cancelled", "failed"]),
-                pending_execution_exists,
-            ),
-        ),
-    )
-
-    if last_id:
-        query = query.filter(CallCampaign.id < last_id)
-
-    campaign_models = query.order_by(CallCampaign.id.desc()).limit(batch_size).all()
-
-    logger.info(
-        f"Fetched {len(campaign_models)} campaigns for syncing with Echoleads, last_id={last_id}"
-    )
-
-    org_map = defaultdict(list)
-
-    for campaign in campaign_models:
-        org_map[campaign.organization_id].append(campaign)
-
-    synced = 0
-    failed = 0
-
-    for org_id, campaigns in org_map.items():
-        echolead_client = EcholeadsClient(org_id)
-
-        for campaign in campaign_models:
-            try:
-                sync_campaign_from_echoleads(db, echolead_client, campaign.id)
-                synced += 1
-            except Exception as exc:
-                failed += 1
-
-    # Return last processed ID to skip in next batch
-    new_last_id = campaign_models[-1].id if campaign_models else None
-    return synced, failed, new_last_id
-
-
-def process_test_call_data(
-    db: Session,
-    batch_size: int = 100,
-    organization_id: Optional[int] = None,
-    last_id: Optional[int] = None,
-) -> Tuple[int, int, Optional[int]]:
-    SYNC_STATUSES = ["active", "running", "pending", "scheduled"]
-
-    query = (
-        db.query(CallingAgentTestCall)
-        .options(joinedload(CallingAgentTestCall.agent))
-        .filter(
-            CallingAgentTestCall.status == "queued",
-            CallingAgentTestCall.external_call_id.isnot(None),
-        )
-    )
-
-    if last_id:
-        query = query.filter(CallingAgentTestCall.id < last_id)
-
-    test_calls = query.order_by(CallingAgentTestCall.id.desc()).limit(batch_size).all()
-
-    org_map = defaultdict(list)
-
-    for call in test_calls:
-        org_id = call.agent.organization_id
-        org_map[org_id].append(call)
-
-    synced = 0
-    failed = 0
-
-    for org_id, calls in org_map.items():
-        echolead_client = EcholeadsClient(org_id)
-
-        for call in calls:
-            try:
-                sync_test_call_log(
-                    db, echolead_client, call.agent_id, call.external_call_id
-                )
-                synced += 1
-            except Exception as exc:
-                failed += 1
-
-    # Return last processed ID to skip in next batch
-    new_last_id = test_calls[-1].id if test_calls else None
-    return synced, failed, new_last_id
-
-
-def process_inbound_agents_by_credit(
-    db: Session,
-    minimum_credit: int = 100,
-    organization_id: Optional[int] = None,
-    batch_size: int = 100,
-) -> Tuple[int, int]:
-    """
-    Deactivate inbound agents when credit is below minimum_credit.
-    Activate previously inactive inbound agents when credit is
-    equal to or above minimum_credit.
-
-    Returns:
-        processed_count, failed_count
-    """
-
-    query = db.query(CallingAgent).filter(
-        CallingAgent.external_agent_id.isnot(None),
-        CallingAgent.type == "inbound",
-    )
-
-    if organization_id is not None:
-        query = query.filter(CallingAgent.organization_id == organization_id)
-
-    agents = query.order_by(CallingAgent.id.desc()).limit(batch_size).all()
-
-    processed = 0
-    failed = 0
-
-    credit_map = {}
-
-    for agent in agents:
-        try:
-            org_id = agent.organization_id
-
-            if org_id not in credit_map:
-                credit_balance = organization_credit_service.get_current_org_credit_balance(
-                    db=db,
-                    organization_id=org_id,
-                    # Use lock=False if supported by your method
-                )
-
-                credit_map[org_id] = (
-                    credit_balance.remaining_credit if credit_balance else 0
-                )
-
-            remaining_credit = credit_map[org_id]
-
-            echoleads = EcholeadsClient(org_id)
-
-            # Low credit: deactivate active agent
-            if remaining_credit < minimum_credit:
-                if agent.status == "active":
-                    echoleads.deactivate_agent(agent.external_agent_id)
-
-                    agent.status = "inactive"
-                    processed += 1
-
-            # Sufficient credit: activate inactive agent
-            # else:
-            #     if agent.status == "inactive":
-            #         echoleads.activate_agent(
-            #             agent.external_agent_id,
-            #             agent.inbound_phone_number,
-            #         )
-
-            #         agent.status = "active"
-            #         processed += 1
-
-            db.commit()
-
-        except Exception as exc:
-            db.rollback()
-            failed += 1
-
-            print(f"Failed to process inbound agent " f"{agent.id}: {exc}")
-
-    return processed, failed
-
-
-def run_outcome_processing_batches(
+async def run_outcome_processing_batches(
     batch_size: int, max_batches: int, organization_id: Optional[int] = None
 ) -> Tuple[int, int]:
     total_processed = 0
@@ -924,7 +1432,7 @@ def run_outcome_processing_batches(
     db = SessionLocal()
     try:
         for _ in range(max_batches):
-            processed, failed = process_pending_session_outcomes(
+            processed, failed = await process_pending_session_outcomes(
                 db,
                 batch_size=batch_size,
                 organization_id=organization_id,
@@ -949,18 +1457,16 @@ def run_outcome_processing_batches(
     return total_processed, total_failed
 
 
-def _seconds_until_next_run(hour_utc: int, minute_utc: int) -> float:
-    now = datetime.now(timezone.utc)
-    target = now.replace(hour=hour_utc, minute=minute_utc, second=0, microsecond=0)
-    if now >= target:
-        target = target + timedelta(days=1)
-    return max((target - now).total_seconds(), 1.0)
-
-
-def _seconds_until_next_interval(interval_seconds: int) -> float:
-    now = datetime.now(timezone.utc).timestamp()
-    next_run = ((now // interval_seconds) + 1) * interval_seconds
-    return max(next_run - now, 1.0)
+def run_outcome_processing_batches_in_thread(
+    batch_size: int,
+    max_batches: int,
+):
+    return asyncio.run(
+        run_outcome_processing_batches(
+            batch_size=batch_size,
+            max_batches=max_batches,
+        )
+    )
 
 
 async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
@@ -972,10 +1478,11 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
 
     try:
         processed, failed = await asyncio.to_thread(
-            run_outcome_processing_batches,
+            run_outcome_processing_batches_in_thread,
             batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
             max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
         )
+
         logger.info("Initial outcome processing completed: %s %s", processed, failed)
     except Exception as exc:
         logger.error("Initial outcome processing failed: %s", exc, exc_info=True)
@@ -993,7 +1500,7 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
 
         try:
             processed, failed = await asyncio.to_thread(
-                run_outcome_processing_batches,
+                run_outcome_processing_batches_in_thread,
                 batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
                 max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
             )
@@ -1006,212 +1513,3 @@ async def run_daily_outcome_daemon(stop_event: asyncio.Event) -> None:
 
         except Exception as exc:
             logger.error("Scheduled outcome processing failed: %s", exc, exc_info=True)
-
-
-def run_call_campaign_processing_batches(
-    batch_size: int, max_batches: int, organization_id: Optional[int] = None
-) -> Tuple[int, int]:
-    total_processed = 0
-    total_failed = 0
-
-    db = SessionLocal()
-    try:
-        last_id = None
-        test_last_id = None
-        last_scheduled_id = None
-        last_org_id = None
-        for _ in range(max_batches):
-            synced, sync_failed, last_id = process_call_campaigns_data(
-                db,
-                batch_size=batch_size,
-                organization_id=organization_id,
-                last_id=last_id,
-            )
-
-            processed, failed, test_last_id = process_test_call_data(
-                db,
-                batch_size=batch_size,
-                organization_id=organization_id,
-                last_id=test_last_id,
-            )
-
-            scheduled, scheduled_failed, last_scheduled_id = (
-                process_workflow_scheduled_calls(
-                    db, batch_size=batch_size, last_id=last_scheduled_id
-                )
-            )
-
-            booked, booking_failed, last_org_id = process_call_bookings(
-                db,
-                batch_size=batch_size,
-                organization_id=organization_id,
-                last_id=last_org_id,
-            )
-
-            total_processed += synced + processed + scheduled + booked
-            total_failed += sync_failed + failed + scheduled_failed + booking_failed
-
-            if synced == 0 and processed == 0 and scheduled == 0 and booked == 0:
-                break
-
-    except Exception:
-        db.rollback()
-        raise
-
-    finally:
-        db.close()
-
-    return total_processed, total_failed
-
-
-async def run_daily_call_campaign_daemon(stop_event: asyncio.Event) -> None:
-    """Call campaign daemon with non-blocking execution"""
-
-    initial_delay = max(settings.OUTCOME_DAEMON_INITIAL_DELAY_SECONDS, 0)
-    if initial_delay:
-        await asyncio.sleep(initial_delay)
-
-    try:
-        processed, failed = await asyncio.to_thread(
-            run_call_campaign_processing_batches,
-            batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
-            max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
-        )
-
-        logger.info(
-            "Initial call campaign, scheduled calls & appointments processing completed: %s %s",
-            processed,
-            failed,
-        )
-
-    except Exception as exc:
-        logger.error(
-            "Initial call campaign processing failed: %s",
-            exc,
-            exc_info=True,
-        )
-
-    while not stop_event.is_set():
-        wait_seconds = _seconds_until_next_interval(
-            settings.OUTCOME_DAEMON_INTERVAL_SECONDS
-        )
-
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
-            break
-        except asyncio.TimeoutError:
-            pass
-
-        try:
-            processed, failed = await asyncio.to_thread(
-                run_call_campaign_processing_batches,
-                batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
-                max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
-            )
-
-            logger.info(
-                "Scheduled call campaign, scheduled calls & appointments processing completed: %s %s",
-                processed,
-                failed,
-            )
-
-        except Exception as exc:
-            logger.error(
-                "Scheduled call campaign processing failed: %s",
-                exc,
-                exc_info=True,
-            )
-
-
-async def run_inbound_call_agent_daemon(stop_event: asyncio.Event) -> None:
-    """Inbound call agent daemon with non-blocking execution"""
-
-    initial_delay = max(settings.INBOUND_AGENT_CREDIT_DAEMON_INITIAL_DELAY_SECONDS, 0)
-    if initial_delay:
-        await asyncio.sleep(initial_delay)
-
-    try:
-        processed, failed = await asyncio.to_thread(
-            run_inbound_call_agent_processing_batches,
-            batch_size=settings.INBOUND_AGENT_CREDIT_DAEMON_BATCH_SIZE,
-            max_batches=settings.INBOUND_AGENT_CREDIT_DAEMON_MAX_BATCHES,
-        )
-
-        logger.info(
-            "Initial inbound call agent credit check completed: %s %s",
-            processed,
-            failed,
-        )
-
-    except Exception as exc:
-        logger.error(
-            "Initial inbound call agent credit check failed: %s",
-            exc,
-            exc_info=True,
-        )
-
-    while not stop_event.is_set():
-        wait_seconds = _seconds_until_next_interval(
-            settings.INBOUND_AGENT_CREDIT_DAEMON_INTERVAL_SECONDS
-        )
-
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
-            break
-        except asyncio.TimeoutError:
-            pass
-
-        try:
-            processed, failed = await asyncio.to_thread(
-                run_inbound_call_agent_processing_batches,
-                batch_size=settings.INBOUND_AGENT_CREDIT_DAEMON_BATCH_SIZE,
-                max_batches=settings.INBOUND_AGENT_CREDIT_DAEMON_MAX_BATCHES,
-            )
-
-            logger.info(
-                "Inbound call agent credit check completed: %s %s",
-                processed,
-                failed,
-            )
-
-        except Exception as exc:
-            logger.error(
-                "Inbound call agent credit check failed: %s",
-                exc,
-                exc_info=True,
-            )
-
-
-def run_inbound_call_agent_processing_batches(
-    batch_size: int,
-    max_batches: int,
-    organization_id: Optional[int] = None,
-) -> Tuple[int, int]:
-    total_processed = 0
-    total_failed = 0
-
-    db = SessionLocal()
-
-    try:
-        for _ in range(max_batches):
-            processed, failed = process_inbound_agents_by_credit(
-                db=db,
-                minimum_credit=settings.INBOUND_AGENT_CREDIT_MINIMUM,
-                organization_id=organization_id,
-                batch_size=batch_size,
-            )
-
-            total_processed += processed
-            total_failed += failed
-
-            if processed == 0:
-                break
-
-    except Exception:
-        db.rollback()
-        raise
-
-    finally:
-        db.close()
-
-    return total_processed, total_failed

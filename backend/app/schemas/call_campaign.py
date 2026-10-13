@@ -22,6 +22,7 @@ class CampaignCreate(BaseModel):
     category: Optional[str] = None
     priority: Optional[str] = None
     agent_id: int
+    qualification_template_id: Optional[int] = None
     product_id: Optional[int] = None
     calling_no: str
 
@@ -64,6 +65,7 @@ class CampaignUpdate(BaseModel):
     category: Optional[str] = None
     priority: Optional[str] = None
     agent_id: Optional[int] = None
+    qualification_template_id: Optional[int] = None
     product_id: Optional[int] = None
     workflow_id: Optional[int] = None
     calling_no: str

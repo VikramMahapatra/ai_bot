@@ -25,6 +25,7 @@ import {
   TablePagination,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -41,6 +42,11 @@ import {
   QualificationTemplateSummary,
   qualificationTemplateService,
 } from "../services/qualificationTemplateService";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import SyncOutlinedIcon from "@mui/icons-material/SyncOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
+import BlockIcon from "@mui/icons-material/Block";
 
 const getErrorMessage = (error: any) =>
   error?.response?.data?.detail || "Something went wrong. Please try again.";
@@ -83,8 +89,8 @@ export default function QualificationTemplatesPage() {
   }, [page, rowsPerPage, search, status]);
 
   const closeMenu = () => {
-    setMenuAnchor(null);
     setSelected(null);
+    setMenuAnchor(null);
   };
 
   const refresh = async () => {
@@ -108,6 +114,7 @@ export default function QualificationTemplatesPage() {
       await refresh();
     } catch (requestError) {
       setError(getErrorMessage(requestError));
+      closeMenu();
     }
   };
 
@@ -119,7 +126,24 @@ export default function QualificationTemplatesPage() {
       setSuccess("Qualification template deleted.");
       await refresh();
     } catch (requestError) {
+      setDeleteTarget(null);
       setError(getErrorMessage(requestError));
+      closeMenu();
+    }
+  };
+
+  const syncTemplate = async () => {
+    if (!selected) return;
+
+    try {
+      await qualificationTemplateService.sync(selected.id);
+
+      setSuccess("Qualification template synced successfully.");
+      closeMenu();
+      await refresh();
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+      closeMenu();
     }
   };
 
@@ -212,6 +236,7 @@ export default function QualificationTemplatesPage() {
                   <TableCell sx={{ fontWeight: 800 }}>Template</TableCell>
                   <TableCell sx={{ fontWeight: 800 }}>Campaign / agent objective</TableCell>
                   <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Engine Sync</TableCell>
                   <TableCell sx={{ fontWeight: 800 }}>Updated</TableCell>
                   <TableCell align="right" sx={{ width: 72 }} />
                 </TableRow>
@@ -219,7 +244,7 @@ export default function QualificationTemplatesPage() {
               <TableBody>
                 {!loading && templates.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} sx={{ py: 10, textAlign: "center" }}>
+                    <TableCell colSpan={6} sx={{ py: 10, textAlign: "center" }}>
                       <RuleIcon sx={{ fontSize: 42, color: "text.disabled", mb: 1 }} />
                       <Typography fontWeight={800}>No qualification templates found</Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -249,6 +274,69 @@ export default function QualificationTemplatesPage() {
                         }}
                       />
                     </TableCell>
+                    <TableCell>
+                      <Tooltip
+                        title={
+                          template.sync_status === "failed" && template.sync_error
+                            ? template.sync_error
+                            : template.sync_status === "synced" && template.last_synced_at
+                              ? `Last synced: ${new Date(
+                                template.last_synced_at
+                              ).toLocaleString()}`
+                              : template.sync_status === "pending"
+                                ? "This template is waiting to be synced with the Qualification Engine."
+                                : ""
+                        }
+                      >
+                        <Chip
+                          size="small"
+                          icon={
+                            template.sync_status === "synced" ? (
+                              <CheckCircleOutlineIcon />
+                            ) : template.sync_status === "failed" ? (
+                              <ErrorOutlineIcon />
+                            ) : (
+                              <SyncOutlinedIcon />
+                            )
+                          }
+                          label={
+                            template.sync_status === "synced"
+                              ? "Synced"
+                              : template.sync_status === "failed"
+                                ? "Sync failed"
+                                : "Pending"
+                          }
+                          sx={{
+                            fontWeight: 800,
+
+                            ...(template.sync_status === "synced" && {
+                              color: "#08695b",
+                              bgcolor: "#dff5ee",
+                              "& .MuiChip-icon": {
+                                color: "#08695b",
+                              },
+                            }),
+
+                            ...(template.sync_status === "failed" && {
+                              color: "#b42318",
+                              bgcolor: "#fde7e7",
+                              cursor: "help",
+                              "& .MuiChip-icon": {
+                                color: "#b42318",
+                              },
+                            }),
+
+                            ...(template.sync_status === "pending" && {
+                              color: "#8a6100",
+                              bgcolor: "#fff3cd",
+                              "& .MuiChip-icon": {
+                                color: "#8a6100",
+                              },
+                            }),
+                          }}
+                        />
+                      </Tooltip>
+                    </TableCell>
                     <TableCell>{new Date(template.updated_at || template.created_at).toLocaleDateString()}</TableCell>
                     <TableCell align="right">
                       <IconButton
@@ -273,10 +361,31 @@ export default function QualificationTemplatesPage() {
       </Box>
 
       <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
+        {selected?.sync_status === "failed" && (
+          <MenuItem onClick={syncTemplate}>
+            <ReplayOutlinedIcon
+              fontSize="small"
+              sx={{ mr: 1.2 }}
+            />
+            Retry sync
+          </MenuItem>
+        )}
         <MenuItem onClick={() => { if (selected) navigate(`/qualification-templates/${selected.id}/edit`); closeMenu(); }}>
           <EditOutlinedIcon fontSize="small" sx={{ mr: 1.2 }} /> Edit template
         </MenuItem>
-        <MenuItem onClick={toggleStatus}>{selected?.status === "Active" ? "Deactivate" : "Activate"}</MenuItem>
+        <MenuItem onClick={toggleStatus}>
+          {selected?.status === "Active" ? (
+            <>
+              <BlockIcon sx={{ mr: 1, fontSize: 20 }} />
+              Deactivate
+            </>
+          ) : (
+            <>
+              <CheckCircleOutlineIcon sx={{ mr: 1, fontSize: 20 }} />
+              Activate
+            </>
+          )}
+        </MenuItem>
         <MenuItem onClick={() => { setDeleteTarget(selected); closeMenu(); }} sx={{ color: "error.main" }}>
           <DeleteOutlineIcon fontSize="small" sx={{ mr: 1.2 }} /> Delete
         </MenuItem>
@@ -291,8 +400,34 @@ export default function QualificationTemplatesPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={Boolean(error || success)} autoHideDuration={4500} onClose={() => { setError(""); setSuccess(""); }}>
-        <Alert severity={error ? "error" : "success"} variant="filled">{error || success}</Alert>
+      <Snackbar
+        open={Boolean(error || success)}
+        autoHideDuration={4000}
+        onClose={() => {
+          setError("");
+          setSuccess("");
+        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity={error ? "error" : "success"}
+          variant="filled"
+          onClose={() => {
+            setError("");
+            setSuccess("");
+          }}
+          sx={{
+            color: "#000",
+            "& .MuiAlert-icon": {
+              color: "#000",
+            },
+            "& .MuiAlert-action": {
+              color: "#000",
+            },
+          }}
+        >
+          {error || success}
+        </Alert>
       </Snackbar>
     </AdminLayout>
   );

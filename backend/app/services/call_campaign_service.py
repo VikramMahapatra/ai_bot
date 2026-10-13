@@ -325,6 +325,7 @@ def get_campaign(db: Session, campaign_id: int):
         "category": campaign.category,
         "priority": campaign.priority,
         "agent_id": campaign.agent_id,
+        "qualification_template_id": campaign.qualification_template_id,
         "calling_no": campaign.calling_no,
         "product_id": campaign.product_id,
         "contacts": [c.contact_id for c in campaign.contacts],
@@ -556,6 +557,7 @@ def create_campaign(db: Session, organization_id: int, data: CampaignCreate):
         category=data.category,
         priority=data.priority,
         agent_id=data.agent_id,
+        qualification_template_id=data.qualification_template_id,
         product_id=data.product_id,
         status="draft",
         external_campaign_name=unique_campaign_code,
@@ -2515,7 +2517,7 @@ def add_contact_to_qualified_list(
     contact_id: int,
 ):
     """
-    Add a qualified contact to the campaign-specific
+    Move an existing contact to the campaign-specific
     '<Campaign Name> - Qualified' contact list.
     """
 
@@ -2539,57 +2541,31 @@ def add_contact_to_qualified_list(
             list_name=qualified_list_name,
             description=f"Qualified contacts from campaign: {campaign.name}",
         )
-
         db.add(qualified_contact_list)
         db.flush()
 
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    # Find the existing contact
+    contact = (
+        db.query(Contact)
+        .filter(
+            Contact.id == contact_id,
+            # Ensure the contact belongs to this organization
+            Contact.contact_list.has(ContactList.organization_id == organization_id),
+        )
+        .first()
+    )
 
     if not contact:
         return qualified_contact_list
 
-    # Prevent duplicate contact in Qualified list
-    existing_contact = None
+    # If already in this qualified list, do nothing
+    if contact.contact_list_id == qualified_contact_list.id:
+        return qualified_contact_list
 
-    if contact.external_contact_id:
-        existing_contact = (
-            db.query(Contact)
-            .filter(
-                Contact.contact_list_id == qualified_contact_list.id,
-                Contact.external_contact_id == contact.external_contact_id,
-            )
-            .first()
-        )
+    # Move the existing contact; do not create a new record
+    contact.contact_list_id = qualified_contact_list.id
 
-    if not existing_contact:
-        qualified_contact = Contact(
-            contact_list_id=qualified_contact_list.id,
-            name=contact.name,
-            email=contact.email,
-            phone=contact.phone,
-            whatsapp_number=contact.whatsapp_number,
-            gender=contact.gender,
-            company=contact.company,
-            designation=contact.designation,
-            item_name=contact.item_name,
-            item_type=contact.item_type,
-            interest_stage=contact.interest_stage,
-            item_category=contact.item_category,
-            amount=contact.amount,
-            offer_value=contact.offer_value,
-            city=contact.city,
-            state=contact.state,
-            country=contact.country,
-            source=contact.source,
-            lifecycle_stage=contact.lifecycle_stage,
-            tags=contact.tags,
-            custom_fields=contact.custom_fields,
-            session_id=contact.session_id,
-            external_contact_id=contact.external_contact_id,
-        )
-
-        db.add(qualified_contact)
-        db.flush()
+    db.flush()
 
     return qualified_contact_list
 

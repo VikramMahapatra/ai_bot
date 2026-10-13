@@ -133,12 +133,12 @@ const CampaignBuilder = () => {
 
     const validateChannel = async () => {
         try {
-          const res = await chatService.isChannelAvailable();
-          return res;
+            const res = await chatService.isChannelAvailable();
+            return res;
         } catch (error) {
-          console.error("Failed to channel validation service", error);
+            console.error("Failed to channel validation service", error);
         }
-      };
+    };
 
     const isChannelAvailable = async (setError: any) => {
         const isChannelAvailable = await validateChannel();
@@ -147,7 +147,7 @@ const CampaignBuilder = () => {
             return false;
         }
         return true;
-      };
+    };
 
     const handleAddCampaign = (setListError: any) => {
         if (!isChannelAvailable(setListError)) {
@@ -185,6 +185,7 @@ const CampaignBuilder = () => {
                 category: data.category,
                 priority: data.priority,
                 agent_id: data.agent_id,
+                qualification_template_id: data.qualification_template_id,
                 product_id: data.product_id,
                 contacts: data.contacts || [],
                 calling_no: data.calling_no,
@@ -273,6 +274,7 @@ const CampaignBuilder = () => {
 
             const payload = {
                 ...campaignForm,
+                qualification_template_id: campaignForm.qualification_template_id || undefined,
                 product_id: campaignForm.product_id || undefined,
                 workflow_id: campaignForm.workflow_id || undefined,
                 active_days: sendOption === "now" ? [] : campaignForm.active_days, // conditional

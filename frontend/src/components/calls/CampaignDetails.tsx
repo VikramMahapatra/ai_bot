@@ -1189,6 +1189,54 @@ export default function CampaignDetails({ campaignId, onBack, onEdit }: Props) {
                       </TableCell>
                       <TableCell>
                         <ConversionOutcomeChip value={log.lead_qualified_status} />
+                        {log.qualified !== null && log.qualified == true && log.qualification_score !== null && log.qualification_score !== undefined && (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                              mt: 0.25,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                fontSize: "0.7rem",
+                              }}
+                            >
+                              Lead Score
+                            </Typography>
+
+                            <Chip
+                              label={log.qualification_score}
+                              size="small"
+                              sx={{
+                                height: 18,
+                                fontSize: "0.68rem",
+                                fontWeight: 600,
+                                borderRadius: "5px",
+                                px: 0.25,
+                                backgroundColor:
+                                  log.qualification_score >= 90
+                                    ? "success.light"
+                                    : log.qualification_score >= 70
+                                      ? "warning.light"
+                                      : log.qualification_score >= 50
+                                        ? "info.light"
+                                        : "grey.200",
+                                color:
+                                  log.qualification_score >= 90
+                                    ? "success.dark"
+                                    : log.qualification_score >= 70
+                                      ? "warning.dark"
+                                      : log.qualification_score >= 50
+                                        ? "info.dark"
+                                        : "text.secondary",
+                              }}
+                            />
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell>
                         {log.duration ? `${log.duration} sec` : "N/A"}

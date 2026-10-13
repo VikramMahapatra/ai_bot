@@ -32,6 +32,18 @@ class CallCampaign(Base):
     priority = Column(String)
     status = Column(String, default="Draft")
     agent_id = Column(Integer, ForeignKey("calling_agents.id"))
+
+    # Qualification Template
+    qualification_template_id = Column(
+        Integer,
+        ForeignKey(
+            "qualification_templates.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        index=True,
+    )
+
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -50,6 +62,13 @@ class CallCampaign(Base):
     stop_reason = Column(String, nullable=True)
 
     agent = relationship("CallingAgent", back_populates="campaigns")
+
+    qualification_template = relationship(
+        "QualificationTemplate",
+        foreign_keys=[qualification_template_id],
+        back_populates="call_campaigns",
+    )
+
     contacts = relationship("CampaignContact", back_populates="campaign")
     schedule = relationship(
         "CampaignSchedule", uselist=False, back_populates="campaign"

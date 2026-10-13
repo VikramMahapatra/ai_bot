@@ -72,6 +72,12 @@ export interface CallLog {
     follow_up_count: number;
     source?: "campaign_call" | "rescheduled_call" | "reschedule_call" | "test_call";
     instant_reply?: InstantReply;
+    qualified?: boolean;
+    qualification_score?: number;
+    qualification_temperature?: string;
+    qualification_disposition?: string;
+    qualification_next_action?: string;
+
 }
 
 export type StatusType =

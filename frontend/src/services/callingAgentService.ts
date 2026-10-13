@@ -13,6 +13,7 @@ export interface CallingAgent {
     server_location?: "IN" | "US"
 
     destination?: string[]
+    qualification_template_id?: string,
 
     // Campaign Stats
     active_campaigns: number

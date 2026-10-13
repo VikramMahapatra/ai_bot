@@ -52,7 +52,7 @@ import type { CrawlJobStatus } from '../types';
 import { FEATURE_CODES, CREDIT_ERRORS } from "../types/creditModules";
 import { useCredits } from "../context/CreditsContext";
 import { useDateFormatter } from '../hooks/useDateFormatter';
-import { qualificationTemplateService, type QualificationTemplateSummary } from '../services/qualificationTemplateService';
+import { qualificationTemplateService, type QualificationTemplateLookup, type QualificationTemplateSummary } from '../services/qualificationTemplateService';
 
 interface WidgetConfig {
   widget_id: string;
@@ -156,13 +156,13 @@ const normalizeContactFieldKey = (value: string): string =>
     .replace(/^_+|_+$/g, '')
     .slice(0, 48);
 
-  let nextContactFieldId = 0;
+let nextContactFieldId = 0;
 
-  const createContactFieldId = (): string => `contact-field-${nextContactFieldId++}`;
+const createContactFieldId = (): string => `contact-field-${nextContactFieldId++}`;
 
-  let nextQuickQuestionId = 0;
+let nextQuickQuestionId = 0;
 
-  const createQuickQuestionId = (): string => `quick-question-${nextQuickQuestionId++}`;
+const createQuickQuestionId = (): string => `quick-question-${nextQuickQuestionId++}`;
 
 const parseContactFields = (leadFieldsRaw?: string): ContactFieldDefinition[] => {
   if (!leadFieldsRaw) return [];
@@ -195,7 +195,7 @@ const parseQuickQuestions = (leadFieldsRaw?: string): QuickQuestionDefinition[] 
         const answer = typeof item?.answer === 'string' ? item.answer.trim() : '';
         return question && answer ? { id: createQuickQuestionId(), question, answer } : null;
       })
-       .filter((item: QuickQuestionDefinition | null): item is QuickQuestionDefinition => Boolean(item));
+        .filter((item: QuickQuestionDefinition | null): item is QuickQuestionDefinition => Boolean(item));
   } catch {
     return [];
   }
@@ -231,6 +231,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [initializingEdit, setInitializingEdit] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [templates, setTemplates] = useState<QualificationTemplateLookup[]>([]);
 
   const [widget, setWidget] = useState<WidgetConfig>({
     widget_id: `widget_${Date.now()}`,
@@ -249,6 +250,7 @@ const CreateChatAgentPage: React.FC = () => {
 
   const [errors, setErrors] = useState({
     name: "",
+    qualification_template_id: ""
   });
 
   const [createdWidgetId, setCreatedWidgetId] = useState('');
@@ -511,6 +513,18 @@ const CreateChatAgentPage: React.FC = () => {
   );
 
   useEffect(() => {
+    let active = true;
+    qualificationTemplateService.lookup()
+      .then((data) => {
+        if (active) setTemplates(data || []);
+      })
+      .catch(() => {
+        if (active) setError('Qualification templates could not be loaded. Please try again.');
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     if (!createdWidgetId) {
       setShareLink('');
       setShareLinkExpiresAt('');
@@ -528,7 +542,7 @@ const CreateChatAgentPage: React.FC = () => {
         if (active) setQualificationTemplates(result.items || []);
       })
       .catch(() => {
-        if (active) setError('Qualification templates could not be loaded. You can continue without one.');
+        if (active) setError('Qualification templates could not be loaded. Please try again.');
       })
       .finally(() => {
         if (active) setQualificationTemplatesLoading(false);
@@ -989,11 +1003,18 @@ const CreateChatAgentPage: React.FC = () => {
   const saveWidgetProfile = async (nextStep = 1) => {
 
     const newErrors = {
-      name: ""
+      name: "",
+      qualification_template_id: ""
     }
 
     if (!widget.name.trim()) {
       newErrors.name = `Please enter a widget name to ${isEditMode ? 'update' : 'create'} your agent.`;
+      setErrors(newErrors);
+      return;
+    }
+
+    if (!qualificationTemplateId) {
+      newErrors.qualification_template_id = `Please select the template.`;
       setErrors(newErrors);
       return;
     }
@@ -1512,7 +1533,7 @@ const CreateChatAgentPage: React.FC = () => {
                                 Give this agent a reusable set of rules for identifying qualified leads.
                               </Typography>
                             </Box>
-                            <Chip size="small" label="Optional" variant="outlined" color="secondary" />
+                            <Chip size="small" label="Required" variant="outlined" color="secondary" />
                           </Stack>
                           <TextField
                             select
@@ -1521,10 +1542,11 @@ const CreateChatAgentPage: React.FC = () => {
                             value={qualificationTemplateId}
                             onChange={(event) => setQualificationTemplateId(event.target.value ? Number(event.target.value) : '')}
                             disabled={qualificationTemplatesLoading}
-                            helperText={qualificationTemplatesLoading ? 'Loading active templates…' : 'You can change this later when your qualification strategy evolves.'}
+                            required
+                            error={!!errors.qualification_template_id}
+                            helperText={errors.qualification_template_id || (qualificationTemplatesLoading ? 'Loading active templates…' : 'You can change this later when your qualification strategy evolves.')}
                             sx={fieldSx}
                           >
-                            <MenuItem value=""><em>No qualification template</em></MenuItem>
                             {qualificationTemplates.map((template) => (
                               <MenuItem key={template.id} value={template.id}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }}>
@@ -1556,6 +1578,23 @@ const CreateChatAgentPage: React.FC = () => {
                         fullWidth
                         sx={fieldSx}
                       />
+                      <TextField
+                        required
+                        label="Qualification Template"
+                        select
+                        fullWidth
+                        name="qualification_template_id"
+                        value={qualificationTemplateId}
+                        onChange={(e) => setQualificationTemplateId(e.target.value ? Number(e.target.value) : '')}
+                        error={!!errors.qualification_template_id}
+                        helperText={errors.qualification_template_id}
+                      >
+                        {templates.map((template) => (
+                          <MenuItem key={template.id} value={template.id}>
+                            {template.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                       <TextField
                         label="System Prompt (Optional)"
                         value={widget.system_prompt || ''}
@@ -2038,7 +2077,7 @@ const CreateChatAgentPage: React.FC = () => {
                       </Button>
                       <Button
                         variant="contained"
-                        onClick={saveWidgetProfile}
+                        onClick={() => saveWidgetProfile()}
                         disabled={busy}
                         sx={{
                           borderRadius: '12px',
@@ -2071,8 +2110,7 @@ const CreateChatAgentPage: React.FC = () => {
                       <Box sx={accentPanelSx}>
                         <Typography variant="h6" fontWeight={900}>Qualification framework</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>Attach a reusable qualification template to keep lead decisions consistent.</Typography>
-                        <TextField select fullWidth label="Qualification template" value={qualificationTemplateId} onChange={(event) => setQualificationTemplateId(event.target.value ? Number(event.target.value) : '')} disabled={qualificationTemplatesLoading} sx={fieldSx}>
-                          <MenuItem value=""><em>No qualification template</em></MenuItem>
+                        <TextField required select fullWidth label="Qualification template" value={qualificationTemplateId} onChange={(event) => setQualificationTemplateId(event.target.value ? Number(event.target.value) : '')} disabled={qualificationTemplatesLoading} error={!!errors.qualification_template_id} helperText={errors.qualification_template_id} sx={fieldSx}>
                           {qualificationTemplates.map((template) => <MenuItem key={template.id} value={template.id}>{template.name}</MenuItem>)}
                         </TextField>
                         {qualificationTemplateId && <Chip size="small" color="success" label="Template connected" sx={{ mt: 1.2, fontWeight: 800 }} />}

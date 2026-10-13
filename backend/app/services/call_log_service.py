@@ -36,7 +36,7 @@ from app.utils.echoleads_client import EcholeadsClient
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign import Contact
 from app.config import settings
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, ConversationEvaluation
 from app.enums.credit_feature_codes import FeatureCodes
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
@@ -81,6 +81,9 @@ from app.models.appointment import Appointment
 from app.models.user import Organization
 from app.models.voices import Voice
 from app.services.limits_service import get_effective_limits
+from app.models.zoho_automation_logs import ZohoAutomationLog
+from app.models.qualification_templates import QualificationTemplate
+from app.services.qualification_engine_service import QualificationEngineService
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -109,36 +112,24 @@ LEAD_QUALIFIED_RANGES = {
 }
 
 
-def get_lead_qualified_status(
-    lead_info, is_lead, campaign_name, lead_outcome, call_summary
-):
+def get_lead_qualified_status(is_lead, call_type, campaign_name, temperature, duration):
     # No lead evaluation yet
     if is_lead is None:
-        return "pending" if campaign_name and lead_outcome else ""
+        return (
+            "pending"
+            if (campaign_name or call_type == "inbound") and duration > 0
+            else ""
+        )
+
+    # Qualified lead
+    if is_lead:
+        if temperature:
+            return f"positive - {temperature.lower()}"
+
+        return "positive"
 
     # Not a lead
-    if not is_lead:
-        return "negative"
-
-    # Positive lead - determine quality from rate
-    lead_quality = (lead_info or {}).get("lead_quality") or {}
-    rate = lead_quality.get("rate", 0)
-
-    try:
-        rate = float(rate or 0)
-    except (TypeError, ValueError):
-        rate = 0
-
-    if rate >= 90:
-        return "positive - very hot"
-    elif rate >= 70:
-        return "positive - hot"
-    elif rate >= 50:
-        return "positive - warm"
-    elif rate >= 20:
-        return "positive - cold"
-    else:
-        return "negative"
+    return "negative"
 
 
 def get_call_logs(
@@ -184,6 +175,51 @@ def get_call_logs(
         .group_by(CallLog.contact_id)
     ).subquery()
 
+    evaluation_subq = (
+        db.query(
+            ConversationEvaluation.session_id.label("session_id"),
+            ConversationEvaluation.outcome.label("evaluation_outcome"),
+            ConversationEvaluation.temperature.label("evaluation_temperature"),
+            ConversationEvaluation.score.label("evaluation_score"),
+            ConversationEvaluation.qualified.label("evaluation_qualified"),
+            ConversationEvaluation.evaluation_status.label("evaluation_status"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "disposition",
+            ).label("evaluation_disposition"),
+            func.json_extract_path_text(
+                ConversationEvaluation.evaluation_response,
+                "next_action",
+            ).label("evaluation_next_action"),
+            func.row_number()
+            .over(
+                partition_by=ConversationEvaluation.session_id,
+                order_by=ConversationEvaluation.updated_at.desc(),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            ConversationEvaluation.organization_id == organization_id,
+            ConversationEvaluation.evaluation_status == "evaluated",
+        )
+        .subquery()
+    )
+
+    latest_evaluation_subq = (
+        db.query(
+            evaluation_subq.c.session_id,
+            evaluation_subq.c.evaluation_outcome,
+            evaluation_subq.c.evaluation_temperature,
+            evaluation_subq.c.evaluation_score,
+            evaluation_subq.c.evaluation_qualified,
+            evaluation_subq.c.evaluation_disposition,
+            evaluation_subq.c.evaluation_next_action,
+            evaluation_subq.c.evaluation_status,
+        )
+        .filter(evaluation_subq.c.row_number == 1)
+        .subquery()
+    )
+
     query = (
         db.query(
             CallLog,
@@ -191,13 +227,25 @@ def get_call_logs(
             CallingAgent.name.label("agent_name"),
             CallCampaign.name.label("campaign_name"),
             conversation_subq.c.outcome.label("call_outcome"),
+            conversation_subq.c.is_lead.label("conversation_is_lead"),
             follow_up_subq.c.follow_up_count,
+            latest_evaluation_subq.c.evaluation_outcome,
+            latest_evaluation_subq.c.evaluation_temperature,
+            latest_evaluation_subq.c.evaluation_score,
+            latest_evaluation_subq.c.evaluation_qualified,
+            latest_evaluation_subq.c.evaluation_disposition,
+            latest_evaluation_subq.c.evaluation_next_action,
+            latest_evaluation_subq.c.evaluation_status,
         )
         .outerjoin(Contact, Contact.id == CallLog.contact_id)
         .outerjoin(CallingAgent, CallingAgent.id == CallLog.agent_id)
         .outerjoin(CallCampaign, CallCampaign.id == CallLog.campaign_id)
         .outerjoin(conversation_subq, true())
         .outerjoin(follow_up_subq, follow_up_subq.c.fu_contact_id == CallLog.contact_id)
+        .outerjoin(
+            latest_evaluation_subq,
+            latest_evaluation_subq.c.session_id == CallLog.call_session_id,
+        )
         .filter(CallLog.organization_id == organization_id)
     )
 
@@ -325,7 +373,15 @@ def get_call_logs(
         agent_name,
         campaign_name,
         lead_outcome,
+        conversation_is_lead,
         follow_up_count,
+        evaluation_outcome,
+        evaluation_temperature,
+        evaluation_score,
+        evaluation_qualified,
+        evaluation_disposition,
+        evaluation_next_action,
+        evaluation_status,
     ) in logs:
 
         transcripts = (
@@ -339,26 +395,23 @@ def get_call_logs(
         duration = log.duration or 0
 
         # Determine lead status for grid
-        is_lead = (
-            db.query(Conversation.is_lead)
-            .filter(
-                Conversation.session_id == log.call_session_id,
-                Conversation.organization_id == organization_id,
-                Conversation.outcome.isnot(None),
+        if evaluation_status == "failed":
+            is_lead = None
+            lead_status = "failed"
+        else:
+            is_lead = (
+                evaluation_qualified
+                if evaluation_qualified is not None
+                else conversation_is_lead
             )
-            .order_by(Conversation.created_at.desc())
-            .limit(1)
-            .scalar()
-        )
 
-        # lead_status = {
-        #     True: "positive",
-        #     False: "negative",
-        # }.get(is_lead, "pending" if campaign_name and lead_outcome else "")
-
-        lead_status = get_lead_qualified_status(
-            log.lead_info, is_lead, campaign_name, lead_outcome, log.call_summary
-        )
+            lead_status = get_lead_qualified_status(
+                is_lead=is_lead,
+                call_type=log.type,
+                campaign_name=campaign_name,
+                temperature=evaluation_temperature,
+                duration=duration,
+            )
 
         instant_log = (
             db.query(InstantReplyLog)
@@ -394,6 +447,22 @@ def get_call_logs(
 
         is_follow_up = log.source == "rescheduled_call"
 
+        evaluation_failed = evaluation_status == "failed"
+
+        sentiment_value = (
+            "failed"
+            if evaluation_failed
+            else (
+                lead_outcome
+                if lead_outcome and (log.campaign_id or log.type == "inbound")
+                else ""
+            )
+        )
+
+        qualification_outcome_value = (
+            "failed" if evaluation_failed else evaluation_outcome
+        )
+
         rows.append(
             {
                 "id": log.id,
@@ -420,12 +489,11 @@ def get_call_logs(
                 "testCall": False if log.campaign_id else True,
                 "ended_reason": log.ended_reason,
                 "call_summary": log.call_summary,
-                "sentiment": lead_outcome if lead_outcome and log.campaign_id else "",
+                "sentiment": sentiment_value,
                 "sentiment_details": log.sentiment_details or {},
                 "follow_up_recommended": log.follow_up_recommended or [],
                 "extract_data": log.extract_data or {},
                 "lead_info": log.lead_info or {},
-                "lead_qualified_status": lead_status,
                 "transcript": [
                     {"speaker": t.speaker, "text": t.text} for t in transcripts
                 ],
@@ -434,6 +502,16 @@ def get_call_logs(
                 ),
                 "source": log.source,
                 "instant_reply": instant_reply_data,
+                "is_lead_qualified": is_lead,
+                "lead_qualified_status": lead_status,
+                "qualified": evaluation_qualified,
+                "qualification_outcome": qualification_outcome_value,
+                "qualification_temperature": evaluation_temperature,
+                "qualification_score": (
+                    int(evaluation_score) if evaluation_score is not None else None
+                ),
+                "qualification_disposition": evaluation_disposition,
+                "qualification_next_action": evaluation_next_action,
             }
         )
 
@@ -549,10 +627,12 @@ def create_call_log(db: Session, data: CallLogCreate):
 def trigger_outcome_processing(organization_id: int):
     from app.services.conversation_outcome_service import run_outcome_processing_batches
 
-    run_outcome_processing_batches(
-        batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
-        max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
-        organization_id=organization_id,
+    return asyncio.run(
+        run_outcome_processing_batches(
+            batch_size=settings.OUTCOME_DAEMON_BATCH_SIZE,
+            max_batches=settings.OUTCOME_DAEMON_MAX_BATCHES,
+            organization_id=organization_id,
+        )
     )
 
 
@@ -1062,30 +1142,55 @@ def process_call(call, agent):
                     )
 
             if source == "rescheduled_call" and not mapped_job:
-                already_deducted = organization_credit_service.has_credit_usage(
-                    db=db,
-                    organization_id=call_log.organization_id,
-                    feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-                    reference_type="auto_rescheduled_call",
-                    reference_id=str(call_log.id),
+                automation_log = (
+                    db.query(ZohoAutomationLog)
+                    .filter(
+                        ZohoAutomationLog.external_call_id
+                        == call_log.external_call_a_id
+                    )
+                    .first()
                 )
 
-                if not already_deducted:
+                if automation_log:
+                    automation_log.status = "completed" if is_call_ended else "failed"
 
-                    organization_credit_service.deduct_credits(
+                    automation_log.completed_at = datetime.now(timezone.utc)
+
+                    organization_channel_service.release_channel(
+                        db=db,
+                        call_type="zoho_automation",
+                        reference_id=automation_log.id,
+                    )
+                else:
+                    already_deducted = organization_credit_service.has_credit_usage(
                         db=db,
                         organization_id=call_log.organization_id,
                         feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
-                        quantity=1,
                         reference_type="auto_rescheduled_call",
                         reference_id=str(call_log.id),
                     )
 
-                organization_channel_service.release_channel(
-                    db=db,
-                    call_type="manual_rescheduled_call",
-                    reference_id=call_log.contact_id,
-                )
+                    if not already_deducted:
+
+                        organization_credit_service.deduct_credits(
+                            db=db,
+                            organization_id=call_log.organization_id,
+                            feature_code=FeatureCodes.CORE_CALL_OUT_ATTEMPT,
+                            quantity=1,
+                            reference_type="auto_rescheduled_call",
+                            reference_id=str(call_log.id),
+                        )
+
+                    organization_channel_service.release_channel(
+                        db=db,
+                        call_type="manual_rescheduled_call",
+                        reference_id=call_log.contact_id,
+                    )
+
+        # For inbound calls, once call is ended, we can create conversation from transcripts
+        if call_log.type == "inbound" and is_call_ended:
+            # Create conversation
+            create_conversation_from_transcripts(db=db, call_log=call_log, agent=agent)
 
         db.commit()
 
@@ -1096,7 +1201,9 @@ def process_call(call, agent):
             and contact
         ):
             threading.Thread(
-                target=handle_workflow_async, args=(call_log.id, call), daemon=True
+                target=run_workflow_in_thread,
+                args=(call_log.id, call),
+                daemon=True,
             ).start()
 
         if is_call_ended and campaign and campaign.instant_reply and contact:
@@ -1115,7 +1222,23 @@ def process_call(call, agent):
         db.close()
 
 
-def handle_workflow_async(call_log_id, call):
+def run_workflow_in_thread(call_log_id, call):
+    try:
+        asyncio.run(
+            handle_workflow_async(
+                call_log_id,
+                call,
+            )
+        )
+    except Exception as exc:
+        logger.exception(
+            "Workflow processing failed for call_log_id=%s: %s",
+            call_log_id,
+            exc,
+        )
+
+
+async def handle_workflow_async(call_log_id, call):
     db = SessionLocal()
     try:
         call_log = db.query(CallLog).get(call_log_id)
@@ -1125,7 +1248,7 @@ def handle_workflow_async(call_log_id, call):
         if not call_log or not campaign or not contact:
             return
 
-        handle_workflow(db, call_log, campaign, call)
+        await handle_workflow(db, call_log, campaign, call)
         db.commit()
 
     except Exception as e:
@@ -1135,7 +1258,9 @@ def handle_workflow_async(call_log_id, call):
         db.close()
 
 
-def handle_workflow(db: Session, call_log: CallLog, campaign: CallCampaign, call: dict):
+async def handle_workflow(
+    db: Session, call_log: CallLog, campaign: CallCampaign, call: dict
+):
     if call_log.workflow_execution_id:
         return None
 
@@ -1155,9 +1280,9 @@ def handle_workflow(db: Session, call_log: CallLog, campaign: CallCampaign, call
     )
 
     if execution:
-        continue_workflow_from_call(db, execution, call_log, call)
+        await continue_workflow_from_call(db, execution, call_log, call)
     else:
-        trigger_workflow_from_call(db, campaign.workflow_id, call_log, call)
+        await trigger_workflow_from_call(db, campaign.workflow_id, call_log, call)
 
 
 def handle_instant_replies_async(call_log_id, normalized_transcript):
@@ -1852,12 +1977,12 @@ def render_template(template_body: str, contact):
 
 
 ########## WORK FLOW BRANCHING LOGIC ##########
-def trigger_workflow_from_call(db, workflow_id, call_log, call):
+async def trigger_workflow_from_call(db, workflow_id, call_log, call):
 
     if call.get("source") in ["rescheduled_call", "reschedule_call"]:
         return
 
-    call_status, outcome = get_call_result(call)
+    call_status, outcome = await get_call_result(call)
 
     # Get initial step
     initial_step = (
@@ -1987,10 +2112,10 @@ def trigger_workflow_from_call(db, workflow_id, call_log, call):
         )
 
 
-def continue_workflow_from_call(
+async def continue_workflow_from_call(
     db, execution: WorkflowExecution, call_log: CallLog, call: dict
 ):
-    call_status, outcome = get_call_result(call)
+    call_status, outcome = await get_call_result(call)
 
     logger.info(f"workflow : {execution.id} continue with status : {call_status}")
 
@@ -2366,11 +2491,15 @@ def reschedule_contact(db, campaign_id, contact_id, scheduled_at):
     return response
 
 
-def get_call_result(call):
+async def get_call_result(
+    call,
+    db: Session,
+    organization_id: int,
+):
     import json
-
     from app.services.conversation_outcome_service import (
-        _classify_outcome_with_llm,
+        _evaluate_conversation_with_engine,
+        _normalize_evaluation_result,
     )
 
     transcript = call.get("transcript")
@@ -2381,7 +2510,10 @@ def get_call_result(call):
     else:
         call_status = "not_connected"
 
-    # Use lead_info if available
+    # ---------------------------------------------------------
+    # Parse lead_info
+    # ---------------------------------------------------------
+
     lead_info = call.get("lead_info")
 
     if isinstance(lead_info, str):
@@ -2393,30 +2525,130 @@ def get_call_result(call):
     if not isinstance(lead_info, dict):
         lead_info = {}
 
-    lead_quality = lead_info.get("lead_quality") or {}
-    rate = lead_quality.get("rate", 0)
+    # ---------------------------------------------------------
+    # No transcript = no Engine evaluation
+    # ---------------------------------------------------------
 
-    try:
-        rate = float(rate or 0)
-    except (TypeError, ValueError):
-        rate = 0
+    if not has_transcript:
+        return call_status, "negative"
 
-    # lead_quality.rate > 0 means positive/lead
-    if rate > 0:
-        outcome = "positive"
-    else:
-        outcome = "negative"
+    # ---------------------------------------------------------
+    # Resolve campaign
+    # ---------------------------------------------------------
 
-    # outcome from API / AI / call data
-    # transcript = _build_transcript(call.get("transcript"))
-    # classification = _classify_outcome_with_llm(transcript)
-    # whether_lead = classification["whether_lead"]
+    campaign_id = call.get("campaign_id")
 
-    # # fallback outcomes
-    # if not whether_lead:
-    #     outcome = "negative"
-    # else:
-    #     outcome = "positive" if whether_lead == "lead" else "negative"
+    if not campaign_id:
+        return call_status, "negative"
+
+    campaign = (
+        db.query(CallCampaign)
+        .filter(
+            CallCampaign.id == campaign_id,
+            CallCampaign.organization_id == organization_id,
+            CallCampaign.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not campaign:
+        raise RuntimeError(
+            f"Call campaign {campaign_id} not found "
+            f"for organization {organization_id}"
+        )
+
+    # ---------------------------------------------------------
+    # Resolve qualification template
+    # ---------------------------------------------------------
+
+    effective_template_id = campaign.qualification_template_id or (
+        campaign.agent.qualification_template_id if campaign.agent else None
+    )
+
+    if not effective_template_id:
+        raise RuntimeError(
+            f"No qualification template configured " f"for campaign {campaign_id}"
+        )
+
+    template = (
+        db.query(QualificationTemplate)
+        .filter(
+            QualificationTemplate.id == effective_template_id,
+            QualificationTemplate.organization_id == organization_id,
+        )
+        .first()
+    )
+
+    if not template:
+        raise RuntimeError(
+            f"Qualification template {effective_template_id} "
+            f"not found for organization {organization_id}"
+        )
+
+    # ---------------------------------------------------------
+    # Build Engine transcript
+    # ---------------------------------------------------------
+
+    evaluation_transcript = {
+        "conversation_transcript_id": str(
+            call.get("call_session_id")
+            or call.get("session_id")
+            or call.get("id")
+            or ""
+        ),
+        "channel": "voice",
+        "language": "en",
+        "messages": [
+            {
+                "speaker": "customer",
+                "text": str(transcript).strip(),
+                "timestamp": None,
+                "metadata": {},
+            }
+        ],
+        "metadata": {
+            "source": "voice",
+        },
+    }
+
+    session_id = call.get("call_session_id") or call.get("session_id") or call.get("id")
+
+    # ---------------------------------------------------------
+    # Qualification Engine evaluation
+    # ---------------------------------------------------------
+
+    engine_service = QualificationEngineService()
+
+    # Everything that needs the DB must happen BEFORE
+    # the long-running external HTTP request.
+    api_key = engine_service.get_api_key(
+        db,
+        organization_id,
+    )
+
+    engine_template_payload = engine_service.build_engine_template_payload(template)
+
+    # Release the current DB transaction/connection before
+    # waiting for the Qualification Engine.
+    db.commit()
+    db.expire_all()
+
+    evaluation_result = await _evaluate_conversation_with_engine(
+        api_key=api_key,
+        project_id=f"org_{organization_id}_qualification",
+        session_id=str(session_id),
+        transcript=evaluation_transcript,
+        template_id=str(template.engine_template_id),
+        engine_template_payload=engine_template_payload,
+    )
+
+    # ---------------------------------------------------------
+    # Use Engine result
+    # ---------------------------------------------------------
+
+    classification = _normalize_evaluation_result(evaluation_result["response"])
+
+    outcome = classification["outcome"]
 
     return call_status, outcome
 
