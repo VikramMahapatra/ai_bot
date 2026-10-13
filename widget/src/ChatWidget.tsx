@@ -11,7 +11,15 @@ type RichTextBlock =
   | { type: "paragraph"; text: string }
   | { type: "unordered-list"; items: string[] }
   | { type: "ordered-list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] };
+  | {
+    type: "grouped-list";
+    groups: { title: string; items: string[] }[];
+  }
+  | {
+    type: "table";
+    headers: string[];
+    rows: string[][];
+  };
 
 interface ContactFieldDefinition {
   key: string;
@@ -391,18 +399,222 @@ const isTableSeparator = (line: string): boolean => {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 };
 
-const parseRichTextBlocks = (content: string): RichTextBlock[] => {
-  const lines = (content || "").replace(/\r\n/g, "\n").split("\n");
+
+const parseRichTextBlocks = (
+  content: string,
+): RichTextBlock[] => {
+  // Decode common HTML entities and split property labels
+  // dynamically, without hardcoding any property names.
+
+  const splitInlineProperties = (line: string): string[] => {
+    const decoded = line
+      .replace(/&#x20;|&#32;/gi, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'");
+
+    return decoded
+      // Split before bold labels, e.g. **Locality:** or **Price:**
+      .replace(
+        /\s+(?=\*\*[^*\n]{1,60}:\*\*)/g,
+        "\n",
+      )
+      .replace(
+        /(?<=[a-z0-9₹])\s+(?=(?:\*\*)?[A-Z][A-Za-z0-9/&()' -]{0,35}:\s*(?:\*\*)?)/g,
+        "\n",
+      )
+      .split("\n");
+  };
+
+  const isNumberedCompanyHeading = (line: string) =>
+    /^\d+\.\s+\*\*.+\*\*\s*$/.test(line.trim());
+
+  const cleanCompanyHeading = (line: string) =>
+    line
+      .trim()
+      .replace(/^\d+\.\s+/, "")
+      .replace(/^\*\*(.*?)\*\*$/, "$1")
+      .trim();
+
+  const cleanPropertyLine = (line: string) =>
+    line
+      .trim()
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\*\*(.*?)\*\*:\s*/, "$1: ")
+      .trim();
+
+
+  const normalizeCompanyMarkdown = (content: string): string => {
+    const decoded = String(content || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/&#x20;|&#32;|&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'");
+
+    const lines = decoded.split("\n");
+    const output: string[] = [];
+
+    for (const rawLine of lines) {
+      let line = rawLine.trim();
+
+      if (!line) {
+        output.push("");
+        continue;
+      }
+
+      // Normalize escaped list markers: "\- " -> "- ".
+      line = line.replace(/^\\([-*+])\s*/, "$1 ");
+
+      // Split inline properties before bold Markdown labels.
+      line = line.replace(
+        /\s+-\s*(?=\*\*[^*\n]+:\*\*)/g,
+        "\n",
+      );
+
+      line = line.replace(
+        /\s+(?=\*\*[^*\n]+:\*\*)/g,
+        "\n",
+      );
+
+      // Split plain-text property labels when followed by a colon.
+      // This is heuristic and does not use hardcoded field names.
+      line = line.replace(
+        /(?<=[^\s])\s+-\s+(?=\S)/g,
+        "\n",
+      );
+
+      // Convert "- Space: Company Name" into "- Company Name".
+      line = line.replace(
+        /^[-*+]\s+Space:\s*/i,
+        "- ",
+      );
+
+      line = line.replace(
+        /^[-*+]\s+\*\*Space:\*\*\s*/i,
+        "- ",
+      );
+
+      output.push(
+        ...line
+          .split("\n")
+          .map((part) => part.trim())
+          .filter(Boolean),
+      );
+    }
+
+    return output.join("\n");
+  };
+
+
+  const normalizedContent = normalizeCompanyMarkdown(content)
+    .split("\n")
+    .flatMap(splitInlineProperties);
+
+  const isBulletLine = (line: string) =>
+    /^[-*+]\s+/.test(line.trim());
+
+  const cleanBullet = (line: string) =>
+    line.trim().replace(/^[-*+]\s+/, "").trim();
+
+  const cleanNumberedLine = (line: string) =>
+    line
+      .trim()
+      .replace(/^\*{0,2}\d+\.\*{0,2}\s+/, "")
+      .replace(/\s*\*{2,}\s*$/, "")
+      .trim();
+
+  const isSectionTitle = (line: string) =>
+    /^[^#\n]{1,80}:\s*$/.test(line.trim());
+
+
+  const stripBold = (text: string) =>
+    text.replace(/^\*\*(.*?)\*\*$/, "$1").trim();
+
+  const isProperty = (line: string) =>
+    /^(?:\*\*)?[^:\n]{1,60}:(?:\*\*)?\s*\S/.test(
+      line.trim(),
+    );
+
+  const isNumberedLine = (line: string) =>
+    /^\*{0,2}\d+\.\*{0,2}\s+/.test(line.trim());
+
+  const isCompanyHeading = (line: string) =>
+    /^[-*+]\s+\*\*?[^*]+\*\*?\s*$/.test(line.trim()) &&
+    !/:\s*/.test(line.trim());
+
+  const cleanCompanyName = (line: string) =>
+    line
+      .trim()
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\*\*(.*?)\*\*$/, "$1")
+      .replace(/^\*(.*?)\*$/, "$1")
+      .trim();
+
+
+  // Normalize company details into consecutive bullet lines.
+  // Blank lines do not end the current company.
+  const lines: string[] = [];
+  let insideCompany = false;
+
+  for (const rawLine of normalizedContent) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      lines.push("");
+      continue;
+    }
+
+    if (isBulletLine(line)) {
+      const item = cleanBullet(line);
+
+      // A property belongs to the current company/location.
+      if (insideCompany && isProperty(item)) {
+        lines.push(`- ${item}`);
+        continue;
+      }
+
+      // A non-property bullet starts a new group.
+      insideCompany =
+        isCompanyHeading(item) && !isProperty(item);
+
+      lines.push(line);
+      continue;
+    }
+
+    // Convert property paragraphs into bullets under the
+    // preceding company/location, even after a blank line.
+    if (insideCompany && isProperty(line)) {
+      lines.push(`- ${line}`);
+      continue;
+    }
+
+    if (isNumberedLine(line)) {
+      insideCompany = false;
+    } else if (!isProperty(line)) {
+      insideCompany = false;
+    }
+
+    lines.push(line);
+  }
+
   const blocks: RichTextBlock[] = [];
   let index = 0;
 
   while (index < lines.length) {
     const current = lines[index].trim();
+
     if (!current) {
-      index += 1;
+      index++;
       continue;
     }
 
+    // Markdown tables.
     if (
       index + 1 < lines.length &&
       lines[index].includes("|") &&
@@ -410,78 +622,227 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
     ) {
       const headers = parseTableRow(lines[index]);
       const rows: string[][] = [];
+
       index += 2;
+
       while (index < lines.length) {
         const candidate = lines[index].trim();
-        if (!candidate || !candidate.includes("|")) break;
+
+        if (!candidate || !candidate.includes("|")) {
+          break;
+        }
+
         const row = parseTableRow(lines[index]);
-        if (row.length) rows.push(row);
-        index += 1;
+
+        if (row.length) {
+          rows.push(row);
+        }
+
+        index++;
       }
+
       blocks.push({ type: "table", headers, rows });
       continue;
     }
 
+    // Markdown headings.
     if (/^#{1,6}\s+/.test(current)) {
       const headingText = current
         .replace(/^#{1,6}\s+/, "")
         .replace(/\s+#+\s*$/, "")
         .trim();
+
       blocks.push({
         type: "paragraph",
         text: headingText ? `**${headingText}**` : "",
       });
-      index += 1;
+
+      index++;
       continue;
     }
 
-    // Section titles like "Overview:" / "Industries Served:" → bold, same bubble
-    if (/^[^#\n]{1,80}:\s*$/.test(current)) {
+    // Standalone section titles ending with a colon.
+    if (isSectionTitle(current)) {
       blocks.push({
         type: "paragraph",
-        text: `**${current.trim()}**`,
+        text: `**${current}**`,
       });
-      index += 1;
+
+      index++;
       continue;
     }
 
-    if (/^[-*]\s+/.test(current)) {
-      const items: string[] = [];
-      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^[-*]\s+/, ""));
-        index += 1;
+    // Numbered company cards with plain-text or Markdown properties.
+    if (isNumberedCompanyHeading(current)) {
+      const groups: {
+        title: string;
+        items: string[];
+      }[] = [];
+
+      while (
+        index < lines.length &&
+        isNumberedCompanyHeading(lines[index].trim())
+      ) {
+        const title = cleanCompanyHeading(lines[index]);
+        const items: string[] = [];
+
+        index++;
+
+        while (index < lines.length) {
+          const candidate = lines[index].trim();
+
+          // Skip blank lines between a company's properties.
+          if (!candidate) {
+            index++;
+            continue;
+          }
+
+          // Stop when the next company begins.
+          if (isNumberedCompanyHeading(candidate)) {
+            break;
+          }
+
+          // Stop if another content block begins.
+          if (
+            /^#{1,6}\s+/.test(candidate) ||
+            isSectionTitle(candidate) ||
+            (candidate.includes("|") &&
+              index + 1 < lines.length &&
+              isTableSeparator(lines[index + 1]))
+          ) {
+            break;
+          }
+
+          const property = cleanPropertyLine(candidate);
+
+          // Stop grouping when the line is not a property.
+          if (!isProperty(property)) {
+            break;
+          }
+
+          if (property) {
+            items.push(property);
+          }
+
+          index++;
+        }
+
+        groups.push({ title, items });
       }
-      blocks.push({ type: "unordered-list", items });
+
+      blocks.push({
+        type: "grouped-list",
+        groups,
+      });
+
       continue;
     }
 
-    if (/^\*{0,2}\d+\.\s+/.test(current)) {
-      const items: string[] = [];
-      while (index < lines.length && /^\*{0,2}\d+\.\s+/.test(lines[index].trim())) {
-        items.push(
-          lines[index]
-            .trim()
-            .replace(/^\*{0,2}\d+\.\s+/, "")
-            .replace(/\*{2,}$/g, ""),
-        );
-        index += 1;
+    // Grouped company lists and ordinary bullet lists.
+
+    if (isBulletLine(current)) {
+      const groups: {
+        title: string;
+        items: string[];
+      }[] = [];
+
+      let currentGroup: {
+        title: string;
+        items: string[];
+      } | null = null;
+
+      while (
+        index < lines.length &&
+        isBulletLine(lines[index])
+      ) {
+        const item = cleanBullet(lines[index]);
+
+        if (isProperty(item)) {
+          // Keep the property inside the current group.
+          if (currentGroup) {
+            currentGroup.items.push(item);
+          } else {
+            groups.push({
+              title: "",
+              items: [item],
+            });
+          }
+        } else {
+          // Start a new company or location group.
+          currentGroup = {
+            title: stripBold(item),
+            items: [],
+          };
+
+          groups.push(currentGroup);
+        }
+
+        index++;
       }
-      // Show numbered markdown as bold-dot bullets (not 1. 2. 3.)
-      blocks.push({ type: "unordered-list", items });
+
+      const hasGroups = groups.some(
+        (group) => group.title && group.items.length > 0,
+      );
+
+      if (hasGroups) {
+        blocks.push({
+          type: "grouped-list",
+          groups,
+        });
+      } else {
+        blocks.push({
+          type: "unordered-list",
+          items: groups.flatMap((group) =>
+            group.title
+              ? [group.title, ...group.items]
+              : group.items,
+          ),
+        });
+      }
+
       continue;
     }
 
+
+    // Numbered lists.
+    if (isNumberedLine(current)) {
+      const items: string[] = [];
+
+      while (
+        index < lines.length &&
+        isNumberedLine(lines[index])
+      ) {
+        items.push(cleanNumberedLine(lines[index]));
+        index++;
+      }
+
+      blocks.push({
+        type: "unordered-list",
+        items,
+      });
+
+      continue;
+    }
+
+    // Paragraphs.
     const paragraphLines: string[] = [];
+
     while (index < lines.length) {
       const candidate = lines[index].trim();
-      if (!candidate) break;
+
+      if (!candidate) {
+        break;
+      }
+
       if (
         /^#{1,6}\s+/.test(candidate) ||
-        /^[^#\n]{1,80}:\s*$/.test(candidate) ||
-        /^[-*]\s+/.test(candidate) ||
-        /^\*{0,2}\d+\.\s+/.test(candidate)
-      )
+        isSectionTitle(candidate) ||
+        isBulletLine(candidate) ||
+        isNumberedLine(candidate)
+      ) {
         break;
+      }
+
       if (
         index + 1 < lines.length &&
         lines[index].includes("|") &&
@@ -489,16 +850,26 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
       ) {
         break;
       }
+
       paragraphLines.push(candidate);
-      index += 1;
+      index++;
     }
+
     if (paragraphLines.length) {
-      blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
+      blocks.push({
+        type: "paragraph",
+        text: paragraphLines.join(" "),
+      });
+    } else {
+      // Prevent an infinite loop if an unrecognized line remains.
+      index++;
     }
   }
 
   return blocks;
 };
+
+
 
 const renderMessageContent = (
   content: string,
@@ -542,6 +913,42 @@ const renderMessageContent = (
             </ul>
           );
         }
+
+
+        if (block.type === "grouped-list") {
+          return (
+            <div
+              key={blockKey}
+              className="chatbot-rich-groups"
+            >
+              {block.groups.map((group, groupIndex) => (
+                <div
+                  className="chatbot-rich-group"
+                  key={`${keyPrefix}-group-${groupIndex}`}
+                >
+                  <p className="chatbot-rich-group-title">
+                    <span className="chatbot-rich-group-number">
+                      {groupIndex + 1}.
+                    </span>
+                    {group.title}
+                  </p>
+
+                  <ul className="chatbot-rich-bullets">
+                    {group.items.map((item, itemIndex) => (
+                      <li key={`${keyPrefix}-${groupIndex}-${itemIndex}`}>
+                        {renderInlineRichText(
+                          item,
+                          `${keyPrefix}-${groupIndex}-${itemIndex}`,
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
 
         return (
           <div key={blockKey} className="chatbot-rich-table-wrap">
@@ -1997,7 +2404,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     </div>
                   ) : null}
                   {handoffStatus === "waiting_for_agent" &&
-                  typeof handoffProgressPercent === "number" ? (
+                    typeof handoffProgressPercent === "number" ? (
                     <div className="chatbot-handoff-timer-graphic">
                       <div className="chatbot-handoff-timer-row">
                         <span className="chatbot-handoff-timer-seconds">

@@ -473,6 +473,7 @@ const renderInlineMarkdown = (
 
   lines.forEach((line, lineIndex) => {
     const trimmedLine = line.trim();
+    const leadingSpaces = line.match(/^\s*/)?.[0].length ?? 0;
 
     // Preserve empty lines and spacing
     if (!trimmedLine) {
@@ -546,10 +547,23 @@ const renderInlineMarkdown = (
       return;
     }
 
+    const isClosingMessage = (text: string) =>
+      /^(if you need|if you have|feel free to|let me know if|please let me know)/i.test(
+        text.replace(/^[-*+]\s+/, "").trim(),
+      );
+
     // Bullet list: -, *, or +
-    const bulletMatch = trimmedLine.match(/^[-*+]\s+(.+)$/);
+
+    // Bullet list: -, *, or +
+    const bulletMatch = trimmedLine.match(/^(\s*)[-*+]\s+(.+)$/);
 
     if (bulletMatch) {
+      const indent = bulletMatch[1].length;
+      const bulletContent = bulletMatch[2];
+
+      // Nested bullets receive additional indentation.
+      const nestingLevel = leadingSpaces >= 4 ? 2 : 1;
+
       parts.push(
         <Box
           key={`${keyPrefix}-bullet-${lineIndex}`}
@@ -557,15 +571,17 @@ const renderInlineMarkdown = (
             display: "flex",
             alignItems: "flex-start",
             gap: 1,
-            ml: 1,
+            ml: nestingLevel > 1 ? 3 : 1,
             mb: 0.5,
           }}
         >
-          <Box component="span">•</Box>
+          <Box component="span" sx={{ flexShrink: 0 }}>
+            {nestingLevel > 1 ? "◦" : "•"}
+          </Box>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {renderInlineMarkdownTokens(
-              bulletMatch[1],
+              bulletContent,
               `${keyPrefix}-b-${lineIndex}`,
             )}
           </Box>
@@ -573,6 +589,7 @@ const renderInlineMarkdown = (
       );
       return;
     }
+
 
     // Section titles ending with a colon
     if (/^[^:]{1,80}:\s*$/.test(trimmedLine)) {
