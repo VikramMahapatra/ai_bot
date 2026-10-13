@@ -9,6 +9,9 @@ class WidgetConfig(Base):
     id = Column(Integer, Identity(), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    qualification_template_id = Column(
+        Integer, ForeignKey("qualification_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     widget_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
     welcome_message = Column(Text, nullable=True)

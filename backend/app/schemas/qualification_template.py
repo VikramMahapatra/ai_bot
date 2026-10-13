@@ -251,6 +251,7 @@ class QualificationTemplateSummary(BaseModel):
     name: str
     description: Optional[str] = None
     objective: str
+    qualification_mode: str = "essential_supporting"
     status: QualificationStatus
     created_at: datetime
     updated_at: Optional[datetime] = None

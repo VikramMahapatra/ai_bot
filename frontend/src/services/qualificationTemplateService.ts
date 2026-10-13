@@ -84,6 +84,7 @@ export interface QualificationTemplateSummary {
   name: string;
   description?: string;
   objective: string;
+  qualification_mode?: "essential_supporting" | "any_selected" | "all_selected";
   status: QualificationStatus;
   created_at: string;
   updated_at?: string;

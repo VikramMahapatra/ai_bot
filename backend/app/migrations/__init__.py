@@ -46,6 +46,10 @@ from app.migrations.m2026_09_20_add_temperature_mode import (
     MIGRATION_ID as ADD_TEMPERATURE_MODE_ID,
     upgrade as add_temperature_mode_upgrade,
 )
+from app.migrations.m2026_09_21_add_widget_qualification_template import (
+    MIGRATION_ID as ADD_WIDGET_QUALIFICATION_TEMPLATE_ID,
+    upgrade as add_widget_qualification_template_upgrade,
+)
 
 
 MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
@@ -60,6 +64,7 @@ MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
     (EXTEND_POSITIVE_SIGNALS_ID, extend_positive_signals_upgrade),
     (EXTEND_DISQUALIFICATION_CRITERIA_ID, extend_disqualification_criteria_upgrade),
     (ADD_TEMPERATURE_MODE_ID, add_temperature_mode_upgrade),
+    (ADD_WIDGET_QUALIFICATION_TEMPLATE_ID, add_widget_qualification_template_upgrade),
 ]
 
 
