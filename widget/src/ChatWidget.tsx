@@ -11,7 +11,15 @@ type RichTextBlock =
   | { type: "paragraph"; text: string }
   | { type: "unordered-list"; items: string[] }
   | { type: "ordered-list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] };
+  | {
+    type: "grouped-list";
+    groups: { title: string; items: string[] }[];
+  }
+  | {
+    type: "table";
+    headers: string[];
+    rows: string[][];
+  };
 
 interface ContactFieldDefinition {
   key: string;
@@ -391,18 +399,356 @@ const isTableSeparator = (line: string): boolean => {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 };
 
-const parseRichTextBlocks = (content: string): RichTextBlock[] => {
-  const lines = (content || "").replace(/\r\n/g, "\n").split("\n");
+const normalizeNumberedServiceHeadings = (content: string): string => {
+  return content.replace(
+    /^(\s*)(\d+)\.\s+\*\*(.+?)\*\*:\s*$/gm,
+    "$1**$2. $3:**",
+  );
+};
+
+const parseRichTextBlocks = (
+  content: string,
+): RichTextBlock[] => {
+  // Decode common HTML entities and split property labels
+  // dynamically, without hardcoding any property names.
+
+  const splitInlineProperties = (line: string): string[] => {
+    const decoded = line
+      .replace(/&#x20;|&#32;/gi, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'");
+
+    return decoded
+      // Split before bold labels, e.g. **Locality:** or **Price:**
+      .replace(
+        /\s+(?=\*\*[^*\n]{1,60}:\*\*)/g,
+        "\n",
+      )
+      .replace(
+        /(?<=[a-z0-9₹])\s+(?=(?:\*\*)?[A-Z][A-Za-z0-9/&()' -]{0,35}:\s*(?:\*\*)?)/g,
+        "\n",
+      )
+      .split("\n");
+  };
+
+
+
+
+  const isNumberedCompanyHeading = (line: string) => {
+    const value = line.trim();
+
+    // Exclude bold numbered sentences that are descriptions.
+    if (isBoldNumberedSentence(value)) {
+      return false;
+    }
+
+    return /^\*\*\d+\.\s+.+\*\*$/.test(value);
+  };
+
+
+  const cleanCompanyHeading = (line: string) =>
+    line
+      .trim()
+      .replace(/^\*\*/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/\*\*$/, "")
+      .trim();
+
+
+
+  const isNumberedLine = (line: string) =>
+    /^\s*\d+\.\s+/.test(line.trim());
+
+  const cleanNumberedLine = (line: string) =>
+    line
+      .trim()
+      .replace(/^\*\*?(\d+)\.\*\*?\s+/, "$1. ")
+      .replace(/^\d+\.\s+/, "")
+      .trim();
+
+
+  const cleanPropertyLine = (line: string) =>
+    line
+      .trim()
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\*\*(.*?)\*\*:\s*/, "$1: ")
+      .trim();
+
+
+
+  const isNumberedServiceHeading = (line: string): boolean => {
+    const text = line.trim();
+
+    // Match **1. AI & Automation Services**
+    // and **1) AI & Automation Services**
+    return /^\*\*\s*\d+[.)]\s*.+?\*\*\s*$/.test(text);
+  };
+
+  const cleanNumberedServiceHeading = (line: string): string => {
+    return line
+      .trim()
+      .replace(/^\*\*\s*\d+[.)]\s*/, "")
+      .replace(/\*\*\s*$/, "")
+      .trim();
+  };
+
+
+  const normalizeNumberedHeadings = (line: string): string => {
+    // **1.** AI & Automation Services**:
+    // **1. **AI & Automation Services**:
+    // ** 1. **AI & Automation Services**:
+    return line.replace(
+      /^\s*\*\*\s*(\d+)\.\s*\*\*\s*(.*?)\s*\*\*\s*:\s*$/,
+      "**$1. $2:**",
+    );
+  };
+
+
+
+  const normalizeCompanyMarkdown = (content: string): string => {
+    const decoded = String(content || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/&#x20;|&#32;|&nbsp;/gi, " ")
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+        String.fromCodePoint(parseInt(hex, 16)),
+      )
+      .replace(/&#(\d+);/g, (_, dec) =>
+        String.fromCodePoint(parseInt(dec, 10)),
+      )
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;|&#39;/gi, "'");
+
+    const lines = decoded.split("\n");
+    const output: string[] = [];
+
+    for (const rawLine of lines) {
+      let line = rawLine.trim();
+
+      if (!line) {
+        output.push("");
+        continue;
+      }
+
+      line = normalizeNumberedHeadings(line);
+
+      // Normalize numbered service headings where the number and title
+      // are split across Markdown bold markers.
+      // Example: ** 1. **AI & Automation Services**:
+      // Result:  **1. AI & Automation Services:**
+      line = line.replace(
+        /^\*\*\s*(\d+)\.\s*\*\*\s*(.+?)\s*\*\*\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Handle numbered headings with a bold number but an unbolded title.
+      // Example: ** 2. **Custom Software Development:
+      line = line.replace(
+        /^\*\*\s*(\d+)\.\s*\*\*\s*(.+?)\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Handle numbered headings where only the number is bold.
+      // Example: ** 3. **Technology Consulting**:
+      line = line.replace(
+        /^\*\*\s*(\d+)\.\s*\*\*(.+?)\*\*\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Repair malformed bold list labels.
+      // Example: **- **Key Features**:** -> **Key Features:**
+      line = line.replace(
+        /^\*\*[-*+]\s*\*\*\s*(.+?)\*\*\s*:\s*\*{0,2}\s*$/,
+        "**$1:**",
+      );
+
+      // Normalize escaped list markers.
+      line = line.replace(/^\\+([-*+])\s+/, "$1 ");
+
+      // Normalize Key Offerings and Key Features list labels.
+      line = line.replace(
+        /^\*\*[-*+]\s*\*\*\s*(Key Offerings|Key Features)\*\*\s*:\s*\*\*$/i,
+        "- **$1:**",
+      );
+
+      // Remove unnecessary bold markers around "Features".
+      line = line.replace(
+        /\*\*\s*(Key\s+)?Features\s*\*\*/gi,
+        "$1Features",
+      );
+
+      // Remove a bold wrapper around the list marker.
+      // Example: **- **Overview:** text -> - **Overview:** text
+      line = line.replace(
+        /^\*\*([-*+])\s*\*\*\s*/,
+        "$1 ",
+      );
+
+      // Split adjacent bold properties if multiple fields share one line.
+      line = line.replace(
+        /\s+(?=\*\*[^*\n]{1,60}:\*\*)/g,
+        "\n",
+      );
+
+      output.push(
+        ...line
+          .split("\n")
+          .map((part) => part.trim())
+          .filter(Boolean),
+      );
+    }
+
+    return output.join("\n");
+  };
+
+
+
+  const normalizedContent = normalizeCompanyMarkdown(content)
+    .split("\n")
+    .flatMap(splitInlineProperties);
+
+  const isBulletLine = (line: string) =>
+    /^[-*+]\s+/.test(line.trim());
+
+  const cleanBullet = (line: string) =>
+    line.trim().replace(/^[-*+]\s+/, "").trim();
+
+  const isSectionTitle = (line: string) =>
+    /^[^#\n]{1,80}:\s*$/.test(line.trim());
+
+  const stripBold = (text: string) =>
+    text.replace(/^\*\*(.*?)\*\*$/, "$1").trim();
+
+  const isProperty = (line: string) =>
+    /^(?:\*\*)?[^:\n]{1,60}:(?:\*\*)?\s*\S/.test(
+      line.trim(),
+    );
+
+  const isCompanyHeading = (line: string) =>
+    /^[-*+]\s+\*\*?[^*]+\*\*?\s*$/.test(line.trim()) &&
+    !/:\s*/.test(line.trim());
+
+  const cleanCompanyName = (line: string) =>
+    line
+      .trim()
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\*\*(.*?)\*\*$/, "$1")
+      .replace(/^\*(.*?)\*$/, "$1")
+      .trim();
+
+
+  const isBoldStandaloneHeading = (line: string): boolean => {
+    const value = line.trim();
+
+    return (
+      /^\*\*.+\*\*$/.test(value) &&
+      !/^\*\*\d+[.)]\s*/.test(value) &&
+      !/^\*\*Services\*\*:?$/i.test(value)
+    );
+  };
+
+  const isBoldNumberedDescription = (line: string): boolean =>
+    /^\*\*\d+[.)]\s*.+\*\*$/.test(line.trim());
+
+  const cleanBoldNumberedDescription = (line: string): string =>
+    line
+      .trim()
+      .replace(/^\*\*\d+[.)]\s*/, "")
+      .replace(/\*\*$/, "")
+      .trim();
+
+
+  const isBoldNumberedSentence = (line: string) => {
+    const value = line.trim();
+
+    if (!/^\*\*\d+\.\s+.+\*\*$/.test(value)) {
+      return false;
+    }
+
+    const text = value
+      .replace(/^\*\*\d+\.\s+/, "")
+      .replace(/\*\*$/, "")
+      .trim();
+
+    // A description usually ends with punctuation.
+    return /[.!?]$/.test(text);
+  };
+
+  const isBoldServiceHeading = (line: string) => {
+    const value = line.trim();
+
+    // Service headings are bold, but not numbered descriptions.
+    if (isBoldNumberedSentence(value)) {
+      return false;
+    }
+
+    return /^\*\*[^*]+\*\*$/.test(value);
+  };
+
+  // Normalize company details into consecutive bullet lines.
+  // Blank lines do not end the current company.
+  const lines: string[] = [];
+  let insideCompany = false;
+
+  for (const rawLine of normalizedContent) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      lines.push("");
+      continue;
+    }
+
+    if (isBulletLine(line)) {
+      const item = cleanBullet(line);
+
+      // A property belongs to the current company/location.
+      if (insideCompany && isProperty(item)) {
+        lines.push(`- ${item} `);
+        continue;
+      }
+
+      // A non-property bullet starts a new group.
+      insideCompany =
+        isCompanyHeading(item) && !isProperty(item);
+
+      lines.push(line);
+      continue;
+    }
+
+    // Convert property paragraphs into bullets under the
+    // preceding company/location, even after a blank line.
+    if (insideCompany && isProperty(line)) {
+      lines.push(`- ${line} `);
+      continue;
+    }
+
+    if (isNumberedLine(line)) {
+      insideCompany = false;
+    } else if (!isProperty(line)) {
+      insideCompany = false;
+    }
+
+    lines.push(line);
+  }
+
   const blocks: RichTextBlock[] = [];
   let index = 0;
 
   while (index < lines.length) {
     const current = lines[index].trim();
+
     if (!current) {
-      index += 1;
+      index++;
       continue;
     }
 
+    // Markdown tables.
     if (
       index + 1 < lines.length &&
       lines[index].includes("|") &&
@@ -410,78 +756,307 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
     ) {
       const headers = parseTableRow(lines[index]);
       const rows: string[][] = [];
+
       index += 2;
+
       while (index < lines.length) {
         const candidate = lines[index].trim();
-        if (!candidate || !candidate.includes("|")) break;
+
+        if (!candidate || !candidate.includes("|")) {
+          break;
+        }
+
         const row = parseTableRow(lines[index]);
-        if (row.length) rows.push(row);
-        index += 1;
+
+        if (row.length) {
+          rows.push(row);
+        }
+
+        index++;
       }
+
       blocks.push({ type: "table", headers, rows });
       continue;
     }
 
+    // Markdown headings.
     if (/^#{1,6}\s+/.test(current)) {
       const headingText = current
         .replace(/^#{1,6}\s+/, "")
         .replace(/\s+#+\s*$/, "")
         .trim();
+
       blocks.push({
         type: "paragraph",
-        text: headingText ? `**${headingText}**` : "",
+        text: headingText ? `** ${headingText}** ` : "",
       });
-      index += 1;
+
+      index++;
       continue;
     }
 
-    // Section titles like "Overview:" / "Industries Served:" → bold, same bubble
-    if (/^[^#\n]{1,80}:\s*$/.test(current)) {
-      blocks.push({
-        type: "paragraph",
-        text: `**${current.trim()}**`,
-      });
-      index += 1;
-      continue;
-    }
-
-    if (/^[-*]\s+/.test(current)) {
+    if (isNumberedServiceHeading(current)) {
+      const serviceTitle = cleanNumberedServiceHeading(current);
       const items: string[] = [];
-      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^[-*]\s+/, ""));
-        index += 1;
-      }
-      blocks.push({ type: "unordered-list", items });
-      continue;
-    }
 
-    if (/^\*{0,2}\d+\.\s+/.test(current)) {
-      const items: string[] = [];
-      while (index < lines.length && /^\*{0,2}\d+\.\s+/.test(lines[index].trim())) {
-        items.push(
-          lines[index]
-            .trim()
-            .replace(/^\*{0,2}\d+\.\s+/, "")
-            .replace(/\*{2,}$/g, ""),
+      index++;
+
+      while (index < lines.length) {
+        const line = lines[index].trim();
+
+        if (!line) {
+          index++;
+          continue;
+        }
+
+        // Only a new numbered service ends the current service.
+        if (
+          isNumberedServiceHeading(line) ||
+          isNumberedCompanyHeading(line)
+        ) {
+          break;
+        }
+
+        if (/^#{1,6}\s+/.test(line)) {
+          break;
+        }
+
+        // Any bold label ending with a colon is content,
+        // not a new group: Purpose, Overview, Key Offerings, etc.
+        const boldLabelMatch = line.match(
+          /^\*\*\s*(.+?)\s*\*\*\s*:\s*(.*)$/
         );
-        index += 1;
+
+        if (boldLabelMatch) {
+          const label = boldLabelMatch[1].trim();
+          const value = boldLabelMatch[2].trim();
+
+          items.push(
+            value ? `**${label}:** ${value}` : `**${label}:**`
+          );
+
+          index++;
+          continue;
+        }
+
+        // Also support plain-text subsection labels, e.g. Features:
+        if (isSectionTitle(line)) {
+          items.push(line);
+          index++;
+          continue;
+        }
+
+        // Feature bullets belong to this service.
+        if (isBulletLine(line)) {
+          items.push(cleanBullet(line));
+          index++;
+          continue;
+        }
+
+        // Preserve additional content unless it starts a new section.
+        items.push(line);
+        index++;
       }
-      // Show numbered markdown as bold-dot bullets (not 1. 2. 3.)
-      blocks.push({ type: "unordered-list", items });
+
+      blocks.push({
+        type: "grouped-list",
+        groups: [
+          {
+            title: serviceTitle,
+            items,
+          },
+        ],
+      });
+
       continue;
     }
 
+
+    // Standalone section titles ending with a colon.
+    if (isSectionTitle(current)) {
+      blocks.push({
+        type: "paragraph",
+        text: `** ${current}** `,
+      });
+
+      index++;
+      continue;
+    }
+
+
+
+    // Numbered company cards with plain-text or Markdown properties.
+    if (isNumberedCompanyHeading(current)) {
+      const groups: {
+        title: string;
+        items: string[];
+      }[] = [];
+
+      while (
+        index < lines.length &&
+        isNumberedCompanyHeading(lines[index].trim())
+      ) {
+        const title = cleanCompanyHeading(lines[index]);
+        const items: string[] = [];
+
+        index++;
+
+        while (index < lines.length) {
+          const candidate = lines[index].trim();
+
+          // Skip blank lines between a company's properties.
+          if (!candidate) {
+            index++;
+            continue;
+          }
+
+          // Stop when the next company begins.
+          if (isNumberedCompanyHeading(candidate)) {
+            break;
+          }
+
+          // Stop if another content block begins.
+          if (
+            /^#{1,6}\s+/.test(candidate) ||
+            isSectionTitle(candidate) ||
+            (candidate.includes("|") &&
+              index + 1 < lines.length &&
+              isTableSeparator(lines[index + 1]))
+          ) {
+            break;
+          }
+
+          const property = cleanPropertyLine(candidate);
+
+          // Stop grouping when the line is not a property.
+          if (!isProperty(property)) {
+            break;
+          }
+
+          if (property) {
+            items.push(property);
+          }
+
+          index++;
+        }
+
+        groups.push({ title, items });
+      }
+
+      blocks.push({
+        type: "grouped-list",
+        groups,
+      });
+
+      continue;
+    }
+
+    // Grouped company lists and ordinary bullet lists.
+
+    if (isBulletLine(current)) {
+      const groups: {
+        title: string;
+        items: string[];
+      }[] = [];
+
+      let currentGroup: {
+        title: string;
+        items: string[];
+      } | null = null;
+
+      while (
+        index < lines.length &&
+        isBulletLine(lines[index])
+      ) {
+        const item = cleanBullet(lines[index]);
+
+        if (isProperty(item)) {
+          if (currentGroup) {
+            currentGroup.items.push(item);
+          } else {
+            groups.push({
+              title: "",
+              items: [item],
+            });
+          }
+        } else if (currentGroup && !isCompanyHeading(item)) {
+          // A regular bullet belongs to the current product's details.
+          currentGroup.items.push(item);
+        } else {
+          currentGroup = {
+            title: stripBold(item),
+            items: [],
+          };
+
+          groups.push(currentGroup);
+        }
+
+        index++;
+      }
+
+      const hasGroups = groups.some(
+        (group) => group.title && group.items.length > 0,
+      );
+
+      if (hasGroups) {
+        blocks.push({
+          type: "grouped-list",
+          groups,
+        });
+      } else {
+        blocks.push({
+          type: "unordered-list",
+          items: groups.flatMap((group) =>
+            group.title
+              ? [group.title, ...group.items]
+              : group.items,
+          ),
+        });
+      }
+
+      continue;
+    }
+
+
+    // Numbered lists.
+    if (isNumberedLine(current)) {
+      const items: string[] = [];
+
+      while (
+        index < lines.length &&
+        isNumberedLine(lines[index])
+      ) {
+        items.push(cleanNumberedLine(lines[index]));
+        index++;
+      }
+
+      blocks.push({
+        type: "unordered-list",
+        items,
+      });
+
+      continue;
+    }
+
+    // Paragraphs.
     const paragraphLines: string[] = [];
+
     while (index < lines.length) {
       const candidate = lines[index].trim();
-      if (!candidate) break;
+
+      if (!candidate) {
+        break;
+      }
+
       if (
         /^#{1,6}\s+/.test(candidate) ||
-        /^[^#\n]{1,80}:\s*$/.test(candidate) ||
-        /^[-*]\s+/.test(candidate) ||
-        /^\*{0,2}\d+\.\s+/.test(candidate)
-      )
+        isSectionTitle(candidate) ||
+        isBulletLine(candidate) ||
+        isNumberedLine(candidate)
+      ) {
         break;
+      }
+
       if (
         index + 1 < lines.length &&
         lines[index].includes("|") &&
@@ -489,22 +1064,33 @@ const parseRichTextBlocks = (content: string): RichTextBlock[] => {
       ) {
         break;
       }
+
       paragraphLines.push(candidate);
-      index += 1;
+      index++;
     }
+
     if (paragraphLines.length) {
-      blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
+      blocks.push({
+        type: "paragraph",
+        text: paragraphLines.join(" "),
+      });
+    } else {
+      // Prevent an infinite loop if an unrecognized line remains.
+      index++;
     }
   }
 
   return blocks;
 };
 
+
+
 const renderMessageContent = (
   content: string,
   keyPrefix: string,
 ): React.ReactNode => {
-  const blocks = parseRichTextBlocks(content);
+  const normalizedContent = normalizeNumberedServiceHeadings(content);
+  const blocks = parseRichTextBlocks(normalizedContent);
   if (blocks.length === 0) {
     return <p>{content}</p>;
   }
@@ -512,7 +1098,7 @@ const renderMessageContent = (
   return (
     <div className="chatbot-rich-text">
       {blocks.map((block, blockIndex) => {
-        const blockKey = `${keyPrefix}-block-${blockIndex}`;
+        const blockKey = `${keyPrefix} -block - ${blockIndex} `;
         if (block.type === "paragraph") {
           return (
             <p key={blockKey}>{renderInlineRichText(block.text, blockKey)}</p>
@@ -523,8 +1109,8 @@ const renderMessageContent = (
           return (
             <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockKey}-item-${itemIndex}`}>
-                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                <li key={`${blockKey} -item - ${itemIndex} `}>
+                  {renderInlineRichText(item, `${blockKey} -item - ${itemIndex} `)}
                 </li>
               ))}
             </ul>
@@ -535,13 +1121,46 @@ const renderMessageContent = (
           return (
             <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockKey}-item-${itemIndex}`}>
-                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                <li key={`${blockKey} -item - ${itemIndex} `}>
+                  {renderInlineRichText(item, `${blockKey} -item - ${itemIndex} `)}
                 </li>
               ))}
             </ul>
           );
         }
+
+
+        if (block.type === "grouped-list") {
+          return (
+            <div
+              key={blockKey}
+              className="chatbot-rich-groups"
+            >
+              {block.groups.map((group, groupIndex) => (
+                <div
+                  className="chatbot-rich-group"
+                  key={`${keyPrefix} -group - ${groupIndex} `}
+                >
+                  <p className="chatbot-rich-group-title">
+                    <strong>{group.title}</strong>
+                  </p>
+
+                  <ul className="chatbot-rich-bullets">
+                    {group.items.map((item, itemIndex) => (
+                      <li key={`${keyPrefix} -${groupIndex} -${itemIndex} `}>
+                        {renderInlineRichText(
+                          item,
+                          `${keyPrefix} -${groupIndex} -${itemIndex} `,
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
 
         return (
           <div key={blockKey} className="chatbot-rich-table-wrap">
@@ -549,10 +1168,10 @@ const renderMessageContent = (
               <thead>
                 <tr>
                   {block.headers.map((header, headerIndex) => (
-                    <th key={`${blockKey}-h-${headerIndex}`}>
+                    <th key={`${blockKey} -h - ${headerIndex} `}>
                       {renderInlineRichText(
                         header,
-                        `${blockKey}-h-${headerIndex}`,
+                        `${blockKey} -h - ${headerIndex} `,
                       )}
                     </th>
                   ))}
@@ -560,12 +1179,12 @@ const renderMessageContent = (
               </thead>
               <tbody>
                 {block.rows.map((row, rowIndex) => (
-                  <tr key={`${blockKey}-r-${rowIndex}`}>
+                  <tr key={`${blockKey} -r - ${rowIndex} `}>
                     {row.map((cell, cellIndex) => (
-                      <td key={`${blockKey}-c-${rowIndex}-${cellIndex}`}>
+                      <td key={`${blockKey} -c - ${rowIndex} -${cellIndex} `}>
                         {renderInlineRichText(
                           cell,
-                          `${blockKey}-c-${rowIndex}-${cellIndex}`,
+                          `${blockKey} -c - ${rowIndex} -${cellIndex} `,
                         )}
                       </td>
                     ))}
@@ -595,7 +1214,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   shop,
   user,
 }) => {
-  const storageKey = `chatbot_session_id_${widgetId || "default"}`;
+  const storageKey = `chatbot_session_id_${widgetId || "default"} `;
   const headerFontColor = (chatHeaderFontColor || "").trim() || "#f8fafc";
 
   const [darkMode, setDarkMode] = useState(false);
@@ -1997,7 +2616,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     </div>
                   ) : null}
                   {handoffStatus === "waiting_for_agent" &&
-                  typeof handoffProgressPercent === "number" ? (
+                    typeof handoffProgressPercent === "number" ? (
                     <div className="chatbot-handoff-timer-graphic">
                       <div className="chatbot-handoff-timer-row">
                         <span className="chatbot-handoff-timer-seconds">
@@ -2060,6 +2679,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 loading &&
                 index === messages.length - 1 &&
                 !message.content.trim();
+
+              console.log("Rendering message:", message, "Pending:", isPendingAssistantMessage);
 
               return (
                 <div

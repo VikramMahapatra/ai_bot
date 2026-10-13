@@ -463,77 +463,181 @@ const renderInlineMarkdownTokens = (
   return parts;
 };
 
+
 const renderInlineMarkdown = (
   text: string,
   keyPrefix = "msg",
 ): React.ReactNode[] => {
-  const lines = String(text || "").split(/\n/);
+  const lines = String(text || "").split(/\r?\n/);
   const parts: React.ReactNode[] = [];
 
   lines.forEach((line, lineIndex) => {
-    if (lineIndex > 0) {
-      parts.push(<br key={`${keyPrefix}-br-${lineIndex}`} />);
+    const trimmedLine = line.trim();
+    const leadingSpaces = line.match(/^\s*/)?.[0].length ?? 0;
+
+    // Preserve empty lines and spacing
+    if (!trimmedLine) {
+      parts.push(
+        <Box
+          key={`${keyPrefix}-space-${lineIndex}`}
+          sx={{ height: 8 }}
+        />,
+      );
+      return;
     }
 
-    const headingMatch = line.match(/^#{1,6}\s+(.*)$/);
-    const sectionTitleMatch =
-      !headingMatch && /^[^#\n]{1,80}:\s*$/.test(line.trim());
-    // Allow bold-wrapped numbered lines: **5. Title****
-    const numberedMatch = line.match(/^\*{0,2}(\d+)\.\s+(.*)$/);
-    let rawContent = headingMatch
-      ? headingMatch[1].replace(/\s+#+\s*$/, "").trim()
-      : numberedMatch
-        ? numberedMatch[2]
-        : line;
-    const isHeading = Boolean(headingMatch) || sectionTitleMatch;
-    const isBullet = Boolean(numberedMatch) && !isHeading;
+    // Markdown headings: #, ##, ###, etc.
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
 
-    if (!isHeading && !isBullet && !rawContent.includes("**")) {
-      const labelMatch = rawContent.match(/^([A-Z][^:\n*]{1,70}):\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const content = headingMatch[2].replace(/\s+#+\s*$/, "");
+
+      parts.push(
+        <Box
+          key={`${keyPrefix}-heading-${lineIndex}`}
+          sx={{
+            fontWeight: 800,
+            fontSize:
+              level === 1 ? "1.1rem" :
+                level === 2 ? "1rem" :
+                  "0.92rem",
+            mt: level === 1 ? 1 : 0.5,
+            mb: 0.5,
+          }}
+        >
+          {renderInlineMarkdownTokens(
+            content,
+            `${keyPrefix}-h-${lineIndex}`,
+          )}
+        </Box>,
+      );
+      return;
+    }
+
+    // Numbered list: 1. Item, 2. Item
+    const numberedMatch = trimmedLine.match(
+      /^(\d+)\.\s+(.+)$/,
+    );
+
+    if (numberedMatch) {
+      parts.push(
+        <Box
+          key={`${keyPrefix}-number-${lineIndex}`}
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 1,
+            ml: 1,
+            mb: 0.5,
+          }}
+        >
+          <Box component="span" sx={{ fontWeight: 700 }}>
+            {numberedMatch[1]}.
+          </Box>
+
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {renderInlineMarkdownTokens(
+              numberedMatch[2],
+              `${keyPrefix}-n-${lineIndex}`,
+            )}
+          </Box>
+        </Box>,
+      );
+      return;
+    }
+
+    const isClosingMessage = (text: string) =>
+      /^(if you need|if you have|feel free to|let me know if|please let me know)/i.test(
+        text.replace(/^[-*+]\s+/, "").trim(),
+      );
+
+    // Bullet list: -, *, or +
+
+    // Bullet list: -, *, or +
+    const bulletMatch = trimmedLine.match(/^(\s*)[-*+]\s+(.+)$/);
+
+    if (bulletMatch) {
+      const indent = bulletMatch[1].length;
+      const bulletContent = bulletMatch[2];
+
+      // Nested bullets receive additional indentation.
+      const nestingLevel = leadingSpaces >= 4 ? 2 : 1;
+
+      parts.push(
+        <Box
+          key={`${keyPrefix}-bullet-${lineIndex}`}
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 1,
+            ml: nestingLevel > 1 ? 3 : 1,
+            mb: 0.5,
+          }}
+        >
+          <Box component="span" sx={{ flexShrink: 0 }}>
+            {nestingLevel > 1 ? "◦" : "•"}
+          </Box>
+
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {renderInlineMarkdownTokens(
+              bulletContent,
+              `${keyPrefix}-b-${lineIndex}`,
+            )}
+          </Box>
+        </Box>,
+      );
+      return;
+    }
+
+
+    // Section titles ending with a colon
+    if (/^[^:]{1,80}:\s*$/.test(trimmedLine)) {
+      parts.push(
+        <Box
+          key={`${keyPrefix}-section-${lineIndex}`}
+          sx={{ fontWeight: 800, mt: 1, mb: 0.5 }}
+        >
+          {renderInlineMarkdownTokens(
+            trimmedLine,
+            `${keyPrefix}-s-${lineIndex}`,
+          )}
+        </Box>,
+      );
+      return;
+    }
+
+    // Automatically bold uppercase labels such as STATUS:
+    let content = trimmedLine;
+
+    if (!content.includes("**")) {
+      const labelMatch = content.match(
+        /^([A-Z][^:\n*]{1,70}):\s+(.+)$/,
+      );
+
       if (labelMatch) {
-        rawContent = `**${labelMatch[1]}:** ${labelMatch[2]}`;
+        content = `**${labelMatch[1]}:** ${labelMatch[2]}`;
       }
     }
 
-    const lineNodes = renderInlineMarkdownTokens(
-      rawContent,
-      `${keyPrefix}-l${lineIndex}`,
+    // Normal text
+    parts.push(
+      <Box
+        key={`${keyPrefix}-text-${lineIndex}`}
+        component="div"
+        sx={{ mb: 0.25, overflowWrap: "anywhere" }}
+      >
+        {renderInlineMarkdownTokens(
+          content,
+          `${keyPrefix}-t-${lineIndex}`,
+        )}
+      </Box>,
     );
-
-    if (isHeading) {
-      parts.push(
-        <Box
-          component="strong"
-          key={`${keyPrefix}-h-${lineIndex}`}
-          sx={{ fontWeight: 800 }}
-        >
-          {lineNodes}
-        </Box>,
-      );
-      return;
-    }
-
-    if (isBullet) {
-      parts.push(
-        <Box
-          key={`${keyPrefix}-li-${lineIndex}`}
-          component="span"
-          sx={{ display: "inline" }}
-        >
-          <Box component="strong" sx={{ fontWeight: 800, mr: 0.6 }}>
-            •
-          </Box>
-          {lineNodes}
-        </Box>,
-      );
-      return;
-    }
-
-    parts.push(...lineNodes);
   });
 
   return parts;
 };
+
 
 const TypingDots: React.FC<{ color: string }> = ({ color }) => (
   <Box
