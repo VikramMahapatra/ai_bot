@@ -399,6 +399,12 @@ const isTableSeparator = (line: string): boolean => {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 };
 
+const normalizeNumberedServiceHeadings = (content: string): string => {
+  return content.replace(
+    /^(\s*)(\d+)\.\s+\*\*(.+?)\*\*:\s*$/gm,
+    "$1**$2. $3:**",
+  );
+};
 
 const parseRichTextBlocks = (
   content: string,
@@ -429,15 +435,41 @@ const parseRichTextBlocks = (
       .split("\n");
   };
 
-  const isNumberedCompanyHeading = (line: string) =>
-    /^\d+\.\s+\*\*.+\*\*\s*$/.test(line.trim());
+
+
+
+  const isNumberedCompanyHeading = (line: string) => {
+    const value = line.trim();
+
+    // Exclude bold numbered sentences that are descriptions.
+    if (isBoldNumberedSentence(value)) {
+      return false;
+    }
+
+    return /^\*\*\d+\.\s+.+\*\*$/.test(value);
+  };
+
 
   const cleanCompanyHeading = (line: string) =>
     line
       .trim()
+      .replace(/^\*\*/, "")
       .replace(/^\d+\.\s+/, "")
-      .replace(/^\*\*(.*?)\*\*$/, "$1")
+      .replace(/\*\*$/, "")
       .trim();
+
+
+
+  const isNumberedLine = (line: string) =>
+    /^\s*\d+\.\s+/.test(line.trim());
+
+  const cleanNumberedLine = (line: string) =>
+    line
+      .trim()
+      .replace(/^\*\*?(\d+)\.\*\*?\s+/, "$1. ")
+      .replace(/^\d+\.\s+/, "")
+      .trim();
+
 
   const cleanPropertyLine = (line: string) =>
     line
@@ -447,15 +479,51 @@ const parseRichTextBlocks = (
       .trim();
 
 
+
+  const isNumberedServiceHeading = (line: string): boolean => {
+    const text = line.trim();
+
+    // Match **1. AI & Automation Services**
+    // and **1) AI & Automation Services**
+    return /^\*\*\s*\d+[.)]\s*.+?\*\*\s*$/.test(text);
+  };
+
+  const cleanNumberedServiceHeading = (line: string): string => {
+    return line
+      .trim()
+      .replace(/^\*\*\s*\d+[.)]\s*/, "")
+      .replace(/\*\*\s*$/, "")
+      .trim();
+  };
+
+
+  const normalizeNumberedHeadings = (line: string): string => {
+    // **1.** AI & Automation Services**:
+    // **1. **AI & Automation Services**:
+    // ** 1. **AI & Automation Services**:
+    return line.replace(
+      /^\s*\*\*\s*(\d+)\.\s*\*\*\s*(.*?)\s*\*\*\s*:\s*$/,
+      "**$1. $2:**",
+    );
+  };
+
+
+
   const normalizeCompanyMarkdown = (content: string): string => {
     const decoded = String(content || "")
       .replace(/\r\n?/g, "\n")
       .replace(/&#x20;|&#32;|&nbsp;/gi, " ")
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+        String.fromCodePoint(parseInt(hex, 16)),
+      )
+      .replace(/&#(\d+);/g, (_, dec) =>
+        String.fromCodePoint(parseInt(dec, 10)),
+      )
       .replace(/&amp;/gi, "&")
       .replace(/&lt;/gi, "<")
       .replace(/&gt;/gi, ">")
       .replace(/&quot;/gi, '"')
-      .replace(/&#39;|&apos;/gi, "'");
+      .replace(/&apos;|&#39;/gi, "'");
 
     const lines = decoded.split("\n");
     const output: string[] = [];
@@ -468,36 +536,64 @@ const parseRichTextBlocks = (
         continue;
       }
 
-      // Normalize escaped list markers: "\- " -> "- ".
-      line = line.replace(/^\\([-*+])\s*/, "$1 ");
+      line = normalizeNumberedHeadings(line);
 
-      // Split inline properties before bold Markdown labels.
+      // Normalize numbered service headings where the number and title
+      // are split across Markdown bold markers.
+      // Example: ** 1. **AI & Automation Services**:
+      // Result:  **1. AI & Automation Services:**
       line = line.replace(
-        /\s+-\s*(?=\*\*[^*\n]+:\*\*)/g,
+        /^\*\*\s*(\d+)\.\s*\*\*\s*(.+?)\s*\*\*\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Handle numbered headings with a bold number but an unbolded title.
+      // Example: ** 2. **Custom Software Development:
+      line = line.replace(
+        /^\*\*\s*(\d+)\.\s*\*\*\s*(.+?)\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Handle numbered headings where only the number is bold.
+      // Example: ** 3. **Technology Consulting**:
+      line = line.replace(
+        /^\*\*\s*(\d+)\.\s*\*\*(.+?)\*\*\s*:\s*$/,
+        "**$1. $2:**",
+      );
+
+      // Repair malformed bold list labels.
+      // Example: **- **Key Features**:** -> **Key Features:**
+      line = line.replace(
+        /^\*\*[-*+]\s*\*\*\s*(.+?)\*\*\s*:\s*\*{0,2}\s*$/,
+        "**$1:**",
+      );
+
+      // Normalize escaped list markers.
+      line = line.replace(/^\\+([-*+])\s+/, "$1 ");
+
+      // Normalize Key Offerings and Key Features list labels.
+      line = line.replace(
+        /^\*\*[-*+]\s*\*\*\s*(Key Offerings|Key Features)\*\*\s*:\s*\*\*$/i,
+        "- **$1:**",
+      );
+
+      // Remove unnecessary bold markers around "Features".
+      line = line.replace(
+        /\*\*\s*(Key\s+)?Features\s*\*\*/gi,
+        "$1Features",
+      );
+
+      // Remove a bold wrapper around the list marker.
+      // Example: **- **Overview:** text -> - **Overview:** text
+      line = line.replace(
+        /^\*\*([-*+])\s*\*\*\s*/,
+        "$1 ",
+      );
+
+      // Split adjacent bold properties if multiple fields share one line.
+      line = line.replace(
+        /\s+(?=\*\*[^*\n]{1,60}:\*\*)/g,
         "\n",
-      );
-
-      line = line.replace(
-        /\s+(?=\*\*[^*\n]+:\*\*)/g,
-        "\n",
-      );
-
-      // Split plain-text property labels when followed by a colon.
-      // This is heuristic and does not use hardcoded field names.
-      line = line.replace(
-        /(?<=[^\s])\s+-\s+(?=\S)/g,
-        "\n",
-      );
-
-      // Convert "- Space: Company Name" into "- Company Name".
-      line = line.replace(
-        /^[-*+]\s+Space:\s*/i,
-        "- ",
-      );
-
-      line = line.replace(
-        /^[-*+]\s+\*\*Space:\*\*\s*/i,
-        "- ",
       );
 
       output.push(
@@ -512,6 +608,7 @@ const parseRichTextBlocks = (
   };
 
 
+
   const normalizedContent = normalizeCompanyMarkdown(content)
     .split("\n")
     .flatMap(splitInlineProperties);
@@ -522,16 +619,8 @@ const parseRichTextBlocks = (
   const cleanBullet = (line: string) =>
     line.trim().replace(/^[-*+]\s+/, "").trim();
 
-  const cleanNumberedLine = (line: string) =>
-    line
-      .trim()
-      .replace(/^\*{0,2}\d+\.\*{0,2}\s+/, "")
-      .replace(/\s*\*{2,}\s*$/, "")
-      .trim();
-
   const isSectionTitle = (line: string) =>
     /^[^#\n]{1,80}:\s*$/.test(line.trim());
-
 
   const stripBold = (text: string) =>
     text.replace(/^\*\*(.*?)\*\*$/, "$1").trim();
@@ -540,9 +629,6 @@ const parseRichTextBlocks = (
     /^(?:\*\*)?[^:\n]{1,60}:(?:\*\*)?\s*\S/.test(
       line.trim(),
     );
-
-  const isNumberedLine = (line: string) =>
-    /^\*{0,2}\d+\.\*{0,2}\s+/.test(line.trim());
 
   const isCompanyHeading = (line: string) =>
     /^[-*+]\s+\*\*?[^*]+\*\*?\s*$/.test(line.trim()) &&
@@ -556,6 +642,54 @@ const parseRichTextBlocks = (
       .replace(/^\*(.*?)\*$/, "$1")
       .trim();
 
+
+  const isBoldStandaloneHeading = (line: string): boolean => {
+    const value = line.trim();
+
+    return (
+      /^\*\*.+\*\*$/.test(value) &&
+      !/^\*\*\d+[.)]\s*/.test(value) &&
+      !/^\*\*Services\*\*:?$/i.test(value)
+    );
+  };
+
+  const isBoldNumberedDescription = (line: string): boolean =>
+    /^\*\*\d+[.)]\s*.+\*\*$/.test(line.trim());
+
+  const cleanBoldNumberedDescription = (line: string): string =>
+    line
+      .trim()
+      .replace(/^\*\*\d+[.)]\s*/, "")
+      .replace(/\*\*$/, "")
+      .trim();
+
+
+  const isBoldNumberedSentence = (line: string) => {
+    const value = line.trim();
+
+    if (!/^\*\*\d+\.\s+.+\*\*$/.test(value)) {
+      return false;
+    }
+
+    const text = value
+      .replace(/^\*\*\d+\.\s+/, "")
+      .replace(/\*\*$/, "")
+      .trim();
+
+    // A description usually ends with punctuation.
+    return /[.!?]$/.test(text);
+  };
+
+  const isBoldServiceHeading = (line: string) => {
+    const value = line.trim();
+
+    // Service headings are bold, but not numbered descriptions.
+    if (isBoldNumberedSentence(value)) {
+      return false;
+    }
+
+    return /^\*\*[^*]+\*\*$/.test(value);
+  };
 
   // Normalize company details into consecutive bullet lines.
   // Blank lines do not end the current company.
@@ -575,7 +709,7 @@ const parseRichTextBlocks = (
 
       // A property belongs to the current company/location.
       if (insideCompany && isProperty(item)) {
-        lines.push(`- ${item}`);
+        lines.push(`- ${item} `);
         continue;
       }
 
@@ -590,7 +724,7 @@ const parseRichTextBlocks = (
     // Convert property paragraphs into bullets under the
     // preceding company/location, even after a blank line.
     if (insideCompany && isProperty(line)) {
-      lines.push(`- ${line}`);
+      lines.push(`- ${line} `);
       continue;
     }
 
@@ -654,23 +788,102 @@ const parseRichTextBlocks = (
 
       blocks.push({
         type: "paragraph",
-        text: headingText ? `**${headingText}**` : "",
+        text: headingText ? `** ${headingText}** ` : "",
       });
 
       index++;
       continue;
     }
+
+    if (isNumberedServiceHeading(current)) {
+      const serviceTitle = cleanNumberedServiceHeading(current);
+      const items: string[] = [];
+
+      index++;
+
+      while (index < lines.length) {
+        const line = lines[index].trim();
+
+        if (!line) {
+          index++;
+          continue;
+        }
+
+        // Only a new numbered service ends the current service.
+        if (
+          isNumberedServiceHeading(line) ||
+          isNumberedCompanyHeading(line)
+        ) {
+          break;
+        }
+
+        if (/^#{1,6}\s+/.test(line)) {
+          break;
+        }
+
+        // Any bold label ending with a colon is content,
+        // not a new group: Purpose, Overview, Key Offerings, etc.
+        const boldLabelMatch = line.match(
+          /^\*\*\s*(.+?)\s*\*\*\s*:\s*(.*)$/
+        );
+
+        if (boldLabelMatch) {
+          const label = boldLabelMatch[1].trim();
+          const value = boldLabelMatch[2].trim();
+
+          items.push(
+            value ? `**${label}:** ${value}` : `**${label}:**`
+          );
+
+          index++;
+          continue;
+        }
+
+        // Also support plain-text subsection labels, e.g. Features:
+        if (isSectionTitle(line)) {
+          items.push(line);
+          index++;
+          continue;
+        }
+
+        // Feature bullets belong to this service.
+        if (isBulletLine(line)) {
+          items.push(cleanBullet(line));
+          index++;
+          continue;
+        }
+
+        // Preserve additional content unless it starts a new section.
+        items.push(line);
+        index++;
+      }
+
+      blocks.push({
+        type: "grouped-list",
+        groups: [
+          {
+            title: serviceTitle,
+            items,
+          },
+        ],
+      });
+
+      continue;
+    }
+
 
     // Standalone section titles ending with a colon.
     if (isSectionTitle(current)) {
       blocks.push({
         type: "paragraph",
-        text: `**${current}**`,
+        text: `** ${current}** `,
       });
 
       index++;
       continue;
     }
+
+
 
     // Numbered company cards with plain-text or Markdown properties.
     if (isNumberedCompanyHeading(current)) {
@@ -758,7 +971,6 @@ const parseRichTextBlocks = (
         const item = cleanBullet(lines[index]);
 
         if (isProperty(item)) {
-          // Keep the property inside the current group.
           if (currentGroup) {
             currentGroup.items.push(item);
           } else {
@@ -767,8 +979,10 @@ const parseRichTextBlocks = (
               items: [item],
             });
           }
+        } else if (currentGroup && !isCompanyHeading(item)) {
+          // A regular bullet belongs to the current product's details.
+          currentGroup.items.push(item);
         } else {
-          // Start a new company or location group.
           currentGroup = {
             title: stripBold(item),
             items: [],
@@ -875,7 +1089,8 @@ const renderMessageContent = (
   content: string,
   keyPrefix: string,
 ): React.ReactNode => {
-  const blocks = parseRichTextBlocks(content);
+  const normalizedContent = normalizeNumberedServiceHeadings(content);
+  const blocks = parseRichTextBlocks(normalizedContent);
   if (blocks.length === 0) {
     return <p>{content}</p>;
   }
@@ -883,7 +1098,7 @@ const renderMessageContent = (
   return (
     <div className="chatbot-rich-text">
       {blocks.map((block, blockIndex) => {
-        const blockKey = `${keyPrefix}-block-${blockIndex}`;
+        const blockKey = `${keyPrefix} -block - ${blockIndex} `;
         if (block.type === "paragraph") {
           return (
             <p key={blockKey}>{renderInlineRichText(block.text, blockKey)}</p>
@@ -894,8 +1109,8 @@ const renderMessageContent = (
           return (
             <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockKey}-item-${itemIndex}`}>
-                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                <li key={`${blockKey} -item - ${itemIndex} `}>
+                  {renderInlineRichText(item, `${blockKey} -item - ${itemIndex} `)}
                 </li>
               ))}
             </ul>
@@ -906,8 +1121,8 @@ const renderMessageContent = (
           return (
             <ul key={blockKey} className="chatbot-rich-bullets">
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockKey}-item-${itemIndex}`}>
-                  {renderInlineRichText(item, `${blockKey}-item-${itemIndex}`)}
+                <li key={`${blockKey} -item - ${itemIndex} `}>
+                  {renderInlineRichText(item, `${blockKey} -item - ${itemIndex} `)}
                 </li>
               ))}
             </ul>
@@ -924,21 +1139,18 @@ const renderMessageContent = (
               {block.groups.map((group, groupIndex) => (
                 <div
                   className="chatbot-rich-group"
-                  key={`${keyPrefix}-group-${groupIndex}`}
+                  key={`${keyPrefix} -group - ${groupIndex} `}
                 >
                   <p className="chatbot-rich-group-title">
-                    <span className="chatbot-rich-group-number">
-                      {groupIndex + 1}.
-                    </span>
-                    {group.title}
+                    <strong>{group.title}</strong>
                   </p>
 
                   <ul className="chatbot-rich-bullets">
                     {group.items.map((item, itemIndex) => (
-                      <li key={`${keyPrefix}-${groupIndex}-${itemIndex}`}>
+                      <li key={`${keyPrefix} -${groupIndex} -${itemIndex} `}>
                         {renderInlineRichText(
                           item,
-                          `${keyPrefix}-${groupIndex}-${itemIndex}`,
+                          `${keyPrefix} -${groupIndex} -${itemIndex} `,
                         )}
                       </li>
                     ))}
@@ -956,10 +1168,10 @@ const renderMessageContent = (
               <thead>
                 <tr>
                   {block.headers.map((header, headerIndex) => (
-                    <th key={`${blockKey}-h-${headerIndex}`}>
+                    <th key={`${blockKey} -h - ${headerIndex} `}>
                       {renderInlineRichText(
                         header,
-                        `${blockKey}-h-${headerIndex}`,
+                        `${blockKey} -h - ${headerIndex} `,
                       )}
                     </th>
                   ))}
@@ -967,12 +1179,12 @@ const renderMessageContent = (
               </thead>
               <tbody>
                 {block.rows.map((row, rowIndex) => (
-                  <tr key={`${blockKey}-r-${rowIndex}`}>
+                  <tr key={`${blockKey} -r - ${rowIndex} `}>
                     {row.map((cell, cellIndex) => (
-                      <td key={`${blockKey}-c-${rowIndex}-${cellIndex}`}>
+                      <td key={`${blockKey} -c - ${rowIndex} -${cellIndex} `}>
                         {renderInlineRichText(
                           cell,
-                          `${blockKey}-c-${rowIndex}-${cellIndex}`,
+                          `${blockKey} -c - ${rowIndex} -${cellIndex} `,
                         )}
                       </td>
                     ))}
@@ -1002,7 +1214,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   shop,
   user,
 }) => {
-  const storageKey = `chatbot_session_id_${widgetId || "default"}`;
+  const storageKey = `chatbot_session_id_${widgetId || "default"} `;
   const headerFontColor = (chatHeaderFontColor || "").trim() || "#f8fafc";
 
   const [darkMode, setDarkMode] = useState(false);
@@ -2467,6 +2679,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                 loading &&
                 index === messages.length - 1 &&
                 !message.content.trim();
+
+              console.log("Rendering message:", message, "Pending:", isPendingAssistantMessage);
 
               return (
                 <div

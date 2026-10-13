@@ -1651,11 +1651,15 @@ input.chatbot-widget-input {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin: 0 0 10px;
-  font-size: 16px;
+  margin: 12px 0 6px;
+  font-size: 14px;
   font-weight: 800;
   line-height: 1.5;
   color: #202939;
+}
+
+.chatbot-rich-group-title strong {
+  font-weight: 800;
 }
 
 .chatbot-rich-group-number {
