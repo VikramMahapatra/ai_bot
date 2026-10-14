@@ -102,6 +102,20 @@ def column_exists(conn, table, column):
     return result is not None
 
 
+class _SavepointConnection:
+    """Keep one failed compatibility DDL statement from aborting the outer txn."""
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    def execute(self, *args, **kwargs):
+        with self._connection.begin_nested():
+            return self._connection.execute(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
@@ -116,8 +130,14 @@ def init_db():
         # ----------------------------
         try:
             apply_db_migrations(conn)
-        except Exception as e:
-            print("Error applying migrations:", str(e))
+        except Exception:
+            logger.exception("Error applying versioned schema migrations")
+            raise
+
+        # The legacy compatibility DDL below is intentionally best-effort. Each
+        # statement gets a savepoint so a caught PostgreSQL error does not leave
+        # the surrounding transaction aborted (25P02) for all following steps.
+        conn = _SavepointConnection(conn)
 
         # ----------------------------
         # organization_limits
