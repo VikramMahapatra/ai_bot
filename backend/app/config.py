@@ -6,6 +6,12 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
+    # Opt-in structured knowledge: global kill switch plus explicit tenant rollout.
+    # Keep rollout opt-in; deployment environment controls tenant access.
+    STRUCTURED_DATASETS_ENABLED: bool = False
+    STRUCTURED_DATASETS_CHAT_ENABLED: bool = False
+    STRUCTURED_DATASETS_ORGANIZATION_IDS: str = ""
+
     # App Metadata / Runtime
     APP_TITLE: str
     APP_DESCRIPTION: str

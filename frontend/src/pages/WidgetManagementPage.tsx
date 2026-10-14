@@ -40,6 +40,7 @@ import {
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import AdminLayout from "../components/Layout/AdminLayout";
+import StructuredDatasetManager from "../components/Admin/StructuredDatasetManager";
 import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import api from "../services/api";
 import { buildPublicUrl } from "../config/env";
@@ -132,9 +133,11 @@ const normalizeWidget = (widget: Partial<WidgetConfig>): WidgetConfig => ({
     typeof widget.created_at === "string" ? widget.created_at : undefined,
 });
 
+const MANAGEMENT_STEP = { profile: 0, knowledge: 1, structured: 2, integrations: 3, share: 4 } as const;
 const managementSteps = [
   "Agent Profile",
   "Knowledge Base",
+  "Structured Datasets",
   "Integrations",
   "Share & Embed",
 ];
@@ -553,6 +556,7 @@ const WidgetManagementPage: React.FC = () => {
     () => [
       "Review and refine identity, messaging, and visual style.",
       "Manage website/docs/text sources for grounded responses.",
+      "Optionally manage approved structured tables separately from document knowledge.",
       "Verify channel connectivity and operational readiness.",
       "Copy test URL and embed code for rollout and QA.",
     ],
@@ -666,7 +670,7 @@ const WidgetManagementPage: React.FC = () => {
   }, [widgets, widgetTestLinks, fetchWidgetTestLink]);
 
   useEffect(() => {
-    if (dialogMode !== "view" || dialogStep !== 3 || !formData.widget_id) {
+    if (dialogMode !== "view" || dialogStep !== MANAGEMENT_STEP.share || !formData.widget_id) {
       return;
     }
 
@@ -1253,7 +1257,7 @@ const WidgetManagementPage: React.FC = () => {
                 </Stack>
               </Paper>
 
-              {dialogStep === 0 && (
+              {dialogStep === MANAGEMENT_STEP.profile && (
                 <Paper sx={{ ...modernStepCardSx, p: 2 }}>
                   <Stack spacing={1.8}>
                     <Box sx={accentPanelSx}>
@@ -1453,7 +1457,7 @@ const WidgetManagementPage: React.FC = () => {
                 </Paper>
               )}
 
-              {dialogStep === 1 && (
+              {dialogStep === MANAGEMENT_STEP.knowledge && (
                 <Paper sx={{ ...modernStepCardSx, p: 2 }}>
                   <Stack spacing={1.6}>
                     <Box sx={accentPanelSx}>
@@ -1479,7 +1483,7 @@ const WidgetManagementPage: React.FC = () => {
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                       <Button
                         variant="outlined"
-                        onClick={() => navigate("/knowledge")}
+                        onClick={() => navigate(`/knowledge?widget_id=${encodeURIComponent(formData.widget_id)}`)}
                       >
                         Open Knowledge Base
                       </Button>
@@ -1494,7 +1498,11 @@ const WidgetManagementPage: React.FC = () => {
                 </Paper>
               )}
 
-              {dialogStep === 2 && (
+              {dialogStep === MANAGEMENT_STEP.structured && (
+                <StructuredDatasetManager widgetId={formData.widget_id} compact />
+              )}
+
+              {dialogStep === MANAGEMENT_STEP.integrations && (
                 <Paper sx={{ ...modernStepCardSx, p: 2 }}>
                   <Stack spacing={1.6}>
                     <Box sx={accentPanelSx}>
@@ -1551,7 +1559,7 @@ const WidgetManagementPage: React.FC = () => {
                 </Paper>
               )}
 
-              {dialogStep === 3 && (
+              {dialogStep === MANAGEMENT_STEP.share && (
                 <Paper sx={{ ...modernStepCardSx, p: 2 }}>
                   <Stack spacing={1.8}>
                     <Box sx={accentPanelSx}>
@@ -1647,7 +1655,7 @@ const WidgetManagementPage: React.FC = () => {
               <Stack direction="row" spacing={1}>
                 <Button
                   onClick={() => moveDialogStep(-1)}
-                  disabled={dialogStep === 0}
+                  disabled={dialogStep === MANAGEMENT_STEP.profile}
                 >
                   Back
                 </Button>

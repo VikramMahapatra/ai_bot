@@ -80,7 +80,7 @@ from app.services.limits_service import (
     get_or_create_limits,
     update_limits,
 )
-from sqlalchemy import func, insert, or_, select, text
+from sqlalchemy import func, insert, inspect, or_, select, text
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from app.services.email_service import send_widget_test_link_email
@@ -97,6 +97,7 @@ from app.schemas.org_credit_billing import OrgCreditAdminMonthSummaryResponse
 from app.services import org_credit_billing_service
 from app.models.channels import Channel, OrganizationChannel
 from app.models.calling_numbers import CallingNumber
+from app.services.structured_dataset_cleanup import STRUCTURED_DATASET_TABLES
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ router = APIRouter(prefix="/api/superadmin", tags=["superadmin"])
 
 ORG_DELETE_BLOCKING_TABLES = [
     "widget_configs",
+    *STRUCTURED_DATASET_TABLES,
     "knowledge_sources",
     "conversations",
     "leads",
@@ -174,11 +176,7 @@ def _build_org_response(
 
 
 def _table_exists(db: Session, table_name: str) -> bool:
-    try:
-        db.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))
-        return True
-    except Exception:
-        return False
+    return inspect(db.connection()).has_table(table_name)
 
 
 def _to_utc(dt_value: datetime) -> datetime:

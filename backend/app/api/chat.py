@@ -2876,7 +2876,7 @@ async def chat(
                 retrieval_message=message.retrieval_message,
             )
 
-            if limits.get("human_handoff_enabled"):
+            if limits.get("human_handoff_enabled") and token_usage.get("answer_mode", "vector") == "vector":
                 response_text = _ensure_handoff_offer_response(
                     response_text, widget_config
                 )
@@ -2893,6 +2893,7 @@ async def chat(
                 response=response_text,
                 session_id=message.session_id,
                 sources=sources,
+                structured_citations=token_usage.get("structured_citations"),
             )
     except HTTPException:
         raise
@@ -3524,12 +3525,17 @@ async def chat_stream(
                     )
                 )
 
+                usage_tokens = {key: retrieval_trace.get("token_usage", {}).get(key, 0)
+                                for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+
                 if stream is None:
                     fallback_text = (
                         escalation_fallback_text
                         or "Sorry—I don’t have a reliable answer for this right now."
                     )
-                    if limits.get("human_handoff_enabled"):
+                    if (limits.get("human_handoff_enabled")
+                            and retrieval_trace.get("answer_mode", "vector") == "vector"
+                            and retrieval_trace.get("prepared_response") is not True):
                         fallback_text = _ensure_handoff_offer_response(
                             fallback_text, widget_config
                         )
@@ -3542,15 +3548,15 @@ async def chat_stream(
                             usage_tokens = {
                                 "prompt_tokens": (
                                     getattr(usage, "prompt_tokens", 0) if usage else 0
-                                ),
+                                ) + retrieval_trace.get("token_usage", {}).get("prompt_tokens", 0),
                                 "completion_tokens": (
                                     getattr(usage, "completion_tokens", 0)
                                     if usage
                                     else 0
-                                ),
+                                ) + retrieval_trace.get("token_usage", {}).get("completion_tokens", 0),
                                 "total_tokens": (
                                     getattr(usage, "total_tokens", 0) if usage else 0
-                                ),
+                                ) + retrieval_trace.get("token_usage", {}).get("total_tokens", 0),
                             }
                         if not getattr(chunk, "choices", None):
                             continue
@@ -3568,7 +3574,7 @@ async def chat_stream(
                     fallback_text = (
                         "Sorry—I don’t have a reliable answer for this right now."
                     )
-                    if limits.get("human_handoff_enabled"):
+                    if limits.get("human_handoff_enabled") and retrieval_trace.get("answer_mode", "vector") == "vector":
                         fallback_text = _ensure_handoff_offer_response(
                             fallback_text, widget_config
                         )
@@ -3576,8 +3582,9 @@ async def chat_stream(
                     yield f'data: {{"type": "token", "text": {json.dumps(fallback_text)} }}\n\n'
             finally:
                 full_text = "".join(collected_parts)
-                final_text = append_appointment_cta_if_needed(
-                    full_text, is_first_turn, message.message
+                final_text = (
+                    append_appointment_cta_if_needed(full_text, is_first_turn, message.message)
+                    if retrieval_trace.get("answer_mode", "vector") == "vector" else full_text
                 )
                 if final_text != full_text and final_text.startswith(full_text):
                     suffix = final_text[len(full_text) :]
@@ -3611,6 +3618,9 @@ async def chat_stream(
                     "type": "done",
                     "sources": sources,
                 }
+                if "structured_citations" in retrieval_trace:
+                    done_payload["structured_citations"] = retrieval_trace["structured_citations"]
+                    done_payload["answer_mode"] = retrieval_trace["answer_mode"]
 
                 yield f"data: {json.dumps(done_payload)}\n\n"
 

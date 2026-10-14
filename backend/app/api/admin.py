@@ -1031,6 +1031,9 @@ async def delete_widget_config(
             status_code=404, detail="Widget config not found or unauthorized"
         )
 
+    from app.services.structured_dataset_cleanup import purge_agent_datasets
+
+    purge_agent_datasets(db, current_user.organization_id, widget_id)
     db.delete(config)
     db.commit()
 

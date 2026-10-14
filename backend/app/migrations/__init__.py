@@ -1,6 +1,14 @@
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from typing import Callable
+from app.migrations.m2026_10_13_create_structured_datasets import (
+    MIGRATION_ID as CREATE_STRUCTURED_DATASETS_ID,
+    upgrade as create_structured_datasets_upgrade,
+)
+from app.migrations.m2026_10_14_repair_dataset_identity import (
+    MIGRATION_ID as REPAIR_DATASET_IDENTITY_ID,
+    upgrade as repair_dataset_identity_upgrade,
+)
 
 from app.migrations.m2026_04_08_drop_legacy_plan_artifacts import (
     MIGRATION_ID as DROP_LEGACY_PLAN_ARTIFACTS_ID,
@@ -50,6 +58,14 @@ from app.migrations.m2026_09_21_add_widget_qualification_template import (
     MIGRATION_ID as ADD_WIDGET_QUALIFICATION_TEMPLATE_ID,
     upgrade as add_widget_qualification_template_upgrade,
 )
+from app.migrations.m2026_10_14_add_qualification_engine_metadata import (
+    MIGRATION_ID as ADD_QUALIFICATION_ENGINE_METADATA_ID,
+    upgrade as add_qualification_engine_metadata_upgrade,
+)
+from app.migrations.m2026_10_14_add_contacts_external_crm_id import (
+    MIGRATION_ID as ADD_CONTACTS_EXTERNAL_CRM_ID,
+    upgrade as add_contacts_external_crm_id_upgrade,
+)
 
 
 MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
@@ -65,6 +81,10 @@ MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
     (EXTEND_DISQUALIFICATION_CRITERIA_ID, extend_disqualification_criteria_upgrade),
     (ADD_TEMPERATURE_MODE_ID, add_temperature_mode_upgrade),
     (ADD_WIDGET_QUALIFICATION_TEMPLATE_ID, add_widget_qualification_template_upgrade),
+    (CREATE_STRUCTURED_DATASETS_ID, create_structured_datasets_upgrade),
+    (REPAIR_DATASET_IDENTITY_ID, repair_dataset_identity_upgrade),
+    (ADD_QUALIFICATION_ENGINE_METADATA_ID, add_qualification_engine_metadata_upgrade),
+    (ADD_CONTACTS_EXTERNAL_CRM_ID, add_contacts_external_crm_id_upgrade),
 ]
 
 

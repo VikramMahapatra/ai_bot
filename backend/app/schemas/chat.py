@@ -28,6 +28,7 @@ class ChatResponse(BaseModel):
     ui_action: Optional[str] = None
     handoff_chat_id: Optional[str] = None
     handoff_status: Optional[str] = None
+    structured_citations: Optional[List[Dict]] = None
 
 
 class QuickQuestion(BaseModel):
