@@ -17,7 +17,14 @@ from app.auth import (
     verify_password,
     get_current_user,
 )
-from app.models import User, UserRole, Organization, Appointment, WidgetConfig, QualificationTemplate
+from app.models import (
+    User,
+    UserRole,
+    Organization,
+    Appointment,
+    WidgetConfig,
+    QualificationTemplate,
+)
 from app.models.qualification_templates import QualificationTemplateStatus
 from app.services.limits_service import get_or_create_limits, get_effective_limits
 from app.services.email_service import (
@@ -80,7 +87,9 @@ def _validate_qualification_template(db: Session, template_id, organization_id: 
     try:
         template_id = int(template_id)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail="qualification_template_id must be an integer")
+        raise HTTPException(
+            status_code=422, detail="qualification_template_id must be an integer"
+        )
     template = (
         db.query(QualificationTemplate)
         .filter(
@@ -91,7 +100,9 @@ def _validate_qualification_template(db: Session, template_id, organization_id: 
         .first()
     )
     if not template:
-        raise HTTPException(status_code=422, detail="Selected qualification template is not available")
+        raise HTTPException(
+            status_code=422, detail="Selected qualification template is not available"
+        )
     return template.id
 
 
@@ -569,10 +580,10 @@ async def create_widget_config(
 
     escalation_contact_level_1 = (
         config_data.get("escalation_contact_level_1") or ""
-    ).strip() or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_1
+    ).strip()
     escalation_contact_level_2 = (
         config_data.get("escalation_contact_level_2") or ""
-    ).strip() or org_settings.DEFAULT_ESCALATION_CONTACT_LEVEL_2
+    ).strip()
 
     config = WidgetConfig(
         user_id=current_user.id,
@@ -590,7 +601,9 @@ async def create_widget_config(
         escalation_contact_level_1=escalation_contact_level_1,
         escalation_contact_level_2=escalation_contact_level_2,
         qualification_template_id=_validate_qualification_template(
-            db, config_data.get("qualification_template_id"), current_user.organization_id
+            db,
+            config_data.get("qualification_template_id"),
+            current_user.organization_id,
         ),
     )
     db.add(config)
@@ -638,7 +651,9 @@ async def update_widget_config(
 
     if "qualification_template_id" in config_data:
         config_data["qualification_template_id"] = _validate_qualification_template(
-            db, config_data.get("qualification_template_id"), current_user.organization_id
+            db,
+            config_data.get("qualification_template_id"),
+            current_user.organization_id,
         )
 
     # Update only allowed fields

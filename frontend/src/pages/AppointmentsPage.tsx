@@ -30,6 +30,8 @@ import {
   DialogActions,
   TablePagination,
   InputAdornment,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import EventIcon from "@mui/icons-material/Event";
@@ -55,6 +57,10 @@ import { organizationService } from "../services/organizationService";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
 import { useDateFormatter, useTimeFormatter } from "../hooks/useDateFormatter";
+import CalendarMonthOutlined from
+  "@mui/icons-material/CalendarMonthOutlined";
+import EventAvailableOutlined from
+  "@mui/icons-material/EventAvailableOutlined";
 
 const DEFAULT_MEET_LINK = "https://meet.google.com/new";
 
@@ -146,7 +152,7 @@ const AppointmentsPage: React.FC = () => {
   const [status, setStatus] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [upcomingOnly, setUpcomingOnly] = useState(true);
+  const [upcomingOnly, setUpcomingOnly] = useState(false);
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
   const [calendarCursor, setCalendarCursor] = useState<Date>(
     startOfDay(new Date()),
@@ -629,17 +635,38 @@ const AppointmentsPage: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} md={3}>
-              <Stack direction="row" spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <FormControl fullWidth size="small">
+                  <InputLabel>View</InputLabel>
+                  <Select
+                    value={upcomingOnly ? "upcoming" : "all"}
+                    label="View"
+                    onChange={(e) =>
+                      setUpcomingOnly(e.target.value === "upcoming")
+                    }
+                  >
+                    <MenuItem value="all">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <CalendarMonthOutlined fontSize="small" />
+                        <span>All Appointments</span>
+                      </Stack>
+                    </MenuItem>
+
+                    <MenuItem value="upcoming">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <EventAvailableOutlined fontSize="small" />
+                        <span>Upcoming Only</span>
+                      </Stack>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+
                 <Button
-                  variant={upcomingOnly ? "contained" : "outlined"}
-                  onClick={() => setUpcomingOnly((prev) => !prev)}
-                >
-                  {upcomingOnly ? "Upcoming Only" : "All Appointments"}
-                </Button>
-                <Button
-                  variant="outlined"
+                  variant="contained"
+                  size="small"
                   onClick={loadAppointments}
                   disabled={loading}
+                  sx={{ minWidth: 75 }}
                 >
                   {loading ? "Loading..." : "Apply"}
                 </Button>
@@ -662,6 +689,7 @@ const AppointmentsPage: React.FC = () => {
             />
             <Button
               variant="outlined"
+              size="small"
               onClick={saveDefaultMeetLink}
               disabled={savingDefaultMeetLink}
               sx={{ whiteSpace: "nowrap" }}
@@ -670,6 +698,7 @@ const AppointmentsPage: React.FC = () => {
             </Button>
             <Button
               variant="contained"
+              size="small"
               onClick={syncAppointmentsFromCalls}
               disabled={syncing}
               sx={{

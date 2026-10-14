@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.models.call_logs import CallLog
 from fastapi import HTTPException
 from openai import OpenAI
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -1131,7 +1131,10 @@ async def process_pending_session_outcomes(
 
                 lead.lead_outcome = outcome
 
-                if inferred_funnel_stage and not (lead.funnel_stage or "").strip():
+                if inferred_funnel_stage and (
+                    not (lead.funnel_stage or "").strip()
+                    or (lead.funnel_stage or "").strip().lower() == "unassigned"
+                ):
                     lead.funnel_stage = inferred_funnel_stage
 
             # =========================================================
@@ -1270,6 +1273,7 @@ def process_pending_lead_funnel_tags(
         or_(
             Lead.funnel_stage.is_(None),
             Lead.funnel_stage == "",
+            func.lower(func.trim(Lead.funnel_stage)) == "unassigned",
         )
     )
 
@@ -1387,6 +1391,7 @@ def process_pending_lead_funnel_tags(
                     or_(
                         Lead.funnel_stage.is_(None),
                         Lead.funnel_stage == "",
+                        func.lower(func.trim(Lead.funnel_stage)) == "unassigned",
                     ),
                 )
                 .update(
