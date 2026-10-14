@@ -21,7 +21,12 @@ from app.services.chat.openai_service import openai_service
 from app.services.chat.persistence_service import finalize_chat_credit_reservation, finalize_conversation_metrics, persist_conversation_record, reserve_chat_credits, rollback_chat_credit_reservation, transactional_session
 from app.services.chat.prompt_builder import build_chat_messages, build_system_prompt
 from app.services.chat.response_validator import validate_answer
-from app.services.chat.retrieval import get_suggested_questions, retrieve_hybrid_result
+from app.services.chat.retrieval import (
+    build_document_summary_context,
+    get_suggested_questions,
+    is_document_summary_intent,
+    retrieve_hybrid_result,
+)
 from app.services.chat.structured_answering import parse_structured_answer
 from app.services.chat.types import ChatResponsePlan, StructuredAnswer
 from app.services.rag import chroma_client
@@ -88,6 +93,23 @@ def _build_plan(
     if _is_bare_clarification(message):
         return _build_vector_plan(message, session_id, widget_id, organization_id, db,
                                   language_code, language_label)
+    if is_document_summary_intent(message):
+        logger.info(
+            "RAG decision | intent=document_summary | organization_id=%s | widget_id=%s",
+            organization_id,
+            widget_id,
+        )
+        return _build_vector_plan(
+            message,
+            session_id,
+            widget_id,
+            organization_id,
+            db,
+            language_code,
+            language_label,
+            retrieval_message,
+            document_summary=True,
+        )
     dataset_plan = route_dataset_chat(message, session_id, widget_id, organization_id, db)
     if dataset_plan is not None and dataset_plan.answer_mode != "vector":
         if dataset_plan.answer_mode == "mixed" and dataset_plan.document_question:
@@ -183,6 +205,7 @@ def _build_vector_plan(
     retrieval_message: Optional[str] = None,
     dataset_questions: Optional[List[str]] = None,
     company_question: bool = False,
+    document_summary: bool = False,
 ) -> ChatResponsePlan:
     normalized_message = _normalize_message(message)
     if _is_small_talk_message(normalized_message):
@@ -232,6 +255,26 @@ def _build_vector_plan(
 
     retrieval_result = retrieve_hybrid_result(message=message, query_text=query_text, organization_id=organization_id, widget_id=widget_id, chroma_client=chroma_client, db=db)
 
+    summary_context = ""
+    summary_evidence: Dict[str, Any] = {}
+    if document_summary:
+        summary_context, summary_evidence = build_document_summary_context(
+            retrieval_result=retrieval_result,
+            organization_id=organization_id,
+            widget_id=widget_id,
+            db=db,
+            chroma_client=chroma_client,
+        )
+        if summary_context:
+            retrieval_result = replace(
+                retrieval_result,
+                context_text=summary_context,
+                retrieval_trace={
+                    **retrieval_result.retrieval_trace,
+                    "document_summary": summary_evidence,
+                },
+            )
+
     generation_message = message
 
     language_instruction = ""
@@ -241,6 +284,20 @@ def _build_vector_plan(
         language_instruction = f"Always respond in {label} ({code})."
 
     system_prompt = build_system_prompt(custom_system_prompt, retrieval_result.context_text, language_instruction=language_instruction, structured_output=True)
+    if document_summary:
+        coverage_instruction = (
+            "The supplied context is a bounded sample of report sections, not the entire report. "
+            "Summarize only those retrieved sections and state that the summary may not cover every section."
+            if summary_evidence.get("sampled")
+            else "The supplied context covers all indexed sections for this report; summarize only what it supports."
+        )
+        system_prompt += (
+            "\n\nThe user requests a document-level summary. Synthesize the report's purpose, main themes, "
+            "key findings and recommendations only when supported by the supplied report excerpts. "
+            "Do not ask for clarification merely because the user's exact words have low keyword overlap "
+            "with semantically relevant retrieved report sections. Never invent missing facts, figures, "
+            "conclusions, or sections. " + coverage_instruction
+        )
     if company_question:
         system_prompt += (
             "\n\nThis request was routed to reference documents rather than a dataset query. "
@@ -263,17 +320,68 @@ def _build_vector_plan(
     historical_pairs = [{"user": row.message, "assistant": row.response} for row in reversed(history)]
     messages = build_chat_messages(system_prompt, historical_pairs, generation_message)
 
+    top_chunk = retrieval_result.chunks[0] if retrieval_result.chunks else None
+    authorized_source_ids = {source.get("id") for source in retrieval_result.sources}
+    semantic_relevance = bool(
+        top_chunk
+        and top_chunk.source_id in authorized_source_ids
+        and not top_chunk.is_suspicious
+        and top_chunk.distance is not None
+        and top_chunk.distance <= 0.55
+        and top_chunk.semantic_score >= 0.6
+        and top_chunk.rerank_score >= 0.32
+        and retrieval_result.context_text.strip()
+    )
+    summary_coverage = float(summary_evidence.get("coverage_ratio", 0.0) or 0.0)
+    summary_relevant = bool(
+        document_summary
+        and summary_context.strip()
+        and summary_evidence.get("source_id") in authorized_source_ids
+        and summary_evidence.get("chunk_count", 0) > 0
+        and summary_coverage >= 0.5
+        and semantic_relevance
+    )
+    confidence_reasons = set(retrieval_result.confidence.reasons)
+    semantic_override = bool(
+        semantic_relevance
+        and confidence_reasons
+        and confidence_reasons.issubset({"low_confidence"})
+    )
+    retrieval_quality_override = summary_relevant or semantic_override
+
     structured_override = None
-    if retrieval_result.confidence.requires_clarification:
+    rejection_reason = None
+    if not retrieval_result.chunks:
+        rejection_reason = "empty_retrieval"
+    elif not retrieval_result.context_text.strip():
+        rejection_reason = "empty_context"
+    elif retrieval_result.confidence.requires_clarification and not retrieval_quality_override:
+        rejection_reason = ",".join(sorted(confidence_reasons)) or "low_retrieval_quality"
+
+    if document_summary and not summary_relevant:
+        structured_override = (
+            "I couldn’t find enough relevant, verified content in the indexed report to summarize it reliably."
+        )
+        rejection_reason = rejection_reason or "insufficient_summary_evidence"
+    elif retrieval_result.confidence.requires_clarification and not retrieval_quality_override:
         # Retrieval ambiguity is generic. Dataset planning already handles its
         # own missing fields; never reinterpret arbitrary agents as blog counters.
         if not company_question:
             structured_override = "Could you clarify which information you’d like me to check?"
+            rejection_reason = rejection_reason or "generic_low_confidence_clarification"
     if not retrieval_result.chunks and _has_prior_escalation_contacts(db, session_id, widget_id):
         structured_override = build_escalation_message(escalation_level_1, escalation_level_2)
 
     has_retrieval_material = bool(retrieval_result.context_text) or len(retrieval_result.chunks) >= 2
-    should_generate = structured_override is None and retrieval_result.confidence.score >= 0.2 and has_retrieval_material
+    should_generate = bool(
+        structured_override is None
+        and has_retrieval_material
+        and (
+            summary_relevant
+            if document_summary
+            else retrieval_result.confidence.score >= 0.2 or retrieval_quality_override
+        )
+    )
     fallback = build_soft_fallback_message(seed_text=f"{session_id}:{message}")
     if retrieval_result.context_text and not should_generate:
         fallback = build_grounded_fallback_message(retrieval_result.context_text[:240])
@@ -288,13 +396,57 @@ def _build_vector_plan(
         authorized = {source.get("id") for source in retrieval_result.sources}
         material = [chunk for chunk in retrieval_result.chunks
                     if chunk.source_id in authorized and not chunk.is_suspicious and chunk.text.strip()]
-        should_generate = bool(should_generate and material and retrieval_result.context_text.strip())
+        should_generate = bool(
+            should_generate
+            and material
+            and retrieval_result.context_text.strip()
+            and (
+                not retrieval_result.confidence.requires_clarification
+                or semantic_relevance
+            )
+        )
+        if not should_generate and rejection_reason is None:
+            rejection_reason = "company_document_relevance_gate"
         retrieval_result.retrieval_trace["dataset_document_question"] = True
+
+    retrieval_result.retrieval_trace.update(
+        document_summary_intent=document_summary,
+        document_summary_evidence=summary_evidence if document_summary else None,
+        retrieval_decision={
+            "semantic_relevance_override": semantic_override,
+            "summary_evidence_override": summary_relevant,
+            "model_invoked": should_generate,
+            "rejection_reason": rejection_reason,
+        },
+    )
+    logger.info(
+        "RAG decision | intent=%s | organization_id=%s | widget_id=%s | "
+        "retrieved=%s | selected=%s | rerank_top=%.4f | overlap=%.4f | "
+        "confidence=%.4f | semantic=%.4f | distance=%s | model_invoked=%s | rejection=%s",
+        "document_summary" if document_summary else "document_question",
+        organization_id,
+        widget_id,
+        len(retrieval_result.retrieval_trace.get("retrieved_chunks", [])),
+        len(retrieval_result.chunks),
+        top_chunk.rerank_score if top_chunk else 0.0,
+        top_chunk.overlap if top_chunk else 0.0,
+        retrieval_result.confidence.score,
+        top_chunk.semantic_score if top_chunk else 0.0,
+        top_chunk.distance if top_chunk else None,
+        should_generate,
+        rejection_reason or "none",
+    )
 
     return ChatResponsePlan(should_generate_llm_response=should_generate, override_response=structured_override, escalation_triggered=bool(structured_override and _has_prior_escalation_contacts(db, session_id, widget_id)), grounded_fallback=fallback, retrieval_trace=retrieval_result.retrieval_trace, sources=retrieval_result.sources, messages=messages, retrieval_result=retrieval_result)
 
 
 def _generate_structured_response(plan: ChatResponsePlan) -> Tuple[StructuredAnswer, Dict[str, int]]:
+    logger.info(
+        "RAG LLM invocation | intent=%s | selected=%s | confidence=%.4f",
+        "document_summary" if plan.retrieval_trace.get("document_summary_intent") else "document_question",
+        len(plan.retrieval_result.chunks) if plan.retrieval_result else 0,
+        plan.retrieval_result.confidence.score if plan.retrieval_result else 0.0,
+    )
     raw, token_usage = openai_service.generate_structured_answer(plan.messages, model=settings.OPENAI_CHAT_MODEL, max_tokens=1024, temperature=0.2, timeout_seconds=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS))
     # Retain billed usage even if subsequent parsing or validation fails.
     plan.retrieval_trace["completion_token_usage"] = token_usage
@@ -304,6 +456,40 @@ def _generate_structured_response(plan: ChatResponsePlan) -> Tuple[StructuredAns
 def _finalize_response(plan: ChatResponsePlan, structured_answer: StructuredAnswer, message: str) -> str:
     plan.retrieval_trace["prepared_response"] = False
     validated = validate_answer(structured_answer, plan.retrieval_result) if plan.retrieval_result else None
+    if plan.retrieval_trace.get("document_summary_intent") and plan.answer_mode == "vector":
+        context = plan.retrieval_result.context_text if plan.retrieval_result else ""
+        numeric_chars = "".join(sorted({char for char in context + structured_answer.response if char.isnumeric()}))
+        numeric_pattern = (
+            r"[+-]?[" + re.escape(numeric_chars) + r"]+(?:[.,][" + re.escape(numeric_chars) + r"]+)*"
+            if numeric_chars
+            else r"(?!)"
+        )
+        numeric_grounded = set(re.findall(numeric_pattern, structured_answer.response)) <= set(
+            re.findall(numeric_pattern, context)
+        )
+        accepted = bool(
+            validated
+            and validated.accepted
+            and validated.similarity >= 0.1
+            and structured_answer.answered
+            and not structured_answer.requires_escalation
+            and numeric_grounded
+            and not should_escalate_response(validated.response)
+        )
+        plan.retrieval_trace["document_summary_validation"] = {
+            "accepted": accepted,
+            "validator_reason": validated.reason if validated else "no_retrieval",
+            "answer_similarity": validated.similarity if validated else 0.0,
+            "numeric_grounded": numeric_grounded,
+        }
+        if not accepted:
+            return "I couldn’t verify enough detail in the retrieved report sections to provide a reliable summary."
+        plan.retrieval_trace["prepared_response"] = True
+        response = validated.response
+        summary_evidence = plan.retrieval_trace.get("document_summary_evidence") or {}
+        if summary_evidence.get("sampled"):
+            response += "\n\nThis summary covers retrieved sections; it may not include every section of the report."
+        return response
     if plan.retrieval_trace.get("dataset_document_question") and plan.answer_mode == "vector":
         context = plan.retrieval_result.context_text if plan.retrieval_result else ""
         # Attached units must not hide a literal (e.g. 999days). Non-decimal
@@ -385,6 +571,20 @@ def generate_chat_response(
             if should_escalate_response(ai_response) and _has_prior_escalation_contacts(db, session_id, widget_id):
                 ai_response = escalation_message
 
+        if plan.retrieval_trace.get("document_summary_intent"):
+            summary_validation = plan.retrieval_trace.get("document_summary_validation", {})
+            plan.retrieval_trace.setdefault("retrieval_decision", {})["final_outcome"] = (
+                "summary_answered" if summary_validation.get("accepted") else "summary_limited"
+            )
+            logger.info(
+                "RAG final outcome | intent=document_summary | organization_id=%s | widget_id=%s | "
+                "outcome=%s | answer_similarity=%s",
+                organization_id,
+                widget_id,
+                plan.retrieval_trace["retrieval_decision"]["final_outcome"],
+                summary_validation.get("answer_similarity"),
+            )
+
         token_usage = {key: token_usage.get(key, 0) + plan.token_usage.get(key, 0)
                        for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
         if plan.answer_mode == "vector":
@@ -448,6 +648,17 @@ def stream_chat_response(
         plan.retrieval_trace["prepared_response"] = False
         logger.warning("Validated completion unavailable for org=%s widget=%s (%s)",
                        organization_id, widget_id, type(exc).__name__)
+    if plan.retrieval_trace.get("document_summary_intent"):
+        summary_validation = plan.retrieval_trace.get("document_summary_validation", {})
+        plan.retrieval_trace.setdefault("retrieval_decision", {})["final_outcome"] = (
+            "summary_answered" if summary_validation.get("accepted") else "summary_limited"
+        )
+        logger.info(
+            "RAG final outcome | intent=document_summary | organization_id=%s | widget_id=%s | outcome=%s",
+            organization_id,
+            widget_id,
+            plan.retrieval_trace["retrieval_decision"]["final_outcome"],
+        )
     plan.retrieval_trace["token_usage"] = {
         key: usage.get(key, 0) + plan.token_usage.get(key, 0)
         for key in ("prompt_tokens", "completion_tokens", "total_tokens")}

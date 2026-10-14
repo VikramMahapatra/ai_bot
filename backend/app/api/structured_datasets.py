@@ -40,7 +40,7 @@ def capabilities(widget_id: str | None = Query(None, min_length=1, max_length=20
     # No dataset-table query on disabled routes, including capabilities.
     if widget_id is not None:
         service.require_widget(db, user.organization_id, widget_id)
-    return dict(enabled=enabled, chat_enabled=enabled and settings.STRUCTURED_DATASETS_CHAT_ENABLED,
+    return dict(enabled=enabled, chat_enabled=False,
                 supported_formats=["xlsx", "csv"], max_rows=MAX_ROWS, max_columns=MAX_COLUMNS)
 
 
