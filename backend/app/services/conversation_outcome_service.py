@@ -333,7 +333,6 @@ def _build_evaluation_transcript(
         )
         .filter(
             LeadActivity.session_id == session_id,
-            LeadActivity.organization_id == organization_id,
             Lead.organization_id == organization_id,
         )
         .order_by(LeadActivity.created_at.desc())
