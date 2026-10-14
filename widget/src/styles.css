@@ -1606,12 +1606,11 @@ input.chatbot-widget-input {
 
 .chatbot-rich-group {
   box-sizing: border-box;
-  padding: 12px 14px;
-  border: 1px solid #e0e5ed;
-  border-radius: 10px;
+  padding: 12px 0px 5px 0px;
   background: #ffffff;
   min-width: 0;
   overflow-wrap: anywhere;
+  margin-bottom: 10px;
 }
 
 .chatbot-rich-group-title {
@@ -1668,13 +1667,6 @@ input.chatbot-widget-input {
   font-weight: 800;
 }
 
-.chatbot-rich-group {
-  padding: 12px 14px;
-  border: 1px solid #e0e5ed;
-  border-radius: 10px;
-  background: #fff;
-  margin-bottom: 12px;
-}
 
 .chatbot-rich-group .chatbot-rich-bullets {
   margin: 0;
