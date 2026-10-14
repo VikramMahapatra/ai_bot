@@ -51,6 +51,10 @@ from app.services.limits_service import (
     increment_usage,
 )
 from app.services.email_service import send_conversation_email
+from app.services.notification_service import (
+    notify_appointment_booked,
+    notify_handoff_created,
+)
 from app.auth import get_current_user, get_current_user_optional
 from app.config import settings
 from app.services.handoff_hub import handoff_hub
@@ -1548,6 +1552,10 @@ def _create_or_get_handoff_session(
     )
     db.commit()
     db.refresh(handoff_session)
+    try:
+        notify_handoff_created(db, handoff_session)
+    except Exception:
+        logger.exception("Failed to send handoff notifications")
     return handoff_session
 
 
@@ -1885,6 +1893,11 @@ def _finalize_intake_appointment(
     active.next_field = "completed"
     db.commit()
     db.refresh(appointment)
+
+    try:
+        notify_appointment_booked(db, appointment)
+    except Exception:
+        logger.exception("Failed to send appointment booking notifications")
 
     local_dt = appointment.appointment_at.astimezone(tz_obj)
     time_label = local_dt.strftime("%d %b %Y, %I:%M %p")
@@ -3691,6 +3704,11 @@ async def book_appointment(
     _sync_appointment_contact_to_agent_list(db, widget_config, appointment)
     db.commit()
     db.refresh(appointment)
+
+    try:
+        notify_appointment_booked(db, appointment)
+    except Exception:
+        logger.exception("Failed to send appointment booking notifications")
 
     organization_credit_service.deduct_credits(
         db=db,

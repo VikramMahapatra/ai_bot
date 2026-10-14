@@ -11,19 +11,14 @@ from app.models import User, Lead, WidgetConfig
 from app.models.products import Product
 from app.schemas import LeadCreate, LeadResponse, LeadFunnelStageUpdate
 from app.utils import export_leads_to_csv
-from app.services.email_service import send_new_lead_notification
+from app.services.notification_service import notify_lead_created
 from app.services.limits_service import get_effective_limits, increment_usage
 from app.services.funnel_category_service import is_valid_funnel_stage
 import logging
 
 from app.api.organization_setting import get_settings
-from app.models.organization_settings import OrganizationSettings
 from app.services.call_log_service import create_lead_activity
 from app.models.lead_activities import LeadActivity
-from app.services.organization_setting_service import (
-    get_org_email_setting,
-    get_org_settings,
-)
 from app.models.campaign import Contact
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.api.chat import _get_or_create_agent_contact_list, _normalize_phone
@@ -315,25 +310,7 @@ async def create_lead(
             # Send notifications to organization admins
             if org_id:
                 try:
-                    admins = (
-                        db.query(User)
-                        .filter(User.organization_id == org_id, User.is_active == True)
-                        .all()
-                    )
-
-                    admin_emails = [admin.email for admin in admins if admin.email]
-
-                    if admin_emails:
-                        email_setting = get_org_email_setting(db, org_id)
-                        # Send notification asynchronously would be ideal, but for now send synchronously
-                        send_new_lead_notification(
-                            lead_email=new_lead.email or "",
-                            lead_name=new_lead.name or "Unknown",
-                            lead_phone=new_lead.phone or "",
-                            lead_company=new_lead.company,
-                            admin_emails=admin_emails,
-                            org_email_setting=email_setting,
-                        )
+                    notify_lead_created(db, new_lead)
                 except Exception as e:
                     logger.error(
                         f"Failed to send lead notification: {str(e)}", exc_info=True

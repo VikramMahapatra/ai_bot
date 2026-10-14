@@ -99,8 +99,7 @@ def apply_db_migrations(conn: Connection) -> None:
             """
         )
     )
-    conn.execute(text("COMMIT"))
-    
+
     applied_rows = conn.execute(text("SELECT id FROM schema_migrations")).fetchall()
     applied_ids = {str(row[0]) for row in applied_rows}
 
