@@ -281,6 +281,8 @@ def _classify_funnel_stage_with_llm(
 def _build_evaluation_transcript(
     rows: List[Conversation],
     session_id: str,
+    db: Session,
+    organization_id: int,
 ) -> dict[str, Any]:
 
     if not rows:
@@ -293,13 +295,11 @@ def _build_evaluation_transcript(
         }
 
     source = (rows[0].source or "").lower()
-
     channel = "voice" if source == "voice" else "chat"
 
     messages = []
 
     for row in rows[:120]:
-
         timestamp = row.created_at.isoformat() if row.created_at else None
 
         if row.message and row.message.strip():
@@ -319,6 +319,53 @@ def _build_evaluation_transcript(
                     "text": row.response.strip(),
                     "timestamp": timestamp,
                     "metadata": {},
+                }
+            )
+
+    # ---------------------------------------------------------
+    # Append lead information as the final customer message
+    # ---------------------------------------------------------
+    lead = (
+        db.query(Lead)
+        .join(
+            LeadActivity,
+            LeadActivity.lead_id == Lead.id,
+        )
+        .filter(
+            LeadActivity.session_id == session_id,
+            LeadActivity.organization_id == organization_id,
+            Lead.organization_id == organization_id,
+        )
+        .order_by(LeadActivity.created_at.desc())
+        .first()
+    )
+
+    if lead:
+        lead_details = []
+
+        if lead.name and lead.name.strip():
+            lead_details.append(f"Name: {lead.name.strip()}")
+
+        if lead.email and lead.email.strip():
+            lead_details.append(f"Email: {lead.email.strip()}")
+
+        if lead.phone and lead.phone.strip():
+            lead_details.append(f"Phone: {lead.phone.strip()}")
+
+        if lead.company and lead.company.strip():
+            lead_details.append(f"Company: {lead.company.strip()}")
+
+        if lead_details:
+            messages.append(
+                {
+                    "speaker": "customer",
+                    "text": "Lead information:\n" + "\n".join(lead_details),
+                    "timestamp": (
+                        lead.created_at.isoformat() if lead.created_at else None
+                    ),
+                    "metadata": {
+                        "type": "lead_information",
+                    },
                 }
             )
 
@@ -526,13 +573,70 @@ async def process_pending_session_outcomes(
             if not rows:
                 continue
 
+            # Validate conversation source and processing eligibility
+            source = (rows[0].source or "").strip().lower()
+
+            # ---------------------------------------------------------
+            # CHAT: Process only if contact_id exists
+            # ---------------------------------------------------------
+
+            if source == "chat":
+                has_contact = any(row.contact_id is not None for row in rows)
+
+                if not has_contact:
+                    logger.info(
+                        "Skipping chat conversation without contact_id: "
+                        "org=%s session=%s",
+                        org_id,
+                        session_id,
+                    )
+                    continue
+
+            # ---------------------------------------------------------
+            # NON-VOICE: Last message must be older than 5 minutes
+            # ---------------------------------------------------------
+
+            if source != "voice":
+                last_message_at = next(
+                    (
+                        row.created_at
+                        for row in reversed(rows)
+                        if row.created_at is not None
+                    ),
+                    None,
+                )
+
+                if last_message_at is None:
+                    logger.info(
+                        "Skipping conversation without message timestamp: "
+                        "org=%s session=%s",
+                        org_id,
+                        session_id,
+                    )
+                    continue
+
+                # Handle both timezone-aware and naive timestamps.
+                now = datetime.now(last_message_at.tzinfo or timezone.utc)
+
+                if last_message_at.tzinfo is None:
+                    now = now.replace(tzinfo=None)
+
+                if last_message_at > now - timedelta(minutes=5):
+                    logger.info(
+                        "Skipping recent conversation: "
+                        "org=%s session=%s last_message_at=%s",
+                        org_id,
+                        session_id,
+                        last_message_at,
+                    )
+                    continue
+
             # =========================================================
             # Build transcript
             # =========================================================
 
             evaluation_transcript = _build_evaluation_transcript(
-                rows,
-                session_id,
+                rows, session_id, db, org_id
             )
 
             # =========================================================
@@ -1182,24 +1286,56 @@ def process_pending_lead_outcomes(
     batch_size: int = 100,
     organization_id: Optional[int] = None,
 ) -> Tuple[int, int]:
-    """Backfill Lead.lead_outcome from the latest LeadActivity outcome."""
+    """Backfill Lead.lead_outcome from LeadActivity first,
+    falling back to Conversation.outcome when necessary.
+    """
 
-    lead_query = db.query(Lead.id, Lead.organization_id).filter(
-        Lead.lead_outcome.is_(None)
+    has_conversation = (
+        db.query(Conversation.id)
+        .join(
+            LeadActivity,
+            and_(
+                LeadActivity.session_id == Conversation.session_id,
+                LeadActivity.lead_id == Lead.id,
+            ),
+        )
+        .filter(
+            Conversation.organization_id == Lead.organization_id,
+            LeadActivity.session_id.isnot(None),
+        )
+        .exists()
+    )
+
+    lead_query = db.query(
+        Lead.id,
+        Lead.organization_id,
+    ).filter(
+        Lead.lead_outcome.is_(None),
+        has_conversation,
     )
 
     if organization_id is not None:
         lead_query = lead_query.filter(Lead.organization_id == organization_id)
 
-    pending_leads = lead_query.limit(batch_size).all()
+    pending_leads = lead_query.order_by(Lead.id.asc()).limit(batch_size).all()
+
+    logger.info(
+        "Processing pending lead outcomes: "
+        "organization_id=%s batch_size=%s pending_leads=%s",
+        organization_id,
+        batch_size,
+        len(pending_leads),
+    )
 
     synced = 0
     failed = 0
 
     for lead_id, org_id in pending_leads:
         try:
+            # -----------------------------------------------------
+            # 1. Get the latest valid LeadActivity outcome
+            # -----------------------------------------------------
 
-            # Get the latest activity having a valid outcome.
             latest_activity = (
                 db.query(LeadActivity)
                 .filter(
@@ -1214,13 +1350,59 @@ def process_pending_lead_outcomes(
                 .first()
             )
 
-            if not latest_activity:
-                continue
+            normalized_outcome = None
 
-            normalized_outcome = _normalize_outcome(latest_activity.outcome)
+            if latest_activity:
+                normalized_outcome = _normalize_outcome(latest_activity.outcome)
+
+            # -----------------------------------------------------
+            # 2. Fallback to Conversation.outcome
+            #    when LeadActivity has no usable outcome
+            # -----------------------------------------------------
 
             if not normalized_outcome:
+                latest_conversation = (
+                    db.query(Conversation)
+                    .join(
+                        LeadActivity,
+                        and_(
+                            LeadActivity.session_id == Conversation.session_id,
+                            LeadActivity.lead_id == lead_id,
+                        ),
+                    )
+                    .filter(
+                        LeadActivity.lead_id == lead_id,
+                        LeadActivity.session_id.isnot(None),
+                        Conversation.organization_id == org_id,
+                        LeadActivity.outcome.is_(None),
+                        Conversation.outcome.isnot(None),
+                        Conversation.outcome != "",
+                    )
+                    .order_by(
+                        Conversation.created_at.desc(),
+                        Conversation.id.desc(),
+                    )
+                    .first()
+                )
+
+                if latest_conversation:
+                    normalized_outcome = _normalize_outcome(latest_conversation.outcome)
+
+            # -----------------------------------------------------
+            # 3. Skip if neither source provides a valid outcome
+            # -----------------------------------------------------
+
+            if not normalized_outcome:
+                logger.debug(
+                    "No valid outcome found for lead_id=%s org=%s",
+                    lead_id,
+                    org_id,
+                )
                 continue
+
+            # -----------------------------------------------------
+            # 4. Update Lead only if outcome is still NULL
+            # -----------------------------------------------------
 
             updated_rows = (
                 db.query(Lead)
@@ -1237,6 +1419,13 @@ def process_pending_lead_outcomes(
                 )
             )
 
+            logger.info(
+                "Outcome backfill check: lead_id=%s org=%s outcome=%r",
+                lead_id,
+                org_id,
+                normalized_outcome,
+            )
+
             if updated_rows:
                 synced += 1
 
@@ -1247,7 +1436,7 @@ def process_pending_lead_outcomes(
             failed += 1
 
             logger.error(
-                "Failed to backfill lead outcome: lead_id=%s org=%s: %s",
+                "Failed to backfill lead outcome: " "lead_id=%s org=%s: %s",
                 lead_id,
                 org_id,
                 str(exc),
@@ -1265,6 +1454,23 @@ def process_pending_lead_funnel_tags(
     """Backfill lead.funnel_stage using the same logic as
     process_pending_session_outcomes().
     """
+    # Only select leads that have at least one linked conversation.
+    has_conversation = (
+        db.query(Conversation.id)
+        .join(
+            LeadActivity,
+            and_(
+                LeadActivity.session_id == Conversation.session_id,
+                LeadActivity.lead_id == Lead.id,
+            ),
+        )
+        .filter(
+            Conversation.organization_id == Lead.organization_id,
+            LeadActivity.session_id.isnot(None),
+            LeadActivity.session_id != "",
+        )
+        .exists()
+    )
 
     lead_query = db.query(
         Lead.organization_id,
@@ -1274,7 +1480,8 @@ def process_pending_lead_funnel_tags(
             Lead.funnel_stage.is_(None),
             Lead.funnel_stage == "",
             func.lower(func.trim(Lead.funnel_stage)) == "unassigned",
-        )
+        ),
+        has_conversation,
     )
 
     if organization_id is not None:
