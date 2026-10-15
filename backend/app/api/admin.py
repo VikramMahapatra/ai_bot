@@ -736,6 +736,7 @@ async def list_appointments(
     skip: int = 0,
     limit: int = 10,
     search: str | None = None,
+    calendar_view: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -769,18 +770,18 @@ async def list_appointments(
             query = query.filter(Appointment.appointment_at >= start_dt)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="Invalid start_date format. Use ISO format"
+                status_code=400,
+                detail="Invalid start_date format. Use ISO format",
             )
 
     if end_date:
         try:
             end_dt = datetime.fromisoformat(end_date)
-            if len(end_date) <= 10:
-                end_dt = end_dt + timedelta(days=1)
-            query = query.filter(Appointment.appointment_at <= end_dt)
+            query = query.filter(Appointment.appointment_at < end_dt)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="Invalid end_date format. Use ISO format"
+                status_code=400,
+                detail="Invalid end_date format. Use ISO format",
             )
 
     # Search filter
@@ -795,9 +796,14 @@ async def list_appointments(
 
     total = query.count()
 
-    appointments = (
-        query.order_by(Appointment.appointment_at.asc()).offset(skip).limit(limit).all()
-    )
+    query = query.order_by(Appointment.appointment_at.asc())
+
+    if calendar_view:
+        # Calendar loads all matching appointments.
+        appointments = query.all()
+    else:
+        # List view retains pagination.
+        appointments = query.offset(skip).limit(limit).all()
 
     widget_map = {
         row.widget_id: row.name
