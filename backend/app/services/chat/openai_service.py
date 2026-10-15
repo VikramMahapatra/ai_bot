@@ -1,13 +1,60 @@
 from __future__ import annotations
 
 import logging
+import json
+import math
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from app.config import settings
-from app.services.chat.structured_answering import parse_structured_answer
 from app.services.chat.types import LLMProvider
 
 logger = logging.getLogger(__name__)
+
+
+class DatasetPlannerError(ValueError):
+    def __init__(self, token_usage: Dict[str, int]) -> None:
+        super().__init__("Dataset planner returned an invalid or incomplete plan")
+        self.token_usage = token_usage
+
+
+class StructuredCompletionError(ValueError):
+    def __init__(self, token_usage: Dict[str, int]) -> None:
+        super().__init__("Invalid or incomplete structured answer")
+        self.token_usage = token_usage
+
+
+def _validated_completion_payload(response: Any) -> Tuple[Dict[str, Any], Dict[str, int]]:
+    """Strict transport validation shared by synchronous and async completions."""
+    usage = getattr(response, "usage", None)
+    tokens = {key: int(getattr(usage, key, 0) or 0)
+              for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+    try:
+        choice = response.choices[0]
+        if choice.finish_reason != "stop":
+            raise ValueError("Incomplete answer")
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("Duplicate key")
+                result[key] = value
+            return result
+
+        raw = json.loads(choice.message.content, object_pairs_hook=unique_object)
+        if (not isinstance(raw, dict)
+                or set(raw) != {"answered", "confidence", "requires_escalation", "response"}
+                or type(raw["answered"]) is not bool or type(raw["requires_escalation"]) is not bool
+                or type(raw["confidence"]) not in (int, float)
+                or not math.isfinite(raw["confidence"]) or not 0 <= raw["confidence"] <= 1
+                or not isinstance(raw["response"], str)):
+            raise ValueError("Invalid answer schema")
+        # A model must not smuggle another structured envelope into response.
+        if raw["response"].lstrip().startswith(("{", "[", "```")):
+            raise ValueError("Expected conversational response")
+        return raw, tokens
+    except (ValueError, TypeError, IndexError, AttributeError, KeyError) as exc:
+        raise StructuredCompletionError(tokens) from exc
 
 try:
     from openai import AsyncOpenAI, OpenAI
@@ -68,10 +115,38 @@ class OpenAIService(LLMProvider):
         timeout_seconds: float,
     ) -> Tuple[Dict[str, Any], Dict[str, int]]:
         response = self._chat_completion(model=model, messages=list(messages), max_tokens=max_tokens, temperature=temperature, response_format={"type": "json_object"}, timeout=timeout_seconds)
-        content = response.choices[0].message.content if response.choices else ""
-        parsed = parse_structured_answer(content)
+        return _validated_completion_payload(response)
+
+    def generate_dataset_plan(self, messages: Sequence[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, int]]:
+        response = self._chat_completion(
+            model=settings.OPENAI_CHAT_MODEL, messages=list(messages),
+            response_format={"type": "json_object"}, temperature=0,
+            max_tokens=1024, timeout=min(float(settings.OPENAI_CHAT_TIMEOUT_SECONDS), 20.0),
+        )
         usage = getattr(response, "usage", None)
-        return (parsed.raw if parsed.raw else {"answered": parsed.answered, "confidence": parsed.confidence, "requires_escalation": parsed.requires_escalation, "response": parsed.response}), {"prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0, "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0, "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0}
+        tokens = {key: int(getattr(usage, key, 0) or 0) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+        try:
+            choice = response.choices[0]
+            if choice.finish_reason != "stop":
+                raise ValueError("Incomplete completion")
+            # Reject duplicate keys and nonstandard JSON numeric constants.
+            def unique_object(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("Duplicate JSON key")
+                    result[key] = value
+                return result
+
+            def reject_constant(value):
+                raise ValueError("Nonstandard JSON constant")
+
+            plan = json.loads(choice.message.content, object_pairs_hook=unique_object, parse_constant=reject_constant)
+            if not isinstance(plan, dict):
+                raise ValueError("Expected JSON object")
+            return plan, tokens
+        except (ValueError, TypeError, IndexError, AttributeError) as exc:
+            raise DatasetPlannerError(tokens) from exc
 
     def stream_chat_completion(
         self,
@@ -100,10 +175,7 @@ class OpenAIService(LLMProvider):
         timeout_seconds: float,
     ) -> Tuple[Dict[str, Any], Dict[str, int]]:
         response = await self._achat_completion(model=model, messages=list(messages), max_tokens=max_tokens, temperature=temperature, response_format={"type": "json_object"}, timeout=timeout_seconds)
-        content = response.choices[0].message.content if response.choices else ""
-        parsed = parse_structured_answer(content)
-        usage = getattr(response, "usage", None)
-        return (parsed.raw if parsed.raw else {"answered": parsed.answered, "confidence": parsed.confidence, "requires_escalation": parsed.requires_escalation, "response": parsed.response}), {"prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0, "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0, "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0}
+        return _validated_completion_payload(response)
 
 
 openai_service = OpenAIService()

@@ -529,112 +529,152 @@ def send_new_lead_notification(
     """
     Send notification email when new lead is captured
     """
+    html_content = f"""
+    <html><body style="font-family:Segoe UI,Arial,sans-serif">
+      <h2>New lead captured</h2>
+      <p>A new lead has been captured through your AI chatbot.</p>
+      <p><b>Name:</b> {_escape_html(lead_name)}</p>
+      <p><b>Email:</b> {_escape_html(lead_email)}</p>
+      <p><b>Phone:</b> {_escape_html(lead_phone)}</p>
+      {f'<p><b>Company:</b> {_escape_html(lead_company)}</p>' if lead_company else ''}
+      <p><b>Captured At:</b> {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+      <p><a href="{_escape_html(settings.FRONTEND_DASHBOARD_LEADS_URL)}">View in Dashboard</a></p>
+    </body></html>
+    """
+    return send_notification_email(
+        subject=f"New Lead: {lead_name}",
+        html_content=html_content,
+        recipients=admin_emails or [],
+        org_email_setting=org_email_setting,
+    )
 
-    if not admin_emails:
-        logger.warning("No admin emails provided for lead notification")
+
+def send_notification_email(
+    subject: str,
+    html_content: str,
+    recipients: Iterable[str],
+    org_email_setting: OrganizationEmailSetting | None,
+) -> bool:
+    """Send one private email per validated recipient using the org SMTP profile."""
+    if not org_email_setting:
+        logger.warning("No active organization SMTP profile for notification")
         return False
 
+    unique_recipients: list[str] = []
+    seen: set[str] = set()
+    for raw_email in recipients or []:
+        normalized, error = _validate_email_address(str(raw_email or "").strip())
+        if not normalized:
+            if raw_email:
+                logger.warning(
+                    "Skipping invalid notification recipient %s: %s", raw_email, error
+                )
+            continue
+        if _is_reserved_test_email(normalized):
+            continue
+        key = normalized.casefold()
+        if key not in seen:
+            seen.add(key)
+            unique_recipients.append(normalized)
+
+    if not unique_recipients:
+        logger.warning("No valid recipients for email notification")
+        return False
+
+    sender_email = (org_email_setting.sender_email or "").strip()
+    if not sender_email:
+        logger.error("Organization SMTP profile has no sender email")
+        return False
+    envelope_sender = (org_email_setting.smtp_username or sender_email).strip()
+
+    plain_content = _html_to_plain_text(html_content)
+    all_sent = True
     try:
-
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-        </head>
-
-        <body style="margin:0;padding:0;font-family:Segoe UI;background:#f5f5f5">
-
-        <div style="max-width:600px;margin:auto;background:white">
-
-        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-        padding:30px 20px;text-align:center">
-        <h1 style="color:white;margin:0">🎉 New Lead Captured!</h1>
-        </div>
-
-        <div style="padding:30px 20px">
-
-        <p>A new lead has been captured through your AI chatbot.</p>
-
-        <p><b>Name:</b> {_escape_html(lead_name)}</p>
-        <p><b>Email:</b> {_escape_html(lead_email)}</p>
-        <p><b>Phone:</b> {_escape_html(lead_phone)}</p>
-        """
-
-        if lead_company:
-            html_content += f"<p><b>Company:</b> {_escape_html(lead_company)}</p>"
-
-        html_content += f"""
-        <p><b>Captured At:</b> {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
-
-        <p style="margin-top:20px">
-        <a href="{_escape_html(settings.FRONTEND_DASHBOARD_LEADS_URL)}"
-        style="background:#667eea;color:white;padding:12px 20px;
-        text-decoration:none;border-radius:6px">
-        View in Dashboard
-        </a>
-        </p>
-
-        </div>
-
-        </div>
-
-        </body>
-        </html>
-        """
-
-        plain_content = _html_to_plain_text(html_content)
-
         with _open_smtp_server(get_org_smtp_config(org_email_setting)) as server:
-
             if org_email_setting.smtp_username and org_email_setting.smtp_password:
                 server.login(
                     org_email_setting.smtp_username, org_email_setting.smtp_password
                 )
 
-            for admin_email in admin_emails:
-
+            for recipient in unique_recipients:
                 try:
-
                     msg = MIMEMultipart("alternative")
-                    msg["Subject"] = f"🎉 New Lead: {lead_name}"
+                    msg["Subject"] = subject
                     msg["From"] = (
-                        formataddr(
-                            (
-                                org_email_setting.sender_name,
-                                org_email_setting.sender_email,
-                            )
-                        )
+                        formataddr((org_email_setting.sender_name, sender_email))
                         if org_email_setting.sender_name
-                        else org_email_setting.sender_email
+                        else sender_email
                     )
-                    msg["To"] = admin_email
-                    cc_list = get_cc_emails(org_email_setting.cc_emails)
-
-                    if cc_list:
-                        msg["Cc"] = ", ".join(cc_list)
-
+                    msg["To"] = recipient
+                    if org_email_setting.reply_to_email:
+                        msg["Reply-To"] = org_email_setting.reply_to_email
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
                     msg.attach(MIMEText(html_content, "html", "utf-8"))
-
-                    refused = server.send_message(msg)
-
-                    if refused:
-                        logger.error(f"SMTP refused {admin_email}: {refused}")
-                    else:
-                        logger.info(f"Lead notification sent to {admin_email}")
-
-                except Exception as e:
-                    logger.error(
-                        f"Failed to send lead notification to {admin_email}: {str(e)}",
-                        exc_info=True,
+                    refused = server.send_message(
+                        msg,
+                        from_addr=envelope_sender,
+                        to_addrs=[recipient],
                     )
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error in send_new_lead_notification: {str(e)}", exc_info=True)
+                    if refused:
+                        all_sent = False
+                        logger.error(
+                            "SMTP refused notification recipient %s: %s",
+                            recipient,
+                            refused,
+                        )
+                    else:
+                        logger.info("Notification email sent to %s", recipient)
+                except Exception:
+                    all_sent = False
+                    logger.exception("Failed sending notification email to %s", recipient)
+    except Exception:
+        logger.exception("SMTP error sending organization notification")
         return False
+
+    return all_sent
+
+
+def send_handoff_notification(
+    recipients: Iterable[str],
+    chat_id: str,
+    reason: str | None,
+    org_email_setting: OrganizationEmailSetting | None,
+) -> bool:
+    html_content = (
+        "<html><body><h2>New chat handoff request</h2>"
+        f"<p>A visitor is waiting for a human agent. Chat ID: {_escape_html(chat_id)}</p>"
+        f"<p>Reason: {_escape_html(reason or 'Not specified')}</p>"
+        "</body></html>"
+    )
+    return send_notification_email(
+        "New chat handoff request", html_content, recipients, org_email_setting
+    )
+
+
+def send_appointment_booked_notification(
+    recipients: Iterable[str],
+    participant_name: str,
+    participant_email: str | None,
+    appointment_at: datetime,
+    timezone_label: str | None,
+    notes: str | None,
+    org_email_setting: OrganizationEmailSetting | None,
+) -> bool:
+    html_content = (
+        "<html><body><h2>New meeting booked</h2>"
+        f"<p><b>Participant:</b> {_escape_html(participant_name)}</p>"
+        f"<p><b>Email:</b> {_escape_html(participant_email or '')}</p>"
+        f"<p><b>Meeting time:</b> {_escape_html(appointment_at.isoformat())} "
+        f"({_escape_html(timezone_label or 'UTC')})</p>"
+        f"<p><b>Notes:</b> {_escape_html(notes or 'None')}</p>"
+        "</body></html>"
+    )
+    return send_notification_email(
+        f"Meeting booked: {participant_name}",
+        html_content,
+        recipients,
+        org_email_setting,
+    )
 
 
 def send_campaign_email(
@@ -1363,18 +1403,13 @@ def send_appointment_rescheduled_notification(
                             else None
                         )
                     )
-                    cc_list = get_cc_emails(org_email_setting.cc_emails)
-
-                    if cc_list:
-                        msg["Cc"] = ", ".join(cc_list)
-
                     msg.attach(MIMEText(plain_content, "plain", "utf-8"))
                     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
                     refused = server.send_message(
                         msg,
                         from_addr=envelope_sender,
-                        to_addrs=[recipient, *cc_list],
+                        to_addrs=[recipient],
                     )
                     if refused:
                         errors = []

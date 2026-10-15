@@ -3180,7 +3180,7 @@ const SettingsPage: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="CC Email Addresses"
+                  label="CC / Notification Email Addresses"
                   size="small"
                   value={selectedEmailSetting?.cc_emails}
                   onChange={(e) =>
@@ -3193,7 +3193,7 @@ const SettingsPage: React.FC = () => {
                   error={!!smtpErrors.cc_emails}
                   helperText={
                     smtpErrors.cc_emails ||
-                    "Comma-separated list of email addresses"
+                    "Comma-separated addresses. These also receive lead, handoff, and meeting notifications."
                   }
                 />
               </Grid>

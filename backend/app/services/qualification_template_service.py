@@ -66,12 +66,14 @@ def list_templates(
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
-def template_lookup(db: Session, organization_id: int):
+def template_lookup(db: Session, organization_id: int, *, require_synced: bool = True):
+    """External consumers require sync; local chat may use any active template."""
     query = db.query(QualificationTemplate).filter(
         QualificationTemplate.organization_id == organization_id,
-        QualificationTemplate.sync_status == "synced",
         QualificationTemplate.status == QualificationTemplateStatus.active,
     )
+    if require_synced:
+        query = query.filter(QualificationTemplate.sync_status == "synced")
 
     items = query.order_by(
         QualificationTemplate.updated_at.desc().nullslast(),

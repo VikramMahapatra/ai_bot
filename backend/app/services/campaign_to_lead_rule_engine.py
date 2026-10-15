@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -15,11 +16,13 @@ from app.models import (
     Lead,
 )
 from app.services.call_log_service import create_lead_activity
+from app.services.notification_service import notify_lead_created
 from app.models.lead_contact_mapping import LeadContactMapping
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
 
 DEFAULT_RULE_NAME = "Default Campaign to Lead Rule"
+logger = logging.getLogger(__name__)
 
 DEFAULT_INCLUDE_STATUSES = ["delivered", "opened", "read", "clicked"]
 DEFAULT_EXCLUDE_STATUSES = ["failed", "bounced", "complained", "unsubscribed"]
@@ -217,6 +220,7 @@ def run_rule_engine(
     converted_count = 0
     duplicate_count = 0
     skipped_count = 0
+    created_leads: list[Lead] = []
 
     details: list[dict[str, Any]] = []
 
@@ -416,6 +420,7 @@ def run_rule_engine(
             if not dry_run:
                 db.add(lead)
                 db.flush()  
+                created_leads.append(lead)
                 
                 if contact:
                     mapping = LeadContactMapping(
@@ -466,6 +471,11 @@ def run_rule_engine(
 
     if not dry_run:
         db.commit()
+        for created_lead in created_leads:
+            try:
+                notify_lead_created(db, created_lead)
+            except Exception:
+                logger.exception("Failed to send campaign lead notification")
 
     return {
         "rule_id": rule.id,

@@ -37,6 +37,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../components/Layout/AdminLayout';
+import StructuredDatasetManager from '../components/Admin/StructuredDatasetManager';
+import StorageIcon from '@mui/icons-material/Storage';
 import api from '../services/api';
 import { knowledgeService } from '../services/knowledgeService';
 import { launchWhatsAppEmbeddedSignup, loadFacebookSdk } from '../services/metaEmbeddedSignup';
@@ -221,6 +223,8 @@ const parseStyleSelection = (leadFieldsRaw?: string): { botIcon?: string; userIc
   }
 };
 
+const AGENT_STEP = { profile: 0, conversation: 1, knowledge: 2, structured: 3, integrations: 4, share: 5 } as const;
+
 const CreateChatAgentPage: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -268,6 +272,7 @@ const CreateChatAgentPage: React.FC = () => {
   const [refreshingCrawlStatus, setRefreshingCrawlStatus] = useState(false);
   const [previewCrawling, setPreviewCrawling] = useState(false);
   const [knowledgeActionsDone, setKnowledgeActionsDone] = useState(0);
+  const [publishedDatasetIds, setPublishedDatasetIds] = useState<number[]>([]);
   const [knowledgeFlowStep, setKnowledgeFlowStep] = useState(0);
 
   const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false);
@@ -292,7 +297,7 @@ const CreateChatAgentPage: React.FC = () => {
   const formatDisplayDate = useDateFormatter()
 
   const integrationSteps = useMemo(
-    () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Conversation Setup', 'Add Knowledge Base', 'Integrations', 'Share Test Link'],
+    () => [isEditMode ? 'Update Widget' : 'Create Widget', 'Conversation Setup', 'Add Knowledge Base', 'Structured Datasets', 'Integrations', 'Share Test Link'],
     [isEditMode]
   );
 
@@ -303,6 +308,7 @@ const CreateChatAgentPage: React.FC = () => {
         : 'Define brand, style, and conversation personality.',
       'Configure qualification, escalation, contact capture, and guided questions.',
       'Train your agent with website pages, docs, and internal knowledge.',
+      'Optionally approve, validate, and publish structured tables, separately from documents.',
       'Connect external channels and automation-ready integrations.',
       'Share a live test URL and hand over for stakeholder review.',
     ],
@@ -318,8 +324,9 @@ const CreateChatAgentPage: React.FC = () => {
     { eyebrow: '01 · Foundation', title: 'Shape your agent', short: 'Identity', icon: <AutoAwesomeIcon />, color: '#2f6bff' },
     { eyebrow: '02 · Conversation', title: 'Design the conversation', short: 'Conversation', icon: <ForumIcon />, color: '#157f78' },
     { eyebrow: '03 · Intelligence', title: 'Teach your agent', short: 'Knowledge', icon: <LibraryBooksIcon />, color: '#2563eb' },
-    { eyebrow: '04 · Connections', title: 'Connect your channels', short: 'Integrations', icon: <HubIcon />, color: '#8b5cf6' },
-    { eyebrow: '05 · Launch', title: 'Review and share', short: 'Launch', icon: <RocketLaunchIcon />, color: '#d97706' },
+    { eyebrow: '04 · Structured', title: 'Manage structured datasets', short: 'Structured Datasets', icon: <StorageIcon />, color: '#0f766e' },
+    { eyebrow: '05 · Connections', title: 'Connect your channels', short: 'Integrations', icon: <HubIcon />, color: '#8b5cf6' },
+    { eyebrow: '06 · Launch', title: 'Review and share', short: 'Launch', icon: <RocketLaunchIcon />, color: '#d97706' },
   ];
 
   const selectedPreviewCount = useMemo(
@@ -460,18 +467,22 @@ const CreateChatAgentPage: React.FC = () => {
   } as const;
 
   const stepReadiness = useMemo(() => {
-    if (activeStep === 0) {
+    if (activeStep === AGENT_STEP.profile) {
       const checks = [widget.name.trim(), widget.welcome_message?.trim(), widget.primary_color, widget.position];
       return Math.round((checks.filter(Boolean).length / checks.length) * 100);
     }
-    if (activeStep === 1) {
+    if (activeStep === AGENT_STEP.conversation) {
       const checks = [qualificationTemplateId || contactFields.length || quickQuestions.length, widget.escalation_contact_level_1 || widget.escalation_contact_level_2];
       return Math.round((checks.filter(Boolean).length / checks.length) * 100);
     }
-    if (activeStep === 2) {
+    if (activeStep === AGENT_STEP.knowledge) {
       return Math.min(100, knowledgeActionsDone * 35);
     }
-    if (activeStep === 3) {
+    if (activeStep === AGENT_STEP.structured) {
+      // Optional setup is ready to skip once the agent has been saved.
+      return createdWidgetId ? 100 : 0;
+    }
+    if (activeStep === AGENT_STEP.integrations) {
       return whatsappConfigured ? 100 : 60;
     }
     return createdWidgetId ? 100 : 70;
@@ -513,33 +524,29 @@ const CreateChatAgentPage: React.FC = () => {
   );
 
   useEffect(() => {
-    let active = true;
-    qualificationTemplateService.lookup()
-      .then((data) => {
-        if (active) setTemplates(data || []);
-      })
-      .catch(() => {
-        if (active) setError('Qualification templates could not be loaded. Please try again.');
-      });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
     if (!createdWidgetId) {
       setShareLink('');
       setShareLinkExpiresAt('');
       return;
     }
 
-    fetchShareLink(createdWidgetId);
-  }, [createdWidgetId, fetchShareLink]);
+    if (activeStep === AGENT_STEP.share) fetchShareLink(createdWidgetId);
+  }, [activeStep, createdWidgetId, fetchShareLink]);
 
   useEffect(() => {
     let active = true;
     setQualificationTemplatesLoading(true);
     qualificationTemplateService.list({ status: 'Active', limit: 100 })
       .then((result) => {
-        if (active) setQualificationTemplates(result.items || []);
+        if (!active) return;
+        const localTemplates = (result.items || []).filter((template) => template.status === 'Active');
+        setQualificationTemplates(localTemplates);
+        // Both chat selectors use local eligibility, not external-engine sync.
+        setTemplates(localTemplates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          description: template.description || template.objective,
+        })));
       })
       .catch(() => {
         if (active) setError('Qualification templates could not be loaded. Please try again.');
@@ -556,6 +563,11 @@ const CreateChatAgentPage: React.FC = () => {
     }
 
     let active = true;
+
+    setCreatedWidgetId('');
+    setPublishedDatasetIds([]);
+    setShareLink('');
+    setShareLinkExpiresAt('');
 
     const loadWidgetForEdit = async () => {
       try {
@@ -845,7 +857,7 @@ const CreateChatAgentPage: React.FC = () => {
   }, [createdWidgetId]);
 
   useEffect(() => {
-    if (!createdWidgetId || activeStep !== 2) return;
+    if (!createdWidgetId || activeStep !== AGENT_STEP.integrations) return;
 
     let active = true;
 
@@ -877,7 +889,7 @@ const CreateChatAgentPage: React.FC = () => {
   }, [activeStep, createdWidgetId]);
 
   useEffect(() => {
-    if (!createdWidgetId || activeStep !== 1) return;
+    if (!createdWidgetId || activeStep !== AGENT_STEP.knowledge) return;
     if (crawlJobStatus?.job_id) return;
 
     let active = true;
@@ -943,7 +955,7 @@ const CreateChatAgentPage: React.FC = () => {
   }, [crawlJobStatus]);
 
   useEffect(() => {
-    if (activeStep !== 1) return;
+    if (activeStep !== AGENT_STEP.knowledge) return;
 
     if (crawlJobStatus?.status === 'completed') {
       setKnowledgeFlowStep(2);
@@ -1000,7 +1012,8 @@ const CreateChatAgentPage: React.FC = () => {
     };
   };
 
-  const saveWidgetProfile = async (nextStep = 1) => {
+  const saveWidgetProfile = async (nextStep: number = AGENT_STEP.conversation) => {
+    if (busy) return;
 
     const newErrors = {
       name: "",
@@ -1013,11 +1026,13 @@ const CreateChatAgentPage: React.FC = () => {
       return;
     }
 
+    // Both Identity and Conversation display a required local template selector.
     if (!qualificationTemplateId) {
-      newErrors.qualification_template_id = `Please select the template.`;
+      newErrors.qualification_template_id = 'Please select an active qualification template.';
       setErrors(newErrors);
       return;
     }
+    setErrors(newErrors);
 
     const normalizedContactFields = contactFields
       .map((field) => ({
@@ -1049,7 +1064,8 @@ const CreateChatAgentPage: React.FC = () => {
 
       const payload = buildWidgetPayload();
 
-      if (isEditMode) {
+      // A newly created agent must be updated, not created again on later saves.
+      if (isEditMode || createdWidgetId) {
         await api.put(`/api/admin/widget/config/${encodeURIComponent(payload.widget_id)}`, payload);
       } else {
         await api.post('/api/admin/widget/config', payload);
@@ -1315,22 +1331,22 @@ const CreateChatAgentPage: React.FC = () => {
     }
   };
 
-  const moveToIntegrationStep = () => {
+  const moveToStructuredStep = () => {
     if (knowledgeEditingLocked) {
-      setError('Please wait for website crawling/embedding to finish before continuing to integrations.');
+      setError('Please wait for website crawling/embedding to finish before continuing.');
       return;
     }
-    setActiveStep(3);
+    setActiveStep(AGENT_STEP.structured);
     setError('');
     if (knowledgeActionsDone > 0) {
-      setSuccess('Knowledge added. Next step: choose integrations.');
+      setSuccess('Knowledge added. Optionally add structured datasets next.');
     } else {
-      setSuccess('You can set integrations now and still add knowledge later.');
+      setSuccess('Structured datasets are optional. You can still add knowledge later.');
     }
   };
 
   const moveToShareStep = () => {
-    setActiveStep(4);
+    setActiveStep(AGENT_STEP.share);
     setError('');
     if (whatsappConfigured) {
       setSuccess('Integrations configured. Your share link is ready.');
@@ -1446,7 +1462,7 @@ const CreateChatAgentPage: React.FC = () => {
               <LinearProgress variant="determinate" value={stepProgress} sx={{ mt: 3, height: 7, borderRadius: 99, bgcolor: alpha(tabMeta[activeStep].color, 0.12), '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: tabMeta[activeStep].color } }} />
               <Tabs value={activeStep} onChange={(_, value) => { setActiveStep(value); setError(''); }} variant="scrollable" scrollButtons="auto" sx={{ mt: 1.5, minHeight: 70, '& .MuiTabs-indicator': { height: 3, borderRadius: 99, bgcolor: tabMeta[activeStep].color }, '& .MuiTab-root': { minHeight: 70, minWidth: { xs: 132, md: 170 }, alignItems: 'flex-start', textAlign: 'left', px: 1.5, borderRadius: '14px 14px 0 0' }, '& .MuiTab-root.Mui-selected': { color: tabMeta[activeStep].color, bgcolor: alpha(tabMeta[activeStep].color, 0.055) } }}>
                 {tabMeta.map((tab, index) => (
-                  <Tab key={tab.short} icon={React.cloneElement(tab.icon, { sx: { fontSize: 20 } })} iconPosition="start" label={<Box><Typography variant="caption" sx={{ display: 'block', fontWeight: 800, opacity: 0.65 }}>0{index + 1}</Typography><Typography variant="body2" fontWeight={850}>{tab.short}</Typography></Box>} />
+                  <Tab key={tab.short} disabled={busy || initializingEdit || (index >= AGENT_STEP.knowledge && !createdWidgetId)} icon={React.cloneElement(tab.icon, { sx: { fontSize: 20 } })} iconPosition="start" label={<Box><Typography variant="caption" sx={{ display: 'block', fontWeight: 800, opacity: 0.65 }}>0{index + 1}</Typography><Typography variant="body2" fontWeight={850}>{tab.short}</Typography></Box>} />
                 ))}
               </Tabs>
             </CardContent>
@@ -1481,7 +1497,7 @@ const CreateChatAgentPage: React.FC = () => {
             </Alert>
           </Snackbar>
 
-          {activeStep === 0 && (
+          {activeStep === AGENT_STEP.profile && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Grid container spacing={2.2}>
@@ -1517,7 +1533,7 @@ const CreateChatAgentPage: React.FC = () => {
                         fullWidth
                         sx={fieldSx}
                       />
-                      {activeStep === 1 && (<Box
+                      {activeStep === AGENT_STEP.conversation && (<Box
                         sx={{
                           p: 2,
                           borderRadius: '16px',
@@ -1586,6 +1602,7 @@ const CreateChatAgentPage: React.FC = () => {
                         name="qualification_template_id"
                         value={qualificationTemplateId}
                         onChange={(e) => setQualificationTemplateId(e.target.value ? Number(e.target.value) : '')}
+                        disabled={qualificationTemplatesLoading}
                         error={!!errors.qualification_template_id}
                         helperText={errors.qualification_template_id}
                       >
@@ -1603,8 +1620,8 @@ const CreateChatAgentPage: React.FC = () => {
                         multiline
                         minRows={4}
                         maxRows={12}
-                        placeholder="Example: You are a concise sales assistant. Ask discovery questions before recommending solutions."
-                        helperText="Override the default prompt for this specific agent."
+                        placeholder="Describe the agent's role and trusted business scope. Example: Use approved datasets for prices and location listings; use the knowledge base for company policies and operating details. Never claim live availability unless a trusted source confirms it."
+                        helperText="This widget-specific prompt is considered with the platform's routing rules. State which approved source to use for each kind of fact (dataset for queryable records/values; knowledge base for policies and company explanations), plus the agent's confirmed scope. Platform security, tenant isolation, and grounding checks still apply."
                         sx={{
                           ...fieldSx,
                           '& .MuiInputBase-inputMultiline': {
@@ -1613,7 +1630,7 @@ const CreateChatAgentPage: React.FC = () => {
                         }}
                       />
 
-                      {activeStep === 1 && (<>
+                      {activeStep === AGENT_STEP.conversation && (<>
                       <TextField
                         label="Escalation Contact Level 1"
                         value={widget.escalation_contact_level_1 || ''}
@@ -1635,7 +1652,7 @@ const CreateChatAgentPage: React.FC = () => {
                       />
                       </>)}
 
-                      {activeStep === 1 && (<Box sx={accentPanelSx}>
+                      {activeStep === AGENT_STEP.conversation && (<Box sx={accentPanelSx}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -1767,7 +1784,7 @@ const CreateChatAgentPage: React.FC = () => {
                         )}
                       </Box>)}
 
-                      {activeStep === 1 && (<Box sx={accentPanelSx}>
+                      {activeStep === AGENT_STEP.conversation && (<Box sx={accentPanelSx}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={{ mb: 1.2 }}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -2095,7 +2112,7 @@ const CreateChatAgentPage: React.FC = () => {
             </Card>
           )}
 
-          {activeStep === 1 && (
+          {activeStep === AGENT_STEP.conversation && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                 <Stack spacing={2.2}>
@@ -2142,13 +2159,13 @@ const CreateChatAgentPage: React.FC = () => {
                       </Box>
                     </Grid>
                   </Grid>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={stepActionBarSx}><Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>Back to Identity</Button><Button variant="contained" onClick={() => saveWidgetProfile(2)} disabled={busy} sx={{ borderRadius: '12px', px: 2.6 }}>Save conversation setup and continue</Button></Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.2} sx={stepActionBarSx}><Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>Back to Identity</Button><Button variant="contained" onClick={() => saveWidgetProfile(AGENT_STEP.knowledge)} disabled={busy} sx={{ borderRadius: '12px', px: 2.6 }}>Save conversation setup and continue</Button></Stack>
                 </Stack>
               </CardContent>
             </Card>
           )}
 
-          {activeStep === 2 && (
+          {activeStep === AGENT_STEP.knowledge && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Grid container spacing={2.2}>
@@ -2196,7 +2213,7 @@ const CreateChatAgentPage: React.FC = () => {
 
                           {knowledgeEditingLocked && (
                             <Alert severity="info">
-                              Website embedding is running. To avoid conflicts, Continue to Integrations, Document Upload, and Add Text Knowledge are temporarily disabled.
+                              Website embedding is running. To avoid conflicts, Continue, Document Upload, and Add Text Knowledge are temporarily disabled.
                             </Alert>
                           )}
 
@@ -2742,7 +2759,7 @@ const CreateChatAgentPage: React.FC = () => {
                       </Button>
                       <Button
                         variant="contained"
-                        onClick={moveToIntegrationStep}
+                        onClick={moveToStructuredStep}
                         disabled={busy || knowledgeEditingLocked}
                         sx={{
                           borderRadius: '12px',
@@ -2751,7 +2768,7 @@ const CreateChatAgentPage: React.FC = () => {
                           background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
                         }}
                       >
-                        Continue to Integrations
+                        Continue to Structured Datasets
                       </Button>
                     </Stack>
                   </Grid>
@@ -2760,7 +2777,74 @@ const CreateChatAgentPage: React.FC = () => {
             </Card>
           )}
 
-          {activeStep === 3 && (
+          {activeStep === AGENT_STEP.structured && (
+            <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
+              <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
+                <Stack spacing={{ xs: 1.2, md: 1.6 }}>
+                  <Box sx={{
+                    px: { xs: 1.5, md: 2 }, py: { xs: 1.25, md: 1.5 },
+                    borderRadius: '16px', border: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+                    background: `linear-gradient(110deg, ${alpha('#e5efff', 0.9)} 0%, ${alpha('#ffffff', 0.92)} 58%, ${alpha('#e4f6f2', 0.85)} 100%)`,
+                  }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
+                      <Stack direction="row" spacing={1.1} alignItems="center">
+                        <Box sx={{ width: 38, height: 38, borderRadius: '12px', display: 'grid', placeItems: 'center', color: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
+                          <StorageIcon fontSize="small" />
+                        </Box>
+                        <Box>
+                          <Typography variant="overline" color="primary.main" sx={{ fontWeight: 750, letterSpacing: '0.1em', lineHeight: 1.2 }}>
+                            STEP 04 · STRUCTURED DATA
+                          </Typography>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.3 }}>
+                            Add precise, queryable records
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Chip size="small" icon={<CheckCircleOutlineIcon />} label="Optional" color="primary" variant="outlined" />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1, ml: { sm: '49px' }, lineHeight: 1.5 }}>
+                      Upload CSV/XLSX, review public fields, then validate and publish. Dataset records stay separate from document knowledge.
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{
+                    p: { xs: 1, md: 1.35 }, borderRadius: '20px',
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                    background: `linear-gradient(145deg, ${alpha('#ffffff', 0.72)} 0%, ${alpha('#e8f0fb', 0.55)} 100%)`,
+                  }}>
+                    <StructuredDatasetManager compact widgetId={createdWidgetId} onPublished={dataset => setPublishedDatasetIds(prev => prev.includes(dataset.id) ? prev : [...prev, dataset.id])} />
+                  </Box>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.2} sx={{ ...stepActionBarSx, p: { xs: 1.2, md: 1.5 } }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        color={publishedDatasetIds.length ? 'success' : 'default'}
+                        variant={publishedDatasetIds.length ? 'filled' : 'outlined'}
+                        label={`${publishedDatasetIds.length} published this session`}
+                      />
+                      <Typography variant="caption" color="text.secondary">Separate from document knowledge</Typography>
+                    </Stack>
+                    <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1}>
+                      <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>Back to Knowledge Base</Button>
+                      <Button
+                        variant="contained"
+                        disabled={busy || !createdWidgetId}
+                        onClick={() => { setActiveStep(AGENT_STEP.integrations); setError(''); }}
+                        sx={{
+                          borderRadius: '12px', px: 2.4,
+                          boxShadow: `0 8px 18px ${alpha(theme.palette.primary.dark, 0.18)}`,
+                          background: `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.dark, 0.92)} 100%)`,
+                        }}
+                      >Continue to Integrations <span aria-hidden="true" style={{ marginLeft: 8 }}>→</span></Button>
+                    </Stack>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeStep === AGENT_STEP.integrations && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Stack spacing={2.2}>
@@ -2768,7 +2852,7 @@ const CreateChatAgentPage: React.FC = () => {
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
                       <Box>
                         <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                          Step 4
+                          Step 5
                         </Typography>
                         <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
                           Integrations
@@ -2930,7 +3014,7 @@ const CreateChatAgentPage: React.FC = () => {
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} justifyContent="space-between" sx={stepActionBarSx}>
                     <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={goBackStep}>
-                      Back to Knowledge
+                      Back to Structured Datasets
                     </Button>
                     <Button
                       variant="contained"
@@ -2950,13 +3034,13 @@ const CreateChatAgentPage: React.FC = () => {
             </Card>
           )}
 
-          {activeStep === 4 && (
+          {activeStep === AGENT_STEP.share && (
             <Card sx={{ ...modernStepCardSx, ...stepTransitionSx }}>
               <CardContent sx={{ p: { xs: 2, md: 2.6 } }}>
                 <Stack spacing={2.2}>
                   <Box sx={accentPanelSx}>
                     <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-                      Step 4
+                      Step 6
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.015em', fontSize: { xs: '1.03rem', md: '1.12rem' } }}>
                       Share and Validate

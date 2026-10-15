@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAPI } from "./api";
+import { ChatEventDecoder, submittedContactMessages } from "./chatEvents";
+import { clearContact, contactSessionKey, emptyContact, hasHandoffContact, readContact, SessionContact, writeContact } from "./contactSession";
 import "./styles.css";
 
 interface Message {
@@ -1363,7 +1365,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   const [awaitingPostHandoffDecision, setAwaitingPostHandoffDecision] =
     useState(false);
   const handoffSeenIdsRef = useRef<Set<number>>(new Set());
+  const handoffMessagesChatRef = useRef<string | null>(null);
   const handoffPromptedChatIdRef = useRef<string | null>(null);
+  const handoffRequestGenerationRef = useRef(0);
   const lastHandoffStatusRef = useRef<string | null>(null);
 
   const [suggestedQuestions, setSuggestedQuestions] = useState<Array<{ question: string; answer: string }>>([]);
@@ -1376,11 +1380,77 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const [sessionId, setSessionId] = useState(() => {
     const stored = localStorage.getItem(storageKey);
-    if (stored) return stored;
+    if (stored) {
+      const key = contactSessionKey(apiUrl, widgetId, stored);
+      let hadContact = false;
+      try { hadContact = Boolean(sessionStorage.getItem(key)); } catch { /* Storage may be disabled. */ }
+      const contact = readContact(sessionStorage, key, CHAT_INACTIVITY_TIMEOUT_MS);
+      if (!hadContact || Object.values(contact).some((value) => typeof value === "string" && value)) return stored;
+    }
     const created = createSessionId();
     localStorage.setItem(storageKey, created);
     return created;
   });
+
+  const activeSessionRef = useRef(sessionId);
+  const contactKey = contactSessionKey(apiUrl, widgetId, sessionId);
+  const [savedContact, setSavedContact] = useState<SessionContact>(() =>
+    readContact(sessionStorage, contactKey, CHAT_INACTIVITY_TIMEOUT_MS),
+  );
+  const reusableEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedContact.email) ? savedContact.email : "";
+  const savedPhoneDigits = savedContact.phone.replace(/\D/g, "");
+  const reusablePhone = savedPhoneDigits.length >= 8 && savedPhoneDigits.length <= 15 ? savedContact.phone : "";
+  const scopeRef = useRef(`${apiUrl}::${widgetId}`);
+  const previousContactKeyRef = useRef(contactKey);
+
+  const forgetContact = () => {
+    handoffRequestGenerationRef.current += 1;
+    clearContact(sessionStorage, contactSessionKey(apiUrl, widgetId, activeSessionRef.current));
+    setSavedContact(emptyContact());
+    setLeadSubmitted(false);
+    setLeadForm({ name: "", email: "", phone: "", company: "" });
+    setLeadCustomFields({});
+    setAppointmentForm({ name: "", email: "", phone: "", appointment_date: "", appointment_time: "" });
+    setShowLeadForm(false);
+    setShowAppointmentForm(false);
+  };
+
+  const rememberContact = (contact: SessionContact, requestSessionId: string) => {
+    if (activeSessionRef.current !== requestSessionId) return;
+    setSavedContact(contact);
+    writeContact(sessionStorage, contactSessionKey(apiUrl, widgetId, requestSessionId), contact);
+    setLeadForm({ name: contact.name, email: contact.email, phone: contact.phone, company: contact.company });
+    setLeadCustomFields(contact.customFields);
+    setLeadSubmitted(hasHandoffContact(contact));
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
+  };
+
+  useEffect(() => {
+    const scope = `${apiUrl}::${widgetId}`;
+    if (scopeRef.current !== scope) {
+      clearContact(sessionStorage, previousContactKeyRef.current);
+      scopeRef.current = scope;
+      resetChat();
+      return;
+    }
+    previousContactKeyRef.current = contactKey;
+    const restored = readContact(sessionStorage, contactKey, CHAT_INACTIVITY_TIMEOUT_MS);
+    if (hasHandoffContact(restored)) rememberContact(restored, sessionId);
+  }, [apiUrl, widgetId, sessionId]);
+
+  useEffect(() => {
+    if (hasHandoffContact(savedContact) && !sessionClosedByInactivity) {
+      writeContact(sessionStorage, contactKey, savedContact, lastActivityAtMs);
+    }
+  }, [contactKey, savedContact, lastActivityAtMs, sessionClosedByInactivity]);
+
+  useEffect(() => {
+    if (isOpen && hasHandoffContact(savedContact) &&
+        Date.now() - lastActivityAtMs >= CHAT_INACTIVITY_TIMEOUT_MS) {
+      resetChat();
+    }
+  }, [isOpen]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
@@ -1534,6 +1604,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const resetChat = () => {
     const created = createSessionId();
+    forgetContact();
+    activeSessionRef.current = created;
+    handoffRequestGenerationRef.current += 1;
     localStorage.setItem(storageKey, created);
     setSessionId(created);
     setMessages([
@@ -1543,11 +1616,14 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       },
     ]);
     setInput("");
+    setLoading(false);
     setShowLeadForm(false);
+    setLeadSubmitting(false);
     setLeadSubmitted(false);
     setShowEmailForm(false);
     setEmailValue("");
     setShowAppointmentForm(false);
+    setAppointmentSubmitting(false);
     setHandoffActive(false);
     setHandoffChatId(null);
     setHandoffStatus(null);
@@ -1565,6 +1641,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setPendingHandoffAfterLead(false);
     setAwaitingPostHandoffDecision(false);
     handoffSeenIdsRef.current.clear();
+    handoffMessagesChatRef.current = null;
     handoffPromptedChatIdRef.current = null;
     lastHandoffStatusRef.current = null;
     setSessionEngaged(false);
@@ -1591,14 +1668,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     setLastActivityAtMs(Date.now());
   };
 
-  const loadHandoffSession = async () => {
+  const loadHandoffSession = async (requestSessionId = sessionId) => {
     if (!widgetId) return;
+    const generation = handoffRequestGenerationRef.current;
     try {
       const data = await chatAPI.current.getHandoffSession(
-        sessionId,
+        requestSessionId,
         widgetId,
         handoffChatId || undefined,
       );
+      if (generation !== handoffRequestGenerationRef.current) return;
       if (!data?.chat_id) return;
       const nextStatus = data.status || null;
       const wasActive =
@@ -1606,6 +1685,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         lastHandoffStatusRef.current === "assigned";
       const isActive =
         nextStatus === "waiting_for_agent" || nextStatus === "assigned";
+      const chatChanged = data.chat_id !== handoffMessagesChatRef.current;
+
+      if (chatChanged) {
+        handoffSeenIdsRef.current.clear();
+        setHandoffAfterId(0);
+      }
 
       setHandoffChatId(data.chat_id);
       setHandoffStatus(nextStatus);
@@ -1639,6 +1724,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       }
       if (isActive) {
         setAwaitingPostHandoffDecision(false);
+        setSessionEngaged(true);
+        setLastActivityAtMs(Date.now());
+        // Rehydrate persisted messages immediately on open/reconnect instead
+        // of waiting for the next polling tick.
+        await loadHandoffMessages(data.chat_id, chatChanged);
       }
     } catch {
       // Do not block chat on handoff polling failures.
@@ -1647,8 +1737,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const loadHandoffMessages = async (chatId: string, reset = false) => {
     if (!widgetId || !chatId) return;
+    const generation = handoffRequestGenerationRef.current;
     try {
-      if (reset) {
+      if (handoffMessagesChatRef.current !== chatId) {
+        handoffMessagesChatRef.current = chatId;
         handoffSeenIdsRef.current.clear();
         setHandoffAfterId(0);
       }
@@ -1658,6 +1750,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         widgetId,
         reset ? 0 : handoffAfterId,
       );
+      if (generation !== handoffRequestGenerationRef.current) return;
       if (!data) return;
 
       const nextStatus = data.status || null;
@@ -1701,10 +1794,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       }
 
       const visible = (data.items || []).filter((item) => {
-        const isBotUpdate = item.sender_type === "bot" && !reset;
+        const isBotUpdate = item.sender_type === "bot";
+        const isPublicSystemUpdate = item.sender_type === "system" &&
+          !/user requested a live agent directly|a human handoff request has been created|saved visitor contact|visitor delivery via chat response/i.test(item.message);
         if (
           item.sender_type !== "agent" &&
-          item.sender_type !== "system" &&
+          !isPublicSystemUpdate &&
           !isBotUpdate
         )
           return false;
@@ -1732,14 +1827,24 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       setHandoffAfterId(maxId);
       setHandoffError("");
     } catch {
+      if (generation !== handoffRequestGenerationRef.current) return;
       setHandoffError("Live agent updates are temporarily unavailable.");
     }
   };
 
   useEffect(() => {
-    if (!isOpen || !widgetId) return;
-    loadHandoffSession();
-  }, [isOpen, widgetId, sessionId]);
+    if (!isOpen || !widgetId || sessionClosedByInactivity) return;
+    let busy = false;
+    let disposed = false;
+    const reconcile = async () => {
+      if (busy || disposed) return;
+      busy = true;
+      try { await loadHandoffSession(); } finally { busy = false; }
+    };
+    void reconcile();
+    const timer = window.setInterval(reconcile, 1500);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [isOpen, widgetId, sessionId, handoffChatId, handoffAfterId, sessionClosedByInactivity]);
 
   useEffect(() => {
     if (
@@ -1763,18 +1868,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   }, [handoffActive]);
 
   useEffect(() => {
-    if (!isOpen || !handoffActive || !handoffChatId) return;
-
-    const timer = window.setInterval(() => {
-      loadHandoffSession();
-      loadHandoffMessages(handoffChatId, false);
-    }, 2500);
-
-    return () => window.clearInterval(timer);
-  }, [isOpen, handoffActive, handoffChatId, handoffAfterId]);
-
-  useEffect(() => {
-    if (!isOpen || sessionClosedByInactivity || !sessionEngaged || loading)
+    if (!isOpen || sessionClosedByInactivity || !sessionEngaged || loading || handoffActive)
       return;
 
     const timeoutId = window.setTimeout(() => {
@@ -1794,6 +1888,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         ];
       });
       setSessionClosedByInactivity(true);
+      forgetContact();
       setSessionEngaged(false);
       setHandoffActive(false);
       setHandoffChatId(null);
@@ -1810,6 +1905,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     sessionClosedByInactivity,
     sessionEngaged,
     loading,
+    handoffActive,
     lastActivityAtMs,
   ]);
 
@@ -1840,11 +1936,14 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
+    const requestGeneration = handoffRequestGenerationRef.current;
+    const isCurrentRequest = () => activeSessionRef.current === activeSessionId &&
+      handoffRequestGenerationRef.current === requestGeneration;
 
     const shouldForceLeadBeforeDirectHandoff =
       !opts.skipLeadCaptureCheck &&
       !opts.silentUserMessage &&
-      !leadSubmitted &&
+      (!leadSubmitted || activeSessionId !== sessionId) &&
       !showLeadForm &&
       !handoffActive &&
       isDirectLiveAgentIntent(text);
@@ -1915,6 +2014,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     });
 
     const replaceAssistantMessage = (content: string) => {
+      if (!isCurrentRequest()) return;
       setMessages((prev) =>
         prev.map((msg, index) =>
           index === assistantIndex ? { ...msg, content } : msg,
@@ -1923,6 +2023,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     };
 
     const appendAssistantToken = (delta: string) => {
+      if (!isCurrentRequest()) return;
       setMessages((prev) =>
         prev.map((msg, index) =>
           index === assistantIndex
@@ -1933,6 +2034,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
     };
 
     const removeAssistantPlaceholder = () => {
+      if (!isCurrentRequest()) return;
       setMessages((prev) =>
         prev.filter((_, index) => index !== assistantIndex),
       );
@@ -1944,9 +2046,11 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       handoff_status?: string;
       response?: string;
     }) => {
+      if (!isCurrentRequest()) return;
       const shouldOpenAppointmentForm =
         payload?.ui_action === "open_appointment_form";
-      const shouldOpenHandoff = payload?.ui_action === "open_human_handoff";
+      const shouldOpenHandoff = payload?.ui_action === "open_human_handoff" ||
+        Boolean(payload?.handoff_chat_id && ["waiting_for_agent", "assigned"].includes(payload.handoff_status || ""));
       const shouldOpenLeadForm = payload?.ui_action === "open_lead_form";
 
       if (shouldOpenAppointmentForm) {
@@ -1963,12 +2067,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffActive(true);
+        setAwaitingPostHandoffDecision(false);
+        lastHandoffStatusRef.current = payload?.handoff_status || "waiting_for_agent";
         if (payload?.handoff_chat_id) {
           const isNewChat = payload.handoff_chat_id !== handoffChatId;
           setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
-            setHandoffAfterId(0);
-            handoffSeenIdsRef.current.clear();
             loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
             loadHandoffMessages(payload.handoff_chat_id, false);
@@ -1977,6 +2081,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         if (payload?.handoff_status) {
           setHandoffStatus(payload.handoff_status);
         }
+      }
+      if (payload?.handoff_chat_id && !shouldOpenHandoff && !shouldOpenAppointmentForm) {
+        void loadHandoffSession(activeSessionId);
       }
     };
 
@@ -2006,51 +2113,34 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
 
         const decoder = new TextDecoder();
-        let buffer = "";
+        const eventDecoder = new ChatEventDecoder();
+        const consumeEvents = (events: any[]) => {
+          for (const payload of events) {
+            if (payload?.type === "ready") window.clearTimeout(timeoutId);
+            if (payload?.type === "token" && typeof payload?.text === "string") {
+              receivedToken = true;
+              window.clearTimeout(timeoutId);
+              appendAssistantToken(payload.text);
+            }
+            if (payload?.type === "done") {
+              streamDonePayload = payload;
+              applyUiAction(payload);
+            }
+          }
+        };
 
         while (true) {
           const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() || "";
-
-          for (const part of parts) {
-            const lines = part.split("\n");
-            for (const line of lines) {
-              if (!line.startsWith("data:")) continue;
-              const data = line.replace(/^data:\s?/, "");
-              if (!data) continue;
-
-              let payload: any;
-              try {
-                payload = JSON.parse(data);
-              } catch {
-                continue;
-              }
-
-              if (payload?.type === "ready") {
-                window.clearTimeout(timeoutId);
-                continue;
-              }
-
-              if (
-                payload?.type === "token" &&
-                typeof payload?.text === "string"
-              ) {
-                if (!receivedToken) {
-                  receivedToken = true;
-                  window.clearTimeout(timeoutId);
-                }
-                appendAssistantToken(payload.text);
-              }
-
-              if (payload?.type === "done") {
-                streamDonePayload = payload;
-              }
-            }
+          if (!isCurrentRequest()) {
+            window.clearTimeout(timeoutId);
+            await reader.cancel();
+            return;
           }
+          if (done) {
+            consumeEvents(eventDecoder.push(decoder.decode(), true));
+            break;
+          }
+          consumeEvents(eventDecoder.push(decoder.decode(value, { stream: true })));
         }
 
         window.clearTimeout(timeoutId);
@@ -2063,6 +2153,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             shopDomain,
             customerId ? String(customerId) : undefined,
           );
+          if (!isCurrentRequest()) return;
 
           const hasHandoffMeta = Boolean(
             response?.handoff_chat_id || response?.handoff_status,
@@ -2071,7 +2162,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             typeof response?.response === "string"
               ? response.response.trim()
               : "";
-          if (!rawAssistantText && hasHandoffMeta && !response?.ui_action) {
+          if (!rawAssistantText && hasHandoffMeta && response?.ui_action !== "open_appointment_form") {
             removeAssistantPlaceholder();
           } else {
             replaceAssistantMessage(
@@ -2087,7 +2178,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
       }
 
-      applyUiAction(streamDonePayload);
+      if (!isCurrentRequest()) return;
+      // Recover authoritative status even if the stream disconnected before done.
+      await loadHandoffSession(activeSessionId);
+      if (!isCurrentRequest()) return;
 
       const streamIndicatesHandoff = Boolean(
         streamDonePayload?.handoff_chat_id || streamDonePayload?.handoff_status,
@@ -2095,7 +2189,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       if (
         !receivedToken &&
         streamDonePayload &&
-        !streamDonePayload?.ui_action &&
+        streamDonePayload?.ui_action !== "open_appointment_form" &&
         streamIndicatesHandoff
       ) {
         removeAssistantPlaceholder();
@@ -2116,6 +2210,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             activeSessionId,
             widgetId,
           );
+          if (!isCurrentRequest()) return;
           if (
             shouldCapture &&
             !leadSubmitted &&
@@ -2135,6 +2230,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         }
       }
     } catch (error) {
+      if (!isCurrentRequest()) return;
       const detail =
         error instanceof Error && error.message.trim()
           ? error.message.trim()
@@ -2142,8 +2238,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
       replaceAssistantMessage(detail);
       setLastActivityAtMs(Date.now());
     } finally {
-      setLoading(false);
-      inputRef.current?.focus();
+      if (isCurrentRequest()) {
+        setLoading(false);
+        inputRef.current?.focus();
+      }
     }
   };
 
@@ -2153,6 +2251,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const handleLeadSubmit = async () => {
     if (leadSubmitting) return;
+    const requestSessionId = sessionId;
+    const requestGeneration = handoffRequestGenerationRef.current;
     const hasName = Boolean(leadForm.name.trim());
     const hasContact = Boolean(leadForm.email.trim() || leadForm.phone.trim());
     if (!hasName) {
@@ -2222,10 +2322,16 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             : undefined,
       });
 
+      if (activeSessionRef.current !== requestSessionId || handoffRequestGenerationRef.current !== requestGeneration || sessionClosedByInactivity) return;
+      rememberContact({ ...leadForm, customFields }, requestSessionId);
+      const entries = submittedContactMessages({ ...leadForm, customFields });
+      setMessages((prev) => [
+        ...prev,
+        ...entries.filter((content) => !prev.some((message) => message.role === "user" && message.content === content))
+          .map((content) => ({ role: "user" as const, content })),
+      ]);
       setLeadSubmitted(true);
       setShowLeadForm(false);
-      setLeadForm({ name: "", email: "", phone: "", company: "" });
-      setLeadCustomFields({});
 
       if (shouldAutoStartHandoff) {
         setPendingHandoffAfterLead(false);
@@ -2254,11 +2360,12 @@ const ChatWidget: React.FC<WidgetConfig> = ({
           ...prev,
           {
             role: "assistant",
-            content: "Thanks. Your details have been received.",
+            content: "Thanks. Your details have been received. Let me know if you need any further assistance.",
           },
         ]);
       }
     } catch {
+      if (activeSessionRef.current !== requestSessionId || handoffRequestGenerationRef.current !== requestGeneration) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -2267,7 +2374,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         },
       ]);
     } finally {
-      setLeadSubmitting(false);
+      if (activeSessionRef.current === requestSessionId && handoffRequestGenerationRef.current === requestGeneration) setLeadSubmitting(false);
     }
   };
 
@@ -2303,11 +2410,18 @@ const ChatWidget: React.FC<WidgetConfig> = ({
   };
 
   const openAppointmentForm = () => {
+    if (sessionClosedByInactivity) {
+      resetChat();
+      const defaults = getDefaultAppointmentDateTime();
+      setAppointmentForm({ name: "", email: "", phone: "", appointment_date: defaults.date, appointment_time: defaults.time });
+      setShowAppointmentForm(true);
+      return;
+    }
     const defaults = getDefaultAppointmentDateTime();
     setAppointmentForm((prev) => ({
-      name: prev.name || leadForm.name || "",
-      email: prev.email || leadForm.email || "",
-      phone: prev.phone || leadForm.phone || "",
+      name: savedContact.name || prev.name || leadForm.name || "",
+      email: savedContact.email || prev.email || leadForm.email || "",
+      phone: savedContact.phone || prev.phone || leadForm.phone || "",
       appointment_date: prev.appointment_date || defaults.date,
       appointment_time: prev.appointment_time || defaults.time,
     }));
@@ -2317,6 +2431,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   const handleAppointmentSubmit = async () => {
     if (appointmentSubmitting) return;
+    const requestSessionId = sessionId;
+    const requestGeneration = handoffRequestGenerationRef.current;
     if (!appointmentForm.name.trim()) {
       setAppointmentError("Please enter your name.");
       return;
@@ -2375,6 +2491,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         timezone: IST_TIMEZONE,
       });
 
+      if (activeSessionRef.current !== requestSessionId || handoffRequestGenerationRef.current !== requestGeneration) return;
+      rememberContact({ ...savedContact, name: appointmentForm.name.trim(), email: appointmentForm.email.trim(), phone: appointmentForm.phone.trim() }, requestSessionId);
       setShowAppointmentForm(false);
       setAppointmentForm((prev) => ({
         ...prev,
@@ -2397,9 +2515,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
         },
       ]);
     } catch (err: any) {
-      setAppointmentError(err?.message || "Failed to book appointment");
+      if (activeSessionRef.current === requestSessionId && handoffRequestGenerationRef.current === requestGeneration) setAppointmentError(err?.message || "Failed to book appointment");
     } finally {
-      setAppointmentSubmitting(false);
+      if (activeSessionRef.current === requestSessionId && handoffRequestGenerationRef.current === requestGeneration) setAppointmentSubmitting(false);
     }
   };
 
@@ -2606,6 +2724,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               color: headerFontColor,
             }}
           >
+            <div>
             <h3
               style={{
                 margin: 0,
@@ -2617,6 +2736,10 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             >
               {name} Assistant
             </h3>
+            {handoffActive && <div className="chatbot-header-handoff-status" role="status" aria-live="polite" style={{ fontSize: 11, marginTop: 3 }}>
+              {handoffStatus === "assigned" ? "Agent connected" : "Waiting for an agent"}
+            </div>}
+            </div>
             <div className="chatbot-widget-header-actions">
               <button
                 className="chatbot-widget-header-btn"
@@ -2669,14 +2792,20 @@ const ChatWidget: React.FC<WidgetConfig> = ({
               >
                 <span className="chatbot-handoff-slider-toggle-main">
                   <span className="chatbot-handoff-title">
-                    Human handoff in progress
+                    {handoffStatus === "assigned"
+                      ? "Connected to an agent"
+                      : handoffStatus === "waiting_for_agent"
+                        ? "Waiting for an agent"
+                        : "Connecting to an agent"}
                   </span>
                   <span
                     className={`chatbot-handoff-chip ${handoffStatus === "assigned" ? "assigned" : "waiting"}`}
                   >
                     {handoffStatus === "assigned"
-                      ? "Agent assigned"
-                      : "Waiting for agent"}
+                      ? "Agent connected"
+                      : handoffStatus === "waiting_for_agent"
+                        ? "Waiting"
+                        : "Connecting"}
                   </span>
                 </span>
                 <span className="chatbot-handoff-slider-chevron" aria-hidden="true">
@@ -2800,8 +2929,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     Set up your meeting
                   </div>
                   <div className="chatbot-appointment-subtitle">
-                    Please fill this short form and I will set the meeting for
-                    you.
+                    {hasHandoffContact(savedContact)
+                      ? "I’ll use the contact details you already shared. Please select a date/time and add only any missing details."
+                      : "Please add your contact details and select a date/time."}
                   </div>
 
                   {appointmentError && (
@@ -2811,7 +2941,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                   )}
 
                   <div className="chatbot-appointment-fields">
-                    <input
+                    {!savedContact.name && <input
                       type="text"
                       className="chatbot-appointment-input"
                       placeholder="Full name"
@@ -2822,9 +2952,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                           name: e.target.value,
                         }))
                       }
-                    />
+                    />}
 
-                    <input
+                    {!reusableEmail && <input
                       type="email"
                       className="chatbot-appointment-input"
                       placeholder="Email address"
@@ -2835,9 +2965,9 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                           email: e.target.value,
                         }))
                       }
-                    />
+                    />}
 
-                    <input
+                    {!reusablePhone && <input
                       type="tel"
                       className="chatbot-appointment-input"
                       placeholder="Mobile number"
@@ -2848,7 +2978,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                           phone: e.target.value,
                         }))
                       }
-                    />
+                    />}
 
                     <div className="chatbot-appointment-grid">
                       <label className="chatbot-appointment-field">
@@ -2926,7 +3056,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     Small details now help us connect you faster with live
                     support.
                   </div>
-                  <input
+                  {!savedContact.name && <input
                     type="text"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Name"
@@ -2934,8 +3064,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                     onChange={(e) =>
                       setLeadForm((prev) => ({ ...prev, name: e.target.value }))
                     }
-                  />
-                  <input
+                  />}
+                  {!savedContact.email && <input
                     type="email"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Email"
@@ -2946,8 +3076,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                         email: e.target.value,
                       }))
                     }
-                  />
-                  <input
+                  />}
+                  {!savedContact.phone && <input
                     type="tel"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Phone"
@@ -2958,8 +3088,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                         phone: e.target.value,
                       }))
                     }
-                  />
-                  <input
+                  />}
+                  {!savedContact.company && <input
                     type="text"
                     className="chatbot-inline-input chatbot-lead-input"
                     placeholder="Company"
@@ -2970,8 +3100,8 @@ const ChatWidget: React.FC<WidgetConfig> = ({
                         company: e.target.value,
                       }))
                     }
-                  />
-                  {extraContactFields.map((field) => (
+                  />}
+                  {extraContactFields.filter((field) => !savedContact.customFields[field.key]).map((field) => (
                     <input
                       key={field.key}
                       type={field.type || "text"}

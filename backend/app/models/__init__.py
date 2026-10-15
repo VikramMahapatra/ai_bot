@@ -1,4 +1,5 @@
 from app.models.user import User, UserRole, Organization
+from app.models.structured_dataset import StructuredDataset, StructuredDatasetVersion, StructuredDatasetRow
 from app.models.super_admin import SuperAdmin
 from app.models.organization_limits import OrganizationLimits
 from app.models.organization_usage import OrganizationUsage
@@ -84,6 +85,9 @@ from app.models.organization_zoho_integrations import OrganizationZohoIntegratio
 from app.models.qualification_engine_integrations import QualificationEngineIntegration
 
 __all__ = [
+    "StructuredDataset",
+    "StructuredDatasetVersion",
+    "StructuredDatasetRow",
     "User",
     "UserRole",
     "Organization",

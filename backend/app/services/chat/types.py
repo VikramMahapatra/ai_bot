@@ -136,6 +136,10 @@ class ChatResponsePlan:
     sources: List[Dict[str, Any]]
     messages: List[Dict[str, str]]
     retrieval_result: Optional[HybridRetrievalResult] = None
+    answer_mode: str = "vector"
+    token_usage: Dict[str, int] = field(default_factory=dict)
+    structured_citations: List[Dict[str, Any]] = field(default_factory=list)
+    document_question: Optional[str] = None
 
 
 @dataclass(frozen=True)

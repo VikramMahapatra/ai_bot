@@ -52,6 +52,7 @@ from app.services.organization_setting_service import (
     get_org_email_setting,
     get_org_settings,
 )
+from app.services.notification_service import notify_lead_created
 from app.models.whatsapp_channel import WhatsAppChannel
 from app.services.whatsapp_service import (
     send_whatsapp_template_message,
@@ -1631,6 +1632,7 @@ def dispatch_instant_replies_safe(
 
 def create_lead_from_call(db, call_log, call, agent, campaign, contact):
     lead = None
+    created_new_lead = False
     phone = contact.phone if contact and contact.phone else call.get("phone")
     is_rescheduled = call_log.source == "rescheduled"
 
@@ -1720,6 +1722,7 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
 
                 db.add(lead)
                 db.flush()
+                created_new_lead = True
 
                 if contact:
                     mapping = LeadContactMapping(
@@ -1753,6 +1756,11 @@ def create_lead_from_call(db, call_log, call, agent, campaign, contact):
             )
 
         db.commit()
+        if created_new_lead and lead:
+            try:
+                notify_lead_created(db, lead)
+            except Exception:
+                logger.exception("Failed to send voice lead notification")
         return lead
 
     except Exception as e:

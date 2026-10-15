@@ -31,6 +31,7 @@ from app.services.email_service import (
     send_appointment_rescheduled_notification,
     send_widget_test_link_email,
 )
+from app.services.notification_service import get_notification_recipients
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from app.services import org_credit_billing_service
@@ -970,16 +971,12 @@ async def reschedule_appointment(
         appointment.appointment_at, appointment.timezone
     )
 
-    escalation_emails = _extract_emails(
-        widget_config.escalation_contact_level_1 if widget_config else None,
-        widget_config.escalation_contact_level_2 if widget_config else None,
+    recipients, email_setting = get_notification_recipients(
+        db,
+        current_user.organization_id,
+        widget_id=appointment.widget_id,
+        participant_email=appointment.email,
     )
-    recipients: List[str] = []
-    if appointment.email:
-        recipients.append(appointment.email)
-    if current_user.email:
-        recipients.append(current_user.email)
-    recipients.extend(escalation_emails)
 
     notification_ok, notification_errors = send_appointment_rescheduled_notification(
         recipients=recipients,
@@ -991,7 +988,7 @@ async def reschedule_appointment(
         meeting_link=meeting_link,
         widget_name=(widget_config.name if widget_config else appointment.widget_id),
         notes=appointment.notes,
-        settings=settings,
+        org_email_setting=email_setting,
     )
 
     response_message = "Appointment rescheduled successfully"
@@ -1046,6 +1043,9 @@ async def delete_widget_config(
             status_code=404, detail="Widget config not found or unauthorized"
         )
 
+    from app.services.structured_dataset_cleanup import purge_agent_datasets
+
+    purge_agent_datasets(db, current_user.organization_id, widget_id)
     db.delete(config)
     db.commit()
 
