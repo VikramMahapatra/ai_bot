@@ -24,7 +24,6 @@ import {
   Card,
   CardContent,
   Button,
-  Divider,
   TextField,
   InputAdornment,
   TablePagination,
@@ -43,6 +42,8 @@ import { KnowledgeSource } from "../../types";
 import WebCrawler from "./WebCrawler";
 import DocumentUpload from "./DocumentUpload";
 import VectorizedDataViewer from "./VectorizedDataViewer";
+import StructuredDatasetManager from "./StructuredDatasetManager";
+import { useSearchParams } from "react-router-dom";
 import { analyticsService } from "../../services/analyticsService";
 import SearchIcon from "@mui/icons-material/Search";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
@@ -57,6 +58,9 @@ interface KnowledgeGap {
 
 const KnowledgeManager: React.FC = () => {
   const theme = useTheme();
+  const [searchParams] = useSearchParams();
+  const requestedWidgetId = searchParams.get('widget_id');
+  const [workspaceSection, setWorkspaceSection] = useState(0);
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [widgets, setWidgets] = useState<{ widget_id: string; name: string }[]>(
     [],
@@ -165,7 +169,8 @@ const KnowledgeManager: React.FC = () => {
         widgetItems.map((w: any) => ({ widget_id: w.widget_id, name: w.name })),
       );
       if (!selectedWidgetId && widgetItems.length > 0) {
-        setSelectedWidgetId(widgetItems[0].widget_id);
+        const requested = widgetItems.find((w: { widget_id: string }) => w.widget_id === requestedWidgetId);
+        setSelectedWidgetId(requested?.widget_id || widgetItems[0].widget_id);
       }
     } catch (err) {
       setError("Failed to load widgets");
@@ -177,6 +182,13 @@ const KnowledgeManager: React.FC = () => {
   useEffect(() => {
     loadWidgets();
   }, []);
+
+  // Navigation to another agent may reuse this page rather than remount it.
+  useEffect(() => {
+    if (requestedWidgetId && widgets.some(widget => widget.widget_id === requestedWidgetId)) {
+      setSelectedWidgetId(requestedWidgetId);
+    }
+  }, [requestedWidgetId, widgets]);
 
   useEffect(() => {
     setSourcePage(0);
@@ -427,7 +439,14 @@ const KnowledgeManager: React.FC = () => {
         </Stack>
       </Paper>
 
-      {selectedWidgetId ? (
+      <Tabs value={workspaceSection} onChange={(_, value) => setWorkspaceSection(value)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>
+        <Tab label="Document Knowledge" icon={<SourceIcon />} iconPosition="start" />
+        <Tab label="Structured Datasets" icon={<StorageIcon />} iconPosition="start" />
+      </Tabs>
+
+      {selectedWidgetId && workspaceSection === 1 ? (
+        <StructuredDatasetManager widgetId={selectedWidgetId} />
+      ) : selectedWidgetId ? (
         <Stack spacing={3}>
           <Card elevation={0} sx={{ ...sectionPanelSx }}>
             <CardContent>

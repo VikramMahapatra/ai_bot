@@ -31,6 +31,144 @@ _GENERIC_TOPIC_WORDS = {"web", "www", "com", "co", "in", "org", "net", "site", "
 _TOPIC_PREFIX_STOPWORDS = {"and", "or", "the", "a", "an", "to", "of", "for"}
 _STOPWORDS = {"the", "and", "for", "with", "that", "this", "from", "your", "you", "are", "was", "were", "what", "when", "where", "which", "who", "how", "why", "can", "could", "would", "should", "a", "an", "in", "on", "of", "to", "is", "it", "as", "at", "by", "or", "we", "our", "us", "i", "me", "my", "they", "their", "them", "about", "those", "these", "have", "has", "had", "many"}
 
+_DOCUMENT_SUMMARY_PATTERNS = (
+    r"\b(?:summari[sz]e|summary|summarise)\b",
+    r"\bexecutive\s+summary\b",
+    r"\bkey\s+(?:findings|takeaways|points)\b",
+    r"\b(?:what|tell me)\s+(?:is|are|does|do)\s+(?:this|the)\s+(?:report|document|pdf)\b",
+    r"\b(?:what|tell me)\s+(?:this|the)\s+(?:report|document|pdf)\s+(?:is|does|says|covers|about)\b",
+)
+SUMMARY_MAX_CHUNKS = 32
+SUMMARY_MAX_CONTEXT_CHARS = 26000
+
+
+def is_document_summary_intent(message: str) -> bool:
+    """Recognize explicit document-level summary requests, not generic queries."""
+    normalized = " ".join((message or "").casefold().split())
+    return any(re.search(pattern, normalized) for pattern in _DOCUMENT_SUMMARY_PATTERNS)
+
+
+def build_document_summary_context(
+    *,
+    retrieval_result: HybridRetrievalResult,
+    organization_id: int,
+    widget_id: str,
+    db: Session,
+    chroma_client: VectorStoreClient,
+) -> tuple[str, dict[str, Any]]:
+    """Build bounded, ordered evidence from the best active authorized source.
+
+    Chroma's org/widget filter is combined with an active KnowledgeSource check;
+    chunks from other sources are never mixed into the requested report summary.
+    Long documents are sampled across their ordered chunks and labeled as partial.
+    """
+    selected = next(
+        (chunk for chunk in retrieval_result.chunks if chunk.source_id is not None),
+        None,
+    )
+    if selected is None:
+        return "", {"reason": "no_selected_source", "source_id": None, "chunk_count": 0}
+
+    source = (
+        db.query(KnowledgeSource)
+        .filter(
+            KnowledgeSource.id == selected.source_id,
+            KnowledgeSource.organization_id == organization_id,
+            KnowledgeSource.widget_id == widget_id,
+            KnowledgeSource.status == "active",
+        )
+        .first()
+    )
+    if source is None:
+        return "", {"reason": "source_not_active_or_authorized", "source_id": selected.source_id, "chunk_count": 0}
+
+    documents = chroma_client.get_documents(
+        organization_id=organization_id,
+        widget_id=widget_id,
+        include_documents=True,
+        limit=200,
+    )
+    chunks: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    suspicious_markers = (
+        "ignore previous instructions",
+        "system prompt",
+        "developer message",
+        "act as",
+        "tool call",
+        "follow these instructions",
+        "do not answer",
+    )
+    for document, metadata in zip(
+        documents.get("documents") or [], documents.get("metadatas") or []
+    ):
+        if not isinstance(metadata, dict) or str(metadata.get("source_id")) != str(source.id):
+            continue
+        raw_text = str(document or "")
+        if any(marker in raw_text.casefold() for marker in suspicious_markers):
+            continue
+        text = sanitize_retrieved_chunk(raw_text, max_chars=1200)
+        if not text:
+            continue
+        normalized = " ".join(text.split()).casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            chunk_index = int(metadata.get("chunk_index", len(chunks)))
+        except (TypeError, ValueError):
+            chunk_index = len(chunks)
+        chunks.append((chunk_index, text))
+
+    chunks.sort(key=lambda item: item[0])
+    if not chunks:
+        return "", {"reason": "source_has_no_indexed_chunks", "source_id": source.id, "chunk_count": 0}
+
+    total_chunks = len(chunks)
+    total_source_chars = sum(len(text) for _, text in chunks)
+    sampled = total_chunks > SUMMARY_MAX_CHUNKS or len(documents.get("ids") or []) >= 200
+    if sampled:
+        positions = sorted(
+            {round(index * (total_chunks - 1) / (SUMMARY_MAX_CHUNKS - 1))
+             for index in range(SUMMARY_MAX_CHUNKS)}
+        )
+        chunks = [chunks[index] for index in positions]
+
+    bounded: list[tuple[int, str]] = []
+    char_count = 0
+    for item in chunks:
+        remaining = SUMMARY_MAX_CONTEXT_CHARS - char_count
+        if remaining <= 0:
+            sampled = True
+            break
+        chunk_text = item[1]
+        if len(chunk_text) > remaining:
+            chunk_text = chunk_text[:remaining].rsplit(" ", 1)[0]
+            sampled = True
+        if chunk_text:
+            bounded.append((item[0], chunk_text))
+            char_count += len(chunk_text)
+        if char_count >= SUMMARY_MAX_CONTEXT_CHARS:
+            break
+
+    context = "\n\n".join(
+        f"Source: {source.name} (section {index + 1})\n{text}"
+        for index, text in bounded
+    )
+    return context, {
+        "reason": "sampled_source" if sampled else "full_source",
+        "source_id": source.id,
+        "source_name": source.name,
+        "chunk_count": len(bounded),
+        "total_source_chunks": total_chunks,
+        "coverage_ratio": round(
+            min(len(bounded) / max(total_chunks, 1), char_count / max(total_source_chars, 1)),
+            4,
+        ),
+        "sampled": sampled,
+        "context_chars": len(context),
+    }
+
 
 def sanitize_retrieved_chunk(text: str, max_chars: int = 1200) -> str:
     compact = " ".join((text or "").split()).strip()
@@ -314,7 +452,7 @@ def retrieve_hybrid_result(
     db: Session,
     cache_ttl_seconds: int = 120,
 ) -> HybridRetrievalResult:
-    cache_key = build_cache_key("hybrid_retrieval", organization_id, widget_id, message.strip().lower(), query_text.strip().lower())
+    cache_key = build_cache_key("hybrid_retrieval_v2", organization_id, widget_id, message.strip().lower(), query_text.strip().lower())
     cached = chat_cache.get(cache_key)
     if isinstance(cached, HybridRetrievalResult):
         return cached
@@ -437,6 +575,7 @@ def retrieve_hybrid_result(
             KnowledgeSource.id.in_(source_ids),
             KnowledgeSource.organization_id == organization_id,
             KnowledgeSource.widget_id == widget_id,
+            KnowledgeSource.status == "active",
         ).all()
         for source in source_records:
             sources.append({"id": source.id, "name": source.name, "type": source.source_type.value, "url": source.url})

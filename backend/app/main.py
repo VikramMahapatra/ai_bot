@@ -32,6 +32,7 @@ from app.api import (
     qualification_engine_router,
 )
 from app.api.feedback import router as feedback_router
+from app.api.structured_datasets import router as structured_datasets_router
 from app.api.reports import router as reports_router
 from app.services.conversation_outcome_service import (
     run_daily_outcome_daemon,
@@ -119,6 +120,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(organization_router)
 app.include_router(knowledge_router)
+app.include_router(structured_datasets_router)
 app.include_router(chat_router)
 app.include_router(leads_router)
 app.include_router(dashboard_router)

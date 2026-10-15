@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.services.chat.types import HybridRetrievalResult, RerankedChunk, RetrievalConfidence
+
+logger = logging.getLogger(__name__)
 
 
 def _token_set(text: str) -> set[str]:
@@ -27,11 +30,17 @@ def _semantic_score(distance: Optional[float]) -> float:
     return 1.0 - clamped / 1.5
 
 
-def _confidence_from_scores(rerank_score: float, overlap: float, distance: Optional[float]) -> float:
-    base = (0.7 * rerank_score) + (0.25 * overlap)
-    if distance is not None:
-        base += max(0.0, 0.05 * (0.5 - min(float(distance), 0.5)))
-    return max(0.0, min(1.0, base))
+def _confidence_from_scores(overlap: float, distance: Optional[float]) -> float:
+    """Return a ranking heuristic, not a calibrated probability.
+
+    Rerank score already contains semantic score, lexical overlap and stage
+    boosts. Re-weighting it together with overlap made the lexical component
+    dominate twice, so relevant semantic matches with paraphrased wording were
+    systematically under-scored. Use normalized distance as the primary signal
+    and overlap only as a secondary confidence contribution.
+    """
+    semantic = _semantic_score(distance)
+    return max(0.0, min(1.0, (0.8 * semantic) + (0.2 * overlap)))
 
 
 def _is_suspicious_snippet(text: str) -> bool:
@@ -50,7 +59,7 @@ def rerank_candidates(candidates: Sequence[Dict[str, Any]], query_text: str) -> 
         stage = str(candidate.get("stage") or "fallback")
         stage_boost = {"primary": 0.05, "expanded": 0.025, "fallback": 0.0}.get(stage, 0.0)
         rerank_score = (0.58 * semantic_score) + (0.3 * overlap) + stage_boost
-        confidence = _confidence_from_scores(rerank_score, overlap, distance)
+        confidence = _confidence_from_scores(overlap, distance)
         reranked.append(RerankedChunk(text=doc, stage=stage, rank=int(candidate.get("rank") or 0), distance=float(distance) if distance is not None else None, source_id=candidate.get("source_id"), source_label=candidate.get("source_label"), url=candidate.get("url"), chunk_index=candidate.get("chunk_index"), lexical_score=overlap, semantic_score=semantic_score, rerank_score=rerank_score, confidence=confidence, overlap=overlap, is_suspicious=_is_suspicious_snippet(doc), snippet=str(candidate.get("snippet") or doc[:240])))
     reranked.sort(key=lambda chunk: (chunk.rerank_score, chunk.confidence, -(chunk.distance or 9.0), -chunk.rank), reverse=True)
     return reranked
@@ -74,9 +83,51 @@ def build_retrieval_confidence(chunks: Sequence[RerankedChunk]) -> RetrievalConf
         reasons.append("suspicious_context")
     requires_clarification = bool(reasons)
     label = "high" if top.confidence >= 0.72 else "medium" if top.confidence >= 0.5 else "low"
-    return RetrievalConfidence(score=round(top.confidence, 4), label=label, requires_clarification=requires_clarification, reasons=tuple(reasons))
+    return RetrievalConfidence(
+        score=round(top.confidence, 4),
+        label=label,
+        requires_clarification=requires_clarification,
+        reasons=tuple(reasons),
+    )
 
 
 def build_hybrid_result(query_text: str, chunks: Sequence[RerankedChunk], retrieval_trace: Dict[str, Any], sources: List[Dict[str, Any]], context_text: str) -> HybridRetrievalResult:
     confidence = build_retrieval_confidence(chunks)
+    if chunks:
+        top = chunks[0]
+        components = {
+            "calibrated_probability": False,
+            "semantic_similarity": round(_semantic_score(top.distance), 6),
+            "semantic_weighted": round(0.8 * _semantic_score(top.distance), 6),
+            "keyword_overlap": round(top.overlap, 6),
+            "overlap_weighted": round(0.2 * top.overlap, 6),
+            "distance": top.distance,
+            "rerank_score": round(top.rerank_score, 6),
+            "confidence_score": confidence.score,
+            "confidence_reasons": list(confidence.reasons),
+        }
+        retrieval_trace["confidence_components"] = components
+        logger.info(
+            "RAG rerank | selected=%s | semantic=%.4f | overlap=%.4f | "
+            "rerank=%.4f | confidence=%.4f | calibrated=false | reasons=%s",
+            len(chunks),
+            components["semantic_similarity"],
+            top.overlap,
+            top.rerank_score,
+            confidence.score,
+            ",".join(confidence.reasons) or "none",
+        )
+    else:
+        retrieval_trace["confidence_components"] = {
+            "calibrated_probability": False,
+            "semantic_similarity": 0.0,
+            "semantic_weighted": 0.0,
+            "keyword_overlap": 0.0,
+            "overlap_weighted": 0.0,
+            "distance": None,
+            "rerank_score": 0.0,
+            "confidence_score": confidence.score,
+            "confidence_reasons": list(confidence.reasons),
+        }
+        logger.info("RAG rerank | selected=0 | calibrated=false | reasons=no_chunks")
     return HybridRetrievalResult(query_text=query_text, chunks=list(chunks), confidence=confidence, retrieval_trace=retrieval_trace, sources=sources, context_text=context_text)
