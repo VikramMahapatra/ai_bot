@@ -148,8 +148,8 @@ const AppointmentsPage: React.FC = () => {
   );
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
 
-  const [widgetId, setWidgetId] = useState("");
-  const [status, setStatus] = useState("");
+  const [widgetId, setWidgetId] = useState("all");
+  const [status, setStatus] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [upcomingOnly, setUpcomingOnly] = useState(false);
@@ -213,10 +213,72 @@ const AppointmentsPage: React.FC = () => {
         skip: appointmentPage * appointmentRowsPerPage,
         limit: appointmentRowsPerPage,
       });
+
       setAppointments(data.appointments);
       setAppointmentTotal(data.pagination?.total || 0);
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Failed to load appointments");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getCalendarDateRange = () => {
+    if (calendarView === "day") {
+      const start = startOfDay(calendarCursor);
+      return {
+        start_date: start.toISOString(),
+        end_date: addDays(start, 1).toISOString(),
+      };
+    }
+
+    if (calendarView === "week") {
+      const start = startOfWeek(calendarCursor);
+      return {
+        start_date: start.toISOString(),
+        end_date: addDays(start, 7).toISOString(),
+      };
+    }
+
+    // Month view: include all 42 days displayed in the grid.
+    const firstOfMonth = new Date(
+      calendarCursor.getFullYear(),
+      calendarCursor.getMonth(),
+      1,
+    );
+    const gridStart = startOfWeek(firstOfMonth);
+
+    return {
+      start_date: gridStart.toISOString(),
+      end_date: addDays(gridStart, 42).toISOString(),
+    };
+  };
+
+  const loadCalendarAppointments = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const range = getCalendarDateRange();
+
+      const data = await appointmentService.list({
+        widget_id: widgetId !== "all" ? widgetId : undefined,
+        status: status !== "all" ? status : undefined,
+        start_date: range.start_date,
+        end_date: range.end_date,
+        upcoming_only: upcomingOnly,
+        calendar_view: true,
+        search: search.trim() || undefined,
+        skip: 0,
+        limit: 1000,
+      });
+
+      setAppointments(data.appointments ?? []);
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+        "Failed to load calendar appointments",
+      );
     } finally {
       setLoading(false);
     }
@@ -238,8 +300,16 @@ const AppointmentsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadAppointments();
-  }, [search, appointmentPage, appointmentRowsPerPage]);
+    if (tab === 1) {
+      loadAppointments();
+    }
+  }, [tab, search, appointmentPage, appointmentRowsPerPage]);
+
+  useEffect(() => {
+    if (tab === 0) {
+      loadCalendarAppointments();
+    }
+  }, [tab, calendarCursor, calendarView]);
 
   useEffect(() => {
     loadMeetingSettings();
@@ -504,7 +574,12 @@ const AppointmentsPage: React.FC = () => {
       setSuccess("");
       await appointmentService.syncFromCalls();
       setSuccess("Appointments synced from calls successfully.");
-      loadAppointments();
+      if (tab === 0) {
+        loadCalendarAppointments();
+      } else {
+        setAppointmentPage(0);
+        loadAppointments();
+      }
     } catch (err: any) {
       setError(
         err?.response?.data?.detail || err?.detail || "Failed to sync appointments from calls",
@@ -664,7 +739,14 @@ const AppointmentsPage: React.FC = () => {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={loadAppointments}
+                  onClick={() => {
+                    if (tab === 0) {
+                      loadCalendarAppointments();
+                    } else {
+                      setAppointmentPage(0);
+                      loadAppointments();
+                    }
+                  }}
                   disabled={loading}
                   sx={{ minWidth: 75 }}
                 >

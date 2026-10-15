@@ -443,10 +443,6 @@ async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
 
     settings = get_org_settings(db, config.organization_id)
 
-    if _ensure_widget_escalation_contacts(config, settings):
-        db.commit()
-        db.refresh(config)
-
     return config
 
 
@@ -514,10 +510,6 @@ async def get_widget_test_config(
         if config.organization_id
         else settings
     )
-
-    if _ensure_widget_escalation_contacts(config, org_settings):
-        db.commit()
-        db.refresh(config)
 
     return config
 
@@ -662,8 +654,6 @@ async def update_widget_config(
         if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
 
-    _ensure_widget_escalation_contacts(config, settings)
-
     db.commit()
     db.refresh(config)
 
@@ -730,13 +720,6 @@ async def list_widgets(
         query.order_by(WidgetConfig.created_at.desc()).offset(skip).limit(limit).all()
     )
 
-    changed = False
-    for config in configs:
-        if _ensure_widget_escalation_contacts(config, settings):
-            changed = True
-    if changed:
-        db.commit()
-
     return {
         "widgets": configs,
         "pagination": {"total": total, "skip": skip, "limit": limit},
@@ -753,6 +736,7 @@ async def list_appointments(
     skip: int = 0,
     limit: int = 10,
     search: str | None = None,
+    calendar_view: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -786,18 +770,18 @@ async def list_appointments(
             query = query.filter(Appointment.appointment_at >= start_dt)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="Invalid start_date format. Use ISO format"
+                status_code=400,
+                detail="Invalid start_date format. Use ISO format",
             )
 
     if end_date:
         try:
             end_dt = datetime.fromisoformat(end_date)
-            if len(end_date) <= 10:
-                end_dt = end_dt + timedelta(days=1)
-            query = query.filter(Appointment.appointment_at <= end_dt)
+            query = query.filter(Appointment.appointment_at < end_dt)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="Invalid end_date format. Use ISO format"
+                status_code=400,
+                detail="Invalid end_date format. Use ISO format",
             )
 
     # Search filter
@@ -812,9 +796,14 @@ async def list_appointments(
 
     total = query.count()
 
-    appointments = (
-        query.order_by(Appointment.appointment_at.asc()).offset(skip).limit(limit).all()
-    )
+    query = query.order_by(Appointment.appointment_at.asc())
+
+    if calendar_view:
+        # Calendar loads all matching appointments.
+        appointments = query.all()
+    else:
+        # List view retains pagination.
+        appointments = query.offset(skip).limit(limit).all()
 
     widget_map = {
         row.widget_id: row.name

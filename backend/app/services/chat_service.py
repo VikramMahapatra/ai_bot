@@ -1585,7 +1585,7 @@ def persist_conversation(
         feature_code=feature_code,
         quantity=1,
         reference_type=source,
-        reference_id=session_id,
+        reference_id=str(conversation.id),
     )
 
     if retrieval_trace:

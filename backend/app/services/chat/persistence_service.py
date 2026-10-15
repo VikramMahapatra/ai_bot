@@ -15,6 +15,8 @@ from app.models.price_matrix_item import PriceMatrixItem
 from app.services.report_service import sync_conversation_metrics
 
 from app.services.chat.types import CreditReservation
+from app.enums.credit_feature_codes import FeatureCodes
+from app.services import organization_credit_service
 
 
 @contextmanager
@@ -28,7 +30,14 @@ def transactional_session(db: Session):
 
 
 def _resolve_price_item(db: Session, feature_code: str) -> PriceMatrixItem:
-    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.feature_code == feature_code, PriceMatrixItem.is_active == True).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(
+            PriceMatrixItem.feature_code == feature_code,
+            PriceMatrixItem.is_active == True,
+        )
+        .first()
+    )
     if not item:
         raise Exception("Invalid feature")
     return item
@@ -45,23 +54,58 @@ def reserve_chat_credits(
     item = _resolve_price_item(db, feature_code)
     credits_required = quantity * item.credits_per_unit
     billing_period = datetime.utcnow().strftime("%Y-%m")
-    balance = db.query(OrgCreditBalance).filter(OrgCreditBalance.organization_id == organization_id, OrgCreditBalance.billing_period == billing_period).with_for_update().first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )
     if not balance:
         raise Exception("Credit balance not found")
     if balance.remaining_credit < credits_required:
         raise Exception("Insufficient credits")
     balance.remaining_credit -= credits_required
-    usage = OrganizationCreditUsage(organization_id=organization_id, price_matrix_item_id=item.id, used_quantity=quantity, credits_used=credits_required, status="reserved", reference_type=reference_type, reference_id=str(reference_id) if reference_id else None)
+    usage = OrganizationCreditUsage(
+        organization_id=organization_id,
+        price_matrix_item_id=item.id,
+        used_quantity=quantity,
+        credits_used=credits_required,
+        status="reserved",
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+    )
     db.add(usage)
     db.flush()
-    return CreditReservation(usage_id=usage.id, organization_id=organization_id, feature_code=feature_code, quantity=quantity, credits_reserved=credits_required, reference_type=reference_type, reference_id=str(reference_id) if reference_id else None)
+    return CreditReservation(
+        usage_id=usage.id,
+        organization_id=organization_id,
+        feature_code=feature_code,
+        quantity=quantity,
+        credits_reserved=credits_required,
+        reference_type=reference_type,
+        reference_id=str(reference_id) if reference_id else None,
+    )
 
 
-def finalize_chat_credit_reservation(db: Session, reservation: CreditReservation, actual_quantity: Optional[float] = None) -> None:
-    usage = db.query(OrganizationCreditUsage).filter(OrganizationCreditUsage.id == reservation.usage_id).with_for_update().first()
+def finalize_chat_credit_reservation(
+    db: Session, reservation: CreditReservation, actual_quantity: Optional[float] = None
+) -> None:
+    usage = (
+        db.query(OrganizationCreditUsage)
+        .filter(OrganizationCreditUsage.id == reservation.usage_id)
+        .with_for_update()
+        .first()
+    )
     if not usage:
         raise Exception("Reserved credits not found")
-    item = db.query(PriceMatrixItem).filter(PriceMatrixItem.id == usage.price_matrix_item_id).first()
+    item = (
+        db.query(PriceMatrixItem)
+        .filter(PriceMatrixItem.id == usage.price_matrix_item_id)
+        .first()
+    )
     if not item:
         raise Exception("Invalid feature")
     quantity = actual_quantity if actual_quantity is not None else reservation.quantity
@@ -70,34 +114,65 @@ def finalize_chat_credit_reservation(db: Session, reservation: CreditReservation
     usage.credits_used = credits_required
     usage.status = "consumed"
     billing_period = datetime.utcnow().strftime("%Y-%m")
-    balance = db.query(OrgCreditBalance).filter(OrgCreditBalance.organization_id == reservation.organization_id, OrgCreditBalance.billing_period == billing_period).with_for_update().first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == reservation.organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )
     if not balance:
         raise Exception("Credit balance not found")
     balance.used_credit += credits_required
     db.flush()
 
 
-def rollback_chat_credit_reservation(db: Session, reservation: CreditReservation) -> None:
-    usage = db.query(OrganizationCreditUsage).filter(OrganizationCreditUsage.id == reservation.usage_id).with_for_update().first()
+def rollback_chat_credit_reservation(
+    db: Session, reservation: CreditReservation
+) -> None:
+    usage = (
+        db.query(OrganizationCreditUsage)
+        .filter(OrganizationCreditUsage.id == reservation.usage_id)
+        .with_for_update()
+        .first()
+    )
     if not usage or usage.status != "reserved":
         return
     billing_period = datetime.utcnow().strftime("%Y-%m")
-    balance = db.query(OrgCreditBalance).filter(OrgCreditBalance.organization_id == reservation.organization_id, OrgCreditBalance.billing_period == billing_period).with_for_update().first()
+    balance = (
+        db.query(OrgCreditBalance)
+        .filter(
+            OrgCreditBalance.organization_id == reservation.organization_id,
+            OrgCreditBalance.billing_period == billing_period,
+        )
+        .with_for_update()
+        .first()
+    )
     if balance:
         balance.remaining_credit += reservation.credits_reserved
     usage.status = "released"
     db.flush()
 
 
-def find_session_contact(db: Session, session_id: str, widget_id: str, organization_id: int):
+def find_session_contact(
+    db: Session, session_id: str, widget_id: str, organization_id: int
+):
     """A session token alone is not a tenant or agent authorization boundary."""
     if not session_id or not widget_id or not organization_id:
         return None
-    return (db.query(Contact).join(ContactList, Contact.contact_list_id == ContactList.id)
-            .filter(Contact.session_id == session_id,
-                    ContactList.organization_id == organization_id,
-                    ContactList.description == f"AUTO_AGENT_APPOINTMENT_LIST::{widget_id}")
-            .order_by(Contact.id.desc()).first())
+    return (
+        db.query(Contact)
+        .join(ContactList, Contact.contact_list_id == ContactList.id)
+        .filter(
+            Contact.session_id == session_id,
+            ContactList.organization_id == organization_id,
+            ContactList.description == f"AUTO_AGENT_APPOINTMENT_LIST::{widget_id}",
+        )
+        .order_by(Contact.id.desc())
+        .first()
+    )
 
 
 def persist_conversation_record(
@@ -111,34 +186,99 @@ def persist_conversation_record(
     retrieval_trace: Optional[Dict] = None,
 ) -> Conversation:
     contact = find_session_contact(db, session_id, widget_id, organization_id)
-    conversation = Conversation(session_id=session_id, widget_id=widget_id, user_id=user_id, organization_id=organization_id, message=message, response=response_text, role="user", source="chat", contact_id=contact.id if contact else None)
+    conversation = Conversation(
+        session_id=session_id,
+        widget_id=widget_id,
+        user_id=user_id,
+        organization_id=organization_id,
+        message=message,
+        response=response_text,
+        role="user",
+        source="chat",
+        contact_id=contact.id if contact else None,
+    )
     db.add(conversation)
     db.flush()
+
+    organization_credit_service.deduct_credits(
+        db=db,
+        organization_id=organization_id,
+        feature_code=FeatureCodes.CORE_CHATBOT_WEB_MESSAGE,
+        quantity=1,
+        reference_type="chat",
+        reference_id=str(conversation.id),
+    )
+
     if retrieval_trace:
-        trace_record = RetrievalTrace(conversation_id=conversation.id, session_id=session_id, widget_id=widget_id, organization_id=organization_id, user_id=user_id, user_query=retrieval_trace.get("user_query") or message, retrieval_query=retrieval_trace.get("retrieval_query"), query_variants=json.dumps(retrieval_trace.get("query_variants", []), ensure_ascii=True, default=str), retrieved_chunks=json.dumps(retrieval_trace.get("retrieved_chunks", []), ensure_ascii=True, default=str), selected_chunks=json.dumps(retrieval_trace.get("selected_chunks", []), ensure_ascii=True, default=str), source_ids=json.dumps(retrieval_trace.get("source_ids", []), ensure_ascii=True, default=str), has_context=bool(retrieval_trace.get("has_context")), escalation_triggered=bool(retrieval_trace.get("escalation_triggered")), top_distance=float(retrieval_trace["top_distance"]) if retrieval_trace.get("top_distance") is not None else None)
+        trace_record = RetrievalTrace(
+            conversation_id=conversation.id,
+            session_id=session_id,
+            widget_id=widget_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            user_query=retrieval_trace.get("user_query") or message,
+            retrieval_query=retrieval_trace.get("retrieval_query"),
+            query_variants=json.dumps(
+                retrieval_trace.get("query_variants", []),
+                ensure_ascii=True,
+                default=str,
+            ),
+            retrieved_chunks=json.dumps(
+                retrieval_trace.get("retrieved_chunks", []),
+                ensure_ascii=True,
+                default=str,
+            ),
+            selected_chunks=json.dumps(
+                retrieval_trace.get("selected_chunks", []),
+                ensure_ascii=True,
+                default=str,
+            ),
+            source_ids=json.dumps(
+                retrieval_trace.get("source_ids", []), ensure_ascii=True, default=str
+            ),
+            has_context=bool(retrieval_trace.get("has_context")),
+            escalation_triggered=bool(retrieval_trace.get("escalation_triggered")),
+            top_distance=(
+                float(retrieval_trace["top_distance"])
+                if retrieval_trace.get("top_distance") is not None
+                else None
+            ),
+        )
         db.add(trace_record)
     return conversation
 
 
-def persist_contact_form_records(db: Session, session_id: str, widget_id: str,
-                                 user_id: int, organization_id: int, contact) -> None:
+def persist_contact_form_records(
+    db: Session,
+    session_id: str,
+    widget_id: str,
+    user_id: int,
+    organization_id: int,
+    contact,
+) -> None:
     """Stage user-only form history in the caller's transaction; never commit/cache."""
     if not session_id or not organization_id:
         return
-    existing = (db.query(Conversation)
-                .filter(Conversation.organization_id == organization_id,
-                        Conversation.user_id == user_id,
-                        Conversation.widget_id == widget_id,
-                        Conversation.session_id == session_id,
-                        Conversation.source == "quick_connect",
-                        Conversation.role == "user").all())
+    existing = (
+        db.query(Conversation)
+        .filter(
+            Conversation.organization_id == organization_id,
+            Conversation.user_id == user_id,
+            Conversation.widget_id == widget_id,
+            Conversation.session_id == session_id,
+            Conversation.source == "quick_connect",
+            Conversation.role == "user",
+        )
+        .all()
+    )
     by_message = {row.message: row for row in existing}
     submitted_at = datetime.now(timezone.utc)
     for message in contact_form_messages(contact):
         row = by_message.get(message)
         if row is None:
-            row = persist_conversation_record(db, session_id, widget_id, user_id,
-                                              organization_id, message, "")
+            row = persist_conversation_record(
+                db, session_id, widget_id, user_id, organization_id, message, ""
+            )
             row.source = "quick_connect"
             by_message[message] = row
         # A -> B -> A recovers the latest whole submission without another row.
@@ -148,8 +288,13 @@ def persist_contact_form_records(db: Session, session_id: str, widget_id: str,
 
 def contact_form_messages(contact):
     """Yield one canonical, readable, reversible message for the whole submission."""
+
     def value(key):
-        return contact.get(key) if isinstance(contact, dict) else getattr(contact, key, None)
+        return (
+            contact.get(key)
+            if isinstance(contact, dict)
+            else getattr(contact, key, None)
+        )
 
     def submitted(key):
         if isinstance(contact, dict):
@@ -161,8 +306,12 @@ def contact_form_messages(contact):
         if isinstance(raw, str):
             # Plain strings stay readable. Quote delimiters, whitespace/control
             # characters and JSON-looking strings to retain their exact type.
-            quote = (raw != raw.strip() or any(c in raw for c in '|:"\\')
-                     or any(ord(c) < 32 for c in raw) or raw.startswith(("[", "{")))
+            quote = (
+                raw != raw.strip()
+                or any(c in raw for c in '|:"\\')
+                or any(ord(c) < 32 for c in raw)
+                or raw.startswith(("[", "{"))
+            )
             quote = quote or raw in ("null", "true", "false")
             if not quote:
                 return raw
@@ -178,8 +327,12 @@ def contact_form_messages(contact):
     if custom is not None and not isinstance(custom, dict):
         raise ValueError("custom_fields must be a JSON object")
     for key, raw in sorted((custom or {}).items()):
-        parts.append("Custom field " + json.dumps(key, ensure_ascii=True) + ": "
-                     + json.dumps(raw, ensure_ascii=True, sort_keys=True))
+        parts.append(
+            "Custom field "
+            + json.dumps(key, ensure_ascii=True)
+            + ": "
+            + json.dumps(raw, ensure_ascii=True, sort_keys=True)
+        )
     yield "Quick Connect Details: " + " | ".join(parts)
 
 
@@ -189,16 +342,16 @@ def _parse_contact_form_submission(message):
     Never split the whole message on pipes: custom JSON can contain them at any
     depth. A malformed snapshot is rejected atomically by the recovery caller.
     """
-    tail = message[len("Quick Connect Details: "):]
+    tail = message[len("Quick Connect Details: ") :]
     result = {"custom_fields": {}}
     decoder = json.JSONDecoder()
     while tail:
         if tail.startswith("Custom field "):
-            tail = tail[len("Custom field "):]
+            tail = tail[len("Custom field ") :]
             key, end = decoder.raw_decode(tail)
             if not isinstance(key, str) or not tail[end:].startswith(": "):
                 raise ValueError("Invalid custom field key")
-            tail = tail[end + 2:]
+            tail = tail[end + 2 :]
             raw, end = decoder.raw_decode(tail)
             result["custom_fields"][key] = raw
             tail = tail[end:]
@@ -224,15 +377,21 @@ def _parse_contact_form_submission(message):
     return result
 
 
-def recover_contact_form_records(db: Session, organization_id: int, widget_id: str,
-                                 session_id: str) -> dict:
-    rows = (db.query(Conversation)
-            .filter(Conversation.organization_id == organization_id,
-                    Conversation.widget_id == widget_id,
-                    Conversation.session_id == session_id,
-                    Conversation.source == "quick_connect",
-                    Conversation.role == "user")
-            .order_by(Conversation.created_at, Conversation.id).all())
+def recover_contact_form_records(
+    db: Session, organization_id: int, widget_id: str, session_id: str
+) -> dict:
+    rows = (
+        db.query(Conversation)
+        .filter(
+            Conversation.organization_id == organization_id,
+            Conversation.widget_id == widget_id,
+            Conversation.session_id == session_id,
+            Conversation.source == "quick_connect",
+            Conversation.role == "user",
+        )
+        .order_by(Conversation.created_at, Conversation.id)
+        .all()
+    )
     result = {}
     for row in rows:
         message = row.message
@@ -244,8 +403,10 @@ def recover_contact_form_records(db: Session, organization_id: int, widget_id: s
                 continue
         elif message.startswith("Custom field "):
             try:
-                key, end = json.JSONDecoder().raw_decode(message[len("Custom field "):])
-                tail = message[len("Custom field ") + end:]
+                key, end = json.JSONDecoder().raw_decode(
+                    message[len("Custom field ") :]
+                )
+                tail = message[len("Custom field ") + end :]
                 if isinstance(key, str) and tail.startswith(": "):
                     result.setdefault("custom_fields", {})[key] = json.loads(tail[2:])
             except (ValueError, TypeError):
@@ -257,5 +418,13 @@ def recover_contact_form_records(db: Session, organization_id: int, widget_id: s
     return result
 
 
-def finalize_conversation_metrics(db: Session, conversation_id: int, organization_id: int, session_id: str, token_usage: Dict) -> None:
-    sync_conversation_metrics(db, conversation_id, organization_id, session_id, token_usage=token_usage)
+def finalize_conversation_metrics(
+    db: Session,
+    conversation_id: int,
+    organization_id: int,
+    session_id: str,
+    token_usage: Dict,
+) -> None:
+    sync_conversation_metrics(
+        db, conversation_id, organization_id, session_id, token_usage=token_usage
+    )
