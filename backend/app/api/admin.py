@@ -442,10 +442,6 @@ async def get_widget_config(widget_id: str, db: Session = Depends(get_db)):
 
     settings = get_org_settings(db, config.organization_id)
 
-    if _ensure_widget_escalation_contacts(config, settings):
-        db.commit()
-        db.refresh(config)
-
     return config
 
 
@@ -513,10 +509,6 @@ async def get_widget_test_config(
         if config.organization_id
         else settings
     )
-
-    if _ensure_widget_escalation_contacts(config, org_settings):
-        db.commit()
-        db.refresh(config)
 
     return config
 
@@ -661,8 +653,6 @@ async def update_widget_config(
         if hasattr(config, key) and key not in readonly_fields:
             setattr(config, key, value)
 
-    _ensure_widget_escalation_contacts(config, settings)
-
     db.commit()
     db.refresh(config)
 
@@ -728,13 +718,6 @@ async def list_widgets(
     configs = (
         query.order_by(WidgetConfig.created_at.desc()).offset(skip).limit(limit).all()
     )
-
-    changed = False
-    for config in configs:
-        if _ensure_widget_escalation_contacts(config, settings):
-            changed = True
-    if changed:
-        db.commit()
 
     return {
         "widgets": configs,
