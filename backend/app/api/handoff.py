@@ -153,6 +153,7 @@ async def accept_handoff_request(
 
     updated = db.query(HandoffSession).filter(
         HandoffSession.id == session.id,
+        HandoffSession.organization_id == current_user.organization_id,
         HandoffSession.status == "waiting_for_agent",
         HandoffSession.assigned_agent_id.is_(None),
     ).update(
@@ -183,7 +184,9 @@ async def accept_handoff_request(
     await handoff_hub.broadcast(current_user.organization_id, {
         "type": "handoff_assigned",
         "chat_id": session.chat_id,
-        "assigned_agent_id": current_user.id,
+        "widget_id": session.widget_id,
+        "session_id": session.session_id,
+        "assigned_agent_id": session.assigned_agent_id,
         "status": session.status,
     })
 

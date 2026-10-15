@@ -30,7 +30,7 @@ def _semantic_score(distance: Optional[float]) -> float:
     return 1.0 - clamped / 1.5
 
 
-def _confidence_from_scores(rerank_score: float, overlap: float, distance: Optional[float]) -> float:
+def _confidence_from_scores(overlap: float, distance: Optional[float]) -> float:
     """Return a ranking heuristic, not a calibrated probability.
 
     Rerank score already contains semantic score, lexical overlap and stage
@@ -59,7 +59,7 @@ def rerank_candidates(candidates: Sequence[Dict[str, Any]], query_text: str) -> 
         stage = str(candidate.get("stage") or "fallback")
         stage_boost = {"primary": 0.05, "expanded": 0.025, "fallback": 0.0}.get(stage, 0.0)
         rerank_score = (0.58 * semantic_score) + (0.3 * overlap) + stage_boost
-        confidence = _confidence_from_scores(rerank_score, overlap, distance)
+        confidence = _confidence_from_scores(overlap, distance)
         reranked.append(RerankedChunk(text=doc, stage=stage, rank=int(candidate.get("rank") or 0), distance=float(distance) if distance is not None else None, source_id=candidate.get("source_id"), source_label=candidate.get("source_label"), url=candidate.get("url"), chunk_index=candidate.get("chunk_index"), lexical_score=overlap, semantic_score=semantic_score, rerank_score=rerank_score, confidence=confidence, overlap=overlap, is_suspicious=_is_suspicious_snippet(doc), snippet=str(candidate.get("snippet") or doc[:240])))
     reranked.sort(key=lambda chunk: (chunk.rerank_score, chunk.confidence, -(chunk.distance or 9.0), -chunk.rank), reverse=True)
     return reranked

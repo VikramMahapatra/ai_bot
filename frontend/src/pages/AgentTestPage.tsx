@@ -108,6 +108,45 @@ interface ContactFieldDefinition {
   required?: boolean;
 }
 
+interface SessionContact {
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  customFields: Record<string, string>;
+}
+
+// Contact details are tab/session scoped; never persist PII in localStorage.
+const contactStorageKey = (scope: string, id: string) =>
+  `public_agent_contact_${scope}_${encodeURIComponent(id)}`;
+
+const readSessionContact = (key: string) => {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (!stored) return null;
+    const { contact, lastActivityAtMs } = stored;
+    if (
+      !Number.isFinite(lastActivityAtMs) ||
+      lastActivityAtMs > Date.now() ||
+      Date.now() - lastActivityAtMs >= CHAT_INACTIVITY_TIMEOUT_MS ||
+      !contact ||
+      ![contact.name, contact.email, contact.phone, contact.company].every(
+        (value) => typeof value === "string",
+      ) ||
+      !contact.customFields || typeof contact.customFields !== "object" ||
+      Array.isArray(contact.customFields) ||
+      !Object.values(contact.customFields).every((value) => typeof value === "string")
+    ) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return { contact: contact as SessionContact, lastActivityAtMs: lastActivityAtMs as number };
+  } catch {
+    try { sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
+    return null;
+  }
+};
+
 const BOT_ICON_GLYPHS: Record<string, string> = {
   "bot-robot": "🤖",
   "bot-spark": "✨",
@@ -622,6 +661,7 @@ const AgentTestPage: React.FC = () => {
     useState(120);
   const [handoffNowMs, setHandoffNowMs] = useState(Date.now());
   const handoffSeenMessageIdsRef = useRef<Set<number>>(new Set());
+  const handoffMessagesChatRef = useRef<string | null>(null);
   const handoffPromptedChatIdRef = useRef<string | null>(null);
   const lastHandoffStatusRef = useRef<string | null>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
@@ -770,9 +810,77 @@ const AgentTestPage: React.FC = () => {
   );
 
   const sessionStorageKey = useMemo(
-    () => `public_agent_session_${widgetId || "unknown"}`,
-    [widgetId],
+    () => `public_agent_session_${encodeURIComponent(apiBaseUrl)}_${encodeURIComponent(widgetId || "unknown")}`,
+    [apiBaseUrl, widgetId],
   );
+  const [savedContact, setSavedContact] = useState<SessionContact | null>(null);
+  const reusableEmail = savedContact?.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedContact.email) ? savedContact.email : "";
+  const savedPhoneDigits = (savedContact?.phone || "").replace(/\D/g, "");
+  const reusablePhone = savedPhoneDigits.length >= 8 && savedPhoneDigits.length <= 15 ? savedContact?.phone || "" : "";
+  const sessionInactivityExpired =
+    sessionEngaged && !sending && !handoffOpen &&
+    Date.now() - lastActivityAtMs >= CHAT_INACTIVITY_TIMEOUT_MS;
+  const sessionContextRef = useRef({ scope: sessionStorageKey, id: "", generation: 0 });
+  // Invalidate synchronously on route changes, before old requests can settle.
+  if (sessionContextRef.current.scope !== sessionStorageKey) {
+    try {
+      sessionStorage.removeItem(contactStorageKey(sessionContextRef.current.scope, sessionContextRef.current.id));
+      sessionStorage.removeItem(sessionContextRef.current.scope);
+    } catch { /* Optional storage. */ }
+    sessionContextRef.current = {
+      scope: sessionStorageKey, id: "", generation: sessionContextRef.current.generation + 1,
+    };
+  }
+  const isCurrentSession = (context: typeof sessionContextRef.current) =>
+    context.scope === sessionContextRef.current.scope &&
+    context.id === sessionContextRef.current.id &&
+    context.generation === sessionContextRef.current.generation;
+
+  const clearContactForms = () => {
+    const context = sessionContextRef.current;
+    try { sessionStorage.removeItem(contactStorageKey(context.scope, context.id)); } catch { /* Optional storage. */ }
+    setSavedContact(null);
+    setInput("");
+    setShowLeadForm(false);
+    setLeadSubmitting(false);
+    setLeadForm({ name: "", email: "", phone: "", company: "" });
+    setLeadCustomFields({});
+    setPendingHandoffAfterLead(false);
+    setAwaitingPostHandoffDecision(false);
+    setShowAppointmentForm(false);
+    setAppointmentName("");
+    setAppointmentEmail("");
+    setAppointmentPhone("");
+    setAppointmentDate("");
+    setAppointmentTime("");
+    setAppointmentBusy(false);
+    setAppointmentError("");
+    setSending(false);
+    setHandoffPanelExpanded(false);
+    setHandoffWaitCycle(1);
+    setHandoffWaitingExpiresAt(null);
+    setHandoffWaitTimeoutSeconds(120);
+  };
+
+  const saveContact = (contact: SessionContact) => {
+    setSavedContact(contact);
+    setLeadForm({ name: contact.name, email: contact.email, phone: contact.phone, company: contact.company });
+    setLeadCustomFields(contact.customFields);
+    setSessionEngaged(true);
+    const lastActivityAtMs = Date.now();
+    setLastActivityAtMs(lastActivityAtMs);
+    const context = sessionContextRef.current;
+    try {
+      sessionStorage.setItem(contactStorageKey(context.scope, context.id), JSON.stringify({ contact, lastActivityAtMs }));
+    } catch { /* Reuse still works in memory when storage is unavailable. */ }
+  };
+
+  useEffect(() => {
+    if (!savedContact || sessionContextRef.current.id !== sessionId) return;
+    try {
+      sessionStorage.setItem(contactStorageKey(sessionStorageKey, sessionId), JSON.stringify({ contact: savedContact, lastActivityAtMs }));
+    } catch { /* Optional storage. */ }
+  }, [savedContact, sessionStorageKey, sessionId, lastActivityAtMs]);
 
   useEffect(() => {
     if (!testTokenExpiryMs) return;
@@ -783,18 +891,6 @@ const AgentTestPage: React.FC = () => {
 
     return () => window.clearInterval(timer);
   }, [testTokenExpiryMs]);
-
-  useEffect(() => {
-    const existing = localStorage.getItem(sessionStorageKey);
-    if (existing) {
-      setSessionId(existing);
-      return;
-    }
-
-    const created = createPublicSessionId();
-    localStorage.setItem(sessionStorageKey, created);
-    setSessionId(created);
-  }, [sessionStorageKey]);
 
   useEffect(() => {
     if (messagesContainerRef.current) {
@@ -809,6 +905,7 @@ const AgentTestPage: React.FC = () => {
 
   const loadWidgetConfig = useCallback(
     async (silent = false) => {
+      const scope = sessionStorageKey;
       if (!widgetId) return;
       if (!testToken) {
         if (!silent) {
@@ -823,6 +920,7 @@ const AgentTestPage: React.FC = () => {
         const response = await fetch(
           `${apiBaseUrl}/api/admin/widget/test/config/${encodeURIComponent(widgetId)}?token=${encodeURIComponent(testToken)}`,
         );
+        if (sessionContextRef.current.scope !== scope) return;
         if (!response.ok) {
           if (silent) {
             return;
@@ -845,6 +943,7 @@ const AgentTestPage: React.FC = () => {
 
         setAccessError("");
         const config = (await response.json()) as WidgetPublicConfig;
+        if (sessionContextRef.current.scope !== scope) return;
         setWidgetConfig(config);
         try {
           const remoteContactFields = parseContactFields(config.lead_fields);
@@ -874,6 +973,7 @@ const AgentTestPage: React.FC = () => {
           return prev;
         });
       } catch {
+        if (sessionContextRef.current.scope !== scope) return;
         if (!silent) {
           setAccessError(
             "Unable to validate this test link right now. Please try again later.",
@@ -882,7 +982,7 @@ const AgentTestPage: React.FC = () => {
         // Keep existing style/config when refresh fails.
       }
     },
-    [apiBaseUrl, testToken, widgetId],
+    [apiBaseUrl, testToken, widgetId, sessionStorageKey],
   );
 
   useEffect(() => {
@@ -900,8 +1000,12 @@ const AgentTestPage: React.FC = () => {
   }, [accessError, loadWidgetConfig, testToken, widgetId]);
 
   const startFreshSession = () => {
+    clearContactForms();
     const created = createPublicSessionId();
-    localStorage.setItem(sessionStorageKey, created);
+    sessionContextRef.current = {
+      scope: sessionStorageKey, id: created, generation: sessionContextRef.current.generation + 1,
+    };
+    try { sessionStorage.setItem(sessionStorageKey, created); } catch { /* Optional storage. */ }
     setSessionId(created);
     setMessages([{ role: "assistant", content: welcomeText }]);
     setInput("");
@@ -917,19 +1021,48 @@ const AgentTestPage: React.FC = () => {
     setHandoffStatus(null);
     setHandoffPollError("");
     setHandoffAfterId(0);
+    setHandoffPanelExpanded(false);
+    setHandoffWaitCycle(1);
+    setHandoffWaitingExpiresAt(null);
+    setHandoffWaitTimeoutSeconds(120);
     setCallStatus("none");
     setCallMode("video");
     setCallRoomId(null);
     setCallBusy(false);
     setCallError("");
     handoffSeenMessageIdsRef.current.clear();
+    handoffMessagesChatRef.current = null;
     handoffPromptedChatIdRef.current = null;
     lastHandoffStatusRef.current = null;
     setSessionClosedByInactivity(false);
     setSessionEngaged(false);
     setLastActivityAtMs(Date.now());
+    setInactivityNowMs(Date.now());
     return created;
   };
+
+  useEffect(() => {
+    let existing: string | null = null;
+    try { existing = sessionStorage.getItem(sessionStorageKey); } catch { /* Optional storage. */ }
+    let hadContactCache = false;
+    try { hadContactCache = Boolean(existing && sessionStorage.getItem(contactStorageKey(sessionStorageKey, existing))); } catch { /* Optional storage. */ }
+    const cached = existing ? readSessionContact(contactStorageKey(sessionStorageKey, existing)) : null;
+    // Clear drafts without deleting the contact cache being restored.
+    sessionContextRef.current.id = "";
+    startFreshSession();
+    if (existing && (cached || !hadContactCache)) {
+      sessionContextRef.current.id = existing;
+      setSessionId(existing);
+      try { sessionStorage.setItem(sessionStorageKey, existing); } catch { /* Optional storage. */ }
+      if (cached) {
+        setSavedContact(cached.contact);
+        setLeadForm({ name: cached.contact.name, email: cached.contact.email, phone: cached.contact.phone, company: cached.contact.company });
+        setLeadCustomFields(cached.contact.customFields);
+        setLastActivityAtMs(cached.lastActivityAtMs);
+        setSessionEngaged(true);
+      }
+    }
+  }, [sessionStorageKey]);
 
   const normalizeContactFieldKey = (value: string): string =>
     value
@@ -960,6 +1093,9 @@ const AgentTestPage: React.FC = () => {
   };
 
   const handleQuickQuestion = (item: QuickQuestionDefinition) => {
+    if (sessionClosedByInactivity || sessionInactivityExpired) startFreshSession();
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
     setMessages((prev) => [
       ...prev,
       { role: "user", content: item.question },
@@ -979,6 +1115,12 @@ const AgentTestPage: React.FC = () => {
       return;
 
     const timeoutId = window.setTimeout(() => {
+      clearContactForms();
+      sessionContextRef.current = {
+        ...sessionContextRef.current, id: "", generation: sessionContextRef.current.generation + 1,
+      };
+      try { sessionStorage.removeItem(sessionStorageKey); } catch { /* Optional storage. */ }
+      setSessionId("");
       setMessages((prev) => {
         if (prev.length > 0) {
           const last = prev[prev.length - 1];
@@ -1012,7 +1154,7 @@ const AgentTestPage: React.FC = () => {
       setPendingHandoffAfterLead(false);
       setAwaitingPostHandoffDecision(false);
       setSending(false);
-    }, CHAT_INACTIVITY_TIMEOUT_MS);
+    }, Math.max(0, CHAT_INACTIVITY_TIMEOUT_MS - (Date.now() - lastActivityAtMs)));
 
     return () => window.clearTimeout(timeoutId);
   }, [
@@ -1052,13 +1194,15 @@ const AgentTestPage: React.FC = () => {
 
   const appendHandoffMessages = (
     items: HandoffMessageResponse["items"],
-    includeBotMessages: boolean,
+    _includeBotMessages: boolean,
   ) => {
     const visibleMessages = items.filter((item) => {
-      const isBotUpdate = includeBotMessages && item.sender_type === "bot";
+      const isBotUpdate = item.sender_type === "bot";
+      const isPublicSystemUpdate = item.sender_type === "system" &&
+        !/user requested a live agent directly|a human handoff request has been created|saved visitor contact|visitor delivery via chat response/i.test(item.message);
       if (
         item.sender_type !== "agent" &&
-        item.sender_type !== "system" &&
+        !isPublicSystemUpdate &&
         !isBotUpdate
       )
         return false;
@@ -1078,6 +1222,8 @@ const AgentTestPage: React.FC = () => {
 
   const loadHandoffSession = async () => {
     if (!widgetId || !canUseChat || !sessionId) return;
+    const context = { ...sessionContextRef.current };
+    if (context.id !== sessionId) return;
     try {
       const params = new URLSearchParams({
         session_id: sessionId,
@@ -1091,6 +1237,7 @@ const AgentTestPage: React.FC = () => {
       );
       if (!response.ok) return;
       const data = (await response.json()) as HandoffSessionResponse;
+      if (!isCurrentSession(context)) return;
       if (!data?.chat_id) return;
 
       const nextStatus = data.status || null;
@@ -1132,6 +1279,8 @@ const AgentTestPage: React.FC = () => {
       }
       if (isActive) {
         setAwaitingPostHandoffDecision(false);
+        setSessionEngaged(true);
+        setLastActivityAtMs(Date.now());
       }
     } catch {
       // Non-blocking for normal chat.
@@ -1140,6 +1289,8 @@ const AgentTestPage: React.FC = () => {
 
   const loadHandoffMessages = async (chatId: string, reset = false) => {
     if (!widgetId || !chatId || !canUseChat || !sessionId) return;
+    const context = { ...sessionContextRef.current };
+    if (context.id !== sessionId) return;
     try {
       const params = new URLSearchParams({
         chat_id: chatId,
@@ -1153,7 +1304,9 @@ const AgentTestPage: React.FC = () => {
       if (!response.ok) return;
 
       const data = (await response.json()) as HandoffMessageResponse;
-      if (reset) {
+      if (!isCurrentSession(context)) return;
+      if (handoffMessagesChatRef.current !== chatId) {
+        handoffMessagesChatRef.current = chatId;
         handoffSeenMessageIdsRef.current.clear();
         setHandoffAfterId(0);
       }
@@ -1209,6 +1362,7 @@ const AgentTestPage: React.FC = () => {
       }
       setHandoffPollError("");
     } catch {
+      if (!isCurrentSession(context)) return;
       setHandoffPollError("Live agent updates are temporarily unavailable.");
     }
   };
@@ -1301,12 +1455,16 @@ const AgentTestPage: React.FC = () => {
   ) => {
     const opts = options || {};
     let activeSessionId = opts.forceSessionId || sessionId;
-    if (sessionClosedByInactivity || !activeSessionId) {
+    if (sessionClosedByInactivity || sessionInactivityExpired || !activeSessionId) {
       activeSessionId = startFreshSession();
     }
 
     const text = (overrideText ?? input).trim();
     if (!text || sending || !canUseChat) return;
+    const context = { ...sessionContextRef.current };
+    if (context.id !== activeSessionId) return;
+    const contactForRequest = activeSessionId === sessionId && !sessionClosedByInactivity && !sessionInactivityExpired
+      ? savedContact : null;
 
     if (!overrideText) {
       setInput("");
@@ -1320,7 +1478,7 @@ const AgentTestPage: React.FC = () => {
           { role: "assistant", content: APPOINTMENT_FORM_PROMPT },
         ]);
         setAwaitingPostHandoffDecision(false);
-        openAppointmentDialog();
+        showMeetingForm();
         return;
       }
       if (isSatisfiedResponse(text)) {
@@ -1343,6 +1501,7 @@ const AgentTestPage: React.FC = () => {
     setSessionClosedByInactivity(false);
     setLastActivityAtMs(Date.now());
     let assistantIndex = -1;
+    let retrySavedContactHandoff = false;
     if (!opts.silentUserMessage) {
       setMessages((prev) => [...prev, { role: "user", content: text }]);
     }
@@ -1353,6 +1512,7 @@ const AgentTestPage: React.FC = () => {
     });
 
     const replaceAssistantMessage = (content: string) => {
+      if (!isCurrentSession(context)) return;
       setMessages((prev) =>
         prev.map((msg, index) =>
           index === assistantIndex ? { ...msg, content } : msg,
@@ -1361,6 +1521,7 @@ const AgentTestPage: React.FC = () => {
     };
 
     const appendAssistantToken = (delta: string) => {
+      if (!isCurrentSession(context)) return;
       setMessages((prev) =>
         prev.map((msg, index) =>
           index === assistantIndex
@@ -1371,6 +1532,7 @@ const AgentTestPage: React.FC = () => {
     };
 
     const removeAssistantPlaceholder = () => {
+      if (!isCurrentSession(context)) return;
       setMessages((prev) =>
         prev.filter((_, index) => index !== assistantIndex),
       );
@@ -1381,33 +1543,44 @@ const AgentTestPage: React.FC = () => {
       handoff_chat_id?: string;
       handoff_status?: string;
     }) => {
+      if (!isCurrentSession(context)) return;
       const shouldOpenAppointmentForm =
         payload?.ui_action === "open_appointment_form";
-      const shouldOpenHandoff = payload?.ui_action === "open_human_handoff";
+      const shouldOpenHandoff = payload?.ui_action === "open_human_handoff" ||
+        Boolean(payload?.handoff_chat_id && ["waiting_for_agent", "assigned"].includes(payload.handoff_status || ""));
       const shouldOpenLeadForm = payload?.ui_action === "open_lead_form";
 
       if (shouldOpenAppointmentForm) {
         replaceAssistantMessage(APPOINTMENT_FORM_PROMPT);
-        openAppointmentDialog();
+        showMeetingForm();
       }
 
       if (shouldOpenLeadForm) {
+        // The backend looks up captured contacts in this widget/session scope.
+        // Never ask again for an already sufficient contact on a handoff.
+        if (!opts.skipLeadCaptureCheck && contactForRequest?.name && (contactForRequest.email || contactForRequest.phone)) {
+          replaceAssistantMessage(HANDOFF_WAITING_MESSAGE);
+          retrySavedContactHandoff = true;
+          return;
+        }
         replaceAssistantMessage(HANDOFF_LEAD_CAPTURE_MESSAGE);
+        if (contactForRequest) {
+          setLeadForm({ name: contactForRequest.name, email: contactForRequest.email, phone: contactForRequest.phone, company: contactForRequest.company });
+          setLeadCustomFields({ ...contactForRequest.customFields });
+        }
         setShowLeadForm(true);
         setPendingHandoffAfterLead(true);
       }
 
       if (shouldOpenHandoff) {
-        replaceAssistantMessage(HANDOFF_WAITING_MESSAGE);
         setPendingHandoffAfterLead(false);
         setShowLeadForm(false);
         setHandoffOpen(true);
+        lastHandoffStatusRef.current = payload?.handoff_status || "waiting_for_agent";
         if (payload?.handoff_chat_id) {
           const isNewChat = payload.handoff_chat_id !== handoffChatId;
           setHandoffChatId(payload.handoff_chat_id);
           if (isNewChat) {
-            setHandoffAfterId(0);
-            handoffSeenMessageIdsRef.current.clear();
             loadHandoffMessages(payload.handoff_chat_id, true);
           } else {
             loadHandoffMessages(payload.handoff_chat_id, false);
@@ -1456,6 +1629,10 @@ const AgentTestPage: React.FC = () => {
 
         while (true) {
           const { value, done } = await reader.read();
+          if (!isCurrentSession(context)) {
+            await reader.cancel();
+            return;
+          }
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
@@ -1521,6 +1698,7 @@ const AgentTestPage: React.FC = () => {
 
         window.clearTimeout(timeoutId);
       } catch {
+        if (!isCurrentSession(context)) return;
         const response = await fetch(`${apiBaseUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1536,6 +1714,7 @@ const AgentTestPage: React.FC = () => {
         }
 
         const data = (await response.json()) as ChatApiResponse;
+        if (!isCurrentSession(context)) return;
         const hasHandoffMeta = Boolean(
           data?.handoff_chat_id || data?.handoff_status,
         );
@@ -1546,7 +1725,7 @@ const AgentTestPage: React.FC = () => {
             ? APPOINTMENT_FORM_PROMPT
             : rawReply || "I could not generate a response right now.";
 
-        if (!rawReply && hasHandoffMeta && !data?.ui_action) {
+        if (!rawReply && hasHandoffMeta && data?.ui_action !== "open_appointment_form") {
           removeAssistantPlaceholder();
         } else {
           replaceAssistantMessage(reply);
@@ -1562,7 +1741,7 @@ const AgentTestPage: React.FC = () => {
       if (
         !receivedToken &&
         streamDonePayload &&
-        !streamDonePayload?.ui_action &&
+        streamDonePayload?.ui_action !== "open_appointment_form" &&
         streamIndicatesHandoff
       ) {
         removeAssistantPlaceholder();
@@ -1575,19 +1754,27 @@ const AgentTestPage: React.FC = () => {
         replaceAssistantMessage("I could not generate a response right now.");
       }
 
-      setLastActivityAtMs(Date.now());
+      if (isCurrentSession(context)) setLastActivityAtMs(Date.now());
     } catch {
+      if (!isCurrentSession(context)) return;
       replaceAssistantMessage(
         "Sorry, the chatbot is temporarily unavailable. Please try again in a moment.",
       );
       setLastActivityAtMs(Date.now());
     } finally {
-      setSending(false);
+      if (isCurrentSession(context)) setSending(false);
+    }
+    if (retrySavedContactHandoff && isCurrentSession(context)) {
+      await sendMessage("yes connect me", {
+        silentUserMessage: true, skipLeadCaptureCheck: true, forceSessionId: activeSessionId,
+      });
     }
   };
 
   const requestVideoCall = async () => {
     if (!canUseChat || !widgetId || !sessionId || callBusy) return;
+    const context = { ...sessionContextRef.current };
+    if (context.id !== sessionId) return;
     setCallBusy(true);
     setCallError("");
     try {
@@ -1609,6 +1796,7 @@ const AgentTestPage: React.FC = () => {
       }
 
       const data = (await response.json()) as HandoffSessionResponse;
+      if (!isCurrentSession(context)) return;
       setHandoffChatId(data.chat_id || null);
       setHandoffStatus(data.status || null);
       setHandoffOpen(
@@ -1628,9 +1816,10 @@ const AgentTestPage: React.FC = () => {
         await loadHandoffMessages(data.chat_id, true);
       }
     } catch (err: any) {
+      if (!isCurrentSession(context)) return;
       setCallError(err?.message || "Failed to request video call");
     } finally {
-      setCallBusy(false);
+      if (isCurrentSession(context)) setCallBusy(false);
     }
   };
 
@@ -1643,6 +1832,8 @@ const AgentTestPage: React.FC = () => {
       callStatus === "none"
     )
       return;
+    const context = { ...sessionContextRef.current };
+    if (context.id !== sessionId) return;
     setCallBusy(true);
     setCallError("");
     try {
@@ -1661,13 +1852,15 @@ const AgentTestPage: React.FC = () => {
       }
 
       const data = (await response.json()) as HandoffSessionResponse;
+      if (!isCurrentSession(context)) return;
       setCallStatus(data.call_status || "ended");
       setCallMode((data.call_mode as "video" | "audio") || callMode);
       setCallRoomId(data.call_room_id || callRoomId);
     } catch (err: any) {
+      if (!isCurrentSession(context)) return;
       setCallError(err?.message || "Failed to end call");
     } finally {
-      setCallBusy(false);
+      if (isCurrentSession(context)) setCallBusy(false);
     }
   };
 
@@ -1682,6 +1875,12 @@ const AgentTestPage: React.FC = () => {
 
   const handleLeadSubmit = async () => {
     if (!canUseChat || leadSubmitting) return;
+    if (sessionInactivityExpired) {
+      startFreshSession();
+      return;
+    }
+    const context = { ...sessionContextRef.current };
+    if (!context.id || context.id !== sessionId) return;
     if (
       !leadForm.name.trim() &&
       !leadForm.email.trim() &&
@@ -1720,9 +1919,15 @@ const AgentTestPage: React.FC = () => {
       },
       {},
     );
+    const submittedContact: SessionContact = {
+      name: leadForm.name.trim(), email: leadForm.email.trim(),
+      phone: leadForm.phone.trim(), company: leadForm.company.trim(), customFields,
+    };
 
     try {
       setLeadSubmitting(true);
+      setSessionEngaged(true);
+      setLastActivityAtMs(Date.now());
       const response = await fetch(`${apiBaseUrl}/api/admin/leads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1745,9 +1950,25 @@ const AgentTestPage: React.FC = () => {
         throw new Error("Lead submission failed");
       }
 
+      if (!isCurrentSession(context)) return;
+      saveContact(submittedContact);
+      const formatValue = (value: string) => value !== value.trim() || /[|:"\\\x00-\x1f]/.test(value) ||
+        value.startsWith("[") || value.startsWith("{") || ["null", "true", "false"].includes(value)
+        ? JSON.stringify(value) : value;
+      const fields = [
+        ...(["name", "email", "phone", "company"] as const)
+          .filter((key) => submittedContact[key])
+          .map((key) => `${key[0].toUpperCase()}${key.slice(1)}: ${formatValue(submittedContact[key])}`),
+        ...Object.entries(submittedContact.customFields).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) =>
+          `Custom field ${JSON.stringify(key)}: ${JSON.stringify(value)}`),
+      ];
+      const entries = [`Quick Connect Details: ${fields.join(" | ")}`];
+      setMessages((prev) => [
+        ...prev,
+        ...entries.filter((content) => !prev.some((message) => message.role === "user" && message.content === content))
+          .map((content) => ({ role: "user" as const, content })),
+      ]);
       setShowLeadForm(false);
-      setLeadForm({ name: "", email: "", phone: "", company: "" });
-      setLeadCustomFields({});
       if (pendingHandoffAfterLead) {
         setPendingHandoffAfterLead(false);
         setMessages((prev) => [
@@ -1768,11 +1989,12 @@ const AgentTestPage: React.FC = () => {
           ...prev,
           {
             role: "assistant",
-            content: "Thanks. Your details have been received.",
+            content: "Thanks. Your details have been received. Let me know if you need any further assistance.",
           },
         ]);
       }
     } catch {
+      if (!isCurrentSession(context)) return;
       setMessages((prev) => [
         ...prev,
         {
@@ -1781,30 +2003,50 @@ const AgentTestPage: React.FC = () => {
         },
       ]);
     } finally {
-      setLeadSubmitting(false);
+      if (isCurrentSession(context)) setLeadSubmitting(false);
     }
   };
 
-  const openAppointmentDialog = () => {
-    if (!canUseChat) return;
+  const showMeetingForm = () => {
     const defaults = getDefaultAppointmentDateTime();
-    if (!appointmentDate) setAppointmentDate(defaults.date);
-    if (!appointmentTime) setAppointmentTime(defaults.time);
+    // Functional setters see the current draft, not a pre-reset request closure.
+    setAppointmentDate((current) => current || defaults.date);
+    setAppointmentTime((current) => current || defaults.time);
+    setSessionEngaged(true);
+    setLastActivityAtMs(Date.now());
     setAppointmentError("");
     setShowAppointmentForm(true);
   };
 
-  const bookAppointment = async () => {
+  const openAppointmentDialog = () => {
     if (!canUseChat) return;
-    if (!appointmentName.trim()) {
+    const needsFreshSession = sessionClosedByInactivity || sessionInactivityExpired || !sessionContextRef.current.id;
+    if (needsFreshSession) {
+      startFreshSession();
+    }
+    showMeetingForm();
+  };
+
+  const bookAppointment = async () => {
+    if (!canUseChat || appointmentBusy) return;
+    if (sessionInactivityExpired) {
+      startFreshSession();
+      return;
+    }
+    const context = { ...sessionContextRef.current };
+    if (!context.id || context.id !== sessionId) return;
+    const name = savedContact?.name || appointmentName.trim();
+    const email = reusableEmail || appointmentEmail.trim();
+    const phone = reusablePhone || appointmentPhone.trim();
+    if (!name) {
       setAppointmentError("Please enter your name.");
       return;
     }
-    if (!appointmentEmail.trim()) {
+    if (!email) {
       setAppointmentError("Please enter your email.");
       return;
     }
-    if (!appointmentPhone.trim()) {
+    if (!phone) {
       setAppointmentError("Please enter your mobile number.");
       return;
     }
@@ -1818,12 +2060,12 @@ const AgentTestPage: React.FC = () => {
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(appointmentEmail.trim())) {
+    if (!emailPattern.test(email)) {
       setAppointmentError("Please enter a valid email.");
       return;
     }
 
-    const phoneDigits = appointmentPhone.replace(/\D/g, "");
+    const phoneDigits = phone.replace(/\D/g, "");
     if (phoneDigits.length < 8 || phoneDigits.length > 15) {
       setAppointmentError("Please enter a valid mobile number.");
       return;
@@ -1838,6 +2080,7 @@ const AgentTestPage: React.FC = () => {
     try {
       setAppointmentBusy(true);
       setAppointmentError("");
+      setLastActivityAtMs(Date.now());
       const response = await fetch(`${apiBaseUrl}/api/chat/appointments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1845,9 +2088,9 @@ const AgentTestPage: React.FC = () => {
           session_id: sessionId,
           widget_id: widgetId,
           appointment_at: dateValue.toISOString(),
-          name: appointmentName.trim(),
-          email: appointmentEmail.trim(),
-          phone: appointmentPhone.trim(),
+          name,
+          email,
+          phone,
           timezone: IST_TIMEZONE,
         }),
       });
@@ -1858,6 +2101,8 @@ const AgentTestPage: React.FC = () => {
       }
 
       const data = await response.json();
+      if (!isCurrentSession(context)) return;
+      saveContact({ name, email, phone, company: savedContact?.company || "", customFields: savedContact?.customFields || {} });
       const confirmation =
         typeof data?.message === "string"
           ? data.message
@@ -1877,9 +2122,10 @@ const AgentTestPage: React.FC = () => {
       ]);
       setShowAppointmentForm(false);
     } catch (err: any) {
+      if (!isCurrentSession(context)) return;
       setAppointmentError(err?.message || "Failed to book appointment");
     } finally {
-      setAppointmentBusy(false);
+      if (isCurrentSession(context)) setAppointmentBusy(false);
     }
   };
 
@@ -2331,6 +2577,13 @@ const AgentTestPage: React.FC = () => {
       {isOpen && (
         <Paper
           ref={chatPanelRef}
+          onChangeCapture={() => {
+            if (sessionInactivityExpired) {
+              startFreshSession();
+            } else if (!sessionClosedByInactivity) {
+              setLastActivityAtMs(Date.now());
+            }
+          }}
           elevation={6}
           sx={{
             position: "fixed",
@@ -2515,15 +2768,21 @@ const AgentTestPage: React.FC = () => {
                       textOverflow: "ellipsis",
                     }}
                   >
-                    Human handoff in progress
+                    {handoffStatus === "assigned"
+                      ? "Connected to an agent"
+                      : handoffStatus === "waiting_for_agent"
+                        ? "Waiting for an agent"
+                        : "Connecting to an agent"}
                   </Typography>
                   <Chip
                     size="small"
                     color={handoffStatus === "assigned" ? "success" : "warning"}
                     label={
                       handoffStatus === "assigned"
-                        ? "Agent assigned"
-                        : "Waiting for agent"
+                        ? "Agent connected"
+                        : handoffStatus === "waiting_for_agent"
+                          ? "Waiting"
+                          : "Connecting"
                     }
                   />
                 </Stack>
@@ -2852,7 +3111,7 @@ const AgentTestPage: React.FC = () => {
                     </Typography>
 
                     <Stack spacing={0.6}>
-                      <TextField
+                      {!savedContact?.name && <TextField
                         placeholder="Name"
                         value={leadForm.name}
                         onChange={(e) =>
@@ -2869,8 +3128,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.8,
                           },
                         }}
-                      />
-                      <TextField
+                      />}
+                      {!savedContact?.email && <TextField
                         placeholder="Email"
                         type="email"
                         value={leadForm.email}
@@ -2888,8 +3147,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.8,
                           },
                         }}
-                      />
-                      <TextField
+                      />}
+                      {!savedContact?.phone && <TextField
                         placeholder="Phone"
                         type="tel"
                         value={leadForm.phone}
@@ -2907,8 +3166,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.8,
                           },
                         }}
-                      />
-                      <TextField
+                      />}
+                      {!savedContact?.company && <TextField
                         placeholder="Company"
                         value={leadForm.company}
                         onChange={(e) =>
@@ -2925,8 +3184,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.8,
                           },
                         }}
-                      />
-                      {extraContactFields.map((field) => (
+                      />}
+                      {extraContactFields.filter((field) => !savedContact?.customFields[field.key]).map((field) => (
                         <TextField
                           key={field.key}
                           type={field.type || "text"}
@@ -3049,7 +3308,7 @@ const AgentTestPage: React.FC = () => {
                     )}
 
                     <Stack spacing={0.75}>
-                      <TextField
+                      {!savedContact?.name && <TextField
                         placeholder="Full name"
                         value={appointmentName}
                         onChange={(e) => setAppointmentName(e.target.value)}
@@ -3061,8 +3320,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.9,
                           },
                         }}
-                      />
-                      <TextField
+                      />}
+                      {!reusableEmail && <TextField
                         placeholder="Email address"
                         type="email"
                         value={appointmentEmail}
@@ -3075,8 +3334,8 @@ const AgentTestPage: React.FC = () => {
                             py: 0.9,
                           },
                         }}
-                      />
-                      <TextField
+                      />}
+                      {!reusablePhone && <TextField
                         placeholder="Mobile number"
                         type="tel"
                         value={appointmentPhone}
@@ -3089,7 +3348,7 @@ const AgentTestPage: React.FC = () => {
                             py: 0.9,
                           },
                         }}
-                      />
+                      />}
                       <Box
                         sx={{
                           display: "grid",
@@ -3201,7 +3460,6 @@ const AgentTestPage: React.FC = () => {
                   value={input}
                   onChange={(e) => {
                     setInput(e.target.value);
-                    setLastActivityAtMs(Date.now());
                   }}
                   placeholder={
                     sessionClosedByInactivity

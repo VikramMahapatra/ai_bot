@@ -29,6 +29,7 @@ from app.services.chat.retrieval import (
 )
 from app.services.chat.structured_answering import parse_structured_answer
 from app.services.chat.types import ChatResponsePlan, StructuredAnswer
+from app.services.chat.contact_context import session_contact_prompt
 from app.services.rag import chroma_client
 
 logger = logging.getLogger(__name__)
@@ -284,6 +285,7 @@ def _build_vector_plan(
         language_instruction = f"Always respond in {label} ({code})."
 
     system_prompt = build_system_prompt(custom_system_prompt, retrieval_result.context_text, language_instruction=language_instruction, structured_output=True)
+    system_prompt += session_contact_prompt(db, organization_id, widget_id, session_id)
     if document_summary:
         coverage_instruction = (
             "The supplied context is a bounded sample of report sections, not the entire report. "
@@ -327,20 +329,23 @@ def _build_vector_plan(
         and top_chunk.source_id in authorized_source_ids
         and not top_chunk.is_suspicious
         and top_chunk.distance is not None
-        and top_chunk.distance <= 0.55
-        and top_chunk.semantic_score >= 0.6
+        and top_chunk.distance <= 0.45
+        and top_chunk.semantic_score >= 0.7
         and top_chunk.rerank_score >= 0.32
         and retrieval_result.context_text.strip()
     )
     summary_coverage = float(summary_evidence.get("coverage_ratio", 0.0) or 0.0)
-    summary_relevant = bool(
+    summary_has_evidence = bool(
         document_summary
         and summary_context.strip()
         and summary_evidence.get("source_id") in authorized_source_ids
         and summary_evidence.get("chunk_count", 0) > 0
-        and summary_coverage >= 0.5
         and semantic_relevance
     )
+    # Coverage controls the completeness caveat; it does not turn relevant
+    # evidence into an unsupported denial. The sampler retrieves up to 200
+    # source chunks, and a sampled response is explicitly labeled partial.
+    summary_relevant = summary_has_evidence
     confidence_reasons = set(retrieval_result.confidence.reasons)
     semantic_override = bool(
         semantic_relevance
@@ -358,7 +363,7 @@ def _build_vector_plan(
     elif retrieval_result.confidence.requires_clarification and not retrieval_quality_override:
         rejection_reason = ",".join(sorted(confidence_reasons)) or "low_retrieval_quality"
 
-    if document_summary and not summary_relevant:
+    if document_summary and not summary_has_evidence:
         structured_override = (
             "I couldn’t find enough relevant, verified content in the indexed report to summarize it reliably."
         )
@@ -377,7 +382,7 @@ def _build_vector_plan(
         structured_override is None
         and has_retrieval_material
         and (
-            summary_relevant
+            summary_has_evidence
             if document_summary
             else retrieval_result.confidence.score >= 0.2 or retrieval_quality_override
         )
@@ -422,8 +427,8 @@ def _build_vector_plan(
     logger.info(
         "RAG decision | intent=%s | organization_id=%s | widget_id=%s | "
         "retrieved=%s | selected=%s | rerank_top=%.4f | overlap=%.4f | "
-        "confidence=%.4f | semantic=%.4f | distance=%s | model_invoked=%s | rejection=%s",
-        "document_summary" if document_summary else "document_question",
+        "confidence=%.4f | semantic=%.4f | distance=%s | coverage=%s | model_invoked=%s | rejection=%s",
+        "document_summary" if document_summary else "company_document" if company_question else "ordinary_question",
         organization_id,
         widget_id,
         len(retrieval_result.retrieval_trace.get("retrieved_chunks", [])),
@@ -433,6 +438,7 @@ def _build_vector_plan(
         retrieval_result.confidence.score,
         top_chunk.semantic_score if top_chunk else 0.0,
         top_chunk.distance if top_chunk else None,
+        summary_coverage if document_summary else None,
         should_generate,
         rejection_reason or "none",
     )
@@ -628,6 +634,15 @@ def stream_chat_response(
     retrieval_message: Optional[str] = None,
 ):
     plan = _build_plan(message, session_id, widget_id, organization_id, db, language_code, language_label, retrieval_message)
+    if plan.retrieval_trace.get("document_summary_intent") and (
+        plan.override_response or not plan.should_generate_llm_response
+    ):
+        plan.retrieval_trace.setdefault("retrieval_decision", {})["final_outcome"] = "summary_limited"
+        logger.info(
+            "RAG final outcome | intent=document_summary | organization_id=%s | widget_id=%s | outcome=summary_limited",
+            organization_id,
+            widget_id,
+        )
     if plan.override_response:
         plan.retrieval_trace["escalation_triggered"] = plan.answer_mode == "vector" and should_escalate_response(plan.override_response)
         return None, plan.sources, plan.override_response, plan.retrieval_trace

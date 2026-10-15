@@ -167,6 +167,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
             _prepare_history=Mock(side_effect=AssertionError("No assistant dataset history")),
             resolve_followup_context=Mock(return_value=NS(query_text=DOCUMENT_QUESTION)),
             retrieve_hybrid_result=Mock(side_effect=lambda **kwargs: self.document_plan().retrieval_result),
+            session_contact_prompt=Mock(return_value=""),
             chroma_client=object(), build_clarifying_question=Mock(return_value="Clarify"),
             build_soft_fallback_message=Mock(return_value="Soft fallback"),
             build_grounded_fallback_message=Mock(return_value="Grounded fallback"),

@@ -12,12 +12,15 @@ from app.models.products import Product
 from app.schemas import LeadCreate, LeadResponse, LeadFunnelStageUpdate
 from app.utils import export_leads_to_csv
 from app.services.notification_service import notify_lead_created
-from app.services.limits_service import get_effective_limits, increment_usage
+from app.services.limits_service import get_effective_limits
 from app.services.funnel_category_service import is_valid_funnel_stage
 import logging
 
 from app.api.organization_setting import get_settings
-from app.services.call_log_service import create_lead_activity
+from app.services.lead_persistence_service import (
+    stage_lead_activity as create_lead_activity,
+    stage_lead_usage as increment_usage,
+)
 from app.models.lead_activities import LeadActivity
 from app.models.campaign import Contact
 from app.models.lead_contact_mapping import LeadContactMapping
@@ -28,6 +31,8 @@ from app.services import organization_credit_service
 from app.models.call_campaigns import CallCampaign
 from app.models.campaign_contacts import CampaignContact
 from app.services.conversation_outcome_service import FUNNEL_STAGE
+from app.services.chat.contact_context import cache_session_contact
+from app.services.chat.persistence_service import persist_contact_form_records
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +113,9 @@ def _extract_lead_outcome_from_custom_fields(
 
 def _sync_lead_contact_to_agent_list(
     db: Session, widget_config: WidgetConfig, lead: LeadCreate
-) -> None:
+) -> Optional[Contact]:
+    if not widget_config or not widget_config.organization_id:
+        return None
     cleaned_email = (lead.email or "").strip().lower()
     cleaned_phone = (lead.phone or "").strip()
     normalized_phone = _normalize_phone(cleaned_phone)
@@ -131,7 +138,8 @@ def _sync_lead_contact_to_agent_list(
             if lead.custom_fields:
                 existing.custom_fields = lead.custom_fields
                 db.flush()
-            return
+            _link_lead_session_contact(db, widget_config, lead.session_id, existing.id)
+            return existing
         if (
             normalized_phone
             and existing_phone_normalized
@@ -140,7 +148,8 @@ def _sync_lead_contact_to_agent_list(
             if lead.custom_fields:
                 existing.custom_fields = lead.custom_fields
                 db.flush()
-            return
+            _link_lead_session_contact(db, widget_config, lead.session_id, existing.id)
+            return existing
 
     cleaned_name = (lead.name or "").strip() or None
 
@@ -149,18 +158,24 @@ def _sync_lead_contact_to_agent_list(
         name=cleaned_name,
         email=cleaned_email or None,
         phone=cleaned_phone or None,
+        company=lead.company,
         session_id=lead.session_id if lead and lead.session_id else None,
         custom_fields=lead.custom_fields,
     )
     db.add(contact)
     db.flush()
 
-    if contact.session_id:
-        db.query(Conversation).filter(
-            Conversation.session_id == contact.session_id
-        ).update({Conversation.contact_id: contact.id}, synchronize_session=False)
-
+    _link_lead_session_contact(db, widget_config, lead.session_id, contact.id)
     return contact
+
+
+def _link_lead_session_contact(db, widget_config, session_id, contact_id):
+    if session_id:
+        db.query(Conversation).filter(
+            Conversation.session_id == session_id,
+            Conversation.organization_id == widget_config.organization_id,
+            Conversation.widget_id == widget_config.widget_id,
+        ).update({Conversation.contact_id: contact_id}, synchronize_session=False)
 
 
 @router.post("", response_model=LeadResponse)
@@ -175,12 +190,17 @@ async def create_lead(
 
         org_id = None
         user_id = None
+        widget_owner = None
+        contact = None
 
         # Priority 1: Try to resolve organization from widget_id (for widget-based leads)
         if lead.widget_id:
             widget_owner = (
                 db.query(WidgetConfig)
                 .filter(WidgetConfig.widget_id == lead.widget_id)
+                # Serialize concurrent form submissions for this widget on
+                # databases supporting row locks; no new unique index required.
+                .with_for_update()
                 .first()
             )
             if widget_owner:
@@ -190,17 +210,19 @@ async def create_lead(
                     f"Lead from widget {lead.widget_id}: org_id={org_id}, user_id={user_id}"
                 )
             else:
-                logger.warning(
-                    f"No widget config found for widget_id: {lead.widget_id}"
-                )
+                raise HTTPException(status_code=404, detail="Widget not found")
+            if not org_id:
+                raise HTTPException(status_code=403, detail="Widget has no organization")
 
         # Priority 2: If authenticated user and no widget_id, use authenticated user's org
-        if org_id is None and current_user:
+        if not lead.widget_id and current_user:
             org_id = current_user.organization_id
             user_id = current_user.id
             logger.info(
                 f"Lead from authenticated user {current_user.username}: org_id={org_id}, user_id={user_id}"
             )
+        if not org_id:
+            raise HTTPException(status_code=403, detail="Organization required")
 
         # Create lead dict and add org/user fields
         lead_data = lead.dict()
@@ -264,17 +286,11 @@ async def create_lead(
                     detail="Insufficient credits. Please add more credits to continue.",
                 )
 
-            contact = (
-                db.query(Contact).filter(Contact.session_id == lead.session_id).first()
-            )
-
-            if not contact:
-                contact = _sync_lead_contact_to_agent_list(db, widget_owner, lead)
+            contact = _sync_lead_contact_to_agent_list(db, widget_owner, lead)
 
             new_lead = Lead(**lead_data)
             db.add(new_lead)
-            db.commit()
-            db.refresh(new_lead)
+            db.flush()
 
             create_lead_activity(
                 db=db,
@@ -307,23 +323,29 @@ async def create_lead(
                 f"Lead created with id={new_lead.id}, org_id={new_lead.organization_id}, user_id={new_lead.user_id}, the lead caption is now storing user_id\torganization_id"
             )
 
-            # Send notifications to organization admins
-            if org_id:
-                try:
-                    notify_lead_created(db, new_lead)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to send lead notification: {str(e)}", exc_info=True
-                    )
         else:
             new_lead = existing
 
+        persist_contact_form_records(db, lead.session_id, lead.widget_id, user_id, org_id, lead)
+        if contact:
+            _link_lead_session_contact(db, widget_owner, lead.session_id, contact.id)
         db.commit()
+        # A deduplicated Lead may belong to a different browser session. Only the
+        # newly submitted contact data is authorized for this request's scope.
+        cache_session_contact(org_id, lead.widget_id, lead.session_id, lead)
+        # Notifications may commit independently; never run them before the
+        # complete lead/contact/credit/usage/transcript transaction succeeds.
+        if new_lead is not existing:
+            try:
+                notify_lead_created(db, new_lead)
+            except Exception as e:
+                logger.error(f"Failed to send lead notification: {str(e)}", exc_info=True)
         return new_lead
     except HTTPException:
         db.rollback()
         raise
     except Exception as e:
+        db.rollback()
         logger.error(f"Error creating lead: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

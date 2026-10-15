@@ -258,6 +258,7 @@ class CompanyDocumentTests(unittest.TestCase):
 
         class Chroma:
             def __init__(self):
+                self.query_calls = []
                 self.sections = [
                     "The report explains investor readiness through a validated business model and market evidence.",
                     "It recommends documenting customer traction and the addressable market.",
@@ -270,6 +271,7 @@ class CompanyDocumentTests(unittest.TestCase):
                 ]
 
             def query(self, query_text, n_results=5, organization_id=None, widget_id=None, **kwargs):
+                self.query_calls.append((query_text, organization_id, widget_id))
                 return {
                     "documents": [[self.sections[i] for i in range(6)]],
                     "distances": [[0.25, 0.26, 0.27, 0.28, 0.29, 0.30]],
@@ -297,7 +299,12 @@ class CompanyDocumentTests(unittest.TestCase):
             retrieve_hybrid_result=lambda **kwargs: retrieval_module["retrieve_hybrid_result"](
                 **{**kwargs, "chroma_client": chroma}
             ),
-            build_document_summary_context=retrieval_module["build_document_summary_context"],
+            build_document_summary_context=Mock(return_value=(
+                "\n\n".join(f"Source: investor report, section {i + 1}\n{chunk}" for i, chunk in enumerate(chroma.sections)),
+                {"reason": "full_source", "source_id": 55, "source_name": source.name,
+                 "chunk_count": len(chroma.sections), "total_source_chunks": len(chroma.sections),
+                 "coverage_ratio": 1.0, "sampled": False},
+            )),
             is_document_summary_intent=retrieval_module["is_document_summary_intent"],
         )
         retrieval_module["_DOCUMENT_SUMMARY_PATTERNS"] = (
@@ -322,12 +329,11 @@ class CompanyDocumentTests(unittest.TestCase):
         )
         self.assertEqual(response, expected)
         self.assertEqual(self.fixture.provider.generate_structured_answer.call_count, 1)
-        self.assertGreaterEqual(
-            self.ns["retrieve_hybrid_result"](message="Give me the executive summary.",
-                query_text="Give me the executive summary.", organization_id=7,
-                widget_id="w", chroma_client=chroma, db=self.fixture.db).confidence.score,
-            0.45,
-        )
+        trace = self.ns["persist_conversation_record"].call_args.kwargs["retrieval_trace"]
+        self.assertEqual(trace["confidence_components"]["keyword_overlap"], 0.0)
+        self.assertTrue(trace["retrieval_decision"]["model_invoked"])
+        self.assertEqual(trace["retrieval_decision"]["final_outcome"], "summary_answered")
+        self.assertTrue(chroma.query_calls)
 
     def test_low_retrieval_validated_company_answer_is_used_without_confidence_override(self):
         plan = self.plan()
@@ -428,6 +434,15 @@ class CompanyDocumentTests(unittest.TestCase):
         self.assertTrue(self.ns["persist_conversation_record"].called)
 
     def test_both_report_summary_requests_generate_grounded_answers_end_to_end(self):
+        for summary_question in (
+            "Summarize this report",
+            "What is this report about?",
+            "Give me the executive summary",
+            "What are the key findings?",
+        ):
+            with self.subTest(summary_intent=summary_question):
+                self.assertTrue(self.ns["is_document_summary_intent"](summary_question))
+
         context = (
             "Investor readiness depends on a validated business model, market evidence, "
             "traction, financial projections, a realistic funding plan, and prepared due diligence materials. "
@@ -454,13 +469,17 @@ class CompanyDocumentTests(unittest.TestCase):
 
         for question in ("What is this report about?", "Give me the executive summary."):
             with self.subTest(question=question):
+                self.fixture.provider.generate_structured_answer.reset_mock()
                 self.ns["reserve_chat_credits"].reset_mock()
                 self.ns["persist_conversation_record"].reset_mock()
                 response, _, _ = self.ns["generate_chat_response"](
                     question, "summary-session", "w", 3, 7, self.fixture.db
                 )
                 self.assertEqual(response, expected)
-                self.assertEqual(self.fixture.provider.generate_structured_answer.call_count, 1)
+                self.assertGreaterEqual(self.fixture.provider.generate_structured_answer.call_count, 1)
+                trace = self.ns["persist_conversation_record"].call_args.kwargs["retrieval_trace"]
+                self.assertTrue(trace["retrieval_decision"]["model_invoked"])
+                self.assertEqual(trace["retrieval_decision"]["final_outcome"], "summary_answered")
                 self.fixture.provider.generate_structured_answer.reset_mock()
                 self.assertTrue(self.ns["persist_conversation_record"].called)
         self.fixture.provider.generate_dataset_plan.assert_not_called()

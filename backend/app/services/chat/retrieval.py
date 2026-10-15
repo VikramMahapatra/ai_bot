@@ -125,6 +125,7 @@ def build_document_summary_context(
         return "", {"reason": "source_has_no_indexed_chunks", "source_id": source.id, "chunk_count": 0}
 
     total_chunks = len(chunks)
+    total_source_chars = sum(len(text) for _, text in chunks)
     sampled = total_chunks > SUMMARY_MAX_CHUNKS or len(documents.get("ids") or []) >= 200
     if sampled:
         positions = sorted(
@@ -160,7 +161,10 @@ def build_document_summary_context(
         "source_name": source.name,
         "chunk_count": len(bounded),
         "total_source_chunks": total_chunks,
-        "coverage_ratio": round(len(bounded) / max(total_chunks, 1), 4),
+        "coverage_ratio": round(
+            min(len(bounded) / max(total_chunks, 1), char_count / max(total_source_chars, 1)),
+            4,
+        ),
         "sampled": sampled,
         "context_chars": len(context),
     }
@@ -448,7 +452,7 @@ def retrieve_hybrid_result(
     db: Session,
     cache_ttl_seconds: int = 120,
 ) -> HybridRetrievalResult:
-    cache_key = build_cache_key("hybrid_retrieval", organization_id, widget_id, message.strip().lower(), query_text.strip().lower())
+    cache_key = build_cache_key("hybrid_retrieval_v2", organization_id, widget_id, message.strip().lower(), query_text.strip().lower())
     cached = chat_cache.get(cache_key)
     if isinstance(cached, HybridRetrievalResult):
         return cached

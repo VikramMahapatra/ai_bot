@@ -49,7 +49,9 @@ def build_system_prompt(custom_system_prompt: str, context_text: str, language_i
 def build_chat_messages(system_prompt: str, history: Iterable[Dict[str, str]], user_message: str) -> List[Dict[str, str]]:
     messages = [{"role": "system", "content": system_prompt}]
     for row in history:
-        messages.append({"role": "user", "content": row.get("user", "")})
-        messages.append({"role": "assistant", "content": row.get("assistant", "")})
+        if row.get("user"):
+            messages.append({"role": "user", "content": row["user"]})
+        if row.get("assistant"):
+            messages.append({"role": "assistant", "content": row["assistant"]})
     messages.append({"role": "user", "content": user_message})
     return messages

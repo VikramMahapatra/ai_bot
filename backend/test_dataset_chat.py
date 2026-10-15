@@ -123,6 +123,7 @@ class DatasetChatTests(unittest.TestCase):
         ns = dict(Any=Any, Dict=Dict, List=List, Optional=Optional, Tuple=Tuple, Session=Any,
                   ChatResponsePlan=TYPES.ChatResponsePlan, StructuredAnswer=TYPES.StructuredAnswer,
                   DOCUMENT_UNAVAILABLE=DOCUMENT_UNAVAILABLE,
+                  session_contact_prompt=Mock(return_value=""),
                   settings=self.settings, replace=replace, time=time, re=re, logging=logging, logger=logging.getLogger("tests"),
                   route_dataset_chat=self.router["route_dataset_chat"], openai_service=self.provider,
                   FeatureCodes=NS(CORE_CHATBOT_WEB_MESSAGE="chat"), WidgetConfig=generic.CONFIG,
