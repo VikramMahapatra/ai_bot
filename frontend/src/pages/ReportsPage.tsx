@@ -1457,7 +1457,7 @@ const ReportsPage: React.FC = () => {
                         )}
                       </TableCell> */}
                       <TableCell>
-                        <OutcomeChip value={conv.outcome || "Pending"} />
+                        <OutcomeChip value={conv.outcome} />
                       </TableCell>
                       <TableCell>
                         <ConversionOutcomeChip value={conv.lead_conversion} />
