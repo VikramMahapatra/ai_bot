@@ -33,7 +33,7 @@ VOICE_LEAD_OUTCOME_OPTIONS = [
     "unresolved",
 ]
 
-ALLOWED_SOURCES = {"all", "chat", "voice", "email", "sms", "whatsapp"}
+ALLOWED_SOURCES = {"all", "chat", "quick_connect", "voice", "email", "sms", "whatsapp"}
 
 ALLOWED_OUTCOMES = {
     "all",
@@ -402,7 +402,12 @@ def get_session_conversations_report(
 
     if source:
         normalized_source = _normalize_source(source)
-        if normalized_source != "all":
+
+        if normalized_source == "chat":
+            query = query.filter(
+                sessions_subquery.c.source.in_(["chat", "quick_connect"])
+            )
+        elif normalized_source != "all":
             query = query.filter(sessions_subquery.c.source == normalized_source)
 
     total = query.count()
