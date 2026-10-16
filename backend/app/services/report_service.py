@@ -436,13 +436,15 @@ def get_session_conversations_report(
             )
 
         turn_count = int(row.turn_count or 0)
+        source = "chat" if row.source == "quick_connect" else row.source
+
         metrics.append(
             {
                 "id": int(row.id),
                 "session_id": row.session_id,
                 "organization_id": organization_id,
                 "widget_id": row.widget_id,
-                "source": row.source,
+                "source": source,
                 "call_type": row.call_type,
                 "phone": row.phone,
                 "total_messages": turn_count * 2,

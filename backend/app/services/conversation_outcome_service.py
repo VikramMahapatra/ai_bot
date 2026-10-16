@@ -579,7 +579,7 @@ async def process_pending_session_outcomes(
             # CHAT: Process only if contact_id exists
             # ---------------------------------------------------------
 
-            if source == "chat":
+            if source == "chat" or source == "quick_connect":
                 has_contact = any(row.contact_id is not None for row in rows)
 
                 if not has_contact:

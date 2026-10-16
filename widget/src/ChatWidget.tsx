@@ -589,11 +589,12 @@ const parseRichTextBlocks = (
   const stripBold = (text: string) =>
     text.replace(/^\*\*(.*?)\*\*$/, "$1").trim();
 
-  const isProperty = (line: string) => {
+  const isProperty = (line: string): boolean => {
     const value = line.trim();
 
-    // Require a short label followed by a colon and a non-empty value.
-    return /^(?:\*\*)?[^:\n]{1,60}:(?:\*\*)?\s+\S/.test(value);
+    return /^(?:\*\*[^*\n]+:\*\*|\*\*[^*\n]+\*\*|[^:\n]{1,80})\s*:\s*\S/.test(
+      value,
+    );
   };
 
   const isCompanyHeading = (line: string) =>
@@ -965,18 +966,13 @@ const parseRichTextBlocks = (
       continue;
     }
 
-    // Grouped company lists and ordinary bullet lists.
 
+    // Grouped company lists and ordinary bullet lists.
     if (isBulletLine(current)) {
       const groups: {
         title: string;
         items: string[];
       }[] = [];
-
-      let currentGroup: {
-        title: string;
-        items: string[];
-      } | null = null;
 
       while (
         index < lines.length &&
@@ -984,51 +980,53 @@ const parseRichTextBlocks = (
       ) {
         const item = cleanBullet(lines[index]);
 
-        // Ignore empty Markdown bullets such as a standalone "-".
-        if (!item || /^[-*+]\s*$/.test(item)) {
+        if (!item) {
           index++;
           continue;
         }
 
-        if (isProperty(item)) {
-          // Property bullets belong to the current company.
-          if (!currentGroup) {
-            currentGroup = {
-              title: "",
-              items: [],
-            };
-            groups.push(currentGroup);
-          }
+        // Match both:
+        // **AI Chatbot Platform:** Description
+        // **AI & Automation**: Description
+        const titledItem = item.match(
+          /^\*\*(.+?)\*\*\s*:?\s+(.+)$/
+        );
 
-          currentGroup.items.push(item);
-        } else if (isCompanyHeading(item)) {
-          // Only a company heading creates a titled group.
-          currentGroup = {
-            title: stripBold(item),
-            items: [],
-          };
-          groups.push(currentGroup);
-        } else {
-          // Regular bullet: keep it as an item, not a title.
-          if (!currentGroup) {
-            currentGroup = {
-              title: "",
-              items: [],
-            };
-            groups.push(currentGroup);
-          }
+        if (titledItem) {
+          groups.push({
+            title: titledItem[1].replace(/:\s*$/, "").trim(),
+            items: [titledItem[2].trim()],
+          });
 
-          currentGroup.items.push(item);
+          index++;
+          continue;
         }
+
+        // Match properties, e.g. **Building:** World Trade Centre.
+        if (isProperty(item)) {
+          groups.push({
+            title: "",
+            items: [item],
+          });
+
+          index++;
+          continue;
+        }
+
+        // Other bullets remain ordinary list items.
+        groups.push({
+          title: "",
+          items: [item],
+        });
 
         index++;
       }
 
-      const hasGroups = groups.some(
-        (group) => group.title && group.items.length > 0,
+      const hasTitledGroups = groups.some(
+        (group) => group.title.length > 0
       );
 
-      if (hasGroups) {
+      if (hasTitledGroups) {
         blocks.push({
           type: "grouped-list",
           groups,
@@ -1036,16 +1034,13 @@ const parseRichTextBlocks = (
       } else {
         blocks.push({
           type: "unordered-list",
-          items: groups.flatMap((group) =>
-            group.title
-              ? [group.title, ...group.items]
-              : group.items,
-          ),
+          items: groups.flatMap((group) => group.items),
         });
       }
 
       continue;
     }
+
 
 
     // Numbered lists.
@@ -1128,6 +1123,11 @@ const parseRichTextBlocks = (
       for (const item of group.items) {
         // Keep all content belonging to service cards.
         if (isNumberedServiceHeading(group.title)) {
+          properties.push(item);
+          continue;
+        }
+
+        if (group.title.trim()) {
           properties.push(item);
           continue;
         }
@@ -1447,7 +1447,7 @@ const ChatWidget: React.FC<WidgetConfig> = ({
 
   useEffect(() => {
     if (isOpen && hasHandoffContact(savedContact) &&
-        Date.now() - lastActivityAtMs >= CHAT_INACTIVITY_TIMEOUT_MS) {
+      Date.now() - lastActivityAtMs >= CHAT_INACTIVITY_TIMEOUT_MS) {
       resetChat();
     }
   }, [isOpen]);
@@ -2725,20 +2725,20 @@ const ChatWidget: React.FC<WidgetConfig> = ({
             }}
           >
             <div>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14.7,
-                fontWeight: 800,
-                letterSpacing: "0.01em",
-                color: "inherit",
-              }}
-            >
-              {name} Assistant
-            </h3>
-            {handoffActive && <div className="chatbot-header-handoff-status" role="status" aria-live="polite" style={{ fontSize: 11, marginTop: 3 }}>
-              {handoffStatus === "assigned" ? "Agent connected" : "Waiting for an agent"}
-            </div>}
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 14.7,
+                  fontWeight: 800,
+                  letterSpacing: "0.01em",
+                  color: "inherit",
+                }}
+              >
+                {name} Assistant
+              </h3>
+              {handoffActive && <div className="chatbot-header-handoff-status" role="status" aria-live="polite" style={{ fontSize: 11, marginTop: 3 }}>
+                {handoffStatus === "assigned" ? "Agent connected" : "Waiting for an agent"}
+              </div>}
             </div>
             <div className="chatbot-widget-header-actions">
               <button
