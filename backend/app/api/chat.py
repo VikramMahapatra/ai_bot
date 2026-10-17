@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
 import uuid
 import logging
@@ -58,11 +58,7 @@ from app.config import settings
 from app.services.handoff_hub import handoff_hub
 from app.services.intent_service import IntentDetectionResult, IntentType, detect_intent
 from app.services.chat.contact_context import get_session_contact
-
-try:
-    from dateutil import parser as dateutil_parser
-except Exception:
-    dateutil_parser = None
+from app.services.appointment_datetime import resolve_appointment_datetime
 
 from app.services.shopify_service import handle_shopify_intent, verify_shopify_customer
 from app.models.organization_settings import OrganizationSettings
@@ -458,7 +454,12 @@ def _has_date_hint(text: str) -> bool:
         re.search(r"\b\d{4}-\d{2}-\d{2}\b", candidate)
         or re.search(r"\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b", candidate)
         or re.search(
-            r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|tomorrow|day after tomorrow)\b",
+            r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|"
+            r"tomorrow|tom|tmrw|tmr|day after tomorrow|next\s+)?"
+            r"(mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
+            r"fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b|"
+            r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|"
+            r"tomorrow|tom|tmrw|tmr|day after tomorrow)\b",
             candidate,
         )
     )
@@ -477,105 +478,35 @@ def _normalize_datetime_text(value: str) -> str:
     return candidate
 
 
-def _parse_date_only_input(text: str) -> Optional[datetime]:
+def _parse_date_only_input(
+    text: str,
+    timezone_name: str = DEFAULT_APPOINTMENT_TIMEZONE,
+    now: Optional[datetime] = None,
+) -> Optional[datetime]:
     if not text:
         return None
-
-    candidate = text.strip()
-    if not candidate or _has_time_hint(candidate):
+    result = resolve_appointment_datetime(text, timezone_name, now)
+    if result.kind != "date" or not isinstance(result.value, date):
         return None
-
-    lower = candidate.lower()
-    now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-
-    if lower in {"today"}:
-        return now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    if lower in {"tomorrow"}:
-        base = now_local + timedelta(days=1)
-        return base.replace(hour=0, minute=0, second=0, microsecond=0)
-    if lower in {"day after tomorrow", "day-after-tomorrow"}:
-        base = now_local + timedelta(days=2)
-        return base.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    cleaned = _normalize_datetime_text(candidate)
-    formats = [
-        "%Y-%m-%d",
-        "%Y/%m/%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%d %B %Y",
-        "%d %b %Y",
-        "%d %B",
-        "%d %b",
-    ]
-
-    for fmt in formats:
-        try:
-            parsed = datetime.strptime(cleaned, fmt)
-            parsed = parsed.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-                tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE),
-            )
-            if "%Y" not in fmt:
-                parsed = parsed.replace(year=now_local.year)
-                if parsed.date() < now_local.date():
-                    parsed = parsed.replace(year=now_local.year + 1)
-            return parsed
-        except Exception:
-            continue
-
-    if dateutil_parser is not None:
-        try:
-            default_value = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            parsed = dateutil_parser.parse(
-                cleaned, dayfirst=True, fuzzy=True, default=default_value
-            )
-            return parsed.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-                tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE),
-            )
-        except Exception:
-            pass
-
-    return None
+    return datetime.combine(result.value, datetime.min.time(), tzinfo=ZoneInfo(timezone_name))
 
 
-def _parse_time_only_input(text: str) -> Optional[tuple[int, int]]:
+def _parse_time_only_input(
+    text: str,
+    timezone_name: str = DEFAULT_APPOINTMENT_TIMEZONE,
+    now: Optional[datetime] = None,
+) -> Optional[tuple[int, int]]:
     if not text:
         return None
-
-    cleaned = (text or "").strip()
-    if not cleaned or _has_date_hint(cleaned):
+    result = resolve_appointment_datetime(text, timezone_name, now)
+    if result.kind != "time" or not isinstance(result.value, time):
         return None
-
-    candidate = re.sub(r"\s+", " ", cleaned).strip().upper()
-    formats = ["%H:%M", "%I:%M %p", "%I %p"]
-    for fmt in formats:
-        try:
-            parsed = datetime.strptime(candidate, fmt)
-            return parsed.hour, parsed.minute
-        except Exception:
-            continue
-
-    if dateutil_parser is not None:
-        try:
-            parsed = dateutil_parser.parse(
-                candidate, fuzzy=True, default=datetime(2000, 1, 1, 9, 0, 0)
-            )
-            return parsed.hour, parsed.minute
-        except Exception:
-            pass
-
-    return None
+    return result.value.hour, result.value.minute
 
 
-def _parse_iso_datetime_entity(value: object) -> Optional[datetime]:
+def _parse_iso_datetime_entity(
+    value: object, timezone_name: str = DEFAULT_APPOINTMENT_TIMEZONE
+) -> Optional[datetime]:
     if not value:
         return None
 
@@ -586,9 +517,9 @@ def _parse_iso_datetime_entity(value: object) -> Optional[datetime]:
     try:
         parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
+            parsed = parsed.replace(tzinfo=ZoneInfo(timezone_name))
         else:
-            parsed = parsed.astimezone(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
+            parsed = parsed.astimezone(ZoneInfo(timezone_name))
         return parsed
     except Exception:
         return None
@@ -624,17 +555,9 @@ def _is_relevant_for_next_field(text: str, next_field: str) -> bool:
             re.search(r"\b(email|mail)\b", text.lower())
         )
     if next_field == "appointment_at":
-        return (
-            _parse_datetime_input(text) is not None
-            or _parse_date_only_input(text) is not None
-            or _parse_time_only_input(text) is not None
-            or bool(
-                re.search(
-                    r"\b(\d{1,2}:\d{2}|\d{4}-\d{2}-\d{2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|tomorrow|today|date|time)\b",
-                    text.lower(),
-                )
-            )
-        )
+        return resolve_appointment_datetime(
+            text, DEFAULT_APPOINTMENT_TIMEZONE
+        ).kind != "none" or bool(re.search(r"\b(date|time)\b", text.lower()))
     if next_field == "timezone":
         return _extract_timezone(text) is not None or bool(
             re.search(r"\b(utc|gmt|ist|timezone|time zone)\b", text.lower())
@@ -753,90 +676,15 @@ def _extract_name(text: str) -> Optional[str]:
     return None
 
 
-def _parse_datetime_input(text: str) -> Optional[datetime]:
+def _parse_datetime_input(
+    text: str,
+    timezone_name: str = DEFAULT_APPOINTMENT_TIMEZONE,
+    now: Optional[datetime] = None,
+) -> Optional[datetime]:
     if not text:
         return None
-
-    candidate = _normalize_datetime_text(text)
-    now_local = datetime.now(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-
-    lower = candidate.lower()
-    relative_time_match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lower)
-    if lower.startswith("tomorrow") and relative_time_match:
-        hour = int(relative_time_match.group(1))
-        minute = int(relative_time_match.group(2) or 0)
-        meridiem = relative_time_match.group(3)
-        if meridiem == "pm" and hour != 12:
-            hour += 12
-        if meridiem == "am" and hour == 12:
-            hour = 0
-        base = now_local.replace(second=0, microsecond=0)
-        base = base.replace(hour=hour, minute=minute)
-        return base + timedelta(days=1)
-
-    if re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", candidate):
-        try:
-            return datetime.fromisoformat(candidate.replace("Z", "+00:00")).astimezone(
-                ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
-            )
-        except Exception:
-            pass
-
-    formats = [
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d %I:%M %p",
-        "%Y/%m/%d %H:%M",
-        "%d-%m-%Y %H:%M",
-        "%d/%m/%Y %H:%M",
-        "%d %B %Y %I:%M %p",
-        "%d %B %Y %H:%M",
-        "%d %b %Y %I:%M %p",
-        "%d %b %Y %H:%M",
-        "%d %B %I:%M %p",
-        "%d %B %H:%M",
-        "%d %b %I:%M %p",
-        "%d %b %H:%M",
-    ]
-    for fmt in formats:
-        try:
-            parsed = datetime.strptime(candidate, fmt)
-            parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-            if "%Y" not in fmt:
-                parsed = parsed.replace(year=now_local.year)
-                if parsed < now_local:
-                    parsed = parsed.replace(year=now_local.year + 1)
-            return parsed
-        except Exception:
-            continue
-
-    # Best-effort fallback for natural formats like "next friday 5pm".
-    if (
-        dateutil_parser is not None
-        and _has_date_hint(candidate)
-        and _has_time_hint(candidate)
-    ):
-        try:
-            default_value = now_local.replace(second=0, microsecond=0)
-            parsed = dateutil_parser.parse(
-                candidate, dayfirst=True, fuzzy=True, default=default_value
-            )
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-            else:
-                parsed = parsed.astimezone(ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-            return parsed
-        except Exception:
-            pass
-
-    match = re.search(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}", candidate)
-    if match:
-        try:
-            parsed = datetime.strptime(match.group(0), "%Y-%m-%d %H:%M")
-            return parsed.replace(tzinfo=ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE))
-        except Exception:
-            return None
-
-    return None
+    result = resolve_appointment_datetime(text, timezone_name, now)
+    return result.value if result.kind == "datetime" and isinstance(result.value, datetime) else None
 
 
 def _extract_timezone(text: str) -> Optional[str]:
@@ -2006,10 +1854,19 @@ async def _handle_appointment_intake_flow(
 
     if not active:
         if _has_booked_appointment(db, session_id, widget_id, user.organization_id):
-            parsed_datetime = _parse_datetime_input(text)
             reschedule_follow_up = (
                 _last_response_prompted_reschedule(db, session_id, widget_id)
                 and message_intent.primary_intent == IntentType.CONFIRM
+            )
+            parsed_datetime = (
+                _parse_datetime_input(text)
+                if message_intent.primary_intent in {
+                    IntentType.BOOK_APPOINTMENT,
+                    IntentType.RESCHEDULE_APPOINTMENT,
+                    IntentType.PROVIDE_DATETIME,
+                    IntentType.PROVIDE_TIMEZONE,
+                } or reschedule_follow_up
+                else None
             )
             if (
                 message_intent.primary_intent
@@ -2106,11 +1963,20 @@ async def _handle_appointment_intake_flow(
             detected_timezone or active.timezone or DEFAULT_APPOINTMENT_TIMEZONE
         )
 
-        dt_value = _parse_iso_datetime_entity(message_intent.entities.get("datetime"))
-        if not dt_value:
-            dt_value = _parse_datetime_input(text)
+        timezone_name = active.timezone or DEFAULT_APPOINTMENT_TIMEZONE
+        date_time_resolution = resolve_appointment_datetime(text, timezone_name)
+        dt_value = (
+            date_time_resolution.value
+            if date_time_resolution.kind == "datetime"
+            and isinstance(date_time_resolution.value, datetime)
+            else _parse_iso_datetime_entity(
+                message_intent.entities.get("datetime"), timezone_name
+            )
+            if date_time_resolution.kind == "none"
+            else None
+        )
         if dt_value:
-            active.appointment_at = dt_value
+            active.appointment_at = dt_value.astimezone(ZoneInfo(timezone_name))
             db.commit()
             return _finalize_intake_appointment(
                 db=db,
@@ -2121,19 +1987,43 @@ async def _handle_appointment_intake_flow(
                 widget_id=widget_id,
             )
 
-        date_only_value = _parse_date_only_input(text)
+        if date_time_resolution.kind == "ambiguous":
+            return (
+                "I couldn’t determine the appointment date and time from that. "
+                "Please include a clear date and time, such as tomorrow at 4 PM."
+            )
+
+        date_only_value = (
+            datetime.combine(
+                date_time_resolution.value,
+                datetime.min.time(),
+                tzinfo=ZoneInfo(timezone_name),
+            )
+            if date_time_resolution.kind == "date"
+            and isinstance(date_time_resolution.value, date)
+            else _parse_date_only_input(text, timezone_name)
+            if date_time_resolution.kind == "none"
+            else None
+        )
         if date_only_value:
             active.appointment_at = date_only_value
             db.commit()
             date_label = date_only_value.astimezone(
-                ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
+                ZoneInfo(timezone_name)
             ).strftime("%d %b %Y")
             return (
                 f"Got the date: {date_label}. "
                 "Please share the time as well (for example: 10:30 AM)."
             )
 
-        time_only_value = _parse_time_only_input(text)
+        time_only_value = (
+            (date_time_resolution.value.hour, date_time_resolution.value.minute)
+            if date_time_resolution.kind == "time"
+            and isinstance(date_time_resolution.value, time)
+            else _parse_time_only_input(text, timezone_name)
+            if date_time_resolution.kind == "none"
+            else None
+        )
         if time_only_value:
             if not active.appointment_at:
                 return (
@@ -2142,7 +2032,7 @@ async def _handle_appointment_intake_flow(
                 )
 
             base_date = active.appointment_at.astimezone(
-                ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
+                ZoneInfo(timezone_name)
             )
             hour, minute = time_only_value
             combined = base_date.replace(

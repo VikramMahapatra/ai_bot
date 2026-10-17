@@ -3,7 +3,7 @@ import ast
 import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import logging
 from pathlib import Path
@@ -14,6 +14,7 @@ from typing import Optional
 import unittest
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
+from test_appointment_datetime import resolve as resolve_appointment_datetime
 
 from dateutil import parser as dateutil_parser
 from fastapi import HTTPException
@@ -99,8 +100,10 @@ class ContactReuseTests(unittest.TestCase):
         self.intent_type = NS(**{name: name for name in (
             "BOOK_APPOINTMENT", "RESCHEDULE_APPOINTMENT", "PROVIDE_DATETIME", "PROVIDE_TIMEZONE",
             "CONFIRM", "REQUEST_HUMAN", "DENY", "PROVIDE_NAME", "PROVIDE_EMAIL")})
-        self.api = dict(datetime=datetime, timedelta=timedelta, timezone=timezone, ZoneInfo=ZoneInfo,
+        self.api = dict(date=date, datetime=datetime, time=time, timedelta=timedelta,
+            timezone=timezone, ZoneInfo=ZoneInfo,
             re=re, json=json, dateutil_parser=dateutil_parser, DEFAULT_APPOINTMENT_TIMEZONE="Asia/Kolkata",
+            resolve_appointment_datetime=resolve_appointment_datetime,
             BaseModel=BaseModel, EmailStr=EmailStr, TypeAdapter=TypeAdapter, ValidationError=ValidationError,
             HTTPException=HTTPException, IntentType=self.intent_type,
             get_session_contact=lambda db, org, widget, session: self.get_contact(self.db, org, widget, session),
@@ -178,6 +181,32 @@ class ContactReuseTests(unittest.TestCase):
         self.assertEqual(self.active.appointment_at.year, 2099)
         self.assertEqual(self.active.appointment_at.hour, 10)
         self.assertEqual(self.active.appointment_at.minute, 30)
+
+    def test_tom_abbreviation_with_time_resolves_tomorrow_in_business_timezone(self):
+        self.save(7, "w", "s", self.contact)
+        tomorrow = datetime.now(ZoneInfo("Asia/Kolkata")).date() + timedelta(days=1)
+        self.assertIn("date and time", self.turn("book a meeting"))
+        result = self.turn("tom at 4 pm", "PROVIDE_DATETIME")
+        self.assertEqual(result, "BOOKED")
+        self.assertEqual(self.active.appointment_at.date(), tomorrow)
+        self.assertEqual((self.active.appointment_at.hour, self.active.appointment_at.minute), (16, 0))
+
+    def test_relative_date_then_time_preserves_date_in_active_intake(self):
+        self.save(7, "w", "s", self.contact)
+        self.turn("book a meeting")
+        date_reply = self.turn("tmrw", "PROVIDE_DATETIME")
+        self.assertIn("time as well", date_reply)
+        saved_date = self.active.appointment_at.date()
+        self.assertEqual(self.turn("4pm", "PROVIDE_DATETIME"), "BOOKED")
+        self.assertEqual(self.active.appointment_at.date(), saved_date)
+        self.assertEqual((self.active.appointment_at.hour, self.active.appointment_at.minute), (16, 0))
+
+    def test_ambiguous_hour_requests_clarification_without_booking(self):
+        self.save(7, "w", "s", self.contact)
+        self.turn("book a meeting")
+        reply = self.turn("tom at 4", "PROVIDE_DATETIME")
+        self.assertIn("couldn’t determine", reply)
+        self.assertIsNone(self.active.appointment_at)
 
     def test_combined_transcript_recovery_hydrates_booking_after_cache_expiry(self):
         definitions("app/services/chat/persistence_service.py", self.contact_ns,

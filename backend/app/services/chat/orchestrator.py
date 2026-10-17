@@ -74,6 +74,48 @@ def _prepare_history(db: Session, session_id: str, widget_id: str) -> List[Conve
     return db.query(Conversation).filter(Conversation.session_id == session_id, Conversation.widget_id == widget_id).order_by(Conversation.created_at.desc()).limit(3).all()
 
 
+def _configured_discovery_question(
+    system_prompt: str, message: str, history: List[Any]
+) -> Optional[str]:
+    """Offer one safe discovery question when a configured agent opts into discovery."""
+    prompt = (system_prompt or "").casefold()
+    if "discovery approach" not in prompt or "trigger lightweight discovery" not in prompt:
+        return None
+
+    normalized = _normalize_message(message)
+    if not re.search(
+        r"\b(?:ai|automation|service|services|product|products|solution|solutions|"
+        r"integration|integrations|implementation|implementations|demo|demos|consultation)\b",
+        normalized,
+    ):
+        return None
+
+    if re.search(
+        r"\b(?:price|pricing|cost|quote|quotation|proposal|phone|email|contact|"
+        r"human|person|call you|reach you)\b",
+        normalized,
+    ):
+        return None
+
+    prior_user_text = " ".join(
+        str(getattr(row, "message", "") or "").casefold() for row in history
+    )
+    user_context = f"{prior_user_text} {normalized}"
+    if re.search(
+        r"\b(?:customer support|lead qualification|outreach|workflow|digital transformation|"
+        r"custom business platform|existing systems|business challenge|my goal|our goal)\b",
+        user_context,
+    ):
+        return None
+
+    if re.search(r"\b(?:ai|automation)\b", normalized):
+        return (
+            "What are you hoping to achieve with AI—improving customer support, "
+            "qualifying leads, or automating a workflow?"
+        )
+    return "What business challenge or goal would you like help with?"
+
+
 def _build_plan(
     message: str,
     session_id: str,
@@ -111,6 +153,45 @@ def _build_plan(
             retrieval_message,
             document_summary=True,
         )
+
+    # A broad service-interest message is a discovery turn, not a dataset query.
+    # Handle it before the active-catalog planner can return a generic metadata
+    # or evidence-limit response without reaching the vector fallback hook.
+    widget_config = (
+        db.query(WidgetConfig)
+        .filter(
+            WidgetConfig.widget_id == widget_id,
+            WidgetConfig.organization_id == organization_id,
+        )
+        .first()
+    )
+    if widget_config and widget_config.system_prompt:
+        discovery_question = _configured_discovery_question(
+            widget_config.system_prompt,
+            message,
+            _prepare_history(db, session_id, widget_id),
+        )
+        if discovery_question:
+            return ChatResponsePlan(
+                should_generate_llm_response=False,
+                override_response=discovery_question,
+                escalation_triggered=False,
+                grounded_fallback=discovery_question,
+                retrieval_trace={
+                    "user_query": message,
+                    "retrieval_query": None,
+                    "query_variants": [],
+                    "retrieved_chunks": [],
+                    "selected_chunks": [],
+                    "source_ids": [],
+                    "has_context": False,
+                    "escalation_triggered": False,
+                    "discovery_fallback": True,
+                },
+                sources=[],
+                messages=[],
+            )
+
     dataset_plan = route_dataset_chat(message, session_id, widget_id, organization_id, db)
     if dataset_plan is not None and dataset_plan.answer_mode != "vector":
         if dataset_plan.answer_mode == "mixed" and dataset_plan.document_question:
@@ -414,6 +495,19 @@ def _build_vector_plan(
             rejection_reason = "company_document_relevance_gate"
         retrieval_result.retrieval_trace["dataset_document_question"] = True
 
+    discovery_question = (
+        _configured_discovery_question(custom_system_prompt, message, history)
+        if not document_summary
+        else None
+    )
+    if discovery_question:
+        # Keep this available if generation or grounding validation fails; it
+        # asks about user intent and does not weaken factual grounding.
+        fallback = discovery_question
+        retrieval_result.retrieval_trace["discovery_fallback"] = True
+        if not should_generate:
+            structured_override = discovery_question
+
     retrieval_result.retrieval_trace.update(
         document_summary_intent=document_summary,
         document_summary_evidence=summary_evidence if document_summary else None,
@@ -532,7 +626,7 @@ def _finalize_response(plan: ChatResponsePlan, structured_answer: StructuredAnsw
     if structured_answer.requires_escalation and plan.override_response:
         return plan.override_response
     if not structured_answer.answered:
-        return "The current knowledge base doesn’t confirm that detail. Could you ask about another detail or share more context?"
+        return plan.grounded_fallback or "The current knowledge base doesn’t confirm that detail. Could you ask about another detail or share more context?"
     if validated and validated.requires_clarification:
         return build_clarifying_question(message, None, ())
     return plan.grounded_fallback or build_soft_fallback_message(seed_text=message)

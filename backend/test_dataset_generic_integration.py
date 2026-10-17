@@ -187,6 +187,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
         execute_nodes(constants, ns, "app/services/chat/orchestrator.py")
         load_definitions("app/services/chat/orchestrator.py", ns, {
             "_normalize_message", "_is_small_talk_message", "_is_bare_clarification",
+            "_configured_discovery_question",
             "_build_plan", "_build_vector_plan", "_complete_mixed_plan",
             "_generate_structured_response", "_finalize_response",
             "generate_chat_response", "stream_chat_response",
@@ -338,6 +339,91 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
         self.provider.generate_dataset_plan.assert_not_called()
         self.service.get_active_catalog.assert_not_called()
         self.assertEqual(self.db.queries, [])
+
+    def test_opted_in_agent_asks_discovery_question_when_retrieval_is_empty(self):
+        self.db.configs[0].system_prompt = (
+            "## 4. DISCOVERY APPROACH\n"
+            "Trigger lightweight discovery when the conversation involves AI solutions."
+        )
+        empty_retrieval = TYPES.HybridRetrievalResult(
+            "I need to know more about AI", [],
+            TYPES.RetrievalConfidence(0.0, "none", False, ("empty_retrieval",)),
+            {"user_query": "I need to know more about AI", "retrieved_chunks": [],
+             "selected_chunks": [], "source_ids": [], "has_context": False},
+            [], "",
+        )
+        self.ns["retrieve_hybrid_result"].side_effect = None
+        self.ns["retrieve_hybrid_result"].return_value = empty_retrieval
+
+        plan = self.ns["_build_vector_plan"](
+            "I need to know more about AI", "s", "w", 7, self.db,
+            dataset_questions=[],
+        )
+
+        self.assertEqual(
+            plan.override_response,
+            "What are you hoping to achieve with AI—improving customer support, "
+            "qualifying leads, or automating a workflow?",
+        )
+        self.assertFalse(plan.should_generate_llm_response)
+        self.assertTrue(plan.retrieval_trace["discovery_fallback"])
+
+    def test_discovery_is_used_when_generated_answer_is_unanswered(self):
+        self.db.configs[0].system_prompt = (
+            "## 4. DISCOVERY APPROACH\n"
+            "Trigger lightweight discovery when the conversation involves AI solutions."
+        )
+        plan = self.ns["_build_vector_plan"](
+            "hi i would like to know more about ai", "s", "w", 7, self.db,
+            dataset_questions=[],
+        )
+
+        self.assertTrue(plan.should_generate_llm_response)
+        self.assertIsNone(plan.override_response)
+        response = self.ns["_finalize_response"](
+            plan, TYPES.StructuredAnswer(False, 0.1, False, ""),
+            "hi i would like to know more about ai",
+        )
+
+        self.assertEqual(
+            response,
+            "What are you hoping to achieve with AI—improving customer support, "
+            "qualifying leads, or automating a workflow?",
+        )
+
+    def test_broad_ai_discovery_precedes_active_dataset_routing(self):
+        self.db.configs[0].system_prompt = (
+            "## 4. DISCOVERY APPROACH\n"
+            "Trigger lightweight discovery when the conversation involves AI solutions."
+        )
+        self.ns["is_document_summary_intent"] = lambda message: False
+        self.ns["_prepare_history"].side_effect = None
+        self.ns["_prepare_history"].return_value = []
+
+        plan = self.ns["_build_plan"](
+            "hi i would like to know more about ai", "s", "w", 7, self.db,
+        )
+
+        self.assertEqual(
+            plan.override_response,
+            "What are you hoping to achieve with AI—improving customer support, "
+            "qualifying leads, or automating a workflow?",
+        )
+        self.assertTrue(plan.retrieval_trace["discovery_fallback"])
+        self.provider.generate_dataset_plan.assert_not_called()
+
+    def test_discovery_requires_prompt_opt_in_and_does_not_repeat_known_goal(self):
+        helper = self.ns["_configured_discovery_question"]
+        configured = (
+            "DISCOVERY APPROACH. Trigger lightweight discovery for AI solutions."
+        )
+        self.assertIsNone(helper("You are a general assistant.", "Tell me about AI", []))
+        self.assertIsNone(helper(configured, "I need AI for customer support", []))
+        self.assertIsNone(helper(configured, "What is your AI product pricing?", []))
+        self.assertIsNone(helper(configured, "What is your AI team’s email?", []))
+        self.assertIsNone(helper(configured, "Tell me about AI", [
+            NS(message="We want to improve customer support")
+        ]))
 
     def test_real_vector_builder_uses_agent_scope_question_only_history_and_no_stale_override(self):
         self.db.question("Tell me about admissions", 1)
