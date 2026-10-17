@@ -100,20 +100,55 @@ def _configured_discovery_question(
     prior_user_text = " ".join(
         str(getattr(row, "message", "") or "").casefold() for row in history
     )
+    prior_assistant_responses = [
+        str(getattr(row, "response", "") or "").casefold().strip()
+        for row in history
+        if str(getattr(row, "response", "") or "").strip()
+    ]
     user_context = f"{prior_user_text} {normalized}"
-    if re.search(
-        r"\b(?:customer support|lead qualification|outreach|workflow|digital transformation|"
-        r"custom business platform|existing systems|business challenge|my goal|our goal)\b",
+    has_goal = bool(re.search(
+        r"\b(?:process\s+automation|automate|automation|automating|workflow|"
+        r"customer\s+support|lead\s+qualification|outreach|digital\s+transformation|"
+        r"custom\s+business\s+platform|reduce\s+manual\s+(?:work|tasks)|"
+        r"improve\s+(?:efficiency|productivity|a\s+process)|business\s+challenge|"
+        r"my\s+goal|our\s+goal)\b",
         user_context,
-    ):
-        return None
+    ))
 
-    # if re.search(r"\b(?:ai|automation)\b", normalized):
-    #     return (
-    #         "What are you hoping to achieve with AI—improving customer support, "
-    #         "qualifying leads, or automating a workflow?"
-    #     )
-    return "What specific challenge or process are you looking to improve in your business?"
+    latest_assistant = prior_assistant_responses[0] if prior_assistant_responses else ""
+    asked_broad_discovery = any(
+        marker in latest_assistant
+        for marker in (
+            "what specific challenge or process",
+            "what are you hoping to achieve",
+            "what are you looking to achieve",
+        )
+    )
+    asked_process = "which process would you like to automate" in latest_assistant
+    asked_outcome = "what outcome would you like to improve" in latest_assistant
+    asked_tools = "what tools or systems do you currently use" in latest_assistant
+
+    if has_goal:
+        if asked_tools:
+            return None
+        if asked_outcome:
+            question = "What tools or systems do you currently use for that process?"
+        elif asked_process:
+            question = "What outcome would you like to improve with that process?"
+        elif asked_broad_discovery:
+            question = "Which process would you like to automate?"
+        else:
+            question = "Which process would you like to automate?"
+    else:
+        if asked_broad_discovery or asked_process or asked_outcome or asked_tools:
+            return None
+        question = "What specific challenge or process are you looking to improve in your business?"
+
+    # Do not repeat a discovery prompt if history already contains it. Returning
+    # None leaves the existing dataset/RAG/LLM response path in control.
+    if any(question.casefold() in response for response in prior_assistant_responses):
+        return None
+    return question
 
 
 def _build_plan(
@@ -167,10 +202,14 @@ def _build_plan(
     )
     if widget_config and widget_config.system_prompt:
         discovery_question = _configured_discovery_question(
-            widget_config.system_prompt,
-            message,
-            _prepare_history(db, session_id, widget_id),
+            widget_config.system_prompt, message, []
         )
+        if discovery_question:
+            discovery_question = _configured_discovery_question(
+                widget_config.system_prompt,
+                message,
+                _prepare_history(db, session_id, widget_id),
+            )
         if discovery_question:
             return ChatResponsePlan(
                 should_generate_llm_response=False,

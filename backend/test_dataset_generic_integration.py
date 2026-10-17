@@ -192,6 +192,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
             "_generate_structured_response", "_finalize_response",
             "generate_chat_response", "stream_chat_response",
         })
+        ns["is_document_summary_intent"] = Mock(return_value=False)
         ns["validate_answer"] = Mock(wraps=ns["validate_answer"])
         return ns
 
@@ -362,8 +363,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             plan.override_response,
-            "What are you hoping to achieve with AI—improving customer support, "
-            "qualifying leads, or automating a workflow?",
+            "What specific challenge or process are you looking to improve in your business?",
         )
         self.assertFalse(plan.should_generate_llm_response)
         self.assertTrue(plan.retrieval_trace["discovery_fallback"])
@@ -387,8 +387,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             response,
-            "What are you hoping to achieve with AI—improving customer support, "
-            "qualifying leads, or automating a workflow?",
+            "What specific challenge or process are you looking to improve in your business?",
         )
 
     def test_broad_ai_discovery_precedes_active_dataset_routing(self):
@@ -406,8 +405,7 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             plan.override_response,
-            "What are you hoping to achieve with AI—improving customer support, "
-            "qualifying leads, or automating a workflow?",
+            "What specific challenge or process are you looking to improve in your business?",
         )
         self.assertTrue(plan.retrieval_trace["discovery_fallback"])
         self.provider.generate_dataset_plan.assert_not_called()
@@ -418,12 +416,62 @@ class GenericDatasetIntegrationTests(unittest.TestCase):
             "DISCOVERY APPROACH. Trigger lightweight discovery for AI solutions."
         )
         self.assertIsNone(helper("You are a general assistant.", "Tell me about AI", []))
-        self.assertIsNone(helper(configured, "I need AI for customer support", []))
+        self.assertEqual(
+            helper(configured, "I need AI for customer support", []),
+            "Which process would you like to automate?",
+        )
         self.assertIsNone(helper(configured, "What is your AI product pricing?", []))
         self.assertIsNone(helper(configured, "What is your AI team’s email?", []))
-        self.assertIsNone(helper(configured, "Tell me about AI", [
+        self.assertEqual(helper(configured, "Tell me about AI", [
             NS(message="We want to improve customer support")
-        ]))
+        ]), "Which process would you like to automate?")
+
+    def test_process_automation_goal_advances_after_discovery_question(self):
+        helper = self.ns["_configured_discovery_question"]
+        configured = (
+            "DISCOVERY APPROACH. Trigger lightweight discovery for services and automation."
+        )
+        first_question = "What specific challenge or process are you looking to improve in your business?"
+        history = [
+            NS(message="process automation", response=first_question),
+        ]
+
+        next_question = helper(configured, "want to do some process automation", history)
+
+        self.assertIsNotNone(next_question)
+        self.assertNotEqual(next_question, first_question)
+        self.assertEqual(next_question, "Which process would you like to automate?")
+
+    def test_discovery_does_not_repeat_when_prior_question_was_not_answered(self):
+        helper = self.ns["_configured_discovery_question"]
+        configured = (
+            "DISCOVERY APPROACH. Trigger lightweight discovery for services and automation."
+        )
+        repeated_question = "What specific challenge or process are you looking to improve in your business?"
+
+        next_question = helper(configured, "process automation", [
+            NS(message="another question", response=repeated_question),
+        ])
+        self.assertIsNotNone(next_question)
+        self.assertNotEqual(next_question, repeated_question)
+
+    def test_discovery_none_leaves_vector_generation_flow_unchanged(self):
+        self.db.configs[0].system_prompt = (
+            "DISCOVERY APPROACH. Trigger lightweight discovery for services and automation."
+        )
+        history = [NS(message="process automation", response=(
+            "What tools or systems do you currently use for that process?"
+        ))]
+        self.ns["is_document_summary_intent"] = lambda message: False
+        self.ns["_prepare_history"].side_effect = None
+        self.ns["_prepare_history"].return_value = history
+        self.settings.STRUCTURED_DATASETS_CHAT_ENABLED = False
+        self.fixture.plan(dict(route="vector"))
+
+        result = self.build("want to do some process automation", retrieval_message=None)
+
+        self.assertIsNone(result.override_response)
+        self.assertTrue(result.should_generate_llm_response)
 
     def test_real_vector_builder_uses_agent_scope_question_only_history_and_no_stale_override(self):
         self.db.question("Tell me about admissions", 1)
