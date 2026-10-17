@@ -108,12 +108,12 @@ def _configured_discovery_question(
     ):
         return None
 
-    if re.search(r"\b(?:ai|automation)\b", normalized):
-        return (
-            "What are you hoping to achieve with AI—improving customer support, "
-            "qualifying leads, or automating a workflow?"
-        )
-    return "What business challenge or goal would you like help with?"
+    # if re.search(r"\b(?:ai|automation)\b", normalized):
+    #     return (
+    #         "What are you hoping to achieve with AI—improving customer support, "
+    #         "qualifying leads, or automating a workflow?"
+    #     )
+    return "What specific challenge or process are you looking to improve in your business?"
 
 
 def _build_plan(

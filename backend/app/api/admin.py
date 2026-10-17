@@ -28,10 +28,12 @@ from app.models import (
 from app.models.qualification_templates import QualificationTemplateStatus
 from app.services.limits_service import get_or_create_limits, get_effective_limits
 from app.services.email_service import (
-    send_appointment_rescheduled_notification,
     send_widget_test_link_email,
 )
-from app.services.notification_service import get_notification_recipients
+from app.services.appointment_reschedule_service import (
+    AppointmentSlotUnavailable,
+    reschedule_appointment_record,
+)
 from app.config import settings
 from app.services.conversation_outcome_service import run_outcome_processing_batches
 from app.services import org_credit_billing_service
@@ -59,7 +61,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-DEFAULT_GOOGLE_MEET_LINK = "https://meet.google.com/new"
 
 
 def _build_org_domain(name: str) -> str:
@@ -924,61 +925,31 @@ async def reschedule_appointment(
         .first()
     )
 
-    old_appointment_at = appointment.appointment_at
-    old_timezone = appointment.timezone
+    new_timezone = str(payload.get("timezone") or appointment.timezone or "UTC").strip()
+    try:
+        ZoneInfo(new_timezone)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid timezone")
+    try:
+        result = reschedule_appointment_record(
+            db,
+            appointment,
+            new_appointment_at,
+            new_timezone,
+            notes=(str(payload["notes"]) if "notes" in payload else None),
+            meeting_link=str(payload.get("meeting_link") or ""),
+        )
+    except AppointmentSlotUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    new_timezone = payload.get("timezone")
-    if new_timezone is not None:
-        appointment.timezone = str(new_timezone).strip() or None
-
-    notes = payload.get("notes")
-    if notes is not None:
-        appointment.notes = str(notes).strip() or None
-
-    appointment.appointment_at = new_appointment_at
-    appointment.status = "booked"
-
-    org = (
-        db.query(Organization)
-        .filter(Organization.id == current_user.organization_id)
-        .first()
-    )
-    org_default_meet_link = (getattr(org, "default_meet_link", None) or "").strip()
-    meeting_link = (
-        str(payload.get("meeting_link") or "").strip()
-        or org_default_meet_link
-        or DEFAULT_GOOGLE_MEET_LINK
-    )
-
-    db.commit()
-    db.refresh(appointment)
-
-    old_time_label, old_tz_label = _format_datetime_with_timezone(
-        old_appointment_at, old_timezone or appointment.timezone
-    )
+    appointment = result["appointment"]
     new_time_label, tz_label = _format_datetime_with_timezone(
         appointment.appointment_at, appointment.timezone
     )
-
-    recipients, email_setting = get_notification_recipients(
-        db,
-        current_user.organization_id,
-        widget_id=appointment.widget_id,
-        participant_email=appointment.email,
-    )
-
-    notification_ok, notification_errors = send_appointment_rescheduled_notification(
-        recipients=recipients,
-        participant_name=appointment.name,
-        participant_email=appointment.email,
-        appointment_time_label=new_time_label,
-        timezone_label=tz_label,
-        previous_time_label=f"{old_time_label} ({old_tz_label})",
-        meeting_link=meeting_link,
-        widget_name=(widget_config.name if widget_config else appointment.widget_id),
-        notes=appointment.notes,
-        org_email_setting=email_setting,
-    )
+    notification_ok = result["notification_sent"]
+    notification_errors = result["notification_errors"]
 
     response_message = "Appointment rescheduled successfully"
     if not notification_ok:
@@ -989,22 +960,18 @@ async def reschedule_appointment(
         "appointment_at": appointment.appointment_at,
         "timezone": appointment.timezone,
         "status": appointment.status,
-        "meeting_link": meeting_link,
+        "meeting_link": result["meeting_link"],
         "notification": {
             "sent": notification_ok,
-            "recipient_count": len(
-                {
-                    (email or "").strip().lower()
-                    for email in recipients
-                    if (email or "").strip()
-                }
-            ),
+            "recipient_count": result["recipient_count"],
             "errors": notification_errors,
         },
         "message": response_message,
         "previous_time": {
-            "label": old_time_label,
-            "timezone": old_tz_label,
+            "label": _format_datetime_with_timezone(
+                result["previous_time"], result["previous_timezone"]
+            )[0],
+            "timezone": result["previous_timezone"],
         },
     }
 

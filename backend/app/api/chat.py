@@ -53,6 +53,10 @@ from app.services.notification_service import (
     notify_appointment_booked,
     notify_handoff_created,
 )
+from app.services.appointment_reschedule_service import (
+    AppointmentSlotUnavailable,
+    reschedule_appointment_record,
+)
 from app.auth import get_current_user, get_current_user_optional
 from app.config import settings
 from app.services.handoff_hub import handoff_hub
@@ -807,6 +811,34 @@ def _has_booked_appointment(
         .first()
     )
     return existing is not None
+
+
+def _get_booked_appointments(
+    db: Session, session_id: str, widget_id: str, organization_id: int
+) -> List[Appointment]:
+    """Load appointments from authoritative tenant/session-scoped records."""
+    return (
+        db.query(Appointment)
+        .filter(
+            Appointment.session_id == session_id,
+            Appointment.widget_id == widget_id,
+            Appointment.organization_id == organization_id,
+            Appointment.status == "booked",
+        )
+        .order_by(Appointment.appointment_at.asc(), Appointment.id.asc())
+        .all()
+    )
+
+
+def _is_reschedule_request(text: str, message_intent: IntentDetectionResult) -> bool:
+    if message_intent.primary_intent == IntentType.RESCHEDULE_APPOINTMENT:
+        return True
+    normalized = (text or "").casefold()
+    explicit_change = re.search(r"\b(?:reschedul\w*|move|change|make it)\b", normalized)
+    appointment_reference = re.search(
+        r"\b(?:appointment|meeting|meet|call|slot|time|it)\b", normalized
+    )
+    return bool(explicit_change and appointment_reference)
 
 
 def _get_open_handoff_session(
@@ -1853,6 +1885,100 @@ async def _handle_appointment_intake_flow(
         return None
 
     if not active:
+        if _is_reschedule_request(text, message_intent):
+            appointments = _get_booked_appointments(
+                db, session_id, widget_id, user.organization_id
+            )
+            if not appointments:
+                return "I couldn’t find an active meeting for this chat to reschedule. Would you like to book one?"
+            if len(appointments) > 1:
+                scheduled = []
+                for appointment in appointments[:3]:
+                    tz_name = appointment.timezone or DEFAULT_APPOINTMENT_TIMEZONE
+                    try:
+                        tz_obj = ZoneInfo(tz_name)
+                    except Exception:
+                        tz_obj = ZoneInfo(DEFAULT_APPOINTMENT_TIMEZONE)
+                        tz_name = DEFAULT_APPOINTMENT_TIMEZONE
+                    value = appointment.appointment_at
+                    if value.tzinfo is None:
+                        value = value.replace(tzinfo=tz_obj)
+                    scheduled.append(
+                        f"{value.astimezone(tz_obj).strftime('%d %b %Y, %I:%M %p')} ({tz_name})"
+                    )
+                return (
+                    "I found more than one active meeting. Which one would you like to change? "
+                    + "; ".join(scheduled)
+                )
+
+            appointment = appointments[0]
+            timezone_name = _canonical_timezone(
+                _extract_timezone(text) or appointment.timezone or DEFAULT_APPOINTMENT_TIMEZONE
+            ) or DEFAULT_APPOINTMENT_TIMEZONE
+            try:
+                ZoneInfo(timezone_name)
+            except Exception:
+                timezone_name = DEFAULT_APPOINTMENT_TIMEZONE
+            resolution = resolve_appointment_datetime(text, timezone_name)
+            if resolution.kind == "ambiguous":
+                return "What time should I move it to? Please include AM or PM, for example 3 PM tomorrow."
+            if resolution.kind == "datetime" and isinstance(resolution.value, datetime):
+                new_appointment_at = resolution.value
+            elif resolution.kind == "time" and isinstance(resolution.value, time):
+                existing = appointment.appointment_at
+                try:
+                    existing_zone = ZoneInfo(appointment.timezone or timezone_name)
+                except Exception:
+                    existing_zone = ZoneInfo(timezone_name)
+                if existing.tzinfo is None:
+                    existing = existing.replace(tzinfo=existing_zone)
+                existing_local = existing.astimezone(existing_zone)
+                new_appointment_at = existing_local.replace(
+                    hour=resolution.value.hour,
+                    minute=resolution.value.minute,
+                    second=0,
+                    microsecond=0,
+                ).astimezone(ZoneInfo(timezone_name))
+            elif resolution.kind == "date":
+                return "I have the new date. What time should I move the meeting to? Please include AM or PM."
+            else:
+                return "What new date and time would you like for the meeting? For example, tomorrow at 3 PM."
+
+            try:
+                update_result = reschedule_appointment_record(
+                    db,
+                    appointment,
+                    new_appointment_at,
+                    timezone_name,
+                )
+            except AppointmentSlotUnavailable:
+                return "That time is already booked. Please choose a different date or time and I’ll try again."
+            except ValueError as exc:
+                if "future" in str(exc).casefold():
+                    return f"That time is in the past. {_appointment_datetime_examples_message()}"
+                logger.exception("Appointment reschedule rejected for session=%s", session_id)
+                return "I couldn’t reschedule that meeting just now. Please try a different date and time."
+            except Exception:
+                logger.exception("Appointment reschedule failed for session=%s", session_id)
+                return "I couldn’t reschedule that meeting just now. Your existing booking has been kept. Please try again."
+
+            saved = update_result["appointment"]
+            saved_timezone = saved.timezone or timezone_name
+            saved_zone = ZoneInfo(saved_timezone)
+            saved_at = saved.appointment_at
+            if saved_at.tzinfo is None:
+                saved_at = saved_at.replace(tzinfo=saved_zone)
+            time_label = saved_at.astimezone(saved_zone).strftime("%d %b %Y, %I:%M %p")
+            contact_line = saved.email or saved.phone or "not provided"
+            return (
+                f"Your meeting has been rescheduled to {time_label} ({saved_timezone}). "
+                + (
+                    f"I will share the updated details on {contact_line}."
+                    if update_result.get("notification_sent")
+                    else "The new time is saved, but I couldn’t send the update email just now."
+                )
+            )
+
         if _has_booked_appointment(db, session_id, widget_id, user.organization_id):
             reschedule_follow_up = (
                 _last_response_prompted_reschedule(db, session_id, widget_id)

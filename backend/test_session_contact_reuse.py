@@ -15,6 +15,7 @@ import unittest
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 from test_appointment_datetime import resolve as resolve_appointment_datetime
+from test_appointment_rescheduling import load_operation as load_reschedule_operation
 
 from dateutil import parser as dateutil_parser
 from fastapi import HTTPException
@@ -104,6 +105,10 @@ class ContactReuseTests(unittest.TestCase):
             timezone=timezone, ZoneInfo=ZoneInfo,
             re=re, json=json, dateutil_parser=dateutil_parser, DEFAULT_APPOINTMENT_TIMEZONE="Asia/Kolkata",
             resolve_appointment_datetime=resolve_appointment_datetime,
+            Appointment=NS(session_id=Column(String), widget_id=Column(String),
+                organization_id=Column(Integer), status=Column(String),
+                appointment_at=Column(DateTime), id=Column(Integer),
+                created_at=Column(DateTime)),
             BaseModel=BaseModel, EmailStr=EmailStr, TypeAdapter=TypeAdapter, ValidationError=ValidationError,
             HTTPException=HTTPException, IntentType=self.intent_type,
             get_session_contact=lambda db, org, widget, session: self.get_contact(self.db, org, widget, session),
@@ -111,6 +116,7 @@ class ContactReuseTests(unittest.TestCase):
             _last_response_was_escalation=lambda *args: False, AppointmentIntake=self.make_intake,
             _finalize_intake_appointment=Mock(return_value="BOOKED"))
         names = {"_handle_appointment_intake_flow", "_hydrate_intake_contact", "_prompt_for_next_intake_field",
+            "_get_booked_appointments", "_is_reschedule_request",
             "_is_cancel", "_is_skip", "_is_resume_booking_intent", "_is_booking_intent", "_mentions_appointment_topic",
             "_is_escalation_opt_in", "_is_greeting_or_smalltalk", "_is_relevant_for_next_field", "_extract_name",
             "_extract_email", "_extract_phone", "_extract_timezone", "_canonical_timezone", "_has_date_hint",
@@ -122,6 +128,11 @@ class ContactReuseTests(unittest.TestCase):
             "_normalize_handoff_text", "_is_handoff_opt_in", "_is_direct_live_agent_request",
             "_is_explicit_human_request"}
         definitions("app/api/chat.py", self.api, names)
+        self.api["_get_booked_appointments"] = Mock(return_value=[])
+        self.api["_is_reschedule_request"] = Mock(return_value=False)
+        reschedule = load_reschedule_operation()
+        self.api["AppointmentSlotUnavailable"] = reschedule["AppointmentSlotUnavailable"]
+        self.api["reschedule_appointment_record"] = Mock()
 
     def make_intake(self, **kwargs):
         self.active = NS(name=None, email=None, phone=None, appointment_at=None, timezone=None, notes=None, **kwargs)
@@ -207,6 +218,96 @@ class ContactReuseTests(unittest.TestCase):
         reply = self.turn("tom at 4", "PROVIDE_DATETIME")
         self.assertIn("couldn’t determine", reply)
         self.assertIsNone(self.active.appointment_at)
+
+    def test_reschedule_complete_datetime_updates_existing_appointment_instead_of_rebooking(self):
+        original_at = datetime(2026, 10, 18, 19, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+        appointment = NS(
+            id=44, appointment_at=original_at, timezone="Asia/Kolkata",
+            email=self.contact["email"], phone=self.contact["phone"], status="booked",
+        )
+        self.api["_is_reschedule_request"].return_value = True
+        self.api["_get_booked_appointments"].return_value = [appointment]
+        self.api["reschedule_appointment_record"].side_effect = (
+            lambda db, row, new_at, tz, **kwargs: (
+                setattr(row, "appointment_at", new_at)
+                or setattr(row, "timezone", tz)
+                or {"appointment": row}
+            )
+        )
+
+        response = self.turn("yes, change it to 3 pm tom", "RESCHEDULE_APPOINTMENT")
+
+        self.assertIn("rescheduled to 18 Oct 2026, 03:00 PM", response)
+        self.assertEqual(appointment.id, 44)
+        self.assertEqual(appointment.appointment_at.date(), original_at.date())
+        self.assertEqual((appointment.appointment_at.hour, appointment.appointment_at.minute), (15, 0))
+        self.assertEqual(self.api["reschedule_appointment_record"].call_args.args[1], appointment)
+
+    def test_reschedule_time_only_preserves_existing_date(self):
+        original_at = datetime.now(ZoneInfo("Asia/Kolkata")).replace(
+            hour=19, minute=0, second=0, microsecond=0
+        ) + timedelta(days=1)
+        appointment = NS(
+            id=45, appointment_at=original_at, timezone="Asia/Kolkata",
+            email=self.contact["email"], phone=None, status="booked",
+        )
+        self.api["_is_reschedule_request"].return_value = True
+        self.api["_get_booked_appointments"].return_value = [appointment]
+        self.api["reschedule_appointment_record"].side_effect = (
+            lambda db, row, new_at, tz, **kwargs: (
+                setattr(row, "appointment_at", new_at)
+                or setattr(row, "timezone", tz)
+                or {"appointment": row}
+            )
+        )
+
+        response = self.turn("make it 4 pm instead", "RESCHEDULE_APPOINTMENT")
+
+        self.assertIn("rescheduled to", response)
+        self.assertEqual(appointment.appointment_at.date(), original_at.date())
+        self.assertEqual((appointment.appointment_at.hour, appointment.appointment_at.minute), (16, 0))
+
+    def test_reschedule_complete_new_date_and_time_replaces_both(self):
+        appointment = NS(
+            id=46,
+            appointment_at=datetime(2026, 10, 18, 19, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+            timezone="Asia/Kolkata", email=self.contact["email"], phone=None, status="booked",
+        )
+        self.api["_is_reschedule_request"].return_value = True
+        self.api["_get_booked_appointments"].return_value = [appointment]
+        self.api["reschedule_appointment_record"].side_effect = (
+            lambda db, row, new_at, tz, **kwargs: (
+                setattr(row, "appointment_at", new_at)
+                or setattr(row, "timezone", tz)
+                or {"appointment": row}
+            )
+        )
+
+        response = self.turn(
+            "move my meeting to 20 October at 10:30 am", "RESCHEDULE_APPOINTMENT"
+        )
+
+        self.assertIn("20 Oct 2026, 10:30 AM", response)
+        self.assertEqual(appointment.appointment_at, datetime(
+            2026, 10, 20, 10, 30, tzinfo=ZoneInfo("Asia/Kolkata")
+        ))
+
+    def test_reschedule_missing_or_ambiguous_appointments_do_not_write(self):
+        self.api["_is_reschedule_request"].return_value = True
+        self.api["_get_booked_appointments"].return_value = []
+        missing = self.turn("change the meeting time", "RESCHEDULE_APPOINTMENT")
+        self.assertIn("couldn’t find an active meeting", missing)
+        self.api["reschedule_appointment_record"].assert_not_called()
+
+        self.api["_get_booked_appointments"].return_value = [
+            NS(appointment_at=datetime(2026, 10, 18, 19, tzinfo=ZoneInfo("Asia/Kolkata")),
+               timezone="Asia/Kolkata"),
+            NS(appointment_at=datetime(2026, 10, 20, 19, tzinfo=ZoneInfo("Asia/Kolkata")),
+               timezone="Asia/Kolkata"),
+        ]
+        ambiguous = self.turn("move my meeting to tomorrow at 3 pm", "RESCHEDULE_APPOINTMENT")
+        self.assertIn("more than one active meeting", ambiguous)
+        self.api["reschedule_appointment_record"].assert_not_called()
 
     def test_combined_transcript_recovery_hydrates_booking_after_cache_expiry(self):
         definitions("app/services/chat/persistence_service.py", self.contact_ns,
