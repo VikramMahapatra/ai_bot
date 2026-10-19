@@ -85,6 +85,7 @@ from app.services.limits_service import get_effective_limits
 from app.models.zoho_automation_logs import ZohoAutomationLog
 from app.models.qualification_templates import QualificationTemplate
 from app.services.qualification_engine_service import QualificationEngineService
+from datetime import timezone as dt_timezone
 
 LEAD_QUALITY_RANGES = {
     "High": (80, 100),
@@ -3019,6 +3020,8 @@ def sync_echoleads_bookings(
 
     bookings = response.get("bookings", [])
 
+    logger.info(f"Fetched {len(bookings)} bookings for organization {organization_id}")
+
     inserted_records = []
 
     for booking in bookings:
@@ -3092,15 +3095,14 @@ def sync_echoleads_bookings(
                 .first()
             )
 
-        timezone = agent.prompt_timezone or DEFAULT_APPOINTMENT_TIMEZONE
-        dt = parser.parse(booking["start_date"])
+        timezone_name = (
+            agent.prompt_timezone
+            if agent and agent.prompt_timezone
+            else DEFAULT_APPOINTMENT_TIMEZONE
+        )
 
-        # Remove fake UTC
-        dt = dt.replace(tzinfo=None)
-        # Apply actual timezone
-        dt = dt.replace(tzinfo=ZoneInfo(agent.prompt_timezone))
-        # Convert to UTC
-        appointment_at = dt.astimezone(timezone.utc)
+        dt = parser.parse(booking["start_date"])
+        appointment_at = dt.astimezone(dt_timezone.utc)
 
         # Create appointment
         appointment = Appointment(
@@ -3113,7 +3115,7 @@ def sync_echoleads_bookings(
             status="booked",
             email=None,
             notes=None,
-            timezone=timezone,
+            timezone=timezone_name,
         )
 
         db.add(appointment)

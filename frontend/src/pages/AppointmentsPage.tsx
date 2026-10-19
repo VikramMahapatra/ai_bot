@@ -1505,7 +1505,7 @@ const AppointmentsPage: React.FC = () => {
             )}
           </DialogContent>
           <DialogActions sx={{ justifyContent: "space-between" }}>
-            <Button onClick={() => setSelectedAppointment(null)}>Close</Button>
+
             {selectedAppointment && (
               <Stack direction="row" spacing={1}>
                 <Button
@@ -1551,6 +1551,9 @@ const AppointmentsPage: React.FC = () => {
                 </Button>
               </Stack>
             )}
+            <Button onClick={() => setSelectedAppointment(null)} color="error" variant="outlined" size="small">
+              Close
+            </Button>
           </DialogActions>
         </Dialog>
 
