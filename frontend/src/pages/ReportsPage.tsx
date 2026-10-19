@@ -75,6 +75,8 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import { formatDate } from "../utils/dateUtils";
 import CallMadeIcon from "@mui/icons-material/CallMade";
 import CallReceivedIcon from "@mui/icons-material/CallReceived";
+import AccessTimeOutlined from "@mui/icons-material/AccessTimeOutlined";
+import UpdateOutlined from "@mui/icons-material/UpdateOutlined";
 
 export const ActionMenu = ({
   handleExportCSV,
@@ -1354,7 +1356,7 @@ const ReportsPage: React.FC = () => {
                           <Typography variant="body2" noWrap>
                             {conv.contact_name}
                           </Typography>
-                          {conv.call_type === "inbound" && conv.phone && (
+                          {(conv.call_type === "inbound" || conv.source === "whatsapp") && conv.phone && (
                             <Box
                               sx={{
                                 display: "flex",
@@ -1463,7 +1465,40 @@ const ReportsPage: React.FC = () => {
                         <ConversionOutcomeChip value={conv.lead_conversion} />
                       </TableCell>
                       <TableCell>
-                        {formatDisplayDate(conv.conversation_start)}
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          {/* Last activity - hide for voice */}
+                          {conv.source !== "voice" && conv.conversation_end && (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.75,
+                                pl: 1,
+                                color: "primary.main",
+                              }}
+                            >
+                              <UpdateOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                              <Typography variant="caption" fontWeight={600}>
+                                Last activity: {formatDisplayDate(conv.conversation_end)}
+                              </Typography>
+                            </Box>
+                          )}
+
+                          {/* Created */}
+                          {conv.created_at && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                pl: conv.source === "voice" ? 0 : 1,
+                                color: "text.primary",
+                                fontSize: conv.source === "voice" ? "inherit" : "0.7rem",
+                                fontWeight: conv.source === "voice" ? 400 : "inherit",
+                              }}
+                            >
+                              Created: {formatDisplayDate(conv.conversation_start || conv.created_at)}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell align="center">
                         <Button

@@ -338,7 +338,13 @@ def get_session_conversations_report(
             latest_evaluation_subquery.c.next_action.label("next_action"),
             lead_conversion_case.label("lead_conversion"),
             func.coalesce(call_log_subquery.c.call_type, "").label("call_type"),
-            func.coalesce(call_log_subquery.c.phone, "").label("phone"),
+            case(
+                (
+                    sessions_subquery.c.source == "whatsapp",
+                    "+" + func.split_part(sessions_subquery.c.session_id, ":", 3),
+                ),
+                else_=func.coalesce(call_log_subquery.c.phone, ""),
+            ).label("phone"),
         )
         .select_from(sessions_subquery)
         .outerjoin(
@@ -375,9 +381,27 @@ def get_session_conversations_report(
         query = query.filter(func.coalesce(metrics_subquery.c.has_lead, 0) == has_lead)
 
     if search:
+        search_term = f"%{search.strip().lower()}%"
+
+        whatsapp_phone = func.split_part(sessions_subquery.c.session_id, ":", 3)
+
         query = query.filter(
-            func.lower(func.coalesce(contact_subquery.c.contact_name, "Guest")).ilike(
-                f"%{search.lower()}%"
+            or_(
+                func.lower(
+                    func.coalesce(contact_subquery.c.contact_name, "Guest")
+                ).ilike(search_term),
+                func.lower(func.coalesce(call_log_subquery.c.phone, "")).ilike(
+                    search_term
+                ),
+                func.lower(
+                    case(
+                        (
+                            sessions_subquery.c.source == "whatsapp",
+                            whatsapp_phone,
+                        ),
+                        else_="",
+                    )
+                ).ilike(search_term),
             )
         )
 
@@ -414,10 +438,12 @@ def get_session_conversations_report(
 
     sort_map = {
         "conversation_start": sessions_subquery.c.conversation_start,
+        "conversation_end": sessions_subquery.c.conversation_end,
         "total_tokens": func.coalesce(metrics_subquery.c.total_tokens, 0),
         "total_messages": sessions_subquery.c.turn_count,
         "has_lead": func.coalesce(metrics_subquery.c.has_lead, 0),
     }
+
     sort_field = sort_map.get(sort_by, sessions_subquery.c.conversation_start)
     if sort_order == "asc":
         query = query.order_by(sort_field.asc())
