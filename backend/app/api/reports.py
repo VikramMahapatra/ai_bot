@@ -65,8 +65,8 @@ async def get_conversations_report(
     max_tokens: Optional[int] = Query(None),
     has_lead: Optional[int] = Query(None),
     sort_by: str = Query(
-        "conversation_start",
-        regex="^(conversation_start|total_tokens|total_messages|has_lead)$",
+        "conversation_end",
+        regex="^(conversation_start|conversation_end|total_tokens|total_messages|has_lead)$",
     ),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     search: Optional[str] = Query(None),
