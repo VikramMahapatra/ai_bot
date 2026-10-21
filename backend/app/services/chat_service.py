@@ -865,8 +865,8 @@ def _build_soft_fallback_message(seed_text: Optional[str] = None) -> str:
             "If you want, I can help with what is documented here, like services, onboarding, pricing, or support."
         ),
         (
-            "I do not have enough verified context to answer that accurately yet. "
-            "I can still help with questions about our services, setup steps, pricing plans, or support options."
+            "I do not have enough information to answer that accurately right now. "
+            "You can try rephrasing your question or ask me about something else."
         ),
         (
             "I am not seeing a reliable answer for that in the current knowledge base. "
