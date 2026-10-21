@@ -128,7 +128,7 @@ def get_session_conversations_report(
     min_tokens: Optional[int] = None,
     max_tokens: Optional[int] = None,
     has_lead: Optional[int] = None,
-    sort_by: str = "conversation_start",
+    sort_by: str = "conversation_end",
     sort_order: str = "desc",
     search: Optional[str] = None,  # added
     lead_conversion_outcome: Optional[str] = None,  # added
@@ -444,7 +444,7 @@ def get_session_conversations_report(
         "has_lead": func.coalesce(metrics_subquery.c.has_lead, 0),
     }
 
-    sort_field = sort_map.get(sort_by, sessions_subquery.c.conversation_start)
+    sort_field = sort_map.get(sort_by, sessions_subquery.c.conversation_end)
     if sort_order == "asc":
         query = query.order_by(sort_field.asc())
     else:
