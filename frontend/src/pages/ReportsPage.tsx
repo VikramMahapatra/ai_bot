@@ -221,7 +221,7 @@ const ReportsPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalConversations, setTotalConversations] = useState(0);
-  const [sortBy] = useState("conversation_start");
+  const [sortBy] = useState("conversation_end");
   const [sortOrder] = useState<"asc" | "desc">("desc");
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogLoading, setSessionDialogLoading] = useState(false);
