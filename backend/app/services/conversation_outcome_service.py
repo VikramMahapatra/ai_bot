@@ -176,7 +176,7 @@ def _classify_outcome_with_llm(transcript: str) -> Dict[str, str]:
 
     response = client.chat.completions.create(
         model=settings.OUTCOME_CLASSIFICATION_MODEL,
-        temperature=0,
+        temperature=0.7,
         max_tokens=64,
         messages=[
             {
@@ -248,7 +248,7 @@ def _classify_funnel_stage_with_llm(
 
     response = client.chat.completions.create(
         model=settings.OUTCOME_CLASSIFICATION_MODEL,
-        temperature=0,
+        temperature=0.7,
         max_tokens=24,
         messages=[
             {

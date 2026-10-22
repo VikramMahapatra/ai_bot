@@ -385,7 +385,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
   } | null>(null);
   const [channelDeleteSubmitting, setChannelDeleteSubmitting] = useState(false);
 
-  const [editEchoLeadsAPIKey, setEditEchoLeadsAPIKey] = useState("");
   const [callingNumberDefault, setCallingNumberDefault] = useState(false);
   const [callingNumbers, setCallingNumbers] = useState<CallingNumber[]>([]);
   const [callingNumberError, setCallingNumberError] = useState("");
@@ -958,7 +957,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     setEditJoiningDate(org.joining_date || "");
     setEditEffectiveJoiningDate(org.effective_joining_date || "");
     setEditOverrideLimits({ ...defaultLimits, ...(org.limits || {}) });
-    setEditEchoLeadsAPIKey(org.echoleads_api_key || "");
     setOpen(true);
   };
 
@@ -977,7 +975,6 @@ const SuperAdminOrganizationsPage: React.FC = () => {
       const trimmedAdminEmail = editAdminEmail.trim();
       const trimmedAdminPassword = editAdminPassword.trim();
       const missingAdmin = !editingOrg.admin_username;
-      const trimmedAPIKey = editEchoLeadsAPIKey.trim();
 
       if (!trimmedAdminUsername) {
         setActionError("Admin username is required.");
@@ -1003,7 +1000,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         admin_username: trimmedAdminUsername,
         admin_email: trimmedAdminEmail,
         admin_password: trimmedAdminPassword || undefined,
-        echoleads_api_key: trimmedAPIKey || undefined,
+        echoleads_api_key: editingOrg.echoleads_api_key || undefined,
         status: editingOrg.status,
         trial_end_date: editingOrg.trial_end_date || undefined,
         industry: editingOrg.industry || undefined,

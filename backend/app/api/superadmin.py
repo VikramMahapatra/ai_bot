@@ -994,8 +994,6 @@ async def update_organization_with_admin(
         org.joining_date = request.joining_date
     if request.effective_joining_date is not None:
         org.effective_joining_date = request.effective_joining_date
-    if request.echoleads_api_key is not None:
-        org.echoleads_api_key = request.echoleads_api_key
     if request.status is not None:
         org.status = request.status
     if request.industry is not None:
@@ -1006,6 +1004,7 @@ async def update_organization_with_admin(
         org.commercial_notes = request.commercial_notes
     if request.trial_end_date is not None:
         org.trial_end_date = request.trial_end_date
+    org.echoleads_api_key = request.echoleads_api_key
 
     admin_username = (
         request.admin_username.strip() if request.admin_username is not None else None

@@ -9,7 +9,6 @@ except ImportError:  # pragma: no cover - environment dependent
 
 from app.config import settings
 
-
 logger = logging.getLogger(__name__)
 client = OpenAI(api_key=settings.OPENAPI_KEY2) if OpenAI else None
 
@@ -124,7 +123,9 @@ def _normalize_output(raw: Dict[str, Any], conversation_text: str) -> Dict[str, 
 
 def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
     if client is None:
-        logger.warning("OpenAI SDK not available; using fallback conversation decision output")
+        logger.warning(
+            "OpenAI SDK not available; using fallback conversation decision output"
+        )
         return _fallback_output(conversation_text)
 
     prompt = (
@@ -137,7 +138,6 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
         "  * appointment or demo scheduled\n"
         "  * user asked to send info on WhatsApp/email/SMS\n"
         "  * conversation reached a natural closing\n"
-        
         "- Return do_not_send_now if:\n"
         "  * conversation still ongoing\n"
         "  * user has not shown interest yet\n"
@@ -145,38 +145,32 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
         "Use exactly these keys:\n"
         "1) instant_reply_decision -> one of [send_now, do_not_send_now]\n"
         "2) next_3_recommendation_steps -> list of exactly 3 items, each with keys [key, value]\n"
-
         "Allowed key values are strictly [step_1, step_2, step_3].\n"
         "Allowed recommendation values are strictly: "
         "[send_product_link, confirm_preferred_channel, schedule_follow_up, acknowledge_and_close, pause_outreach, ask_size_or_requirement, recommend_relevant_products, ask_purchase_readiness].\n"
-
         "Decision Rules for instant_reply_decision:\n"
         "- Return 'send_now' if ANY of the following occur:\n"
         "  • User explicitly asks to receive SMS, email, WhatsApp, or details\n"
         "  • User shares contact information (phone/email) for follow-up\n"
         "  • User shows interest in receiving information, even if demo or decision is postponed\n"
-
         "- Return 'do_not_send_now' if:\n"
         "  • User clearly refuses communication\n"
         "  • User asks NOT to be contacted\n"
         "  • No contact info is provided AND user has not asked to receive anything\n"
-
         "Priority Rule:\n"
         "- If user requests SMS/email AND provides contact details, ALWAYS return 'send_now'\n"
         "- Even if the user says 'I will check later' or 'tell you later', it STILL counts as 'send_now' if they requested details earlier\n"
-
         "Guidelines for next_3_recommendation_steps:\n"
         "- If decision is 'send_now', include steps that progress communication (e.g., confirm_preferred_channel, send_product_link, schedule_follow_up)\n"
         "- If decision is 'do_not_send_now', include steps like pause_outreach or acknowledge_and_close\n"
         "- Always return exactly 3 steps with unique keys step_1, step_2, step_3\n"
-
         "Do not include markdown, explanation, or extra keys. Return only valid JSON."
     )
 
     try:
         response = client.chat.completions.create(
             model=settings.OPENAI_CHAT_MODEL,
-            temperature=0,
+            temperature=0.7,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": conversation_text},
@@ -186,7 +180,9 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
 
         content = response.choices[0].message.content if response.choices else ""
         if not content:
-            logger.warning("Conversation decision returned empty LLM content; using fallback")
+            logger.warning(
+                "Conversation decision returned empty LLM content; using fallback"
+            )
             return _fallback_output(conversation_text)
 
         parsed = json.loads(content)
@@ -196,5 +192,7 @@ def analyze_conversation(conversation_text: str) -> Dict[str, Any]:
 
         return _normalize_output(parsed, conversation_text)
     except Exception as exc:
-        logger.error("Conversation decision analysis failed: %s", str(exc), exc_info=True)
+        logger.error(
+            "Conversation decision analysis failed: %s", str(exc), exc_info=True
+        )
         return _fallback_output(conversation_text)
