@@ -1677,7 +1677,7 @@ def generate_chat_response(
                     model=settings.OPENAI_CHAT_MODEL,
                     messages=messages,
                     max_tokens=220,
-                    temperature=0.3,
+                    temperature=0.7,
                     timeout=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS),
                 )
 
@@ -1811,7 +1811,7 @@ def stream_chat_response(
             model=settings.OPENAI_CHAT_MODEL,
             messages=messages,
             max_tokens=220,
-            temperature=0.3,
+            temperature=0.7,
             stream=True,
             stream_options={"include_usage": True},
             timeout=float(settings.OPENAI_STREAM_TIMEOUT_SECONDS),
@@ -1863,7 +1863,7 @@ def translate_text(
             {"role": "user", "content": text},
         ],
         max_tokens=400,
-        temperature=0.2,
+        temperature=0.7,
         timeout=float(settings.OPENAI_TRANSLATION_TIMEOUT_SECONDS),
     )
 

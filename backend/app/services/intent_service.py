@@ -23,7 +23,9 @@ from app.prompts.intent_classifier_prompt import (
 
 def _load_intent_schema_module():
     schema_path = Path(__file__).resolve().parents[1] / "schemas" / "intent.py"
-    spec = importlib.util.spec_from_file_location("app_intent_schema_runtime", schema_path)
+    spec = importlib.util.spec_from_file_location(
+        "app_intent_schema_runtime", schema_path
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load intent schema module from {schema_path}")
     module = importlib.util.module_from_spec(spec)
@@ -57,14 +59,65 @@ class _IntentInputs:
 
 
 _KEYWORD_FALLBACKS = {
-    IntentType.BOOK_APPOINTMENT: ["book", "schedule", "appointment", "meeting", "call", "demo", "slot"],
-    IntentType.RESCHEDULE_APPOINTMENT: ["reschedule", "change", "move", "different time", "another time"],
-    IntentType.CANCEL_APPOINTMENT: ["cancel", "stop", "call off", "never mind", "nevermind"],
-    IntentType.REQUEST_HUMAN: ["human", "agent", "person", "support", "team", "expert", "representative"],
-    IntentType.CONFIRM: ["yes", "yeah", "yep", "sure", "ok", "okay", "please do", "go ahead"],
+    IntentType.BOOK_APPOINTMENT: [
+        "book",
+        "schedule",
+        "appointment",
+        "meeting",
+        "call",
+        "demo",
+        "slot",
+    ],
+    IntentType.RESCHEDULE_APPOINTMENT: [
+        "reschedule",
+        "change",
+        "move",
+        "different time",
+        "another time",
+    ],
+    IntentType.CANCEL_APPOINTMENT: [
+        "cancel",
+        "stop",
+        "call off",
+        "never mind",
+        "nevermind",
+    ],
+    IntentType.REQUEST_HUMAN: [
+        "human",
+        "agent",
+        "person",
+        "support",
+        "team",
+        "expert",
+        "representative",
+    ],
+    IntentType.CONFIRM: [
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "ok",
+        "okay",
+        "please do",
+        "go ahead",
+    ],
     IntentType.DENY: ["no", "nope", "nah", "not now", "dont", "don't"],
-    IntentType.SMALL_TALK: ["hi", "hello", "hey", "thanks", "thank you", "good morning", "good afternoon"],
-    IntentType.WAIT_MORE: ["wait", "wait more", "continue waiting", "more minutes", "try again"],
+    IntentType.SMALL_TALK: [
+        "hi",
+        "hello",
+        "hey",
+        "thanks",
+        "thank you",
+        "good morning",
+        "good afternoon",
+    ],
+    IntentType.WAIT_MORE: [
+        "wait",
+        "wait more",
+        "continue waiting",
+        "more minutes",
+        "try again",
+    ],
 }
 
 _ENTITY_PATTERNS = {
@@ -80,16 +133,21 @@ def _cache_key(inputs: _IntentInputs) -> str:
     payload = {
         "session_key": session_key,
         "user_message": (inputs.user_message or "").strip().lower(),
-        "previous_assistant_message": (inputs.previous_assistant_message or "").strip().lower(),
+        "previous_assistant_message": (inputs.previous_assistant_message or "")
+        .strip()
+        .lower(),
         "active_intake_field": inputs.active_intake_field or "",
         "handoff_active": bool(inputs.handoff_active),
         "context": {
             key: context.get(key)
             for key in sorted(context.keys())
-            if key not in {"message", "user_message", "conversation_text", "email", "phone"}
+            if key
+            not in {"message", "user_message", "conversation_text", "email", "phone"}
         },
     }
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
     return digest
 
 
@@ -156,60 +214,138 @@ def _fallback_intent(inputs: _IntentInputs) -> IntentDetectionResult:
     entities = _extract_entities_from_text(inputs.user_message or "")
 
     if active_field == "name":
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_NAME, confidence=0.74, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.PROVIDE_NAME, confidence=0.74, entities=entities
+        )
     if active_field == "email":
         if "email" in entities:
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.86, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_EMAIL,
+                confidence=0.86,
+                entities=entities,
+            )
     if active_field == "contact":
         if "email" in entities:
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.81, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_EMAIL,
+                confidence=0.81,
+                entities=entities,
+            )
         if "phone" in entities:
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_PHONE, confidence=0.81, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_PHONE,
+                confidence=0.81,
+                entities=entities,
+            )
     if active_field in {"appointment_at", "timezone"}:
         if "timezone" in entities:
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_TIMEZONE, confidence=0.84, entities=entities)
-        if any(token in text for token in ["am", "pm", ":", "tomorrow", "today", "kal", "next"]):
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_DATETIME, confidence=0.76, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_TIMEZONE,
+                confidence=0.84,
+                entities=entities,
+            )
+        if any(
+            token in text
+            for token in ["am", "pm", ":", "tomorrow", "today", "kal", "next"]
+        ):
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_DATETIME,
+                confidence=0.76,
+                entities=entities,
+            )
 
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.REQUEST_HUMAN]):
-        return IntentDetectionResult(primary_intent=IntentType.REQUEST_HUMAN, confidence=0.82, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.REQUEST_HUMAN, confidence=0.82, entities=entities
+        )
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.BOOK_APPOINTMENT]):
-        return IntentDetectionResult(primary_intent=IntentType.BOOK_APPOINTMENT, confidence=0.8, entities=entities)
-    if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.RESCHEDULE_APPOINTMENT]):
-        return IntentDetectionResult(primary_intent=IntentType.RESCHEDULE_APPOINTMENT, confidence=0.77, entities=entities)
-    if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.CANCEL_APPOINTMENT]):
-        return IntentDetectionResult(primary_intent=IntentType.CANCEL_APPOINTMENT, confidence=0.79, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.BOOK_APPOINTMENT,
+            confidence=0.8,
+            entities=entities,
+        )
+    if any(
+        token in text for token in _KEYWORD_FALLBACKS[IntentType.RESCHEDULE_APPOINTMENT]
+    ):
+        return IntentDetectionResult(
+            primary_intent=IntentType.RESCHEDULE_APPOINTMENT,
+            confidence=0.77,
+            entities=entities,
+        )
+    if any(
+        token in text for token in _KEYWORD_FALLBACKS[IntentType.CANCEL_APPOINTMENT]
+    ):
+        return IntentDetectionResult(
+            primary_intent=IntentType.CANCEL_APPOINTMENT,
+            confidence=0.79,
+            entities=entities,
+        )
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.WAIT_MORE]):
-        return IntentDetectionResult(primary_intent=IntentType.WAIT_MORE, confidence=0.7, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.WAIT_MORE, confidence=0.7, entities=entities
+        )
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.CONFIRM]):
-        return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.73, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.CONFIRM, confidence=0.73, entities=entities
+        )
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.DENY]):
-        return IntentDetectionResult(primary_intent=IntentType.DENY, confidence=0.73, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.DENY, confidence=0.73, entities=entities
+        )
     if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.SMALL_TALK]):
-        return IntentDetectionResult(primary_intent=IntentType.SMALL_TALK, confidence=0.72, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.SMALL_TALK, confidence=0.72, entities=entities
+        )
     if active_field:
         if active_field == "timezone":
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_TIMEZONE, confidence=0.7, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_TIMEZONE,
+                confidence=0.7,
+                entities=entities,
+            )
         if active_field == "appointment_at":
-            return IntentDetectionResult(primary_intent=IntentType.PROVIDE_DATETIME, confidence=0.68, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.PROVIDE_DATETIME,
+                confidence=0.68,
+                entities=entities,
+            )
 
-    if previous and any(token in previous for token in ["would you like", "please share", "can you provide"]):
+    if previous and any(
+        token in previous
+        for token in ["would you like", "please share", "can you provide"]
+    ):
         if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.CONFIRM]):
-            return IntentDetectionResult(primary_intent=IntentType.CONFIRM, confidence=0.7, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.CONFIRM, confidence=0.7, entities=entities
+            )
         if any(token in text for token in _KEYWORD_FALLBACKS[IntentType.DENY]):
-            return IntentDetectionResult(primary_intent=IntentType.DENY, confidence=0.7, entities=entities)
+            return IntentDetectionResult(
+                primary_intent=IntentType.DENY, confidence=0.7, entities=entities
+            )
 
     if entities.get("email"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.8, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.PROVIDE_EMAIL, confidence=0.8, entities=entities
+        )
     if entities.get("phone"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_PHONE, confidence=0.78, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.PROVIDE_PHONE, confidence=0.78, entities=entities
+        )
     if entities.get("timezone"):
-        return IntentDetectionResult(primary_intent=IntentType.PROVIDE_TIMEZONE, confidence=0.74, entities=entities)
+        return IntentDetectionResult(
+            primary_intent=IntentType.PROVIDE_TIMEZONE,
+            confidence=0.74,
+            entities=entities,
+        )
 
-    return IntentDetectionResult(primary_intent=IntentType.GENERAL_CHAT, confidence=0.5, entities=entities)
+    return IntentDetectionResult(
+        primary_intent=IntentType.GENERAL_CHAT, confidence=0.5, entities=entities
+    )
 
 
-def _validate_result(parsed: object, inputs: _IntentInputs, used_fallback: bool) -> IntentDetectionResult:
+def _validate_result(
+    parsed: object, inputs: _IntentInputs, used_fallback: bool
+) -> IntentDetectionResult:
     fallback = _fallback_intent(inputs)
     if not isinstance(parsed, dict):
         logger.warning("Intent classifier returned non-object JSON; using fallback")
@@ -219,7 +355,9 @@ def _validate_result(parsed: object, inputs: _IntentInputs, used_fallback: bool)
     try:
         primary_intent = IntentType(raw_intent)
     except Exception:
-        logger.warning("Intent classifier returned invalid intent '%s'; using fallback", raw_intent)
+        logger.warning(
+            "Intent classifier returned invalid intent '%s'; using fallback", raw_intent
+        )
         return fallback
 
     confidence_raw = parsed.get("confidence", fallback.confidence)
@@ -301,7 +439,7 @@ async def detect_intent(
         try:
             response = client.chat.completions.create(
                 model=settings.OPENAI_CHAT_MODEL,
-                temperature=0,
+                temperature=0.7,
                 messages=messages,
                 response_format=response_format,
                 timeout=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS),
@@ -309,7 +447,7 @@ async def detect_intent(
         except Exception:
             response = client.chat.completions.create(
                 model=settings.OPENAI_CHAT_MODEL,
-                temperature=0,
+                temperature=0.7,
                 messages=messages,
                 response_format={"type": "json_object"},
                 timeout=float(settings.OPENAI_CHAT_TIMEOUT_SECONDS),
