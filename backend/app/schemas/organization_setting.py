@@ -82,7 +82,7 @@ class DailyEmailLimitUpdate(BaseModel):
     daily_email_limit: int
 
 
-class ZohoAutoTriggerSettingsRequest(BaseModel):
+class LeadAutomationSettingsRequest(BaseModel):
     auto_calling_enabled: bool = False
     auto_calling_campaign_id: int | None = None
 

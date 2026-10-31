@@ -229,8 +229,13 @@ export const organizationService = {
     return response.data;
   },
 
-  async saveZohoAutoTriggerSettings(data: any): Promise<any> {
-    const response = await api.put(`/api/organization-settings/zoho/auto-trigger`, data);
+  async getLeadAutoTriggerSettings(): Promise<any> {
+    const response = await api.get(`/api/organization-settings/lead/automations`);
+    return response.data;
+  },
+
+  async saveLeadAutoTriggerSettings(data: any): Promise<any> {
+    const response = await api.put(`/api/organization-settings/lead/save-automations`, data);
     return response.data;
   },
 

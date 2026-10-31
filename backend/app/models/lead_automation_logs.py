@@ -3,8 +3,8 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
-class ZohoAutomationLog(Base):
-    __tablename__ = "zoho_automation_logs"
+class LeadAutomationLog(Base):
+    __tablename__ = "lead_automation_logs"
 
     id = Column(Integer, primary_key=True)
 
@@ -15,14 +15,16 @@ class ZohoAutomationLog(Base):
         index=True,
     )
 
-    integration_id = Column(
-        Integer,
-        ForeignKey("organization_zoho_integrations.id"),
+    # zoho / manual / api / import / other
+    source = Column(
+        String(30),
         nullable=False,
+        default="manual",
+        server_default="manual",
         index=True,
     )
 
-    zoho_event_id = Column(
+    source_event_id = Column(
         String(128),
         nullable=True,
         index=True,

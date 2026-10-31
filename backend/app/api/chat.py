@@ -69,6 +69,8 @@ from app.models.organization_settings import OrganizationSettings
 from app.services.organization_setting_service import get_settings, get_org_settings
 from app.enums.credit_feature_codes import FeatureCodes
 from app.services import organization_credit_service
+from app.models.organization_lead_automations import OrganizationLeadAutomation
+from app.services.zoho_contact_sync_service import create_lead_automation_logs
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +494,9 @@ def _parse_date_only_input(
     result = resolve_appointment_datetime(text, timezone_name, now)
     if result.kind != "date" or not isinstance(result.value, date):
         return None
-    return datetime.combine(result.value, datetime.min.time(), tzinfo=ZoneInfo(timezone_name))
+    return datetime.combine(
+        result.value, datetime.min.time(), tzinfo=ZoneInfo(timezone_name)
+    )
 
 
 def _parse_time_only_input(
@@ -688,7 +692,11 @@ def _parse_datetime_input(
     if not text:
         return None
     result = resolve_appointment_datetime(text, timezone_name, now)
-    return result.value if result.kind == "datetime" and isinstance(result.value, datetime) else None
+    return (
+        result.value
+        if result.kind == "datetime" and isinstance(result.value, datetime)
+        else None
+    )
 
 
 def _extract_timezone(text: str) -> Optional[str]:
@@ -1093,7 +1101,10 @@ def _is_direct_live_agent_request(text: str) -> bool:
     }
     if normalized in negative_phrases:
         return False
-    if re.search(r"\b(?:don't|dont|do not|not|never|no need to)\b.{0,30}\b(?:talk|chat|speak|connect|transfer|handoff)\b", normalized):
+    if re.search(
+        r"\b(?:don't|dont|do not|not|never|no need to)\b.{0,30}\b(?:talk|chat|speak|connect|transfer|handoff)\b",
+        normalized,
+    ):
         return False
 
     direct_markers = [
@@ -1129,7 +1140,9 @@ def _is_direct_live_agent_request(text: str) -> bool:
 
 def _disabled_handoff_response(db, message, user, is_new_session) -> ChatResponse:
     """Do not let a model promise a transfer when the feature is unavailable."""
-    response_text = "Live human chat is not available for this chat. I can still help you here."
+    response_text = (
+        "Live human chat is not available for this chat. I can still help you here."
+    )
     persist_conversation(
         db,
         session_id=message.session_id,
@@ -1139,14 +1152,22 @@ def _disabled_handoff_response(db, message, user, is_new_session) -> ChatRespons
         message=message.message,
         response_text=response_text,
         token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        retrieval_trace={"user_query": message.message, "has_context": False, "escalation_triggered": False},
+        retrieval_trace={
+            "user_query": message.message,
+            "has_context": False,
+            "escalation_triggered": False,
+        },
     )
     increment_usage(
-        db, user.organization_id,
+        db,
+        user.organization_id,
         conversations_count=1 if is_new_session else 0,
-        messages_count=2, tokens_used=0,
+        messages_count=2,
+        tokens_used=0,
     )
-    return ChatResponse(response=response_text, session_id=message.session_id, sources=[])
+    return ChatResponse(
+        response=response_text, session_id=message.session_id, sources=[]
+    )
 
 
 def _handoff_lead_capture_prompt_for_direct_request(
@@ -1160,7 +1181,10 @@ def _handoff_lead_capture_prompt_for_direct_request(
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
     if not (
-        (message_intent is not None and message_intent.primary_intent == IntentType.REQUEST_HUMAN)
+        (
+            message_intent is not None
+            and message_intent.primary_intent == IntentType.REQUEST_HUMAN
+        )
         or _is_direct_live_agent_request(user_message)
     ):
         return None
@@ -1184,7 +1208,10 @@ def _create_direct_handoff_request(
     if _get_open_handoff_session(db, session_id, widget_id, organization_id):
         return None
     if not (
-        (message_intent is not None and message_intent.primary_intent == IntentType.REQUEST_HUMAN)
+        (
+            message_intent is not None
+            and message_intent.primary_intent == IntentType.REQUEST_HUMAN
+        )
         or _is_direct_live_agent_request(user_message)
     ):
         return None
@@ -1392,12 +1419,14 @@ def _add_response_only_handoff_message(
     )
     db.add(row)
     db.flush()
-    db.add(HandoffMessage(
-        handoff_session_id=handoff_session.id,
-        sender_type="system",
-        sender_user_id=None,
-        message=f"Visitor delivery via chat response: handoff_message_id={row.id}",
-    ))
+    db.add(
+        HandoffMessage(
+            handoff_session_id=handoff_session.id,
+            sender_type="system",
+            sender_user_id=None,
+            message=f"Visitor delivery via chat response: handoff_message_id={row.id}",
+        )
+    )
 
 
 def _create_or_get_handoff_session(
@@ -1443,13 +1472,18 @@ def _create_or_get_handoff_session(
             # The offer is already in the visitor's ordinary chat history.
             _add_response_only_handoff_message(db, handoff_session, bot_response)
         else:
-            db.add(HandoffMessage(
-                handoff_session_id=handoff_session.id,
-                sender_type="bot",
-                sender_user_id=None,
-                message=bot_response[:4000],
-            ))
-    if handoff_reason in {"user_requested_live_agent_directly", "user_confirmed_handoff"}:
+            db.add(
+                HandoffMessage(
+                    handoff_session_id=handoff_session.id,
+                    sender_type="bot",
+                    sender_user_id=None,
+                    message=bot_response[:4000],
+                )
+            )
+    if handoff_reason in {
+        "user_requested_live_agent_directly",
+        "user_confirmed_handoff",
+    }:
         _add_response_only_handoff_message(
             db, handoff_session, settings.HUMAN_HANDOFF_WAITING_MESSAGE
         )
@@ -1463,12 +1497,15 @@ def _create_or_get_handoff_session(
     )
     contact = get_session_contact(db, organization_id, widget_id, session_id)
     if contact:
-        db.add(HandoffMessage(
-            handoff_session_id=handoff_session.id,
-            sender_type="system",
-            sender_user_id=None,
-            message="Saved visitor contact (session-scoped data): " + json.dumps(contact),
-        ))
+        db.add(
+            HandoffMessage(
+                handoff_session_id=handoff_session.id,
+                sender_type="system",
+                sender_user_id=None,
+                message="Saved visitor contact (session-scoped data): "
+                + json.dumps(contact),
+            )
+        )
     db.commit()
     db.refresh(handoff_session)
     try:
@@ -1703,19 +1740,40 @@ def _sync_appointment_contact_to_agent_list(
             return
 
     cleaned_name = (appointment.name or "").strip() or None
-    db.add(
-        Contact(
-            contact_list_id=contact_list.id,
-            name=cleaned_name,
-            email=cleaned_email or None,
-            phone=cleaned_phone or None,
-            session_id=(
-                appointment.session_id
-                if appointment and appointment.session_id
-                else None
-            ),
-        )
+    contact = Contact(
+        contact_list_id=contact_list.id,
+        name=cleaned_name,
+        email=cleaned_email or None,
+        phone=cleaned_phone or None,
+        source="appointment",
+        session_id=(
+            appointment.session_id if appointment and appointment.session_id else None
+        ),
     )
+
+    db.add(contact)
+    db.flush()  # Generate contact.id without committing
+
+    # Fetch lead automation settings
+    automation_settings = (
+        db.query(OrganizationLeadAutomation)
+        .filter(
+            OrganizationLeadAutomation.organization_id == widget_config.organization_id
+        )
+        .first()
+    )
+
+    if automation_settings:
+        create_lead_automation_logs(
+            db=db,
+            automation_settings=automation_settings,
+            contact=contact,
+            staged_contact={
+                "id": appointment.id,
+                "external_id": appointment.session_id,
+            },
+            source="appointment",
+        )
 
 
 def _finalize_intake_appointment(
@@ -1864,14 +1922,22 @@ async def _handle_appointment_intake_flow(
     if active and _is_resume_booking_intent(text):
         return _prompt_for_next_intake_field(active.next_field)
 
-    if active and (
-        _is_booking_intent(text)
-        or _mentions_appointment_topic(text)
-        or _is_escalation_opt_in(text)
-    ) and not (active.next_field == "appointment_at" and (
-        _has_date_hint(text) or _has_time_hint(text)
-        or message_intent.entities.get("datetime")
-    )):
+    if (
+        active
+        and (
+            _is_booking_intent(text)
+            or _mentions_appointment_topic(text)
+            or _is_escalation_opt_in(text)
+        )
+        and not (
+            active.next_field == "appointment_at"
+            and (
+                _has_date_hint(text)
+                or _has_time_hint(text)
+                or message_intent.entities.get("datetime")
+            )
+        )
+    ):
         # Only resume intake when user explicitly stays on appointment/escalation intent.
         return _prompt_for_next_intake_field(active.next_field)
 
@@ -1879,8 +1945,13 @@ async def _handle_appointment_intake_flow(
         # Do not hijack casual chat with intake parser errors.
         return None
 
-    if active and not _is_relevant_for_next_field(text, active.next_field) and not (
-        active.next_field == "appointment_at" and message_intent.entities.get("datetime")
+    if (
+        active
+        and not _is_relevant_for_next_field(text, active.next_field)
+        and not (
+            active.next_field == "appointment_at"
+            and message_intent.entities.get("datetime")
+        )
     ):
         return None
 
@@ -1912,9 +1983,14 @@ async def _handle_appointment_intake_flow(
                 )
 
             appointment = appointments[0]
-            timezone_name = _canonical_timezone(
-                _extract_timezone(text) or appointment.timezone or DEFAULT_APPOINTMENT_TIMEZONE
-            ) or DEFAULT_APPOINTMENT_TIMEZONE
+            timezone_name = (
+                _canonical_timezone(
+                    _extract_timezone(text)
+                    or appointment.timezone
+                    or DEFAULT_APPOINTMENT_TIMEZONE
+                )
+                or DEFAULT_APPOINTMENT_TIMEZONE
+            )
             try:
                 ZoneInfo(timezone_name)
             except Exception:
@@ -1956,10 +2032,14 @@ async def _handle_appointment_intake_flow(
             except ValueError as exc:
                 if "future" in str(exc).casefold():
                     return f"That time is in the past. {_appointment_datetime_examples_message()}"
-                logger.exception("Appointment reschedule rejected for session=%s", session_id)
+                logger.exception(
+                    "Appointment reschedule rejected for session=%s", session_id
+                )
                 return "I couldn’t reschedule that meeting just now. Please try a different date and time."
             except Exception:
-                logger.exception("Appointment reschedule failed for session=%s", session_id)
+                logger.exception(
+                    "Appointment reschedule failed for session=%s", session_id
+                )
                 return "I couldn’t reschedule that meeting just now. Your existing booking has been kept. Please try again."
 
             saved = update_result["appointment"]
@@ -1986,12 +2066,14 @@ async def _handle_appointment_intake_flow(
             )
             parsed_datetime = (
                 _parse_datetime_input(text)
-                if message_intent.primary_intent in {
+                if message_intent.primary_intent
+                in {
                     IntentType.BOOK_APPOINTMENT,
                     IntentType.RESCHEDULE_APPOINTMENT,
                     IntentType.PROVIDE_DATETIME,
                     IntentType.PROVIDE_TIMEZONE,
-                } or reschedule_follow_up
+                }
+                or reschedule_follow_up
                 else None
             )
             if (
@@ -2042,11 +2124,15 @@ async def _handle_appointment_intake_flow(
         # Keep a date/time supplied with the initial booking intent. Otherwise
         # prompt for the first missing field, not unconditionally for a name.
         if active.next_field != "appointment_at" or not (
-            _has_date_hint(text) or _has_time_hint(text)
+            _has_date_hint(text)
+            or _has_time_hint(text)
             or message_intent.entities.get("datetime")
         ):
             prefix = "Perfect" if escalation_affirmation else "Absolutely"
-            return f"{prefix}, I can auto-book an appointment for you now. " + _prompt_for_next_intake_field(active.next_field)
+            return (
+                f"{prefix}, I can auto-book an appointment for you now. "
+                + _prompt_for_next_intake_field(active.next_field)
+            )
 
     if active.next_field == "name":
         name = str(message_intent.entities.get("name") or "").strip() or _extract_name(
@@ -2095,11 +2181,13 @@ async def _handle_appointment_intake_flow(
             date_time_resolution.value
             if date_time_resolution.kind == "datetime"
             and isinstance(date_time_resolution.value, datetime)
-            else _parse_iso_datetime_entity(
-                message_intent.entities.get("datetime"), timezone_name
+            else (
+                _parse_iso_datetime_entity(
+                    message_intent.entities.get("datetime"), timezone_name
+                )
+                if date_time_resolution.kind == "none"
+                else None
             )
-            if date_time_resolution.kind == "none"
-            else None
         )
         if dt_value:
             active.appointment_at = dt_value.astimezone(ZoneInfo(timezone_name))
@@ -2127,16 +2215,18 @@ async def _handle_appointment_intake_flow(
             )
             if date_time_resolution.kind == "date"
             and isinstance(date_time_resolution.value, date)
-            else _parse_date_only_input(text, timezone_name)
-            if date_time_resolution.kind == "none"
-            else None
+            else (
+                _parse_date_only_input(text, timezone_name)
+                if date_time_resolution.kind == "none"
+                else None
+            )
         )
         if date_only_value:
             active.appointment_at = date_only_value
             db.commit()
-            date_label = date_only_value.astimezone(
-                ZoneInfo(timezone_name)
-            ).strftime("%d %b %Y")
+            date_label = date_only_value.astimezone(ZoneInfo(timezone_name)).strftime(
+                "%d %b %Y"
+            )
             return (
                 f"Got the date: {date_label}. "
                 "Please share the time as well (for example: 10:30 AM)."
@@ -2146,9 +2236,11 @@ async def _handle_appointment_intake_flow(
             (date_time_resolution.value.hour, date_time_resolution.value.minute)
             if date_time_resolution.kind == "time"
             and isinstance(date_time_resolution.value, time)
-            else _parse_time_only_input(text, timezone_name)
-            if date_time_resolution.kind == "none"
-            else None
+            else (
+                _parse_time_only_input(text, timezone_name)
+                if date_time_resolution.kind == "none"
+                else None
+            )
         )
         if time_only_value:
             if not active.appointment_at:
@@ -2157,9 +2249,7 @@ async def _handle_appointment_intake_flow(
                     "(for example: 13 May 2026)."
                 )
 
-            base_date = active.appointment_at.astimezone(
-                ZoneInfo(timezone_name)
-            )
+            base_date = active.appointment_at.astimezone(ZoneInfo(timezone_name))
             hour, minute = time_only_value
             combined = base_date.replace(
                 hour=hour, minute=minute, second=0, microsecond=0
@@ -2950,7 +3040,10 @@ async def chat(
                 retrieval_message=message.retrieval_message,
             )
 
-            if limits.get("human_handoff_enabled") and token_usage.get("answer_mode", "vector") == "vector":
+            if (
+                limits.get("human_handoff_enabled")
+                and token_usage.get("answer_mode", "vector") == "vector"
+            ):
                 response_text = _ensure_handoff_offer_response(
                     response_text, widget_config
                 )
@@ -3614,17 +3707,21 @@ async def chat_stream(
                     )
                 )
 
-                usage_tokens = {key: retrieval_trace.get("token_usage", {}).get(key, 0)
-                                for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+                usage_tokens = {
+                    key: retrieval_trace.get("token_usage", {}).get(key, 0)
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                }
 
                 if stream is None:
                     fallback_text = (
                         escalation_fallback_text
                         or "Sorry—I don’t have a reliable answer for this right now."
                     )
-                    if (limits.get("human_handoff_enabled")
-                            and retrieval_trace.get("answer_mode", "vector") == "vector"
-                            and retrieval_trace.get("prepared_response") is not True):
+                    if (
+                        limits.get("human_handoff_enabled")
+                        and retrieval_trace.get("answer_mode", "vector") == "vector"
+                        and retrieval_trace.get("prepared_response") is not True
+                    ):
                         fallback_text = _ensure_handoff_offer_response(
                             fallback_text, widget_config
                         )
@@ -3637,15 +3734,24 @@ async def chat_stream(
                             usage_tokens = {
                                 "prompt_tokens": (
                                     getattr(usage, "prompt_tokens", 0) if usage else 0
-                                ) + retrieval_trace.get("token_usage", {}).get("prompt_tokens", 0),
+                                )
+                                + retrieval_trace.get("token_usage", {}).get(
+                                    "prompt_tokens", 0
+                                ),
                                 "completion_tokens": (
                                     getattr(usage, "completion_tokens", 0)
                                     if usage
                                     else 0
-                                ) + retrieval_trace.get("token_usage", {}).get("completion_tokens", 0),
+                                )
+                                + retrieval_trace.get("token_usage", {}).get(
+                                    "completion_tokens", 0
+                                ),
                                 "total_tokens": (
                                     getattr(usage, "total_tokens", 0) if usage else 0
-                                ) + retrieval_trace.get("token_usage", {}).get("total_tokens", 0),
+                                )
+                                + retrieval_trace.get("token_usage", {}).get(
+                                    "total_tokens", 0
+                                ),
                             }
                         if not getattr(chunk, "choices", None):
                             continue
@@ -3663,7 +3769,10 @@ async def chat_stream(
                     fallback_text = (
                         "Sorry—I don’t have a reliable answer for this right now."
                     )
-                    if limits.get("human_handoff_enabled") and retrieval_trace.get("answer_mode", "vector") == "vector":
+                    if (
+                        limits.get("human_handoff_enabled")
+                        and retrieval_trace.get("answer_mode", "vector") == "vector"
+                    ):
                         fallback_text = _ensure_handoff_offer_response(
                             fallback_text, widget_config
                         )
@@ -3672,8 +3781,11 @@ async def chat_stream(
             finally:
                 full_text = "".join(collected_parts)
                 final_text = (
-                    append_appointment_cta_if_needed(full_text, is_first_turn, message.message)
-                    if retrieval_trace.get("answer_mode", "vector") == "vector" else full_text
+                    append_appointment_cta_if_needed(
+                        full_text, is_first_turn, message.message
+                    )
+                    if retrieval_trace.get("answer_mode", "vector") == "vector"
+                    else full_text
                 )
                 if final_text != full_text and final_text.startswith(full_text):
                     suffix = final_text[len(full_text) :]
@@ -3708,7 +3820,9 @@ async def chat_stream(
                     "sources": sources,
                 }
                 if "structured_citations" in retrieval_trace:
-                    done_payload["structured_citations"] = retrieval_trace["structured_citations"]
+                    done_payload["structured_citations"] = retrieval_trace[
+                        "structured_citations"
+                    ]
                     done_payload["answer_mode"] = retrieval_trace["answer_mode"]
 
                 yield f"data: {json.dumps(done_payload)}\n\n"
@@ -3735,7 +3849,9 @@ async def book_appointment(
     if not widget_config:
         raise HTTPException(status_code=400, detail="Invalid widget_id")
 
-    contact = get_session_contact(db, widget_config.organization_id, request.widget_id, request.session_id)
+    contact = get_session_contact(
+        db, widget_config.organization_id, request.widget_id, request.session_id
+    )
     values = request.model_dump()
     for field in ("name", "email", "phone"):
         if not (values.get(field) or "").strip():
@@ -3747,7 +3863,9 @@ async def book_appointment(
     except ValidationError:
         raise HTTPException(status_code=422, detail="A valid email address is required")
     if not (request.name or "").strip() or not request.email:
-        raise HTTPException(status_code=422, detail="Name and email are required to book an appointment")
+        raise HTTPException(
+            status_code=422, detail="Name and email are required to book an appointment"
+        )
 
     valid = organization_credit_service.validate_feature_usage(
         db, widget_config.organization_id, FeatureCodes.AI_BOOKING, 1
@@ -4012,11 +4130,17 @@ async def get_handoff_messages(
     # have no delivery audit and remain visible, including identical wording.
     # Read all scoped audits, not only those beyond the caller's cursor.
     response_only_ids = set()
-    audits = db.query(HandoffMessage).filter(
-        HandoffMessage.handoff_session_id == handoff_session.id,
-        HandoffMessage.sender_type == "system",
-        HandoffMessage.message.startswith("Visitor delivery via chat response: handoff_message_id="),
-    ).all()
+    audits = (
+        db.query(HandoffMessage)
+        .filter(
+            HandoffMessage.handoff_session_id == handoff_session.id,
+            HandoffMessage.sender_type == "system",
+            HandoffMessage.message.startswith(
+                "Visitor delivery via chat response: handoff_message_id="
+            ),
+        )
+        .all()
+    )
     for audit in audits:
         message_id = (audit.message or "").rsplit("=", 1)[-1]
         if message_id.isdigit():

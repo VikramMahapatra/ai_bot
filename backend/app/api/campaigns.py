@@ -989,8 +989,8 @@ def _execute_campaign_now(
     )
     run_started_at = datetime.utcnow()
 
-    campaign.status = "running"
     if not auto_trigger:
+        campaign.status = "running"
         campaign.number_sent = 0
         campaign.number_failed = 0
     db.commit()

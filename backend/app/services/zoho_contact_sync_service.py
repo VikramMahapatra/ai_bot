@@ -16,7 +16,7 @@ from app.services.conversation_outcome_service import (
     _seconds_until_next_interval,
 )
 from app.api.campaigns import _execute_campaign_now
-from app.models.zoho_automation_logs import ZohoAutomationLog
+from app.models.lead_automation_logs import LeadAutomationLog
 from collections import defaultdict
 
 from app.services.call_log_service import reschedule_contact
@@ -27,6 +27,7 @@ from app.models.channels import Channel, ChannelReservation, OrganizationChannel
 from app.services import organization_channel_service
 from app.services.call_campaign_service import get_external_contact_ids
 from app.utils.echoleads_client import EcholeadsClient
+from app.models.organization_lead_automations import OrganizationLeadAutomation
 
 logger = logging.getLogger(__name__)
 
@@ -64,68 +65,71 @@ def get_or_create_zoho_contact_list(
     return contact_list
 
 
-def create_zoho_automation_logs(
+def create_lead_automation_logs(
     db: Session,
-    integration: OrganizationZohoIntegration,
+    automation_settings: OrganizationLeadAutomation,
     contact: Contact,
     staged_contact: dict,
+    source: str = "zoho",
 ):
     logs = []
 
     event_id = staged_contact.get("id") or staged_contact.get("external_id")
     event_id = str(event_id) if event_id else None
 
+    organization_id = automation_settings.organization_id
+
     # Email
     if (
-        integration.auto_email_enabled
-        and integration.auto_email_campaign_id
+        automation_settings.auto_email_enabled
+        and automation_settings.auto_email_campaign_id
         and contact.email
     ):
         logs.append(
-            ZohoAutomationLog(
-                organization_id=integration.organization_id,
-                integration_id=integration.id,
+            LeadAutomationLog(
+                organization_id=organization_id,
                 contact_id=contact.id,
-                campaign_id=integration.auto_email_campaign_id,
+                campaign_id=automation_settings.auto_email_campaign_id,
                 automation_type="email",
                 status="pending",
-                zoho_event_id=event_id,
+                source=source,
+                source_event_id=event_id,
             )
         )
 
     # WhatsApp
     if (
-        integration.auto_whatsapp_enabled
-        and integration.auto_whatsapp_campaign_id
+        automation_settings.auto_whatsapp_enabled
+        and automation_settings.auto_whatsapp_campaign_id
         and contact.phone
     ):
         logs.append(
-            ZohoAutomationLog(
-                organization_id=integration.organization_id,
-                integration_id=integration.id,
+            LeadAutomationLog(
+                organization_id=organization_id,
                 contact_id=contact.id,
-                campaign_id=integration.auto_whatsapp_campaign_id,
+                campaign_id=automation_settings.auto_whatsapp_campaign_id,
                 automation_type="whatsapp",
                 status="pending",
-                zoho_event_id=event_id,
+                source=source,
+                source_event_id=event_id,
             )
         )
 
-    # Call
+    # Calling
     if (
-        integration.auto_calling_enabled
-        and integration.auto_calling_campaign_id
+        automation_settings.auto_calling_enabled
+        and automation_settings.auto_calling_campaign_id
         and contact.phone
     ):
         logs.append(
-            ZohoAutomationLog(
-                organization_id=integration.organization_id,
-                integration_id=integration.id,
+            LeadAutomationLog(
+                organization_id=organization_id,
                 contact_id=contact.id,
-                campaign_id=integration.auto_calling_campaign_id,
+                campaign_id=automation_settings.auto_calling_campaign_id,
                 automation_type="call",
                 status="pending",
-                zoho_event_id=event_id,
+                source="zoho",
+                source_event_id=event_id,
             )
         )
 
@@ -259,7 +263,7 @@ async def process_zoho_contacts(
             OrganizationZohoIntegration.integration_connection_id.isnot(None),
         )
 
-        if organization_id:
+        if organization_id is not None:
             query = query.filter(
                 OrganizationZohoIntegration.organization_id == organization_id
             )
@@ -267,12 +271,20 @@ async def process_zoho_contacts(
         integrations = query.all()
 
         for integration in integrations:
-
             try:
+                # Fetch automation settings separately from Zoho integration.
+                automation_settings = (
+                    db.query(OrganizationLeadAutomation)
+                    .filter(
+                        OrganizationLeadAutomation.organization_id
+                        == integration.organization_id
+                    )
+                    .first()
+                )
+
                 offset = 0
 
                 while True:
-
                     staged_contacts = await integration_hub_service.get_staged_contacts(
                         connection_id=integration.integration_connection_id,
                         limit=batch_size,
@@ -282,11 +294,7 @@ async def process_zoho_contacts(
                     if not staged_contacts:
                         break
 
-                    # Collect all changed contacts from this batch
-                    automation_contacts: List[Contact] = []
-
                     for staged_contact in staged_contacts:
-
                         try:
                             contact, changed = process_zoho_contact(
                                 db=db,
@@ -299,13 +307,15 @@ async def process_zoho_contacts(
 
                             processed += 1
 
-                            # Add changed contact to batch
-                            create_zoho_automation_logs(
-                                db=db,
-                                integration=integration,
-                                contact=contact,
-                                staged_contact=staged_contact,
-                            )
+                            # Create automation logs using the new settings table.
+                            if automation_settings:
+                                create_lead_automation_logs(
+                                    db=db,
+                                    automation_settings=automation_settings,
+                                    contact=contact,
+                                    staged_contact=staged_contact,
+                                    source="zoho",
+                                )
 
                         except Exception as exc:
                             failed += 1
@@ -328,7 +338,6 @@ async def process_zoho_contacts(
 
             except Exception as exc:
                 db.rollback()
-
                 failed += 1
 
                 logger.error(
@@ -657,16 +666,16 @@ async def process_zoho_automation_logs(
         now = datetime.now(timezone.utc)
 
         logs = (
-            db.query(ZohoAutomationLog)
+            db.query(LeadAutomationLog)
             .filter(
-                ZohoAutomationLog.status == "pending",
-                ZohoAutomationLog.automation_type.in_(["whatsapp", "email"]),
+                LeadAutomationLog.status == "pending",
+                LeadAutomationLog.automation_type.in_(["whatsapp", "email"]),
                 or_(
-                    ZohoAutomationLog.scheduled_at.is_(None),
-                    ZohoAutomationLog.scheduled_at <= now,
+                    LeadAutomationLog.scheduled_at.is_(None),
+                    LeadAutomationLog.scheduled_at <= now,
                 ),
             )
-            .order_by(ZohoAutomationLog.created_at.asc())
+            .order_by(LeadAutomationLog.created_at.asc())
             .limit(batch_size)
             .all()
         )
@@ -1015,12 +1024,12 @@ async def run_zoho_automation_daemon(stop_event: asyncio.Event) -> None:
             )
 
 
-def trigger_zoho_call_campaign(
+def trigger_lead_automation_call_campaign(
     db: Session,
     organization_id: int,
     campaign_id: int,
     contact: Contact,
-    automation_log: ZohoAutomationLog,
+    automation_log: LeadAutomationLog,
 ) -> dict:
     """
     Process and schedule a Zoho-triggered outbound call.
@@ -1036,7 +1045,7 @@ def trigger_zoho_call_campaign(
     - New channel reservation
     - Provider call scheduling
     - Call credit deduction
-    - ZohoAutomationLog update
+    - LeadAutomationLog update
     """
 
     now = datetime.now(timezone.utc)
@@ -1495,7 +1504,7 @@ def trigger_zoho_call_campaign(
     }
 
 
-def process_zoho_call_automations(
+def process_lead_automation_calls(
     batch_size: int = 100,
 ) -> tuple[int, int]:
 
@@ -1504,16 +1513,16 @@ def process_zoho_call_automations(
     db = SessionLocal()
 
     logs = (
-        db.query(ZohoAutomationLog)
+        db.query(LeadAutomationLog)
         .filter(
-            ZohoAutomationLog.automation_type == "call",
-            ZohoAutomationLog.status == "pending",
+            LeadAutomationLog.automation_type == "call",
+            LeadAutomationLog.status == "pending",
             or_(
-                ZohoAutomationLog.scheduled_at.is_(None),
-                ZohoAutomationLog.scheduled_at <= now,
+                LeadAutomationLog.scheduled_at.is_(None),
+                LeadAutomationLog.scheduled_at <= now,
             ),
         )
-        .order_by(ZohoAutomationLog.created_at.asc())
+        .order_by(LeadAutomationLog.created_at.asc())
         .limit(batch_size)
         .all()
     )
@@ -1537,7 +1546,7 @@ def process_zoho_call_automations(
 
             db.flush()
 
-            result = trigger_zoho_call_campaign(
+            result = trigger_lead_automation_call_campaign(
                 db=db,
                 organization_id=log.organization_id,
                 campaign_id=log.campaign_id,
@@ -1576,7 +1585,7 @@ def process_zoho_call_automations(
     return processed, failed
 
 
-def process_zoho_call_automation_batches(
+def process_lead_call_automation_batches(
     batch_size: int,
     max_batches: int,
 ) -> tuple[int, int]:
@@ -1585,7 +1594,7 @@ def process_zoho_call_automation_batches(
     total_failed = 0
 
     for _ in range(max_batches):
-        processed, failed = process_zoho_call_automations(
+        processed, failed = process_lead_automation_calls(
             batch_size=batch_size,
         )
 
@@ -1598,7 +1607,7 @@ def process_zoho_call_automation_batches(
     return total_processed, total_failed
 
 
-async def run_zoho_call_automation_daemon(
+async def run_lead_call_automation_daemon(
     stop_event: asyncio.Event,
 ) -> None:
 
@@ -1614,19 +1623,19 @@ async def run_zoho_call_automation_daemon(
 
         try:
             processed, failed = await asyncio.to_thread(
-                process_zoho_call_automation_batches,
+                process_lead_call_automation_batches,
                 batch_size=settings.ZOHO_CALL_AUTOMATION_DAEMON_BATCH_SIZE,
                 max_batches=settings.ZOHO_CALL_AUTOMATION_DAEMON_MAX_BATCHES,
             )
 
             logger.info(
-                "Zoho call automation completed: processed=%s failed=%s",
+                "Lead call automation completed: processed=%s failed=%s",
                 processed,
                 failed,
             )
 
         except Exception:
-            logger.exception("Zoho call automation daemon failed")
+            logger.exception("Lead call automation daemon failed")
 
         try:
             await asyncio.wait_for(

@@ -193,7 +193,7 @@ const getLanguages = (provider: "azure" | "deepgram") => {
 };
 
 const INCOMING_DEFAULTS = {
-    server_location: "IN",
+    server_location: "IN-MUMBAI",
     greeting: "Hello! Thank you for calling. How can I assist you today?",
     prompt: `You are a helpful and professional AI support agent handling incoming calls.
 

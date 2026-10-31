@@ -33,6 +33,8 @@ from app.models.campaign_contacts import CampaignContact
 from app.services.conversation_outcome_service import FUNNEL_STAGE
 from app.services.chat.contact_context import cache_session_contact
 from app.services.chat.persistence_service import persist_contact_form_records
+from app.models.organization_lead_automations import OrganizationLeadAutomation
+from app.services.zoho_contact_sync_service import create_lead_automation_logs
 
 logger = logging.getLogger(__name__)
 
@@ -161,11 +163,34 @@ def _sync_lead_contact_to_agent_list(
         company=lead.company,
         session_id=lead.session_id if lead and lead.session_id else None,
         custom_fields=lead.custom_fields,
+        source=lead.source if lead and lead.source else "chat",
     )
     db.add(contact)
     db.flush()
 
     _link_lead_session_contact(db, widget_config, lead.session_id, contact.id)
+
+    # Create automation logs only for newly created contacts
+    automation_settings = (
+        db.query(OrganizationLeadAutomation)
+        .filter(
+            OrganizationLeadAutomation.organization_id == widget_config.organization_id
+        )
+        .first()
+    )
+
+    if automation_settings:
+        create_lead_automation_logs(
+            db=db,
+            automation_settings=automation_settings,
+            contact=contact,
+            staged_contact={
+                "id": lead.session_id,
+                "external_id": None,
+            },
+            source="lead",
+        )
+
     return contact
 
 
@@ -212,7 +237,9 @@ async def create_lead(
             else:
                 raise HTTPException(status_code=404, detail="Widget not found")
             if not org_id:
-                raise HTTPException(status_code=403, detail="Widget has no organization")
+                raise HTTPException(
+                    status_code=403, detail="Widget has no organization"
+                )
 
         # Priority 2: If authenticated user and no widget_id, use authenticated user's org
         if not lead.widget_id and current_user:
@@ -326,7 +353,9 @@ async def create_lead(
         else:
             new_lead = existing
 
-        persist_contact_form_records(db, lead.session_id, lead.widget_id, user_id, org_id, lead)
+        persist_contact_form_records(
+            db, lead.session_id, lead.widget_id, user_id, org_id, lead
+        )
         if contact:
             _link_lead_session_contact(db, widget_owner, lead.session_id, contact.id)
         db.commit()
@@ -339,7 +368,9 @@ async def create_lead(
             try:
                 notify_lead_created(db, new_lead)
             except Exception as e:
-                logger.error(f"Failed to send lead notification: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Failed to send lead notification: {str(e)}", exc_info=True
+                )
         return new_lead
     except HTTPException:
         db.rollback()

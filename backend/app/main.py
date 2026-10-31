@@ -49,7 +49,7 @@ import asyncio
 from app.api.campaigns import run_daily_due_campaign_daemon
 from app.services.zoho_contact_sync_service import (
     run_zoho_automation_daemon,
-    run_zoho_call_automation_daemon,
+    run_lead_call_automation_daemon,
     run_zoho_contact_sync_daemon,
 )
 
@@ -220,7 +220,7 @@ async def startup_event():
 
     zoho_call_automation_daemon_stop_event.clear()
     zoho_call_automation_daemon_task = asyncio.create_task(
-        run_zoho_call_automation_daemon(zoho_automation_daemon_stop_event)
+        run_lead_call_automation_daemon(zoho_call_automation_daemon_stop_event)
     )
     logger.info("Zoho call automation daemon started")
 

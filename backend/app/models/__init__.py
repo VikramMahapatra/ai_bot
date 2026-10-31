@@ -1,5 +1,9 @@
 from app.models.user import User, UserRole, Organization
-from app.models.structured_dataset import StructuredDataset, StructuredDatasetVersion, StructuredDatasetRow
+from app.models.structured_dataset import (
+    StructuredDataset,
+    StructuredDatasetVersion,
+    StructuredDatasetRow,
+)
 from app.models.super_admin import SuperAdmin
 from app.models.organization_limits import OrganizationLimits
 from app.models.organization_usage import OrganizationUsage
@@ -79,10 +83,11 @@ from app.models.qualification_templates import (
     QualificationPositiveSignal,
     QualificationTemplate,
 )
-from app.models.zoho_automation_logs import ZohoAutomationLog
+from app.models.lead_automation_logs import LeadAutomationLog
 from app.models.zoho_contact_sync_states import ZohoContactSyncState
 from app.models.organization_zoho_integrations import OrganizationZohoIntegration
 from app.models.qualification_engine_integrations import QualificationEngineIntegration
+from app.models.organization_lead_automations import OrganizationLeadAutomation
 
 __all__ = [
     "StructuredDataset",
@@ -170,9 +175,10 @@ __all__ = [
     "QualificationPositiveSignal",
     "DisqualificationCriterion",
     "LeadTemperatureRule",
-    "ZohoAutomationLog",
+    "LeadAutomationLog",
     "ZohoContactSyncState",
     "OrganizationZohoIntegration",
     "QualificationEngineIntegration",
+    "OrganizationLeadAutomation",
     "ConversationEvaluation",
 ]

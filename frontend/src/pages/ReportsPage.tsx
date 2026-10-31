@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import AdminLayout from "../components/Layout/AdminLayout";
 import {
   Box,
@@ -287,6 +287,21 @@ const ReportsPage: React.FC = () => {
 
   // Print dialog
   // const [printDialogOpen, setPrintDialogOpen] = useState(false);
+
+  const messagesBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!sessionDialogOpen || sessionDialogLoading) return;
+
+    const timer = setTimeout(() => {
+      messagesBottomRef.current?.scrollIntoView({
+        behavior: "auto",
+        block: "end",
+      });
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [sessionDialogOpen, sessionDialogLoading, sessionMessages]);
 
   const loadFunnelCategories = async () => {
     try {
@@ -2502,11 +2517,15 @@ const ReportsPage: React.FC = () => {
           onClose={handleCloseSessionDialog}
           fullWidth
           maxWidth="md"
+          sx={{
+            maxHeight: "100vh",
+            overflowY: "auto",
+          }}
         >
           <DialogTitle>
             Session Messages: {truncateSessionId(sessionDialogId)}
           </DialogTitle>
-          <DialogContent dividers>
+          <DialogContent dividers sx={{ p: 0 }}>
             {sessionDialogLoading ? (
               <LinearProgress />
             ) : sessionMessages.length === 0 ? (
@@ -2571,6 +2590,7 @@ const ReportsPage: React.FC = () => {
                     )}
                   </Paper>
                 ))}
+                <div ref={messagesBottomRef} />
               </Box>
             )}
           </DialogContent>

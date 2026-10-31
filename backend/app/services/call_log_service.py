@@ -82,7 +82,7 @@ from app.models.appointment import Appointment
 from app.models.user import Organization
 from app.models.voices import Voice
 from app.services.limits_service import get_effective_limits
-from app.models.zoho_automation_logs import ZohoAutomationLog
+from app.models.lead_automation_logs import LeadAutomationLog
 from app.models.qualification_templates import QualificationTemplate
 from app.services.qualification_engine_service import QualificationEngineService
 from datetime import timezone as dt_timezone
@@ -1145,9 +1145,9 @@ def process_call(call, agent):
 
             if source == "rescheduled_call" and not mapped_job:
                 automation_log = (
-                    db.query(ZohoAutomationLog)
+                    db.query(LeadAutomationLog)
                     .filter(
-                        ZohoAutomationLog.external_call_id
+                        LeadAutomationLog.external_call_id
                         == call_log.external_call_a_id
                     )
                     .first()
