@@ -34,39 +34,6 @@ class OrganizationZohoIntegration(Base):
         nullable=True,
     )
 
-    auto_calling_enabled = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-    )
-
-    auto_calling_campaign_id = Column(
-        Integer,
-        nullable=True,
-    )
-
-    auto_email_enabled = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-    )
-
-    auto_email_campaign_id = Column(
-        Integer,
-        nullable=True,
-    )
-
-    auto_whatsapp_enabled = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-    )
-
-    auto_whatsapp_campaign_id = Column(
-        Integer,
-        nullable=True,
-    )
-
     created_at = Column(
         DateTime,
         nullable=False,
