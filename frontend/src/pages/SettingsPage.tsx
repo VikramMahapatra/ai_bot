@@ -60,6 +60,7 @@ import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AutoGraphIcon from "@mui/icons-material/AutoGraph";
 import { QualificationEngineData, qualificationEngineService } from "../services/qualificationEngineService";
+import AutoModeIcon from "@mui/icons-material/AutoMode";
 
 const DEFAULT_TWILIO_ACCOUNT_SID = "ACb6df90735425e0809d1457366c6d5623xxxxx";
 const DEFAULT_TWILIO_FROM_NUMBER = "+18126125486";
@@ -153,6 +154,7 @@ const SettingsPage: React.FC = () => {
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingZoho, setLoadingZoho] = useState(false);
+  const [loadingLeadAutomation, setLoadingLeadAutomation] = useState(false);
 
   const [testOpen, setTestOpen] = useState(false);
   const [testToNumber, setTestToNumber] = useState('');
@@ -239,6 +241,7 @@ const SettingsPage: React.FC = () => {
     loadOrgSettings();
     loadOrgEmailSettings();
     loadZohoIntegration();
+    loadLeadAutoTriggerSettings();
     loadCampaigns("call");
     loadCampaigns("email");
     loadCampaigns("whatsapp");
@@ -308,21 +311,6 @@ const SettingsPage: React.FC = () => {
         zoho?.integration_connection_id ?? null,
       email: zoho?.email ?? null,
     });
-
-    setAutoTriggerSettings({
-      calling: {
-        enabled: zoho?.auto_calling_enabled ?? false,
-        campaign_id: zoho?.auto_calling_campaign_id ?? "",
-      },
-      email: {
-        enabled: zoho?.auto_email_enabled ?? false,
-        campaign_id: zoho?.auto_email_campaign_id ?? "",
-      },
-      whatsapp: {
-        enabled: zoho?.auto_whatsapp_enabled ?? false,
-        campaign_id: zoho?.auto_whatsapp_campaign_id ?? "",
-      },
-    });
   };
 
   const integrationNav = [
@@ -349,9 +337,42 @@ const SettingsPage: React.FC = () => {
       label: "Zoho CRM",
       icon: <SyncIcon fontSize="small" />,
       connected: zohoData?.is_connected ?? false,
-    }
+    },
+    {
+      id: "lead-automation",
+      label: "Lead Automation",
+      icon: <AutoModeIcon fontSize="small" />,
+      connected:
+        autoTriggerSettings.calling.enabled ||
+        autoTriggerSettings.email.enabled ||
+        autoTriggerSettings.whatsapp.enabled,
+    },
   ];
 
+  const loadLeadAutoTriggerSettings = async () => {
+    try {
+      const response = await organizationService.getLeadAutoTriggerSettings();
+      if (response?.success) {
+        const settings = response.data;
+        setAutoTriggerSettings({
+          calling: {
+            enabled: settings?.auto_calling_enabled ?? false,
+            campaign_id: settings?.auto_calling_campaign_id ?? "",
+          },
+          email: {
+            enabled: settings?.auto_email_enabled ?? false,
+            campaign_id: settings?.auto_email_campaign_id ?? "",
+          },
+          whatsapp: {
+            enabled: settings?.auto_whatsapp_enabled ?? false,
+            campaign_id: settings?.auto_whatsapp_campaign_id ?? "",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load lead automation settings:", error);
+    }
+  };
 
   const loadZohoIntegration = async () => {
     try {
@@ -692,8 +713,6 @@ const SettingsPage: React.FC = () => {
           email: null,
         });
 
-        setAutoTriggerSettings(defaultAutoTriggerSettings);
-
         showSuccess(
           "Zoho CRM disconnected successfully."
         );
@@ -721,7 +740,7 @@ const SettingsPage: React.FC = () => {
 
   const handleSaveAutoTriggerSettings = async () => {
     try {
-      setLoadingZoho(true);
+      setLoadingLeadAutomation(true);
 
       const channels = [
         { key: "calling", label: "Calling" },
@@ -769,22 +788,22 @@ const SettingsPage: React.FC = () => {
             : null,
       };
 
-      const response = await organizationService.saveZohoAutoTriggerSettings(payload);
+      const response = await organizationService.saveLeadAutoTriggerSettings(payload);
 
       if (response?.success) {
         showSuccess(
-          "Zoho auto trigger settings saved successfully."
+          "Lead automation settings saved successfully."
         );
       }
       else {
         showError(
-          response?.message || "Failed to save Zoho auto trigger settings."
+          response?.message || "Failed to save lead automation settings."
         );
       }
 
     } catch (error: any) {
       console.error(
-        "Error saving Zoho auto trigger settings:",
+        "Error saving lead automation settings:",
         error
       );
 
@@ -793,7 +812,7 @@ const SettingsPage: React.FC = () => {
         "Failed to save settings."
       );
     } finally {
-      setLoadingZoho(false);
+      setLoadingLeadAutomation(false);
     }
   };
 
@@ -2532,334 +2551,242 @@ const SettingsPage: React.FC = () => {
                       )}
                     </Box>
                   </Card>
-
-                  {/* Auto Trigger Settings */}
-                  {zohoData?.is_connected && (
-                    <>
-                      <Typography
-                        variant="subtitle1"
-                        sx={{
-                          fontWeight: 600,
-                          mb: 1,
-                        }}
-                      >
-                        Auto Trigger Settings
-                      </Typography>
-
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "text.secondary",
-                          mb: 2,
-                        }}
-                      >
-                        Enable the channels you want to use for automatically
-                        adding Zoho prospects to campaigns.
-                      </Typography>
-
-                      {/* Auto Calling */}
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 2,
-                          mb: 2,
-                          p: 2,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              gap: 2,
-                            }}
-                          >
-                            <PhoneIcon
-                              sx={{
-                                color: "#3d75d9",
-                                mt: 0.5,
-                              }}
-                            />
-
-                            <Box>
-                              <Typography fontWeight={600}>
-                                Auto Calling
-                              </Typography>
-
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Automatically add new Zoho prospects to a
-                                calling campaign.
-                              </Typography>
-                            </Box>
-                          </Box>
-
-                          <Switch
-                            checked={autoTriggerSettings.calling.enabled}
-                            onChange={(e) =>
-                              setAutoTriggerSettings((prev) => ({
-                                ...prev,
-                                calling: {
-                                  ...prev.calling,
-                                  enabled: e.target.checked,
-                                },
-                              }))
-                            }
-                          />
-                        </Box>
-
-                        {autoTriggerSettings.calling.enabled && (
-                          <FormControl
-                            fullWidth
-                            size="small"
-                            sx={{ mt: 2 }}
-                          >
-                            <InputLabel>Campaign</InputLabel>
-
-                            <Select
-                              value={
-                                autoTriggerSettings.calling.campaign_id || ""
-                              }
-                              label="Campaign"
-                              onChange={(e) =>
-                                setAutoTriggerSettings((prev) => ({
-                                  ...prev,
-                                  calling: {
-                                    ...prev.calling,
-                                    campaign_id: e.target.value,
-                                  },
-                                }))
-                              }
-                            >
-                              {callCampaigns.map((campaign) => (
-                                <MenuItem
-                                  key={campaign.id}
-                                  value={campaign.id}
-                                >
-                                  {campaign.campaign_name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        )}
-                      </Card>
-
-                      {/* Auto Email */}
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 2,
-                          mb: 2,
-                          p: 2,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              gap: 2,
-                            }}
-                          >
-                            <EmailIcon
-                              sx={{
-                                color: "#3d75d9",
-                                mt: 0.5,
-                              }}
-                            />
-
-                            <Box>
-                              <Typography fontWeight={600}>
-                                Auto Email
-                              </Typography>
-
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Automatically add new Zoho prospects to an
-                                email campaign.
-                              </Typography>
-                            </Box>
-                          </Box>
-
-                          <Switch
-                            checked={autoTriggerSettings.email.enabled}
-                            onChange={(e) =>
-                              setAutoTriggerSettings((prev) => ({
-                                ...prev,
-                                email: {
-                                  ...prev.email,
-                                  enabled: e.target.checked,
-                                },
-                              }))
-                            }
-                          />
-                        </Box>
-
-                        {autoTriggerSettings.email.enabled && (
-                          <FormControl
-                            fullWidth
-                            size="small"
-                            sx={{ mt: 2 }}
-                          >
-                            <InputLabel>Campaign</InputLabel>
-
-                            <Select
-                              value={
-                                autoTriggerSettings.email.campaign_id || ""
-                              }
-                              label="Campaign"
-                              onChange={(e) =>
-                                setAutoTriggerSettings((prev) => ({
-                                  ...prev,
-                                  email: {
-                                    ...prev.email,
-                                    campaign_id: e.target.value,
-                                  },
-                                }))
-                              }
-                            >
-                              {emailCampaigns.map((campaign) => (
-                                <MenuItem
-                                  key={campaign.id}
-                                  value={campaign.id}
-                                >
-                                  {campaign.campaign_name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        )}
-                      </Card>
-
-                      {/* Auto WhatsApp */}
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 2,
-                          mb: 2,
-                          p: 2,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              gap: 2,
-                            }}
-                          >
-                            <WhatsAppIcon
-                              sx={{
-                                color: "#25D366",
-                                mt: 0.5,
-                              }}
-                            />
-
-                            <Box>
-                              <Typography fontWeight={600}>
-                                Auto WhatsApp
-                              </Typography>
-
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Automatically add new Zoho prospects to a
-                                WhatsApp campaign.
-                              </Typography>
-                            </Box>
-                          </Box>
-
-                          <Switch
-                            checked={autoTriggerSettings.whatsapp.enabled}
-                            onChange={(e) =>
-                              setAutoTriggerSettings((prev) => ({
-                                ...prev,
-                                whatsapp: {
-                                  ...prev.whatsapp,
-                                  enabled: e.target.checked,
-                                },
-                              }))
-                            }
-                          />
-                        </Box>
-
-                        {autoTriggerSettings.whatsapp.enabled && (
-                          <FormControl
-                            fullWidth
-                            size="small"
-                            sx={{ mt: 2 }}
-                          >
-                            <InputLabel>Campaign</InputLabel>
-
-                            <Select
-                              value={
-                                autoTriggerSettings.whatsapp.campaign_id || ""
-                              }
-                              label="Campaign"
-                              onChange={(e) =>
-                                setAutoTriggerSettings((prev) => ({
-                                  ...prev,
-                                  whatsapp: {
-                                    ...prev.whatsapp,
-                                    campaign_id: e.target.value,
-                                  },
-                                }))
-                              }
-                            >
-                              {whatsappCampaigns.map((campaign) => (
-                                <MenuItem
-                                  key={campaign.id}
-                                  value={campaign.id}
-                                >
-                                  {campaign.campaign_name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        )}
-                      </Card>
-
-                      <Box
-                        sx={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          mt: 2,
-                        }}
-                      >
-                        <Button
-                          variant="contained"
-                          onClick={handleSaveAutoTriggerSettings}
-                          disabled={loadingZoho}
-                        >
-                          Save Settings
-                        </Button>
-                      </Box>
-                    </>
-                  )}
-
                 </CardContent>
               </Card>
             </Grid>
+
+
+            <Grid item xs={12} mt={2} id="lead-automation">
+              <Card sx={{ boxShadow: 2 }}>
+                <CardContent>
+                  {/* Header */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      mb: 1,
+                    }}
+                  >
+                    <SyncIcon sx={{ color: "#3d75d9" }} />
+
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Lead Automation
+                    </Typography>
+                  </Box>
+
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "text.secondary", mb: 3 }}
+                  >
+                    Automatically trigger calling, email, and WhatsApp
+                    campaigns when a new lead is added to your organization,
+                    regardless of its source.
+                  </Typography>
+
+                  {/* Auto Calling */}
+                  <Card variant="outlined" sx={{ borderRadius: 2, mb: 2, p: 2 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", gap: 2 }}>
+                        <PhoneIcon sx={{ color: "#3d75d9", mt: 0.5 }} />
+
+                        <Box>
+                          <Typography fontWeight={600}>Auto Calling</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Automatically trigger a calling campaign for new leads.
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Switch
+                        checked={autoTriggerSettings.calling.enabled}
+                        onChange={(e) =>
+                          setAutoTriggerSettings((prev) => ({
+                            ...prev,
+                            calling: {
+                              ...prev.calling,
+                              enabled: e.target.checked,
+                              campaign_id: e.target.checked
+                                ? prev.calling.campaign_id
+                                : "",
+                            },
+                          }))
+                        }
+                      />
+                    </Box>
+
+                    {autoTriggerSettings.calling.enabled && (
+                      <FormControl fullWidth size="small" sx={{ mt: 2 }}>
+                        <InputLabel>Campaign</InputLabel>
+                        <Select
+                          value={autoTriggerSettings.calling.campaign_id || ""}
+                          label="Campaign"
+                          onChange={(e) =>
+                            setAutoTriggerSettings((prev) => ({
+                              ...prev,
+                              calling: {
+                                ...prev.calling,
+                                campaign_id: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {callCampaigns.map((campaign) => (
+                            <MenuItem key={campaign.id} value={campaign.id}>
+                              {campaign.campaign_name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </Card>
+
+                  {/* Auto Email */}
+                  <Card variant="outlined" sx={{ borderRadius: 2, mb: 2, p: 2 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", gap: 2 }}>
+                        <EmailIcon sx={{ color: "#3d75d9", mt: 0.5 }} />
+
+                        <Box>
+                          <Typography fontWeight={600}>Auto Email</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Automatically trigger an email campaign for new leads.
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Switch
+                        checked={autoTriggerSettings.email.enabled}
+                        onChange={(e) =>
+                          setAutoTriggerSettings((prev) => ({
+                            ...prev,
+                            email: {
+                              ...prev.email,
+                              enabled: e.target.checked,
+                              campaign_id: e.target.checked
+                                ? prev.email.campaign_id
+                                : "",
+                            },
+                          }))
+                        }
+                      />
+                    </Box>
+
+                    {autoTriggerSettings.email.enabled && (
+                      <FormControl fullWidth size="small" sx={{ mt: 2 }}>
+                        <InputLabel>Campaign</InputLabel>
+                        <Select
+                          value={autoTriggerSettings.email.campaign_id || ""}
+                          label="Campaign"
+                          onChange={(e) =>
+                            setAutoTriggerSettings((prev) => ({
+                              ...prev,
+                              email: {
+                                ...prev.email,
+                                campaign_id: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {emailCampaigns.map((campaign) => (
+                            <MenuItem key={campaign.id} value={campaign.id}>
+                              {campaign.campaign_name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </Card>
+
+                  {/* Auto WhatsApp */}
+                  <Card variant="outlined" sx={{ borderRadius: 2, mb: 2, p: 2 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", gap: 2 }}>
+                        <WhatsAppIcon sx={{ color: "#25D366", mt: 0.5 }} />
+
+                        <Box>
+                          <Typography fontWeight={600}>Auto WhatsApp</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Automatically trigger a WhatsApp campaign for new leads.
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Switch
+                        checked={autoTriggerSettings.whatsapp.enabled}
+                        onChange={(e) =>
+                          setAutoTriggerSettings((prev) => ({
+                            ...prev,
+                            whatsapp: {
+                              ...prev.whatsapp,
+                              enabled: e.target.checked,
+                              campaign_id: e.target.checked
+                                ? prev.whatsapp.campaign_id
+                                : "",
+                            },
+                          }))
+                        }
+                      />
+                    </Box>
+
+                    {autoTriggerSettings.whatsapp.enabled && (
+                      <FormControl fullWidth size="small" sx={{ mt: 2 }}>
+                        <InputLabel>Campaign</InputLabel>
+                        <Select
+                          value={autoTriggerSettings.whatsapp.campaign_id || ""}
+                          label="Campaign"
+                          onChange={(e) =>
+                            setAutoTriggerSettings((prev) => ({
+                              ...prev,
+                              whatsapp: {
+                                ...prev.whatsapp,
+                                campaign_id: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {whatsappCampaigns.map((campaign) => (
+                            <MenuItem key={campaign.id} value={campaign.id}>
+                              {campaign.campaign_name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </Card>
+
+                  {/* Save */}
+                  <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      onClick={handleSaveAutoTriggerSettings}
+                      disabled={loadingLeadAutomation}
+                    >
+                      Save Settings
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
           </>
         )}
 

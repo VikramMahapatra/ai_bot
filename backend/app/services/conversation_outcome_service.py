@@ -583,12 +583,6 @@ async def process_pending_session_outcomes(
                 has_contact = any(row.contact_id is not None for row in rows)
 
                 if not has_contact:
-                    logger.info(
-                        "Skipping chat conversation without contact_id: "
-                        "org=%s session=%s",
-                        org_id,
-                        session_id,
-                    )
                     continue
 
             # ---------------------------------------------------------
@@ -606,12 +600,6 @@ async def process_pending_session_outcomes(
                 )
 
                 if last_message_at is None:
-                    logger.info(
-                        "Skipping conversation without message timestamp: "
-                        "org=%s session=%s",
-                        org_id,
-                        session_id,
-                    )
                     continue
 
                 # Handle both timezone-aware and naive timestamps.
@@ -621,13 +609,6 @@ async def process_pending_session_outcomes(
                     now = now.replace(tzinfo=None)
 
                 if last_message_at > now - timedelta(minutes=5):
-                    logger.info(
-                        "Skipping recent conversation: "
-                        "org=%s session=%s last_message_at=%s",
-                        org_id,
-                        session_id,
-                        last_message_at,
-                    )
                     continue
 
             # =========================================================

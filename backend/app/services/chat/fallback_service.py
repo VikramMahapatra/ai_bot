@@ -4,12 +4,7 @@ import hashlib
 import re
 from typing import Optional, Sequence
 
-_FALLBACK_VARIANTS = (
-    "I could not find reliable information about that in this knowledge base yet. I can still help with services, setup, pricing, or support.",
-    "That topic is not covered clearly in the available context right now. If you want, I can help with what is documented here, like services, onboarding, pricing, or support.",
-    "I do not have enough information to answer that accurately right now. You can try rephrasing your question or ask me about something else.",
-    "I am not seeing a reliable answer for that in the current knowledge base. I can still help with common topics here, including services, setup, pricing, and support.",
-)
+_FALLBACK_VARIANTS = "I do not have enough information to answer that accurately right now. You can try rephrasing your question or ask me about something else."
 
 
 def _select_variant(options: Sequence[str], seed_text: Optional[str]) -> str:

@@ -10,7 +10,7 @@ from app.schemas.organization_setting import (
     OrganizationEmailSettingUpdate,
     OrganizationSettingsResponse,
     OrganizationSettingsUpdate,
-    ZohoAutoTriggerSettingsRequest,
+    LeadAutomationSettingsRequest,
     ZohoConnectRequest,
 )
 from app.models.organization_settings import OrganizationSettings
@@ -18,6 +18,7 @@ from app.auth import get_current_user
 from app.models.organization_email_settings import OrganizationEmailSetting
 from app.models.organization_zoho_integrations import OrganizationZohoIntegration
 from app.services.integration_hub_service import integration_hub_service
+from app.models.organization_lead_automations import OrganizationLeadAutomation
 
 router = APIRouter(prefix="/api/organization-settings", tags=["Organization Settings"])
 
@@ -234,6 +235,45 @@ def update_email_daily_limit(
     }
 
 
+@router.get("/lead/automations")
+def get_lead_automations(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    organization_id = current_user.organization_id
+
+    automation = (
+        db.query(OrganizationLeadAutomation)
+        .filter(OrganizationLeadAutomation.organization_id == organization_id)
+        .first()
+    )
+
+    if not automation:
+        return {
+            "success": True,
+            "data": {
+                "auto_calling_enabled": False,
+                "auto_calling_campaign_id": None,
+                "auto_email_enabled": False,
+                "auto_email_campaign_id": None,
+                "auto_whatsapp_enabled": False,
+                "auto_whatsapp_campaign_id": None,
+            },
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "auto_calling_enabled": automation.auto_calling_enabled,
+            "auto_calling_campaign_id": automation.auto_calling_campaign_id,
+            "auto_email_enabled": automation.auto_email_enabled,
+            "auto_email_campaign_id": automation.auto_email_campaign_id,
+            "auto_whatsapp_enabled": automation.auto_whatsapp_enabled,
+            "auto_whatsapp_campaign_id": automation.auto_whatsapp_campaign_id,
+        },
+    }
+
+
 #### ZOHO CRM INTEGRATION ENDPOINTS ####
 
 
@@ -258,12 +298,6 @@ def get_zoho_integration(
                 "is_initialized": False,
                 "integration_connection_id": None,
                 "email": None,
-                "auto_calling_enabled": False,
-                "auto_calling_campaign_id": None,
-                "auto_email_enabled": False,
-                "auto_email_campaign_id": None,
-                "auto_whatsapp_enabled": False,
-                "auto_whatsapp_campaign_id": None,
             },
         }
 
@@ -274,32 +308,26 @@ def get_zoho_integration(
             "is_initialized": integration.is_initialized,
             "integration_connection_id": integration.integration_connection_id,
             "email": integration.zoho_email,
-            "auto_calling_enabled": integration.auto_calling_enabled,
-            "auto_calling_campaign_id": integration.auto_calling_campaign_id,
-            "auto_email_enabled": integration.auto_email_enabled,
-            "auto_email_campaign_id": integration.auto_email_campaign_id,
-            "auto_whatsapp_enabled": integration.auto_whatsapp_enabled,
-            "auto_whatsapp_campaign_id": integration.auto_whatsapp_campaign_id,
         },
     }
 
 
-@router.put("/zoho/auto-trigger")
-def save_zoho_auto_trigger_settings(
-    payload: ZohoAutoTriggerSettingsRequest,
+@router.put("/lead/save-automations")
+def save_lead_automation_settings(
+    payload: LeadAutomationSettingsRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     organization_id = current_user.organization_id
 
     settings = (
-        db.query(OrganizationZohoIntegration)
-        .filter(OrganizationZohoIntegration.organization_id == organization_id)
+        db.query(OrganizationLeadAutomation)
+        .filter(OrganizationLeadAutomation.organization_id == organization_id)
         .first()
     )
 
     if not settings:
-        settings = OrganizationZohoIntegration(
+        settings = OrganizationLeadAutomation(
             organization_id=organization_id,
         )
 
@@ -560,13 +588,9 @@ async def disconnect_zoho(
 
         # Update AI Bot DB
         integration.is_connected = False
+        integration.is_initialized = False
         integration.integration_connection_id = None
         integration.zoho_email = None
-
-        # Optional: disable auto triggers
-        integration.auto_calling_enabled = False
-        integration.auto_email_enabled = False
-        integration.auto_whatsapp_enabled = False
 
         db.commit()
 
@@ -591,6 +615,10 @@ async def initialize_zoho(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    logger.info(
+        "Initializing Zoho CRM for organization %s", current_user.organization_id
+    )
+
     organization_id = current_user.organization_id
 
     integration = (
