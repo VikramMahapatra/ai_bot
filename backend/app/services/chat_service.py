@@ -1567,6 +1567,18 @@ def persist_conversation(
     db.add(conversation)
     db.flush()
 
+    if source == "whatsapp":
+        db.query(Conversation).filter(
+            Conversation.organization_id == organization_id,
+            Conversation.session_id == session_id,
+        ).update(
+            {
+                Conversation.outcome: None,
+                Conversation.is_lead: None,
+            },
+            synchronize_session=False,
+        )
+
     organization_credit_service.deduct_credits(
         db=db,
         organization_id=organization_id,

@@ -23,6 +23,10 @@ from app.services.whatsapp_service import (
 )
 from app.config import settings
 from app.models.message_templates import MessageTemplate
+from app.api.chat import _normalize_phone
+from app.models.campaign import Contact, ContactList
+from app.models.organization_lead_automations import OrganizationLeadAutomation
+from app.services.zoho_contact_sync_service import create_lead_automation_logs
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -598,6 +602,14 @@ async def receive_whatsapp_webhook(
             metadata = value.get("metadata", {})
             phone_number_id = metadata.get("phone_number_id")
 
+            contacts = value.get("contacts", [])
+
+            contact_map = {
+                contact.get("wa_id"): contact.get("profile", {}).get("name")
+                for contact in contacts
+                if contact.get("wa_id")
+            }
+
             if not phone_number_id:
                 ignored += 1
                 continue
@@ -657,7 +669,18 @@ async def receive_whatsapp_webhook(
                     ignored += 1
                     continue
 
+                # Fetch WhatsApp profile name
+                customer_name = contact_map.get(from_number)
                 session_id = f"wa:{channel.organization_id}:{from_number}"
+
+                whatsapp_contact = _create_whatsapp_contact(
+                    db=db,
+                    organization_id=channel.organization_id,
+                    customer_name=customer_name,
+                    phone_number=from_number,
+                    session_id=session_id,
+                    whatsapp_message_id=incoming_message.get("id"),
+                )
 
                 response_text, _sources, token_usage = generate_chat_response(
                     text_body,
@@ -685,3 +708,129 @@ async def receive_whatsapp_webhook(
                 processed += 1
 
     return {"status": "ok", "processed": processed, "ignored": ignored}
+
+
+def _get_or_create_whatsapp_contact_list(
+    db: Session,
+    organization_id: int,
+) -> Optional[ContactList]:
+
+    if not organization_id:
+        return None
+
+    marker = f"whatsapp_contacts_{organization_id}"
+    list_name = "WhatsApp Contacts"
+
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.organization_id == organization_id,
+            ContactList.description == marker,
+        )
+        .first()
+    )
+
+    if contact_list:
+        return contact_list
+
+    contact_list = (
+        db.query(ContactList)
+        .filter(
+            ContactList.organization_id == organization_id,
+            ContactList.list_name == list_name,
+        )
+        .first()
+    )
+
+    if contact_list:
+        contact_list.description = marker
+        return contact_list
+
+    contact_list = ContactList(
+        organization_id=organization_id,
+        list_name=list_name,
+        description=marker,
+    )
+
+    db.add(contact_list)
+    db.flush()
+
+    return contact_list
+
+
+def _create_whatsapp_contact(
+    db: Session,
+    organization_id: int,
+    customer_name: Optional[str],
+    phone_number: str,
+    session_id: Optional[str] = None,
+    whatsapp_message_id: Optional[str] = None,
+) -> Optional[Contact]:
+
+    cleaned_name = (customer_name or "").strip() or None
+    cleaned_phone = (phone_number or "").strip()
+
+    if not cleaned_phone:
+        return None
+
+    contact_list = _get_or_create_whatsapp_contact_list(
+        db=db,
+        organization_id=organization_id,
+    )
+
+    if not contact_list:
+        return None
+
+    normalized_phone = _normalize_phone(cleaned_phone)
+
+    # Check existing contact
+    existing_contacts = (
+        db.query(Contact).filter(Contact.contact_list_id == contact_list.id).all()
+    )
+
+    for existing in existing_contacts:
+        existing_phone = _normalize_phone((existing.phone or "").strip())
+
+        if normalized_phone and existing_phone == normalized_phone:
+            if cleaned_name and not existing.name:
+                existing.name = cleaned_name
+
+            if session_id and not existing.session_id:
+                existing.session_id = session_id
+
+            return existing
+
+    # Create new WhatsApp contact
+    contact = Contact(
+        contact_list_id=contact_list.id,
+        name=cleaned_name,
+        email=None,
+        phone=cleaned_phone,
+        source="whatsapp",
+        session_id=session_id,
+    )
+
+    db.add(contact)
+    db.flush()
+
+    # Fetch lead automation settings
+    automation_settings = (
+        db.query(OrganizationLeadAutomation)
+        .filter(OrganizationLeadAutomation.organization_id == organization_id)
+        .first()
+    )
+
+    # Create automation logs only for newly created contacts
+    if automation_settings:
+        create_lead_automation_logs(
+            db=db,
+            automation_settings=automation_settings,
+            contact=contact,
+            staged_contact={
+                "id": whatsapp_message_id or session_id or cleaned_phone,
+                "external_id": session_id,
+            },
+            source="whatsapp",
+        )
+
+    return contact
