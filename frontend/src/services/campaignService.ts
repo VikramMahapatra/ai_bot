@@ -246,6 +246,7 @@ export interface ContactListItem {
   is_agent_auto_list?: boolean;
   is_campaign_list?: boolean;
   is_crm_list?: boolean;
+  is_whatsapp_list?: boolean;
   agent_widget_id?: string | null;
   created_at: string;
   contact_count: number;

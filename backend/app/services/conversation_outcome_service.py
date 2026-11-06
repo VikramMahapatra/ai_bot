@@ -1195,19 +1195,19 @@ async def process_pending_session_outcomes(
             lead_rows = (
                 db.query(Lead)
                 .join(
-                    LeadContactMapping,
-                    LeadContactMapping.lead_id == Lead.id,
+                    LeadActivity,
+                    LeadActivity.lead_id == Lead.id,
                 )
                 .join(
                     Conversation,
-                    Conversation.contact_id == LeadContactMapping.contact_id,
+                    Conversation.session_id == LeadActivity.session_id,
                 )
                 .filter(
-                    Conversation.organization_id == org_id,
-                    Conversation.session_id == session_id,
                     Lead.organization_id == org_id,
+                    LeadActivity.session_id == session_id,
+                    Conversation.organization_id == org_id,
                 )
-                .distinct(Lead.id)
+                .distinct()
                 .all()
             )
 

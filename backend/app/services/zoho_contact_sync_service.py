@@ -41,6 +41,7 @@ def get_or_create_zoho_contact_list(
     for contacts synchronized from Zoho CRM.
     """
 
+    marker = f"zoho_crm_contacts_{organization_id}"
     list_name = "Zoho CRM Contacts"
 
     contact_list = (
@@ -52,15 +53,18 @@ def get_or_create_zoho_contact_list(
         .first()
     )
 
-    if not contact_list:
-        contact_list = ContactList(
-            organization_id=organization_id,
-            list_name=list_name,
-            description="Contacts synchronized from Zoho CRM",
-        )
+    if contact_list:
+        contact_list.description = marker
+        return contact_list
 
-        db.add(contact_list)
-        db.flush()
+    contact_list = ContactList(
+        organization_id=organization_id,
+        list_name=list_name,
+        description=marker,
+    )
+
+    db.add(contact_list)
+    db.flush()
 
     return contact_list
 

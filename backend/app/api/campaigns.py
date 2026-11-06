@@ -2054,8 +2054,19 @@ async def update_contact_list(
     if not contact_list:
         raise HTTPException(status_code=404, detail="Contact list not found")
 
+    description = contact_list.description or ""
+
+    is_system_list = (
+        _parse_auto_agent_marker(description)[0]
+        or description.startswith("whatsapp_contacts_")
+        or description.startswith("zoho_crm_contacts_")
+        or description.startswith("Qualified contacts from campaign:")
+    )
+
     contact_list.list_name = list_name
-    contact_list.description = (payload.description or "").strip() or None
+    if not is_system_list:
+        contact_list.description = (payload.description or "").strip() or None
+
     db.add(contact_list)
     db.commit()
     db.refresh(contact_list)
@@ -2112,21 +2123,26 @@ async def list_contact_lists(
             "Qualified contacts from campaign:"
         )
 
-        is_crm_list = (row.description or "").startswith(
-            "Contacts synchronized from Zoho CRM"
-        )
+        is_crm_list = (row.description or "").startswith("zoho_crm_contacts_")
+
+        is_whatsapp_list = (row.description or "").startswith("whatsapp_contacts_")
 
         items.append(
             {
                 "id": row.id,
                 "list_name": row.list_name,
-                "description": None if is_auto else row.description,
+                "description": (
+                    None
+                    if is_auto or is_whatsapp_list or is_crm_list
+                    else row.description
+                ),
                 "created_at": row.created_at,
                 "contact_count": int(counts.get(row.id, 0)),
                 "is_agent_auto_list": is_auto,
                 "agent_widget_id": widget_id,
                 "is_campaign_list": is_campaign_list,
                 "is_crm_list": is_crm_list,
+                "is_whatsapp_list": is_whatsapp_list,
             }
         )
 

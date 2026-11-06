@@ -706,6 +706,10 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
       tags.push("CRM");
     }
 
+    if (list.is_whatsapp_list) {
+      tags.push("WhatsApp");
+    }
+
     const tagSuffix = tags.length
       ? ` • ${tags.join(" • ")}`
       : "";
@@ -714,13 +718,23 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
   };
 
   const getContactListDescription = (list: ContactListItem) => {
-    if (list.description) return list.description;
     if (list.is_agent_auto_list) {
       const widgetSuffix = list.agent_widget_id
         ? ` for agent ${list.agent_widget_id}`
         : "";
       return `Auto-created from appointment bookings${widgetSuffix}`;
     }
+
+    if (list.is_whatsapp_list) {
+      return "Contacts automatically created from WhatsApp conversations";
+    }
+
+    if (list.is_crm_list) {
+      return "Contacts synchronized from Zoho CRM";
+    }
+
+    if (list.description) return list.description;
+
     return "-";
   };
 
@@ -1249,6 +1263,16 @@ const Contacts = ({ tab, setTab }: ContactsProps) => {
                                   color="secondary"
                                   variant="outlined"
                                   label="CRM"
+                                />
+                              )}
+
+                              {/* WhatsApp Chip */}
+                              {list.is_whatsapp_list && (
+                                <Chip
+                                  size="small"
+                                  color="success"
+                                  variant="outlined"
+                                  label="WhatsApp"
                                 />
                               )}
                             </Stack>
