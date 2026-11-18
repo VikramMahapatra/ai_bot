@@ -38,6 +38,21 @@ from app.database import SessionLocal
 
 UPLOAD_DIR = "uploads/agent_training_docs"
 
+TTS_PROVIDER_MODEL_MAPPING = {
+    "cartesia": {
+        "tts_provider": "cartesia",
+        "tts_model": "sonic-3",
+    },
+    "sarvam": {
+        "tts_provider": "sarvam",
+        "tts_model": "bulbul:v3",
+    },
+    "11labs": {
+        "tts_provider": "11labs",
+        "tts_model": "eleven_turbo_v2_5",
+    },
+}
+
 
 def safe_set(obj, attr, value):
     if value is not None:
@@ -176,12 +191,15 @@ def create_agent(
     db.add(db_agent)
     db.flush()
 
+    voice = db.query(Voice).filter(Voice.voice_id == agent.voice).first()
+
     # CREATE REQUEST TO ECHO LEADS
     echoleads = EcholeadsClient(organization_id)
     echo_payload = build_echoleads_payload(
         agent=agent,
         agent_name=db_agent.external_agent_name,
         agent_status="draft",
+        voice=voice,
     )
 
     external_agent_id = None
@@ -277,12 +295,15 @@ def update_agent(
     ):
         db_agent.external_agent_name = unique_agent_code
 
+    voice = db.query(Voice).filter(Voice.voice_id == merged_agent.voice).first()
+
     # Sync with Echoleads
     echoleads = EcholeadsClient(db_agent.organization_id)
     echo_payload = build_echoleads_payload(
         agent=merged_agent,
         agent_name=db_agent.external_agent_name,
         agent_status=("draft" if db_agent.status == "testing" else db_agent.status),
+        voice=voice,
     )
     echo_failed = False
 
@@ -874,7 +895,15 @@ def build_echoleads_payload(
     agent_name: str,
     agent_status: str,
     transaction_id: str | None = None,
+    voice: Voice | None = None,
 ):
+    provider = (voice.provider if voice else "sarvam").lower()
+
+    tts_config = TTS_PROVIDER_MODEL_MAPPING.get(
+        provider,
+        TTS_PROVIDER_MODEL_MAPPING["sarvam"],
+    )
+
     payload = {
         "name": agent_name,
         "agent_call_type": (
@@ -908,6 +937,8 @@ def build_echoleads_payload(
         "agent_status": agent_status,
         "remaning_call_count": None,
         "voice_id": agent.voice,
+        "tts_provider": tts_config["tts_provider"],
+        "tts_model": tts_config["tts_model"],
         "speaks_first": agent.who_speaks_first,
         "agent_speaks_first": (agent.who_speaks_first == "ai"),
         "end_call_message": agent.end_call_message,
