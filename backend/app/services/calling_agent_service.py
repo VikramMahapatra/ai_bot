@@ -259,11 +259,6 @@ def update_agent(
     if not db_agent:
         raise ValueError("Agent not found")
 
-    if not db_agent.external_agent_id:
-        raise HTTPException(
-            status_code=400, detail="Selected Agent not synced correctly"
-        )
-
     merged_data = {
         **db_agent.__dict__,
         **agent.dict(exclude_unset=True),
@@ -275,23 +270,24 @@ def update_agent(
 
     pattern = rf"^ORG{org.id}AG[A-F0-9]{{5}}$"
 
-    if not db_agent.external_agent_name or not re.match(
-        pattern, db_agent.external_agent_name
+    if (
+        not db_agent.external_agent_name
+        or not re.match(pattern, db_agent.external_agent_name)
+        or not db_agent.external_agent_id
     ):
         db_agent.external_agent_name = unique_agent_code
 
-    # 🔹 Update Echoleads
+    # Sync with Echoleads
     echoleads = EcholeadsClient(db_agent.organization_id)
     echo_payload = build_echoleads_payload(
         agent=merged_agent,
         agent_name=db_agent.external_agent_name,
         agent_status=("draft" if db_agent.status == "testing" else db_agent.status),
     )
-
-    # print(echo_payload)
-    # Call Echoleads update
     echo_failed = False
+
     if db_agent.external_agent_id:
+        # Existing agent - Update
         try:
             update_with_auto_publish(
                 echoleads,
@@ -301,6 +297,35 @@ def update_agent(
             )
         except Exception as e:
             print(f"EchoLeads sync failed: {str(e)}")
+            echo_failed = True
+    else:
+        # Unsynced agent - Create as new agent
+        try:
+            echo_response = echoleads.create_agent(echo_payload)
+
+            if echo_response and echo_response.get("data"):
+                echo_data = echo_response["data"]
+
+                external_agent_id = echo_data.get("id")
+
+                if external_agent_id:
+                    db_agent.external_agent_id = external_agent_id
+                    db_agent.external_agent_a_id = echo_data.get("a_id")
+
+                    external_agent_status = echo_data.get("agent_status", "pending")
+
+                    db_agent.status = (
+                        "testing"
+                        if external_agent_status == "draft"
+                        else external_agent_status
+                    )
+                else:
+                    echo_failed = True
+            else:
+                echo_failed = True
+
+        except Exception as e:
+            print(f"EchoLeads create failed: {str(e)}")
             echo_failed = True
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -409,6 +434,9 @@ def sync_agents(db: Session, organization_id: int):
                                 reference_id=db_agent.id,
                                 quantity=1,
                             )
+
+                        if db_agent.is_deleted == True and db_agent.status == "active":
+                            db_agent.is_deleted = False
 
                     # link external IDs
                     safe_set(db_agent, "external_agent_id", echo_agent.get("id"))
@@ -689,6 +717,7 @@ def test_call(
         "a_id": agent.external_agent_a_id,
         "phone": data.phone_no,
         "from_number": data.calling_no,
+        "server_location": agent.server_location,
         "firstMessage": agent.greeting,
         "dynamicFieldValues": dynamic_values,
     }
