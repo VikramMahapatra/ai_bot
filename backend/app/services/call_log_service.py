@@ -2,6 +2,7 @@ import asyncio
 from datetime import date, datetime, time, timedelta, timezone
 import json
 import logging
+import math
 import random
 import re
 from statistics import mode
@@ -843,7 +844,13 @@ def process_call(call, agent):
                     contact = campaign_contact.contact
 
             # Prepare common values
-            duration = int(call.get("duration")) if call.get("duration") else None
+            duration_value = call.get("duration")
+
+            duration = (
+                math.ceil(float(duration_value))
+                if duration_value is not None and str(duration_value).strip() != ""
+                else None
+            )
             ended_reason = call.get("ended_reason")
             call_summary = call.get("call_summary")
             sentiment = call.get("sentiment")
