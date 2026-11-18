@@ -18,7 +18,8 @@ import {
     Alert,
     IconButton,
     Paper,
-    FormControl
+    FormControl,
+    InputLabel
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import MicIcon from "@mui/icons-material/Mic";
@@ -236,6 +237,7 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                                 flexWrap="wrap"
                             >
                                 {/* Agent */}
+                                {/* Agent */}
                                 <Stack direction="row" spacing={1.5} alignItems="center">
                                     <Avatar
                                         sx={{
@@ -248,23 +250,29 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                                         {agent?.name?.charAt(0)}
                                     </Avatar>
 
-                                    <Box>
-                                        <Typography fontWeight={600}>
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        alignItems="center"
+                                        flexWrap="nowrap"
+                                    >
+                                        <Typography fontWeight={600} noWrap>
                                             {agent?.name}
                                         </Typography>
+
                                         {agent?.type && (
                                             <Chip
                                                 size="small"
-                                                label={agent?.type}
+                                                label={agent.type}
                                                 variant="outlined"
                                                 sx={{
-                                                    mt: 0.5,
                                                     height: 20,
-                                                    fontSize: 11
+                                                    fontSize: 11,
+                                                    flexShrink: 0
                                                 }}
                                             />
                                         )}
-                                    </Box>
+                                    </Stack>
                                 </Stack>
 
                                 {/* Call From */}
@@ -301,8 +309,10 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
 
                                         {/* Multiple Calling Numbers */}
                                         {callingNumbers.length > 1 && (
-                                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                                            <FormControl size="small" sx={{ minWidth: 180, mt: 1 }}>
+                                                <InputLabel>Call From Number</InputLabel>
                                                 <Select
+                                                    label="Call From Number"
                                                     value={selectedCallingNumber}
                                                     onChange={(e) =>
                                                         setSelectedCallingNumber(e.target.value)
@@ -319,13 +329,6 @@ export default function TestCallDialog({ open, onClose, agent }: Props) {
                                                     ))}
                                                 </Select>
 
-                                                <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ mt: 0.5 }}
-                                                >
-                                                    Call From Number
-                                                </Typography>
                                             </FormControl>
                                         )}
 

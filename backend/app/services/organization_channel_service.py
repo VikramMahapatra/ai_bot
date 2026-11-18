@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, func
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.channels import Channel, ChannelReservation, OrganizationChannel
@@ -14,20 +14,12 @@ def validate_channel_available(
     call_type: str,
 ):
     def get_available_channel(org_id: int):
-        org_channel_ids = (
-            db.query(Channel.id)
-            .join(
-                OrganizationChannel,
-                OrganizationChannel.channel_id == Channel.id,
-            )
-            .filter(OrganizationChannel.organization_id == org_id)
-            .subquery()
+        org_channel_ids = select(OrganizationChannel.channel_id).where(
+            OrganizationChannel.organization_id == org_id
         )
 
-        active_res_subq = (
-            db.query(ChannelReservation.channel_id)
-            .filter(ChannelReservation.is_active == True)
-            .subquery()
+        active_res_subq = select(ChannelReservation.channel_id).where(
+            ChannelReservation.is_active.is_(True)
         )
 
         available = (
@@ -41,9 +33,7 @@ def validate_channel_available(
 
         return available[0] if available else None
 
-    # =================================================
     # CAMPAIGN
-    # =================================================
     if call_type == "campaign":
         channel_id = get_available_channel(organization_id)
 
@@ -55,9 +45,7 @@ def validate_channel_available(
 
         return channel_id
 
-    # =================================================
     # TEST
-    # =================================================
     if call_type == "test":
         channel_id = get_available_channel(organization_id)
 
@@ -75,10 +63,7 @@ def validate_channel_available(
             detail="No available channels for test call",
         )
 
-    # =================================================
     # RESCHEDULED CALL
-    # Organization's own channel only
-    # =================================================
     if call_type == "rescheduled_call":
         channel_id = get_available_channel(organization_id)
 
@@ -90,9 +75,7 @@ def validate_channel_available(
 
         return channel_id
 
-    # =================================================
     # OTHER CALL TYPES
-    # =================================================
     channel_id = get_available_channel(organization_id)
 
     if not channel_id:

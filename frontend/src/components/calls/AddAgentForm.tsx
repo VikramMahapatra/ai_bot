@@ -41,6 +41,7 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import { useAuth } from '../../context/AuthContext';
 import { QualificationTemplateLookup, qualificationTemplateService } from '../../services/qualificationTemplateService';
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 
 interface AddAgentFormProps {
     agentType: "inbound" | "outbound";
@@ -212,7 +213,7 @@ const INCOMING_DEFAULTS = {
 };
 
 const OUTGOING_DEFAULTS = {
-    server_location: "US",
+    server_location: "IN-MUMBAI",
     greeting: "Hello! This is a quick call regarding an update. Is this a good time to talk?",
     prompt: `You are a professional AI calling agent making outgoing calls.
 
@@ -310,6 +311,8 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const [templates, setTemplates] = useState<QualificationTemplateLookup[]>([]);
     const { featureFlags } = useAuth();
 
+    console.log("agent data:", agent);
+
     const callForwardingEnabled =
         featureFlags?.call_forwarding_enabled ?? false;
 
@@ -406,9 +409,12 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     };
 
     const filteredVoices = useMemo(() => {
+        const normalizedServerLocation =
+            formData.server_location?.split("-")[0];
+
         const requiredVoiceType =
-            agentType && formData.server_location
-                ? `${agentType}_${formData.server_location}`.toLowerCase()
+            agentType && normalizedServerLocation
+                ? `${agentType}_${normalizedServerLocation}`.toLowerCase()
                 : null;
 
         return voiceOptions.filter((voice) => {
@@ -667,6 +673,15 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
     const recordingUrl =
         selectedVoice?.recordings?.[language.toLowerCase() as any] ||
         selectedVoice?.recording_url;
+
+    const isServerLocationLocked =
+        mode !== "create" && !!agent.external_agent_a_id;
+
+    const serverLocationOptions: Record<string, string> = {
+        "IN-Mumbai": "India Server - Mumbai",
+        "IN-Bangalore": "India Server - Bangalore",
+        "US": "US Server",
+    };
 
     return (
         <Card sx={{ mb: 3, p: 3, borderRadius: 2, boxShadow: 2, position: 'sticky', zIndex: 1 }}>
@@ -949,31 +964,41 @@ export const AddAgentForm: React.FC<AddAgentFormProps> = ({ agentType, agent, mo
                                 </Typography>
                             )}
                         </FormControl> */}
-                        {/* <FormControl fullWidth error={!!errors.server_location}>
-                            <InputLabel>Server Location</InputLabel>
-
-                            <Select
-                                value={formData.server_location || ""}
+                        {isServerLocationLocked ? (
+                            <TextField
+                                fullWidth
                                 label="Server Location"
-                                onChange={(e) =>
-                                    setFormData({ ...formData, server_location: e.target.value })
-                                }
-                            >
-                                <MenuItem value="">
-                                    Select Server Location
-                                </MenuItem>
+                                value={serverLocationOptions[formData.server_location] || formData.server_location || ""}
+                                InputProps={{
+                                    readOnly: true,
+                                }}
+                            />
+                        ) : (
+                            <FormControl fullWidth error={!!errors.server_location}>
+                                <InputLabel>Server Location</InputLabel>
+                                <Select
+                                    value={formData.server_location || ""}
+                                    label="Server Location"
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            server_location: e.target.value
+                                        })
+                                    }
+                                >
+                                    <MenuItem value="">Select Server Location</MenuItem>
+                                    <MenuItem value="IN-Mumbai">India Server - Mumbai</MenuItem>
+                                    <MenuItem value="IN-Bangalore">India Server - Bangalore</MenuItem>
+                                    <MenuItem value="US">US Server</MenuItem>
+                                </Select>
 
-                                <MenuItem value="IN">India Server</MenuItem>
-                                <MenuItem value="US">US Server</MenuItem>
-
-                            </Select>
-
-                            {errors.server_location && (
-                                <Typography variant="caption" color="error">
-                                    {errors.server_location}
-                                </Typography>
-                            )}
-                        </FormControl> */}
+                                {errors.server_location && (
+                                    <Typography variant="caption" color="error">
+                                        {errors.server_location}
+                                    </Typography>
+                                )}
+                            </FormControl>
+                        )}
                     </Stack>
                 </Card >
                 {/* Agent Voice Selection */}
