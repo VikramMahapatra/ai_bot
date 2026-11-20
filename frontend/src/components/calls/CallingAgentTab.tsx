@@ -61,6 +61,13 @@ import { useAuth } from "../../context/AuthContext";
 import Menu from "@mui/material/Menu";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PhoneIcon from "@mui/icons-material/Phone";
+import  PublicIcon from "@mui/icons-material/Public";
+const SERVER_LOCATIONS: Record<string, { label: string; color: string }> = {
+  "IN-MUMBAI": { label: "India · Mumbai", color: "#2563eb" },
+  "IN-BANGALORE": { label: "India · Bangalore", color: "#2563eb" },
+  IN: { label: "India", color: "#0891b2" },
+  US: { label: "United States", color: "#7c3aed" },
+};
 
 export const CallingAgentTab: React.FC = () => {
   const theme = useTheme();
@@ -100,6 +107,30 @@ export const CallingAgentTab: React.FC = () => {
   const singleCard = visibleCount === 1;
   const noAccess = visibleCount === 0;
 
+  const getServerLocation = (location?: string) =>
+    SERVER_LOCATIONS[location?.toUpperCase() ?? ""] ?? {
+      label: location ?? "",
+      color: "#64748b",
+    };
+  
+  const chipStyle = (color: string) => ({
+    height: 22,
+    fontSize: 11.5,
+    fontWeight: 600,
+    borderRadius: "6px",
+    color,
+    bgcolor: alpha(color, 0.08),
+    border: `1px solid ${alpha(color, 0.25)}`,
+    "& .MuiChip-icon": {
+      color,
+      fontSize: 13,
+      ml: "6px",
+    },
+    "& .MuiChip-label": {
+      px: "6px",
+    },
+  });
+  
   const showError = (message: string) => {
     setSuccess("");
     setError(message);
@@ -488,7 +519,7 @@ export const CallingAgentTab: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Type</TableCell>
+                  <TableCell>Type & Server</TableCell>
                   <TableCell>Name</TableCell>
                   <TableCell>Status</TableCell>
                   {/* <TableCell>Server</TableCell> */}
@@ -563,6 +594,20 @@ export const CallingAgentTab: React.FC = () => {
                             )}
                           </Box>
                         </Tooltip>
+                        {agent.server_location && (
+                                <Tooltip title="Server location">
+                                  <Box>
+                                    <Chip
+                                      icon={<PublicIcon />}
+                                      label={getServerLocation(agent.server_location).label}
+                                      size="small"
+                                      sx={{...chipStyle(getServerLocation(agent.server_location).color),
+                                        mt: 1,
+                                      }}
+                                    />
+                                  </Box>
+                                </Tooltip>
+                              )}
                       </TableCell>
 
                       {/* Name */}
@@ -572,29 +617,35 @@ export const CallingAgentTab: React.FC = () => {
                             {agent.name}
                           </Typography>
 
-                          {agent.type === "inbound" && agent.inbound_phone_number && (
+                          {((agent.type === "inbound" && agent.inbound_phone_number) ||
+                            agent.server_location) && (
                             <Box
                               display="flex"
                               alignItems="center"
                               gap={0.5}
                               mt={0.3}
                             >
-                              <PhoneIcon
-                                sx={{
-                                  fontSize: 14,
-                                  color: "text.secondary",
-                                }}
-                              />
+                              {agent.type === "inbound" && agent.inbound_phone_number && (
+                                <>
+                                  <PhoneIcon
+                                    sx={{
+                                      fontSize: 14,
+                                      color: "text.secondary",
+                                    }}
+                                  />
 
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                fontWeight={500}
-                              >
-                                {agent.inbound_phone_number}
-                              </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    fontWeight={500}
+                                  >
+                                    {agent.inbound_phone_number}
+                                  </Typography>
+                                </> )}
+
+                              
                             </Box>
-                          )}
+                            )}
                         </Box>
                       </TableCell>
 
