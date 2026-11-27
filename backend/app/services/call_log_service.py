@@ -3047,60 +3047,88 @@ def sync_echoleads_bookings(
                 detail="Insufficient credits. Please add more credits to continue.",
             )
 
-        call_id = booking.get("call_id")
+        a_id = booking.get("a_id")
 
-        if not call_id:
-            continue
-
-        # Fetch call log
-        call_log = (
-            db.query(CallLog).filter(CallLog.external_call_a_id == call_id).first()
-        )
-
-        if not call_log or not call_log.call_session_id:
-            continue
-
-        # Prevent duplicate appointments
-        existing = (
-            db.query(Appointment)
-            .filter(Appointment.session_id == call_log.call_session_id)
+        # Find agent using a_id
+        agent = (
+            db.query(CallingAgent)
+            .filter(
+                CallingAgent.external_agent_a_id == a_id,
+                CallingAgent.is_deleted == False,
+            )
             .first()
         )
 
-        if existing:
+        if not agent:
             continue
 
-        # Contact
-        contact = None
-        if call_log.contact_id:
-            contact = (
-                db.query(Contact).filter(Contact.id == call_log.contact_id).first()
+        call_log = None
+
+        if agent.type != "inbound":
+            call_id = booking.get("call_id")
+
+            if not call_id:
+                continue
+
+            # Fetch call log
+            call_log = (
+                db.query(CallLog).filter(CallLog.external_call_a_id == call_id).first()
             )
+
+            if not call_log or not call_log.call_session_id:
+                continue
+
+        # Prevent duplicate appointments
+        if agent.type == "inbound":
+            dt = parser.parse(booking["start_date"])
+            appointment_at = dt.astimezone(dt_timezone.utc)
+
+            existing = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.organization_id == organization_id,
+                    Appointment.widget_id == agent.widget_id,
+                    Appointment.phone == booking.get("customer_number"),
+                    Appointment.appointment_at == appointment_at,
+                )
+                .first()
+            )
+
         else:
-            contact = (
-                db.query(Contact)
-                .filter(Contact.phone == call_log.phone)
-                .order_by(Contact.created_at.desc())
+            existing = (
+                db.query(Appointment)
+                .filter(Appointment.session_id == call_log.call_session_id)
                 .first()
             )
 
-        # Agent
-        agent = None
-        if call_log.agent_id:
-            agent = (
-                db.query(CallingAgent)
-                .filter(CallingAgent.id == call_log.agent_id)
-                .first()
-            )
+            if existing:
+                continue
 
-        # Campaign
-        campaign = None
-        if call_log.campaign_id:
-            campaign = (
-                db.query(CallCampaign)
-                .filter(CallCampaign.id == call_log.campaign_id)
-                .first()
-            )
+        if agent.type == "inbound":
+            name = booking.get("full_name") or "Unknown"
+            phone = booking.get("customer_number")
+            session_id = None
+            contact = None
+            organization_id_for_appointment = organization_id
+        else:
+            # Contact
+            contact = None
+            if call_log.contact_id:
+                contact = (
+                    db.query(Contact).filter(Contact.id == call_log.contact_id).first()
+                )
+            else:
+                contact = (
+                    db.query(Contact)
+                    .filter(Contact.phone == call_log.phone)
+                    .order_by(Contact.created_at.desc())
+                    .first()
+                )
+
+            name = contact.name if contact else "Unknown"
+            phone = call_log.phone
+            session_id = call_log.call_session_id
+            organization_id_for_appointment = call_log.organization_id
 
         timezone_name = (
             agent.prompt_timezone
@@ -3113,11 +3141,11 @@ def sync_echoleads_bookings(
 
         # Create appointment
         appointment = Appointment(
-            organization_id=call_log.organization_id,
-            session_id=call_log.call_session_id,
+            organization_id=organization_id_for_appointment,
+            session_id=session_id,
             widget_id=agent.widget_id if agent else None,
-            name=contact.name if contact else "Unknown",
-            phone=call_log.phone,
+            name=name,
+            phone=phone,
             appointment_at=appointment_at,
             status="booked",
             email=None,
